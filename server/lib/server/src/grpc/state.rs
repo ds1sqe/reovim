@@ -149,12 +149,72 @@ impl StateService for StateServiceImpl {
 
     /// Get selection state.
     ///
-    /// Not yet implemented - requires visual mode integration.
+    /// Returns the current visual selection bounds and mode if active.
+    /// Selection is active when in visual mode (character, line, or block).
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_selection(
         &self,
         _request: Request<GetSelectionRequest>,
     ) -> Result<Response<GetSelectionResponse>, Status> {
-        Err(Status::unimplemented("GetSelection not yet implemented"))
+        use reovim_kernel::api::v1::SelectionMode;
+        use reovim_protocol::v2::Selection;
+
+        let session = self.get_session()?;
+
+        let (has_selection, selection, visual_mode) = session
+            .with_state(|state| {
+                if let Some(buffer_id) = state.active_buffer()
+                    && let Some(buffer_arc) = state.buffer(buffer_id)
+                {
+                    let buf = buffer_arc.read();
+                    let sel = buf.selection();
+
+                    if sel.is_active() {
+                        let cursor_pos = buf.position();
+                        let anchor = sel.anchor;
+                        let mode = sel.mode();
+                        drop(buf); // Release lock early
+
+                        // Get bounds in document order (start <= end)
+                        let (start, end) = if anchor <= cursor_pos {
+                            (anchor, cursor_pos)
+                        } else {
+                            (cursor_pos, anchor)
+                        };
+
+                        // Map kernel SelectionMode to protocol string
+                        let mode_str = match mode {
+                            SelectionMode::Character => "char",
+                            SelectionMode::Line => "line",
+                            SelectionMode::Block => "block",
+                        };
+
+                        return (
+                            true,
+                            Some(Selection {
+                                start: Some(Position {
+                                    line: start.line as u64,
+                                    column: start.column as u64,
+                                }),
+                                end: Some(Position {
+                                    line: end.line as u64,
+                                    column: end.column as u64,
+                                }),
+                            }),
+                            Some(mode_str.to_string()),
+                        );
+                    }
+                }
+                // No active selection
+                (false, None, None)
+            })
+            .await;
+
+        Ok(Response::new(GetSelectionResponse {
+            has_selection,
+            selection,
+            visual_mode,
+        }))
     }
 
     /// Get screen content via TUI capture relay.
@@ -531,5 +591,189 @@ mod tests {
         assert_eq!(resp.registers[0].name, "a");
         assert_eq!(resp.registers[0].content, "alpha");
         assert_eq!(resp.registers[0].yank_type, "line");
+    }
+
+    // Phase 9.1: GetSelection RPC tests
+
+    #[tokio::test]
+    async fn test_get_selection_no_selection() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create a buffer but don't start selection
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("hello world");
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(!resp.has_selection);
+        assert!(resp.selection.is_none());
+        assert!(resp.visual_mode.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_selection_no_buffer() {
+        // Session with no buffer
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        // Should return no selection (graceful handling), not an error
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(!resp.has_selection);
+    }
+
+    #[tokio::test]
+    async fn test_get_selection_with_char_selection() {
+        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create buffer and start character selection
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("hello world");
+                // Simulate starting visual mode at position (0, 0)
+                if let Some(buffer_id) = state.active_buffer() {
+                    if let Some(buffer_arc) = state.buffer(buffer_id) {
+                        let mut buf = buffer_arc.write();
+                        buf.selection_mut()
+                            .start(KernelPosition::new(0, 0), SelectionMode::Character);
+                        // Move cursor to (0, 4) to select "hello"
+                        buf.set_position(KernelPosition::new(0, 4));
+                    }
+                }
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.has_selection);
+        assert!(resp.selection.is_some());
+
+        let sel = resp.selection.unwrap();
+        assert_eq!(sel.start.as_ref().unwrap().line, 0);
+        assert_eq!(sel.start.as_ref().unwrap().column, 0);
+        assert_eq!(sel.end.as_ref().unwrap().line, 0);
+        assert_eq!(sel.end.as_ref().unwrap().column, 4);
+        assert_eq!(resp.visual_mode, Some("char".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_selection_line_mode() {
+        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("line1\nline2\nline3");
+                if let Some(buffer_id) = state.active_buffer() {
+                    if let Some(buffer_arc) = state.buffer(buffer_id) {
+                        let mut buf = buffer_arc.write();
+                        // Start line-wise selection on line 0
+                        buf.selection_mut()
+                            .start(KernelPosition::new(0, 0), SelectionMode::Line);
+                        // Move to line 1
+                        buf.set_position(KernelPosition::new(1, 0));
+                    }
+                }
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.has_selection);
+        assert_eq!(resp.visual_mode, Some("line".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_selection_block_mode() {
+        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("ABC\nDEF\nGHI");
+                if let Some(buffer_id) = state.active_buffer() {
+                    if let Some(buffer_arc) = state.buffer(buffer_id) {
+                        let mut buf = buffer_arc.write();
+                        // Start block selection at (0, 0)
+                        buf.selection_mut()
+                            .start(KernelPosition::new(0, 0), SelectionMode::Block);
+                        // Move to (1, 1) for a 2x2 block
+                        buf.set_position(KernelPosition::new(1, 1));
+                    }
+                }
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.has_selection);
+        assert_eq!(resp.visual_mode, Some("block".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_selection_reverse() {
+        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("hello world");
+                if let Some(buffer_id) = state.active_buffer() {
+                    if let Some(buffer_arc) = state.buffer(buffer_id) {
+                        let mut buf = buffer_arc.write();
+                        // Start selection at column 5, move cursor to column 2 (reverse)
+                        buf.selection_mut()
+                            .start(KernelPosition::new(0, 5), SelectionMode::Character);
+                        buf.set_position(KernelPosition::new(0, 2));
+                    }
+                }
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetSelectionRequest { window_id: None });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.has_selection);
+
+        let sel = resp.selection.unwrap();
+        // start should be normalized (smaller position comes first)
+        assert!(sel.start.as_ref().unwrap().column < sel.end.as_ref().unwrap().column);
+        assert_eq!(sel.start.as_ref().unwrap().column, 2);
+        assert_eq!(sel.end.as_ref().unwrap().column, 5);
     }
 }

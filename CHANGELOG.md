@@ -6,7 +6,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
-- **Directory restructure (Phase 11)**: Major codebase restructure to clarify
+- **Directory restructure**: Major codebase restructure to clarify
   server/client boundaries. New directory layout: `server/` (kernel, drivers,
   modules), `clients/` (tui, cli), `shared/` (protocol, arch, net, log, trace,
   module-macros, testing), `apps/` (thin runner binary). Server-side drivers
@@ -16,32 +16,48 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `archive/post_kernel/modules/` - will be reimplemented as client-side plugins.
   TUI drivers (display, tui) moved to `clients/tui/lib/drivers/`. Window
   command IDs moved from archived `layout` module to `window-ops` module
-  (server-side). Updated all workspace paths and dependencies. Part of Epic
-  #465 Phase 11. (#465)
+  (server-side). Updated all workspace paths and dependencies. Part of Epic #465. (#465)
 
-- **Legacy cleanup (Phase 10)**: Removed legacy crates from workspace as part of
+- **Legacy cleanup**: Removed legacy crates from workspace as part of
   aggressive v2 migration cleanup. `runner/` (legacy binary with v1 JSON-RPC server)
   and `lib/clients/core/` (v1 JSON-RPC client library) removed from workspace -
   both archived to `archive/post_kernel/`. TUI client (`lib/clients/tui/`) now
   uses only gRPC v2 (`TuiAppV2`). Module tests (vim, undo, search, which-key)
   archived - to be rewritten for v2 testing infrastructure (`lib/testing/`).
   TUI simplified: removed deprecated v1 args (`--tcp`, `--socket-path`, `--instance`),
-  now uses only `--grpc` for gRPC v2 connections. Part of Epic #465 Phase 10. (#465)
+  now uses only `--grpc` for gRPC v2 connections. Part of Epic #465. (#465)
 
 ### Fixed
 
-- **Visual mode resolver missing (Phase 9)**: Fixed bug where Visual mode keys
+- **Visual mode resolver missing**: Fixed bug where Visual mode keys
   (h, j, k, l, w, b, e, etc.) were not working - either inserting characters or
   being ignored. Root cause: No resolver registered for Visual modes, causing
   `ResolverRegistry.get()` to return `None` and bypass mode inheritance. Solution:
   Created `VimVisualResolver` (~350 LOC) that handles escape, count accumulation,
   and delegates motion keys to Normal mode keymap. Registered for all 3 visual
   variants (`VISUAL_ID`, `VISUAL_LINE_ID`, `VISUAL_BLOCK_ID`). Server now has 10
-  resolvers (was 7). Part of Epic #465 Phase 9. (#465)
+  resolvers (was 7). Part of Epic #465. (#465)
 
 ### Added
 
-- **Web client PoC with gRPC-Web support (Phase 9)**: Added minimal web client that
+- **Selection rendering for web client**: Implemented visual selection
+  highlighting in the web client, validating Unix philosophy of server-mechanism /
+  client-policy separation. Server changes: Implemented `GetSelection` RPC in
+  `StateService` (was returning unimplemented) - extracts selection from buffer,
+  normalizes start/end positions, maps `SelectionMode` to string ("char", "line",
+  "block"). Added 6 unit tests covering no-selection, no-buffer, char/line/block
+  modes, and reverse selections. Web client changes (`clients/web/`): Extended
+  `EditorState` with selection fields (`hasSelection`, `selectionAnchor`,
+  `selectionCursor`, `visualMode`). Added `selectionChanged` notification handler
+  in `handleNotification()`. Created `isPositionSelected()` helper (~60 LOC)
+  handling all three visual modes with forward/reverse selection normalization.
+  Added `renderLineWithSelection()` for efficient DOM rendering using span batching
+  (groups consecutive selected characters into single spans). CSS: Added
+  `--selection-bg` variable and `.selected` class with semi-transparent purple
+  highlight. Updated cursor styling for visual mode (border instead of solid
+  background, no blink animation). Part of Epic #465. (#465)
+
+- **Web client PoC with gRPC-Web support**: Added minimal web client that
   connects to reovim server via gRPC-Web, validating multi-platform architecture.
   Server changes: Added `grpc-web` feature to `reovim-server` with `tonic-web` middleware
   layer and CORS support (~44 LOC, feature-gated so existing gRPC unaffected). Web client
@@ -51,9 +67,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   handler), `client.ts` (gRPC-Web transport). 40 keymapper tests (P0 critical, exceeds 25+
   requirement). Architecture decision: gRPC-Web over WebSocket - reuses existing proto
   (zero new protocol code), type-safe generated clients, same port for native gRPC and
-  gRPC-Web. Production bundle: 22.53 KB gzip. Part of Epic #465 Phase 9. (#465)
+  gRPC-Web. Production bundle: 22.53 KB gzip. Part of Epic #465. (#465)
 
-- **Pytest infrastructure for Python testing module (Phase 8E)**: Added formal pytest
+- **Pytest infrastructure for Python testing module**: Added formal pytest
   suite for `tools/reovim-testing/` with 171 total tests (87 unit, 84 integration).
   Unit tests use mocking (no server required, 0.12s): `test_errors.py` (20 exception tests),
   `test_discovery.py` (19 binary/port tests), `test_client.py` (24 CLI wrapper tests),
@@ -64,9 +80,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   pytest markers (`integration`, `slow`, `binary`), and auto-skip when binary unavailable.
   Fixed `screen_capture_demo.py` imports. Added comprehensive documentation to `input.rs`
   fallback logic explaining when it triggers, what it does, and its limitations.
-  Part of Epic #465 Phase 8E. (#465)
+  Part of Epic #465. (#465)
 
-- **Python testing module and capture relay (Phase 8D)**: Added comprehensive Python
+- **Python testing module and capture relay**: Added comprehensive Python
   testing library at `tools/reovim-testing/` with zero-config `Editor` class featuring
   fluent API and context manager lifecycle. Includes `Capture` dataclass for rich state
   snapshots (frame, mode, cursor, buffer, registers), auto-discovery of binary and free
@@ -74,9 +90,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   TUI → Server → CLI) where server coordinates but has no screen (correct separation)
   and TUI owns viewport. Added resize relay from CLI to TUI via server notification.
   Fixed clippy pedantic issues (doc comments, `map_or`, `Error::other`). Module bootstrap
-  now creates scratch buffer on startup. Part of Epic #465 Phase 8D. (#465)
+  now creates scratch buffer on startup. Part of Epic #465. (#465)
 
-- **Server/client notification pipeline (Phase 8C)**: Completed the core server/client
+- **Server/client notification pipeline**: Completed the core server/client
   architecture with working command execution and notification emission. Pillars
   implemented: (1) `CommandExecutor` trait signature changed from `&mut KernelContext`
   to `&KernelContext` (interior mutability via `Arc<RwLock>` enables this), enabling
@@ -86,9 +102,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   scroll tracking; (4) Created `TuiAppV2Headless` (775 LOC) for headless TUI testing
   with capture, resize, and event loop support; (5) Created E2E test infrastructure
   with `vim_commands.rs` (503 LOC) and `notifications.rs` (190 LOC). Macro recording
-  (Pillar 6) deferred to Phase 8D. Part of Epic #465 Phase 8C. (#465)
+  (Pillar 6) deferred. Part of Epic #465. (#465)
 
-- **NotificationService infrastructure (Phase 8A)**: Implemented gRPC v2
+- **NotificationService infrastructure**: Implemented gRPC v2
   NotificationService with server-to-client streaming for real-time notifications.
   Uses `tokio::sync::broadcast` channel pattern - Session holds broadcast sender,
   clients subscribe via `subscribe_notifications()`. `NotificationServiceImpl`
@@ -97,10 +113,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `lib/clients/tui/` ready for future TUI migration (wraps Input, State, Buffer,
   Notification service clients with `subscribe()` method returning
   `Streaming<Notification>`). Added `grpc` feature to TUI Cargo.toml. This phase
-  lands infrastructure only - full TUI migration deferred to Phase 8B. Part of
-  Epic #465 Phase 8A. (#465)
+  lands infrastructure only - full TUI migration deferred. Part of Epic #465. (#465)
 
-- **gRPC v2 CLI client (Phase 7)**: Created `lib/clients/cli/` crate
+- **gRPC v2 CLI client**: Created `lib/clients/cli/` crate
   (reovim-client-cli v0.9.3-dev) as the gRPC v2 command-line client. Deprecates
   JSON-RPC v1 for CLI usage. Implements four gRPC services in `lib/server/`:
   `InputServiceImpl` (SendKeys with vim notation parsing), `StateServiceImpl`
@@ -110,9 +125,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (keys, mode, cursor, buffers, buffer, ping, version), and clap-based argument
   parsing with `--grpc` address option and `--format` (plain/json) output.
   Basic character insertion supported; full vim key resolution deferred.
-  Part of Epic #465 Phase 7. (#465)
+  Part of Epic #465. (#465)
 
-- **TUI crate extraction (Phase 6)**: Created `lib/clients/tui/` crate
+- **TUI crate extraction**: Created `lib/clients/tui/` crate
   (reovim-client-tui v0.9.3-dev) as the standalone TUI client library. Contains
   terminal user interface with crossterm for rendering, async event loop with
   notifications, and embedded CLI panel. Includes 11 modules: `TuiApp` (main
@@ -121,26 +136,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `LogBuffer`/`LogPanel`/`LogRender` (log panel, ~945 LOC combined),
   `InputHandler` (keyboard handling, ~224 LOC), `Renderer` (crossterm wrapper,
   ~186 LOC), `RenderState` (frame capture, ~335 LOC). Uses "copy" approach -
-  runner keeps its own copy unchanged. All 87 unit tests pass. Part of Epic
-  #465 Phase 6. (#465)
+  runner keeps its own copy unchanged. All 87 unit tests pass. Part of Epic #465. (#465)
 
-- **Client core extraction (Phase 5)**: Created `lib/clients/core/` crate
+- **Client core extraction**: Created `lib/clients/core/` crate
   (reovim-client-core v0.9.3-dev) as the standalone client connection library.
   Provides TCP/Unix socket connection abstraction (`Connection`, `ConnectionConfig`),
   server discovery via port scanning (`list_servers`, `ServerInfo`), and JSON-RPC
   v1 client (`RpcClient`, `RpcWriter`). Used "copy" approach - runner keeps its
   own copy unchanged while new crate provides identical functionality. This enables
   future TUI and CLI extraction in Phases 6-7. All 18 unit tests pass. Part of
-  Epic #465 Phase 5. (#465)
+  Epic #465. (#465)
 
-- **New thin runner (Phase 4)**: Created `apps/reovim/` crate (reovim-app v0.9.3-dev)
+- **New thin runner**: Created `apps/reovim/` crate (reovim-app v0.9.3-dev)
   as the new architecture binary. This thin CLI wrapper uses `lib/server/` directly,
   demonstrating the server/client split. Binary named `reovim-new` for parallel
   installation during migration. Supports server mode with `--tcp`, `--grpc` (feature-
   gated), and `--socket` (Unix) transport options. Establishes `apps/` directory
-  pattern for future applications (GUI, web). Part of Epic #465 Phase 4. (#465)
+  pattern for future applications (GUI, web). Part of Epic #465. (#465)
 
-- **Server crate extraction (Phase 3)**: Created new `lib/server/` crate
+- **Server crate extraction**: Created new `lib/server/` crate
   (reovim-server v0.9.3-dev) as the foundation for server/client split. Implements
   session management with `SessionRegistry` (lock-free via `ArcSwap`), `Session`
   (named editing context), and `SessionState` (kernel wrapper). Server supports
@@ -148,19 +162,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   and gRPC (feature-gated). Bridges to gRPC v2 protocol via `BufferServiceImpl`.
   New crate coexists with old runner - no breaking changes. Part of Epic #465. (#465)
 
-- **gRPC v2 transport (Phase 2)**: Added gRPC transport listener as parallel
+- **gRPC v2 transport**: Added gRPC transport listener as parallel
   transport option alongside existing TCP/JSON-RPC. Server can start with
   `--grpc <PORT>` flag. Implemented `BufferService` gRPC service with methods:
   `GetRawContent` (raw buffer lines), `GetLineCount`, `GetAnnotations` (stub),
   `List` (all open buffers). Other methods (`OpenFile`, `WriteFile`, `SetContent`)
-  return unimplemented status for Phase 2. The gRPC transport follows v2 protocol
+  return unimplemented status. The gRPC transport follows v2 protocol
   philosophy: server provides raw data, client renders. Part of Epic #465. (#465)
 
 - **InstanceRegistry migration**: Moved `InstanceRegistry`, `InstanceInfo`, and
   `TransportInfo` from `runner/src/server/instance/` to `lib/protocol/src/instance/`.
   These are protocol-level abstractions used by both client and server. Fixed
   architectural violation where client code imported from `server::instance`.
-  Part of Epic #465 Phase 2. (#465)
+  Part of Epic #465. (#465)
 
 ---
 
@@ -168,7 +182,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- **Command-line UI Phase 1-2**: Implemented cmdline state management and popup
+- **Command-line UI**: Implemented cmdline state management and popup
   rendering for search (/, ?) and Ex command (:) modes. Characters route to
   cmdline buffer when active. Supports editing keys (Backspace, Delete, Left,
   Right, Home, End, Ctrl+A, Ctrl+E). Floating popup renders at screen top with
@@ -235,7 +249,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   display (:/?), input text with cursor indicator (█), and horizontal scrolling
   for long input. Input handler now intercepts cmdline editing keys (Backspace,
   Delete, Left, Right, Home, End, Ctrl+A/E/H) when cmdline is active, routing
-  them to `CmdlineBuffer` methods. This is Phase 1 infrastructure; floating
+  them to `CmdlineBuffer` methods. This is initial infrastructure; floating
   popup rendering in TUI to follow. (#451)
 - **Extensible statusline system**: Implemented lualine-inspired statusline with
   sections (A-B-C | X-Y-Z), pluggable components, and mode-specific theming.
@@ -277,8 +291,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   buffer content, cursor, options; client renders). Defines 7 services:
   InputService, StateService, BufferService, EditorService, ModuleService,
   ServerService, NotificationService (streaming). Feature-gated behind `grpc`
-  feature flag. This is foundation-only (Phase 1); runtime gRPC transport to
-  follow in Phase 2. Part of Epic #465 (server/client crate split). (#465)
+  feature flag. This is foundation-only; runtime gRPC transport followed.
+  Part of Epic #465 (server/client crate split). (#465)
 
 ### Changed
 

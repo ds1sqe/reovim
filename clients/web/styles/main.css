@@ -9,6 +9,8 @@
   --mode-insert: #a6e3a1;
   --mode-visual: #cba6f7;
   --line-number: #6c7086;
+  /* Selection highlighting (Phase 9.1) */
+  --selection-bg: rgba(203, 166, 247, 0.3); /* mode-visual with alpha */
 }
 
 * {
@@ -58,7 +60,9 @@ body {
   color: var(--bg);
 }
 
-#mode.visual {
+#mode.visual,
+#mode.visual-line,
+#mode.visual-block {
   background-color: var(--mode-visual);
   color: var(--bg);
 }
@@ -98,10 +102,23 @@ body {
   width: 0.6em;
   height: 1.5em;
   animation: blink 1s step-end infinite;
+  z-index: 10; /* Ensure cursor is visible over selection */
 }
 
 #cursor.insert {
   width: 2px;
+}
+
+#cursor.visual {
+  background-color: var(--selection-bg);
+  border: 1px solid var(--mode-visual);
+  animation: none; /* No blink in visual mode */
+}
+
+/* Selection highlighting (Phase 9.1) */
+.line-content .selected {
+  background-color: var(--selection-bg);
+  border-radius: 2px;
 }
 
 @keyframes blink {
