@@ -76,6 +76,7 @@ impl TuiDebugConfig {
 }
 
 // Module declarations - gRPC v2 only
+pub mod adapter;
 pub mod cli_panel;
 pub mod cli_render;
 pub mod input;

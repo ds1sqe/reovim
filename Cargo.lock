@@ -1797,6 +1797,7 @@ dependencies = [
  "crossterm",
  "futures",
  "reovim-arch",
+ "reovim-client-model",
  "reovim-driver-display",
  "reovim-driver-tui",
  "reovim-protocol",
@@ -1847,6 +1848,7 @@ name = "reovim-driver-display"
 version = "0.9.3-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-client-model",
  "reovim-kernel",
  "smallvec",
  "unicode-width",

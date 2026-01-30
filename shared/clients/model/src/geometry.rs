@@ -141,6 +141,14 @@ impl Rect {
         pos.x >= self.x && pos.x < self.right() && pos.y >= self.y && pos.y < self.bottom()
     }
 
+    /// Check if this rectangle contains a point at the given coordinates.
+    ///
+    /// This is a convenience method equivalent to `contains(ScreenPosition::new(x, y))`.
+    #[must_use]
+    pub const fn contains_xy(&self, x: u16, y: u16) -> bool {
+        x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
+    }
+
     /// Check if this rectangle intersects with another.
     #[must_use]
     pub const fn intersects(&self, other: &Self) -> bool {
@@ -298,6 +306,18 @@ mod tests {
         // Right and bottom edges are exclusive
         assert!(!rect.contains(ScreenPosition::new(30, 15))); // Right edge
         assert!(!rect.contains(ScreenPosition::new(15, 30))); // Bottom edge
+    }
+
+    #[test]
+    fn test_rect_contains_xy() {
+        let rect = Rect::new(10, 10, 20, 20);
+        // Inside
+        assert!(rect.contains_xy(15, 15));
+        assert!(rect.contains_xy(10, 10)); // Top-left corner
+        // Outside
+        assert!(!rect.contains_xy(5, 15)); // Left
+        assert!(!rect.contains_xy(30, 15)); // Right edge (exclusive)
+        assert!(!rect.contains_xy(15, 30)); // Bottom edge (exclusive)
     }
 
     #[test]

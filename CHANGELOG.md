@@ -54,6 +54,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `OverlaySyncMode`, `PresenceTracker`). Total: 147 unit tests with comprehensive
   coverage. No I/O dependencies - pure types and traits. Part of Epic #465. (#465)
 
+- **TUI Adapter for Common Client Model**: Integrated `reovim-client-model` with
+  TUI client using hybrid approach (common model for data interchange, TUI keeps
+  its compositor). Added `clients/tui/src/adapter/` module (6 files, ~1200 LOC) with:
+  `TuiLayoutAdapter` (wraps `RootCompositor`, implements `Layout` trait with split/close/focus
+  operations), `TuiPanel` (wraps `View`, implements `Panel` trait with scroll/cursor/visible-range),
+  `TuiOverlayManager` (implements `OverlayManager` trait with renderer registry, ID mapping,
+  position resolution), `TuiFocusManager` (implements `FocusManager` trait with panel/overlay
+  focus transitions), `AnchorContext` and `convert_anchor()` (wire anchor to TUI anchor conversion
+  with normalized-to-absolute coordinate mapping, cursor context, overlay ID resolution).
+  Type conversions: `WindowId`/`BufferId` (usize) to u64 and back, `Direction`/`SplitDirection`
+  to TUI equivalents, `wire::Anchor` variants to `layout::Anchor`. `TuiAdapterFactory` for
+  convenient adapter creation from compositor. Added `BufferId` re-export from display driver.
+  77 adapter-specific tests (153 total TUI tests). Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

@@ -57,7 +57,7 @@ impl WindowView {
     /// Check if a point is within this window's bounds.
     #[must_use]
     pub const fn contains(&self, x: u16, y: u16) -> bool {
-        self.bounds.contains(x, y)
+        self.bounds.contains_xy(x, y)
     }
 }
 

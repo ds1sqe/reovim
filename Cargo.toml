@@ -153,6 +153,9 @@ reovim-driver-display = { path = "./clients/tui/lib/drivers/display", version = 
 reovim-client-tui = { path = "./clients/tui", version = "0.9.3-dev" }
 reovim-client-cli = { path = "./clients/cli", version = "0.9.3-dev" }
 
+# Common client model (platform-agnostic abstractions)
+reovim-client-model = { path = "./shared/clients/model", version = "0.9.3-dev" }
+
 # Application binary
 reovim-app = { path = "./apps/bin", version = "0.9.3-dev" }
 

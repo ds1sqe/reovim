@@ -65,10 +65,13 @@ pub use capabilities::DisplayCapabilities;
 // Render commands
 pub use command::RenderCommand;
 
-// Window types (WindowId re-exported from kernel as SSOT)
+// Window and buffer types (IDs re-exported from kernel as SSOT)
+// Geometry types (Rect, Size) come from common client model via window module
 pub use {
-    reovim_kernel::api::v1::WindowId,
-    window::{NavigateDirection, Rect, SplitDirection, TerminalSize},
+    reovim_kernel::api::v1::{BufferId, WindowId},
+    window::{
+        Direction, NavigateDirection, Rect, Size, SplitDirection, TerminalSize, TerminalSizeExt,
+    },
 };
 
 // Traits
