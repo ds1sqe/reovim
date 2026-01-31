@@ -2251,6 +2251,7 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-search",
  "reovim-driver-session",
+ "reovim-driver-syntax",
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",

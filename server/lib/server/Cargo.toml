@@ -26,6 +26,7 @@ reovim-driver-command-types = { workspace = true }
 reovim-driver-display = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-session = { workspace = true }
+reovim-driver-syntax = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-driver-undo = { workspace = true }
 reovim-driver-search = { workspace = true }

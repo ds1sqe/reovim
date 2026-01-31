@@ -160,6 +160,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   bringing web client to 236 tests (was 109). All tests pass in 1.7s. Addresses
   Telemetry B grade from Phase 11.1 landing review. Part of Epic #465. (#465)
 
+- **SyntaxService Token Data API (Phase 12)**: Created gRPC SyntaxService to expose
+  syntax tokens for client-side syntax highlighting. Proto definition (`syntax.proto`,
+  ~90 LOC): `GetTokens` RPC returns tokens for buffer range with language detection,
+  `StreamTokens` RPC for real-time token streaming (stub for now), `GetLanguageInfo`
+  RPC returns language metadata (id, name, extensions, parser availability).
+  `TokenSpan` message uses byte offsets and category strings for theme flexibility.
+  Service implementation (`grpc/syntax.rs`, ~500 LOC): `SyntaxServiceImpl` with
+  session registry pattern matching other services. `highlight_group_to_category()`
+  function maps all 47 `HighlightGroup` variants to TextMate-style category strings
+  (keyword, function.builtin, string.escape, etc.) using existing `SyntaxHighlight`
+  trait. Language detection from file extensions (~50 languages including Rust, Python,
+  TypeScript, Go, etc.). 5 unit tests covering category mapping, language detection,
+  extension lookups, and error cases. Server changes: Added `reovim-driver-syntax`
+  dependency. Registered `SyntaxService` in gRPC router. Philosophy: Server provides
+  token categories (mechanism), client applies colors via theme (policy). Foundation
+  for Phase 13 (TUI Theme Engine). Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

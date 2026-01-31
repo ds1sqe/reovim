@@ -22,9 +22,10 @@ mod notification;
 pub mod notification_builder;
 mod server_service;
 mod state;
+mod syntax;
 
 pub use {
     buffer::BufferServiceImpl, editor::EditorServiceImpl, input::InputServiceImpl,
     module::ModuleServiceImpl, notification::NotificationServiceImpl,
-    server_service::ServerServiceImpl, state::StateServiceImpl,
+    server_service::ServerServiceImpl, state::StateServiceImpl, syntax::SyntaxServiceImpl,
 };
