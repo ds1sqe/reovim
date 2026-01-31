@@ -43,6 +43,7 @@ use {
 use crate::{
     TuiDebugConfig,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
+    layout_mirror::ServerLayoutMirror,
 };
 
 /// Line number display mode.
@@ -154,6 +155,11 @@ pub struct TuiAppV2 {
     /// Debug configuration.
     #[allow(dead_code)]
     debug_config: Option<TuiDebugConfig>,
+    /// Server layout mirror (Phase 11.2).
+    ///
+    /// Passive data structure that mirrors server-managed window layout.
+    /// Updated from `layout_changed` notifications, used for rendering.
+    layout_mirror: ServerLayoutMirror,
 }
 
 impl TuiAppV2 {
@@ -191,6 +197,9 @@ impl TuiAppV2 {
         let cursor = Cursor::new();
         let input = InputReader::new();
 
+        // Create server layout mirror (Phase 11.2)
+        let layout_mirror = ServerLayoutMirror::new(width, height);
+
         Ok(Self {
             client,
             notification_stream,
@@ -202,6 +211,7 @@ impl TuiAppV2 {
             running: true,
             server_address: addr.to_string(),
             debug_config,
+            layout_mirror,
         })
     }
 
@@ -313,6 +323,10 @@ impl TuiAppV2 {
         if let Some(root) = &layout.root {
             self.collect_windows(root);
         }
+
+        // Update layout mirror (Phase 11.2)
+        self.layout_mirror
+            .apply_layout_changed(layout.focused_window_id, &self.state.windows);
     }
 
     /// Recursively collect windows from layout tree.
@@ -411,6 +425,9 @@ impl TuiAppV2 {
             InputEvent::Resize(resize) => {
                 self.screen.resize(resize.width, resize.height);
 
+                // Update layout mirror dimensions (Phase 11.2)
+                self.layout_mirror.set_screen(resize.width, resize.height);
+
                 // Notify server
                 if let Err(e) = self
                     .client
@@ -466,6 +483,11 @@ impl TuiAppV2 {
                     self.state.needs_redraw = true;
                 }
                 Payload::LayoutChanged(layout) => {
+                    // Update layout mirror (Phase 11.2)
+                    self.layout_mirror
+                        .apply_layout_changed(layout.focused_window_id, &layout.windows);
+
+                    // Keep legacy state for statusline compatibility
                     self.state.focused_window_id = layout.focused_window_id;
                     self.state.windows = layout.windows;
                     self.state.needs_redraw = true;
@@ -588,32 +610,32 @@ impl TuiAppV2 {
     }
 
     /// Render all windows to screen buffer.
+    ///
+    /// Uses `ServerLayoutMirror` (Phase 11.2) for placement data.
     fn render_windows(&mut self) {
         let default_style = Style::default();
         let tilde_style = Style::default().with_fg(Color::DarkBlue);
 
-        // Clone windows and buffer cache to avoid borrow issues
-        let windows: Vec<_> = self.state.windows.clone();
+        // Get placements from layout mirror (Phase 11.2)
+        let placements = self.layout_mirror.placements().to_vec();
+        let has_multiple = self.layout_mirror.has_multiple_windows();
+        let focused_id = self.layout_mirror.focused_id();
+
+        // Clone buffer cache to avoid borrow issues
         let buffer_cache = self.state.buffer_cache.clone();
 
         // Get cursor line (for line number rendering)
         #[allow(clippy::cast_possible_truncation)]
         let cursor_line = self.state.cursor_line as usize;
 
-        for window in &windows {
-            let Some(rect) = &window.rect else { continue };
-
-            #[allow(clippy::cast_possible_truncation)]
-            let x = rect.x as u16;
-            #[allow(clippy::cast_possible_truncation)]
-            let y = rect.y as u16;
-            #[allow(clippy::cast_possible_truncation)]
-            let w = rect.width as u16;
-            #[allow(clippy::cast_possible_truncation)]
-            let h = rect.height as u16;
+        for placement in &placements {
+            let x = placement.x;
+            let y = placement.y;
+            let w = placement.width;
+            let h = placement.height;
 
             // Get buffer content
-            let lines = buffer_cache.get(&window.buffer_id);
+            let lines = buffer_cache.get(&placement.buffer_id);
             let total_lines = lines.map_or(0, Vec::len);
 
             // Calculate gutter width for line numbers
@@ -660,8 +682,8 @@ impl TuiAppV2 {
                 }
             }
 
-            // Draw window border if multiple windows
-            if windows.len() > 1 && window.focused {
+            // Draw focus indicator if multiple windows (Phase 11.2)
+            if has_multiple && focused_id == Some(placement.window_id) {
                 let border_style = Style::default();
                 self.screen.put_char(x, y, '▪', &border_style);
             }

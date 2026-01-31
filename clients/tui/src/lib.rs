@@ -80,6 +80,7 @@ pub mod adapter;
 pub mod cli_panel;
 pub mod cli_render;
 pub mod input;
+pub mod layout_mirror;
 pub mod log_buffer;
 pub mod log_panel;
 pub mod log_render;

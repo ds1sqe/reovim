@@ -128,6 +128,38 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   ~70-90% reduction in RPC calls during scrolling/cursor movement by using
   cached state. Part of Epic #465. (#465)
 
+- **TUI ViewportService integration (Phase 11.2)**: Integrated TUI client with
+  server-managed viewports using passive `ServerLayoutMirror` approach. Created
+  `clients/tui/src/layout_mirror.rs` (~150 LOC) with `ServerLayoutMirror` struct
+  that passively mirrors server layout state - simpler than implementing full
+  `RootCompositor` (20+ methods). `WindowPlacement` type stores window bounds
+  (x, y, width, height) and focused state. Key methods: `apply_layout_changed()`
+  replaces all placements from `layout_changed` notification, `set_screen()` for
+  resize, `placements()` for rendering, `has_multiple_windows()` for separator
+  logic. Integrated into `TuiAppV2`: (1) Mirror field initialized with screen
+  dimensions in `connect()`, (2) `apply_layout()` updates mirror from initial
+  `GetLayout` RPC, (3) `handle_notification()` updates mirror on `LayoutChanged`
+  payload, (4) `render_windows()` uses `layout_mirror.placements()` instead of
+  `state.windows`, (5) Resize events call `layout_mirror.set_screen()`. Focus
+  indicator uses `layout_mirror.focused_id()` and `has_multiple_windows()`.
+  6 unit tests covering single/multi window, focus tracking, resize, and filtered
+  windows. Follows same pattern as web client's `ViewportCache` (Phase 11.1).
+  Part of Epic #465. (#465)
+
+- **Web client unit tests (Phase 11.3)**: Added comprehensive unit tests for
+  Phase 11.1 cache and overlay components. Test files: `cache-viewport.test.ts`
+  (25 tests) covers ViewportCache get/set, applyUpdate partial updates, delete,
+  clear, iteration methods. `cache-buffer.test.ts` (40 tests) covers BufferCache
+  version tracking, needsRefresh staleness detection, invalidation, getVisibleLines
+  slicing with bounds clamping, getLine/getLineCount helpers, getStats metrics.
+  `render-overlay.test.ts` (62 tests, jsdom) covers OverlayRenderer show/hide/remove,
+  all 4 overlay types (completion items/selection, cmdline prefix/cursor, hover text,
+  signature with docs), all 5 anchor types (Cursor, Center, Buffer, Screen, Below),
+  ARIA accessibility roles (listbox/textbox/tooltip/dialog), updateState selection
+  changes, custom config (charWidth, lineHeight, padding). Total: 127 new tests,
+  bringing web client to 236 tests (was 109). All tests pass in 1.7s. Addresses
+  Telemetry B grade from Phase 11.1 landing review. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in
