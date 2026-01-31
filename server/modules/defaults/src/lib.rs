@@ -47,6 +47,7 @@ use {
     reovim_module_commands as commands, reovim_module_editor as editor,
     reovim_module_keymap as keymap, reovim_module_motions as motions,
     reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
 };
@@ -99,8 +100,9 @@ impl DefaultsModule {
             Box::new(editor::EditorModule),
             Box::new(motions::MotionsModule),
             Box::new(vim::VimModule::new()),
-            // Syntax highlighting modules (Epic #465 Phase 12.1)
+            // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
+            Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
         ]
     }
 }
@@ -143,8 +145,9 @@ impl Module for DefaultsModule {
             ModuleId::new("editor"),
             ModuleId::new("motions"),
             ModuleId::new("vim"),
-            // Syntax highlighting modules (Epic #465 Phase 12.1)
+            // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
+            ModuleId::new("treesitter-markdown"),
         ]
     }
 
@@ -210,9 +213,9 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Syntax modules (1): treesitter-rust
-        // Total: 12 modules
-        assert_eq!(deps.len(), 12);
+        // Syntax modules (2): treesitter-rust, treesitter-markdown
+        // Total: 13 modules
+        assert_eq!(deps.len(), 13);
     }
 
     #[test]
@@ -221,9 +224,9 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Syntax modules (1): treesitter-rust
-        // Total: 12 modules
-        assert_eq!(modules.len(), 12);
+        // Syntax modules (2): treesitter-rust, treesitter-markdown
+        // Total: 13 modules
+        assert_eq!(modules.len(), 13);
     }
 
     #[test]

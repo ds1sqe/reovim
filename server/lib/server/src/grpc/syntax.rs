@@ -313,10 +313,8 @@ impl SyntaxService for SyntaxServiceImpl {
 
     /// Stream token updates in real-time.
     ///
-    /// # Current Implementation
-    ///
-    /// Returns an empty stream. Real-time token streaming will be enabled
-    /// when buffer modification events are connected to syntax driver updates.
+    /// Subscribes to the `SyntaxSessionState` to receive token updates when
+    /// buffers are modified. Sends an initial full refresh with current tokens.
     #[allow(clippy::cast_possible_truncation)]
     async fn stream_tokens(
         &self,
@@ -324,36 +322,83 @@ impl SyntaxService for SyntaxServiceImpl {
     ) -> Result<Response<Self::StreamTokensStream>, Status> {
         let req = request.into_inner();
         let session = self.get_session()?;
+        let session_clone = Arc::clone(&session);
 
-        // Verify buffer exists
+        // Verify buffer exists and get initial tokens
         let buffer_id = BufferId::from_raw(req.buffer_id as usize);
-        session
-            .with_state(|state| {
-                state.buffer(buffer_id).ok_or_else(|| {
+        let (initial_update, syntax_rx) = session
+            .with_state_mut(|state| {
+                // Verify buffer exists
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
-                Ok::<(), Status>(())
+
+                let buffer = buffer_arc.read();
+                let total_lines = buffer.line_count() as u64;
+                let content = buffer.content();
+                let (language_id, _) = detect_language_from_path(buffer.file_path());
+
+                // Drop buffer lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Get syntax state and ensure driver exists
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+
+                // Ensure driver is created for this buffer
+                syntax_state.ensure_driver(buffer_id, language_id, &content);
+
+                // Subscribe to updates
+                let rx = syntax_state.subscribe();
+
+                // Get initial tokens
+                let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
+                    driver
+                        .highlights(0..content.len())
+                        .into_iter()
+                        .map(|span| TokenSpan {
+                            start_byte: span.start_byte as u32,
+                            end_byte: span.end_byte as u32,
+                            category: highlight_group_to_category(span.group).to_string(),
+                        })
+                        .collect()
+                });
+
+                let initial = TokenUpdate {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    tokens,
+                    start_line: 0,
+                    end_line: total_lines.saturating_sub(1),
+                    full_refresh: true,
+                };
+
+                Ok::<_, Status>((initial, rx))
             })
             .await?;
 
-        // Create a channel for streaming updates
-        // Currently returns empty stream - will be connected to buffer events later
-        let (tx, rx) = mpsc::channel(16);
+        // Create output channel for the gRPC stream
+        let (tx, rx) = mpsc::channel(32);
 
-        // Send an initial full refresh with empty tokens to signal connection
-        let initial = TokenUpdate {
-            buffer_id: buffer_id.as_usize() as u64,
-            tokens: Vec::new(),
-            start_line: 0,
-            end_line: 0,
-            full_refresh: true,
-        };
-
-        // Spawn a task to send the initial update
+        // Spawn a task to forward updates
         tokio::spawn(async move {
-            let _ = tx.send(Ok(initial)).await;
-            // Keep the channel open but don't send more updates yet
-            // Future: subscribe to buffer modification events
+            // Send initial full refresh
+            if tx.send(Ok(initial_update)).await.is_err() {
+                return; // Client disconnected
+            }
+
+            // Forward updates from syntax state
+            let mut syntax_rx = syntax_rx;
+            while let Some(update) = syntax_rx.recv().await {
+                // Only forward updates for the requested buffer
+                if update.buffer_id == buffer_id.as_usize() as u64
+                    && tx.send(Ok(update)).await.is_err()
+                {
+                    break; // Client disconnected
+                }
+            }
+
+            tracing::debug!(buffer_id = buffer_id.as_usize(), "StreamTokens stream ended");
+            let _ = session_clone;
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))

@@ -56,8 +56,13 @@
 
 mod capture_mapper;
 mod driver;
+mod injection;
 
-pub use {capture_mapper::CaptureMapper, driver::TreeSitterDriver};
+pub use {
+    capture_mapper::CaptureMapper,
+    driver::TreeSitterDriver,
+    injection::{InjectionLayer, InjectionManager},
+};
 
 // Re-export tree_sitter types that language modules need
 pub use tree_sitter::{Language, Query};

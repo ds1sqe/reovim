@@ -34,14 +34,43 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_session::SessionExtension,
-    reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory},
+    reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxEdit, SyntaxHighlight},
     reovim_kernel::api::v1::BufferId,
+    reovim_protocol::v2::{TokenSpan, TokenUpdate},
+    tokio::sync::mpsc,
 };
 
 /// Per-session syntax state stored in `ExtensionMap`.
 ///
 /// Maps buffer IDs to their syntax drivers. Each buffer can have
 /// at most one syntax driver (language-specific highlighting).
+///
+/// # Design Rationale
+///
+/// Originally the plan called for storing syntax drivers in the kernel's
+/// `Buffer` struct. However, the kernel has a strict rule that it "depends
+/// only on arch". Storing drivers here in the session layer:
+///
+/// - Preserves kernel purity (no syntax dependency in kernel)
+/// - Maintains per-buffer semantics (each buffer has its own driver)
+/// - Uses existing `ExtensionMap` pattern (consistent with `VimSessionState`)
+///
+/// # Thread Safety
+///
+/// Access should be synchronized at the session level via `with_state_mut()`.
+/// Subscription handle for token update streams.
+pub type TokenSubscriber = mpsc::Sender<TokenUpdate>;
+
+/// Per-session syntax state stored in `ExtensionMap`.
+///
+/// Maps buffer IDs to their syntax drivers. Each buffer can have
+/// at most one syntax driver (language-specific highlighting).
+///
+/// # Subscription System
+///
+/// Clients can subscribe to token updates via `subscribe()`. When a buffer
+/// is modified and `notify_edit()` is called, all subscribers receive a
+/// `TokenUpdate` message with the new tokens for the affected region.
 ///
 /// # Design Rationale
 ///
@@ -63,6 +92,8 @@ pub struct SyntaxSessionState {
     /// Optional factory for creating new drivers.
     /// Uses `Arc` for shared ownership (populated from `SyntaxFactoryStore`).
     factory: Option<Arc<dyn SyntaxDriverFactory>>,
+    /// Token update subscribers (streaming clients).
+    subscribers: Vec<TokenSubscriber>,
 }
 
 impl SessionExtension for SyntaxSessionState {
@@ -169,6 +200,137 @@ impl SyntaxSessionState {
     pub fn clear(&mut self) {
         self.drivers.clear();
     }
+
+    // ========================================================================
+    // Subscription System (StreamTokens RPC support)
+    // ========================================================================
+
+    /// Subscribe to token updates.
+    ///
+    /// Returns a receiver that will receive `TokenUpdate` messages when
+    /// buffers are modified and re-tokenized.
+    ///
+    /// # Channel Size
+    ///
+    /// The channel has a buffer of 16 messages. If a client falls behind,
+    /// older updates may be dropped.
+    #[must_use]
+    pub fn subscribe(&mut self) -> mpsc::Receiver<TokenUpdate> {
+        let (tx, rx) = mpsc::channel(16);
+        self.subscribers.push(tx);
+        rx
+    }
+
+    /// Get the number of active subscribers.
+    #[must_use]
+    pub const fn subscriber_count(&self) -> usize {
+        self.subscribers.len()
+    }
+
+    /// Notify subscribers of a buffer edit.
+    ///
+    /// This method:
+    /// 1. Updates the syntax driver incrementally via `driver.update()`
+    /// 2. Gets updated tokens for the affected region
+    /// 3. Broadcasts `TokenUpdate` to all subscribers
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer that was modified
+    /// * `content` - The full buffer content after the edit
+    /// * `edit` - The edit description for incremental parsing
+    /// * `start_line` - First line affected by the edit (for `TokenUpdate`)
+    /// * `end_line` - Last line affected by the edit (for `TokenUpdate`)
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn notify_edit(
+        &mut self,
+        buffer_id: BufferId,
+        content: &str,
+        edit: &SyntaxEdit,
+        start_line: u64,
+        end_line: u64,
+    ) {
+        // Get the driver for this buffer
+        let Some(driver) = self.drivers.get_mut(&buffer_id.as_usize()) else {
+            return; // No driver for this buffer
+        };
+
+        // Update driver incrementally
+        driver.update(content, edit);
+
+        // If no subscribers, skip token extraction
+        if self.subscribers.is_empty() {
+            return;
+        }
+
+        // Get tokens for the affected region (with some context)
+        // Use byte range from the edit, with padding for context
+        let start_byte = edit.start_byte.saturating_sub(100);
+        let end_byte = (edit.new_end_byte + 100).min(content.len());
+        let highlights = driver.highlights(start_byte..end_byte);
+
+        // Convert to TokenSpan
+        let tokens: Vec<TokenSpan> = highlights
+            .into_iter()
+            .map(|span| TokenSpan {
+                start_byte: span.start_byte as u32,
+                end_byte: span.end_byte as u32,
+                category: span.group.category().to_string(),
+            })
+            .collect();
+
+        // Build the update message
+        let update = TokenUpdate {
+            buffer_id: buffer_id.as_usize() as u64,
+            tokens,
+            start_line,
+            end_line,
+            full_refresh: false,
+        };
+
+        // Broadcast to subscribers (remove disconnected ones)
+        self.subscribers
+            .retain(|tx| tx.try_send(update.clone()).is_ok());
+    }
+
+    /// Send a full token refresh for a buffer.
+    ///
+    /// Call this when a new subscriber connects or when a buffer's language changes.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn send_full_refresh(&mut self, buffer_id: BufferId, total_lines: u64) {
+        let Some(driver) = self.drivers.get(&buffer_id.as_usize()) else {
+            return;
+        };
+
+        if self.subscribers.is_empty() {
+            return;
+        }
+
+        // Get all highlights
+        let highlights = driver.highlights(0..usize::MAX);
+
+        // Convert to TokenSpan
+        let tokens: Vec<TokenSpan> = highlights
+            .into_iter()
+            .map(|span| TokenSpan {
+                start_byte: span.start_byte as u32,
+                end_byte: span.end_byte as u32,
+                category: span.group.category().to_string(),
+            })
+            .collect();
+
+        let update = TokenUpdate {
+            buffer_id: buffer_id.as_usize() as u64,
+            tokens,
+            start_line: 0,
+            end_line: total_lines.saturating_sub(1),
+            full_refresh: true,
+        };
+
+        // Broadcast to subscribers
+        self.subscribers
+            .retain(|tx| tx.try_send(update.clone()).is_ok());
+    }
 }
 
 impl std::fmt::Debug for SyntaxSessionState {
@@ -176,6 +338,7 @@ impl std::fmt::Debug for SyntaxSessionState {
         f.debug_struct("SyntaxSessionState")
             .field("buffer_count", &self.drivers.len())
             .field("has_factory", &self.factory.is_some())
+            .field("subscriber_count", &self.subscribers.len())
             .finish()
     }
 }
@@ -389,5 +552,76 @@ mod tests {
         let debug = format!("{state:?}");
         assert!(debug.contains("SyntaxSessionState"));
         assert!(debug.contains("buffer_count"));
+    }
+
+    #[test]
+    fn test_subscribe() {
+        let mut state = SyntaxSessionState::new();
+        assert_eq!(state.subscriber_count(), 0);
+
+        let _rx1 = state.subscribe();
+        assert_eq!(state.subscriber_count(), 1);
+
+        let _rx2 = state.subscribe();
+        assert_eq!(state.subscriber_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_notify_edit_with_subscriber() {
+        let mut state = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        // Set up a driver
+        state.set(id, Box::new(TestDriver::new("rust")));
+        state.get_mut(id).unwrap().parse("fn main() {}");
+
+        // Subscribe
+        let mut rx = state.subscribe();
+        assert_eq!(state.subscriber_count(), 1);
+
+        // Create a simple edit
+        let edit = SyntaxEdit::insert(0, 0, 0, 3, 0, 3);
+
+        // Notify edit
+        state.notify_edit(id, "fn main() {}", &edit, 0, 0);
+
+        // Should receive an update
+        let update = rx.try_recv().expect("Should receive update");
+        assert_eq!(update.buffer_id, 1);
+        assert!(!update.full_refresh);
+    }
+
+    #[test]
+    fn test_notify_edit_no_driver() {
+        let mut state = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        // No driver set
+        let edit = SyntaxEdit::insert(0, 0, 0, 3, 0, 3);
+
+        // Should not panic
+        state.notify_edit(id, "hello", &edit, 0, 0);
+    }
+
+    #[test]
+    fn test_send_full_refresh() {
+        let mut state = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        // Set up a driver
+        state.set(id, Box::new(TestDriver::new("rust")));
+        state.get_mut(id).unwrap().parse("fn main() {}");
+
+        // Subscribe
+        let mut rx = state.subscribe();
+
+        // Send full refresh
+        state.send_full_refresh(id, 10);
+
+        // Should receive a full refresh update
+        let update = rx.try_recv().expect("Should receive update");
+        assert_eq!(update.buffer_id, 1);
+        assert!(update.full_refresh);
+        assert_eq!(update.end_line, 9); // total_lines - 1
     }
 }

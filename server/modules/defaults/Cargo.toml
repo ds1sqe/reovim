@@ -32,6 +32,7 @@ reovim-module-clipboard = { workspace = true }
 
 # Syntax highlighting modules
 reovim-module-treesitter-rust = { workspace = true }
+reovim-module-treesitter-markdown = { workspace = true }
 
 # Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)

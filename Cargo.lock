@@ -2084,6 +2084,7 @@ dependencies = [
  "reovim-module-motions",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
+ "reovim-module-treesitter-markdown",
  "reovim-module-treesitter-rust",
  "reovim-module-undo",
  "reovim-module-vfs-local",
@@ -2178,6 +2179,18 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-treesitter-markdown"
+version = "0.9.3-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-md",
 ]
 
 [[package]]
@@ -3034,6 +3047,16 @@ name = "tree-sitter-language"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ae62f7eae5eb549c71b76658648b72cc6111f2d87d24a1e31fa907f4943e3ce"
+
+[[package]]
+name = "tree-sitter-md"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17f968c22a01010b83fc960455ae729db08dbeb6388617d9113897cb9204b030"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
 
 [[package]]
 name = "tree-sitter-rust"
