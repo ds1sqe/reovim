@@ -3,11 +3,15 @@
 //! These types support multi-client scenarios where multiple clients
 //! are attached to the same session.
 
+use serde::{Deserialize, Serialize};
+
 /// Synchronization mode for multi-client scenarios.
 ///
 /// Determines how a client's state relates to other clients
 /// in the same session.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SyncMode {
     /// Client operates independently.
     ///
@@ -69,7 +73,9 @@ impl SyncMode {
 /// Presence information for a connected client.
 ///
 /// Used for collaborative features and multi-client awareness.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ClientPresence {
     /// Client identifier.
     pub client_id: String,

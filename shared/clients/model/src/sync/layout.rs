@@ -2,11 +2,15 @@
 //!
 //! Controls how window layout is synchronized between clients.
 
+use serde::{Deserialize, Serialize};
+
 /// Synchronization mode for window layout.
 ///
 /// Determines whether a client's window arrangement is independent
 /// or synchronized with other clients.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum LayoutSyncMode {
     /// Client has independent window layout.
     ///

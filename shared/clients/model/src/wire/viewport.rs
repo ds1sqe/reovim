@@ -3,8 +3,12 @@
 //! A viewport represents a view into a buffer, tracking scroll position
 //! and visible range. Multiple viewports can exist for the same buffer.
 
+use serde::{Deserialize, Serialize};
+
 /// State of a viewport (view into a buffer).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ViewportState {
     /// Viewport identifier.
     pub id: u64,
@@ -62,7 +66,9 @@ impl ViewportState {
 /// Incremental update to viewport state.
 ///
 /// Used for efficient partial updates instead of sending full state.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ViewportUpdate {
     /// Viewport being updated.
     pub viewport_id: u64,

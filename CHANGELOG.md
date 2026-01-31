@@ -68,6 +68,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   convenient adapter creation from compositor. Added `BufferId` re-export from display driver.
   77 adapter-specific tests (153 total TUI tests). Part of Epic #465. (#465)
 
+- **WASM-based multi-window support for web client**: Integrated `reovim-client-model`
+  with the web client using a hybrid WASM approach - Rust core types compiled to WASM
+  with auto-generated TypeScript types via `tsify-next`, and web-specific rendering in
+  TypeScript. Rust changes: Added `serde` derives to all 25+ types across 14 files in
+  `shared/clients/model/`. Added WASM feature with `wasm-bindgen` and `tsify-next`
+  dependencies. Created `wasm.rs` (~140 LOC) exporting layout interpreter, geometry
+  helpers, and direction utilities. WASM binary: 87KB. Web changes: Added WASM bridge
+  layer (`src/wasm/`) with `bindings.ts` (WASM init + 12 exported functions),
+  `helpers.ts` (9 tree traversal utilities + type guards), `convert.ts` (proto-to-model
+  conversion handling discriminated unions). Added rendering layer (`src/render/`)
+  with `LayoutRenderer` class for WindowTree-to-DOM conversion and `BufferRenderer`
+  for line/selection/cursor rendering. Refactored `editor.ts` for dual-mode operation:
+  multi-window (WASM) or legacy single-window with graceful fallback. Added
+  `layout.css` (227 LOC) with styles for splits, tabs, windows, separators. Added
+  `vitest.config.ts` with JSDOM for DOM tests. Test suite: 109 TypeScript tests
+  (25 wasm-helpers, 27 wasm-convert, 17 render-layout, 40 existing keymapper) +
+  148 Rust tests. Build pipeline: `npm run build:wasm` triggers wasm-pack before
+  Vite build. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

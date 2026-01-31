@@ -2,11 +2,15 @@
 //!
 //! Controls whether overlays are local or shared between clients.
 
+use serde::{Deserialize, Serialize};
+
 /// Synchronization mode for overlays.
 ///
 /// Determines whether an overlay is visible only to the local client
 /// or shared with all clients in the session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum OverlaySyncMode {
     /// Overlay is local to this client.
     ///

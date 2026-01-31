@@ -3,10 +3,14 @@
 //! These types represent screen coordinates and dimensions,
 //! independent of any specific platform (terminal, DOM, native UI).
 
+use serde::{Deserialize, Serialize};
+
 /// Screen position (column, row) in screen coordinates.
 ///
 /// Origin (0, 0) is typically the top-left corner of the screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ScreenPosition {
     /// Column (x-coordinate), 0-indexed from left.
     pub x: u16,
@@ -39,7 +43,9 @@ impl ScreenPosition {
 }
 
 /// Size in screen units (width and height).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Size {
     /// Width in columns.
     pub width: u16,
@@ -70,7 +76,9 @@ impl Size {
 /// Rectangle with position and size.
 ///
 /// Represents a rectangular region on the screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Rect {
     /// X-coordinate of top-left corner.
     pub x: u16,

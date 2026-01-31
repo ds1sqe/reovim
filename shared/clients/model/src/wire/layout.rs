@@ -4,6 +4,8 @@
 //! as sent from the server. Clients interpret these into their
 //! platform-specific window trees.
 
+use serde::{Deserialize, Serialize};
+
 use crate::SplitDirection;
 
 /// Logical layout structure from the server.
@@ -11,7 +13,9 @@ use crate::SplitDirection;
 /// Represents how windows are arranged without specifying exact
 /// screen coordinates. The client calculates positions based on
 /// available screen space.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum LogicalLayout {
     /// A single window showing a buffer.
     Single {

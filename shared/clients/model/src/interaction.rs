@@ -3,11 +3,15 @@
 //! These types represent user interactions with overlays (like completion
 //! menus) and the results of those interactions.
 
+use serde::{Deserialize, Serialize};
+
 /// User interaction with an overlay.
 ///
 /// Represents actions the user can take when interacting with
 /// an overlay like a completion menu or command palette.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Interaction {
     /// Select the next item in a list.
     SelectNext,
@@ -81,7 +85,9 @@ impl Interaction {
 /// Result of handling an interaction.
 ///
 /// Tells the client what to do after an overlay processes an interaction.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum InteractionResult {
     /// The overlay's state was updated.
     ///

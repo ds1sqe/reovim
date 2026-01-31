@@ -4,6 +4,8 @@
 //! buffer content, cursor, or screen coordinates. The client is
 //! responsible for resolving anchors to screen positions.
 
+use serde::{Deserialize, Serialize};
+
 /// Anchor point for positioning overlays.
 ///
 /// Overlays can be anchored to various reference points:
@@ -11,7 +13,9 @@
 /// - Cursor position (follows cursor movement)
 /// - Screen coordinates (fixed position on screen)
 /// - Relative positions (below another overlay)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Anchor {
     /// Anchor to a specific buffer position.
     ///

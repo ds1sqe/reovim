@@ -75,8 +75,13 @@ pub use interaction::{Interaction, InteractionResult};
 
 // Re-export core traits
 pub use traits::{
-    Focus, FocusManager, Layout, LayoutInterpreter, OverlayManager, OverlayRenderer, Panel,
+    DefaultLayoutInterpreter, Focus, FocusManager, Layout, LayoutInterpreter, OverlayManager,
+    OverlayRenderer, Panel,
 };
 
 // Re-export sync types
 pub use sync::{LayoutSyncMode, OverlaySyncMode, PresenceTracker};
+
+// WASM bindings (feature-gated)
+#[cfg(feature = "wasm")]
+pub mod wasm;

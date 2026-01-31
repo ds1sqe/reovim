@@ -5,11 +5,15 @@
 
 use std::ops::RangeInclusive;
 
+use serde::{Deserialize, Serialize};
+
 /// State of a rendered panel (view into a buffer).
 ///
 /// Combines viewport state from the server with client-side
 /// rendering decisions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PanelState {
     /// Viewport identifier.
     pub viewport_id: u64,

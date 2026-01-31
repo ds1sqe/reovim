@@ -3,10 +3,14 @@
 //! These types represent the client's interpretation of logical layout
 //! into actual window rectangles on screen.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{Rect, SplitDirection};
 
 /// A rendered window with screen bounds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Window {
     /// Window identifier (matches `viewport_id` from server).
     pub id: u64,
@@ -50,7 +54,9 @@ impl Window {
 /// Tree structure of rendered windows.
 ///
 /// Mirrors the logical layout structure but includes computed bounds.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum WindowTree {
     /// A leaf window.
     Leaf(Window),

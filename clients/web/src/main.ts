@@ -28,6 +28,9 @@ async function main() {
     // Initialize editor state
     const editor = new Editor(client);
 
+    // Initialize WASM module for multi-window support
+    await editor.init();
+
     // Setup keyboard input
     setupKeyboardHandler(client, editor);
 

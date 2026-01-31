@@ -9,15 +9,25 @@ repository.workspace = true
 keywords = ["reovim", "editor", "client"]
 categories = ["text-editors"]
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# WASM-specific (feature-gated)
+wasm-bindgen = { version = "0.2", optional = true }
+tsify-next = { version = "0.5", optional = true, features = ["js"] }
+js-sys = { version = "0.3", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
 
 [features]
 default = []
-# Future: FFI support for Android/iOS
+# FFI support for Android/iOS
 ffi = []
-# Future: WASM support for web
-wasm = []
+# WASM support for web client
+wasm = ["dep:wasm-bindgen", "dep:tsify-next", "dep:js-sys", "dep:console_error_panic_hook"]

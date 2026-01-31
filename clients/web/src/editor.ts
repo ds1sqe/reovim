@@ -2,10 +2,28 @@
  * Editor State and Rendering
  *
  * Manages editor state and renders to the DOM.
+ * Uses WASM-based layout interpreter for multi-window support.
  */
 
 import type { ReovimClient } from "./client.js";
 import type { Notification } from "./gen/reovim/v2/notification_pb.js";
+import type { WindowInfo } from "./gen/reovim/v2/notification_pb.js";
+
+// WASM bindings and types
+import {
+  initWasm,
+  isWasmReady,
+  interpretLayout,
+  protoToLogicalLayout,
+  allWindows,
+  type WindowTree,
+  type LogicalLayout,
+  type ScreenPosition,
+} from "./wasm/index.js";
+
+// Rendering layer
+import { LayoutRenderer } from "./render/layout.js";
+import { BufferRenderer, type SelectionRange } from "./render/buffer.js";
 
 /** Position within the buffer */
 interface Position {
@@ -16,31 +34,58 @@ interface Position {
 /** Visual mode type */
 type VisualMode = "char" | "line" | "block";
 
+/** Per-window state */
+interface WindowState {
+  lines: string[];
+  cursorLine: number;
+  cursorCol: number;
+  topLine: number;
+  selection: SelectionRange | null;
+}
+
 interface EditorState {
   mode: string;
   modeDisplay: string;
+
+  // Legacy single-window state (for backward compatibility)
   cursorLine: number;
   cursorCol: number;
   lines: string[];
-  // Selection state (Phase 9.1)
   hasSelection: boolean;
   selectionAnchor: Position | null;
   selectionCursor: Position | null;
   visualMode: VisualMode | null;
+
+  // Multi-window state (Phase 10.2)
+  layout: WindowTree | null;
+  focusedWindowId: number;
+  windowStates: Map<number, WindowState>;
+
+  // Flag to enable multi-window rendering
+  useMultiWindow: boolean;
 }
 
 /**
  * Editor class manages state and DOM rendering.
+ *
+ * Supports both single-window (legacy) and multi-window (WASM) rendering modes.
  */
 export class Editor {
   private client: ReovimClient;
   private state: EditorState;
 
-  // DOM elements
+  // Renderers
+  private layoutRenderer: LayoutRenderer;
+  private bufferRenderer: BufferRenderer;
+
+  // DOM elements (legacy single-window)
   private modeElement: HTMLElement | null;
   private bufferElement: HTMLElement | null;
   private cursorElement: HTMLElement | null;
   private positionElement: HTMLElement | null;
+
+  // DOM elements (multi-window)
+  private editorElement: HTMLElement | null;
 
   constructor(client: ReovimClient) {
     this.client = client;
@@ -50,18 +95,46 @@ export class Editor {
       cursorLine: 0,
       cursorCol: 0,
       lines: [""],
-      // Selection state initialized to no selection
       hasSelection: false,
       selectionAnchor: null,
       selectionCursor: null,
       visualMode: null,
+      // Multi-window state
+      layout: null,
+      focusedWindowId: 0,
+      windowStates: new Map(),
+      useMultiWindow: false,
     };
+
+    // Initialize renderers
+    this.layoutRenderer = new LayoutRenderer();
+    this.bufferRenderer = new BufferRenderer();
 
     // Cache DOM elements
     this.modeElement = document.getElementById("mode");
     this.bufferElement = document.getElementById("buffer");
     this.cursorElement = document.getElementById("cursor");
     this.positionElement = document.getElementById("position");
+    this.editorElement = document.getElementById("editor");
+  }
+
+  /**
+   * Initialize the editor, including WASM module.
+   *
+   * Call this before any other methods.
+   */
+  async init(): Promise<void> {
+    try {
+      // Initialize WASM module
+      await initWasm();
+      console.log("WASM module initialized");
+
+      // Enable multi-window mode by default when WASM is ready
+      this.state.useMultiWindow = true;
+    } catch (error) {
+      console.warn("WASM initialization failed, using single-window mode:", error);
+      this.state.useMultiWindow = false;
+    }
   }
 
   /**
@@ -69,25 +142,109 @@ export class Editor {
    */
   async refresh(): Promise<void> {
     try {
-      // Fetch current state in parallel
-      const [modeResponse, cursorResponse, bufferResponse] = await Promise.all([
-        this.client.state.getMode({}),
-        this.client.state.getCursor({}),
-        this.client.buffer.getRawContent({}),
-      ]);
-
-      // Update state
-      this.state.mode = modeResponse.name.toLowerCase();
-      this.state.modeDisplay = modeResponse.display;
-      this.state.cursorLine = Number(cursorResponse.position?.line ?? 0);
-      this.state.cursorCol = Number(cursorResponse.position?.column ?? 0);
-      this.state.lines = bufferResponse.lines;
-
-      // Render updates
-      this.render();
+      if (this.state.useMultiWindow && isWasmReady()) {
+        await this.refreshMultiWindow();
+      } else {
+        await this.refreshSingleWindow();
+      }
     } catch (error) {
       console.error("Failed to refresh editor state:", error);
     }
+  }
+
+  /**
+   * Refresh for single-window mode (legacy).
+   */
+  private async refreshSingleWindow(): Promise<void> {
+    const [modeResponse, cursorResponse, bufferResponse] = await Promise.all([
+      this.client.state.getMode({}),
+      this.client.state.getCursor({}),
+      this.client.buffer.getRawContent({}),
+    ]);
+
+    this.state.mode = modeResponse.name.toLowerCase();
+    this.state.modeDisplay = modeResponse.display;
+    this.state.cursorLine = Number(cursorResponse.position?.line ?? 0);
+    this.state.cursorCol = Number(cursorResponse.position?.column ?? 0);
+    this.state.lines = bufferResponse.lines;
+
+    this.renderSingleWindow();
+  }
+
+  /**
+   * Refresh for multi-window mode (WASM-based).
+   */
+  private async refreshMultiWindow(): Promise<void> {
+    const [modeResponse, layoutResponse] = await Promise.all([
+      this.client.state.getMode({}),
+      this.client.state.getLayout({}),
+    ]);
+
+    // Update mode
+    this.state.mode = modeResponse.name.toLowerCase();
+    this.state.modeDisplay = modeResponse.display;
+
+    // Convert proto to logical layout and interpret
+    if (layoutResponse.root) {
+      const logical = protoToLogicalLayout(layoutResponse.root);
+      if (logical) {
+        this.updateLayout(logical, Number(layoutResponse.focusedWindowId));
+      }
+    }
+
+    // Fetch buffer content for each window
+    await this.refreshWindowBuffers();
+
+    // Render
+    this.renderMultiWindow();
+  }
+
+  /**
+   * Update layout from a logical layout.
+   */
+  private updateLayout(logical: LogicalLayout, focusedId: number): void {
+    if (!this.editorElement) return;
+
+    const screen = this.layoutRenderer.getScreenSize(this.editorElement);
+    this.state.layout = interpretLayout(logical, screen.width, screen.height);
+    this.state.focusedWindowId = focusedId;
+  }
+
+  /**
+   * Refresh buffer content for all windows.
+   */
+  private async refreshWindowBuffers(): Promise<void> {
+    if (!this.state.layout) return;
+
+    const windows = allWindows(this.state.layout);
+
+    await Promise.all(
+      windows.map(async (window) => {
+        try {
+          const [bufferResponse, cursorResponse] = await Promise.all([
+            this.client.buffer.getRawContent({ bufferId: BigInt(window.buffer_id) }),
+            this.client.state.getCursor({ windowId: BigInt(window.id) }),
+          ]);
+
+          const existing = this.state.windowStates.get(window.id) || {
+            lines: [],
+            cursorLine: 0,
+            cursorCol: 0,
+            topLine: 0,
+            selection: null,
+          };
+
+          this.state.windowStates.set(window.id, {
+            ...existing,
+            lines: bufferResponse.lines,
+            cursorLine: Number(cursorResponse.position?.line ?? 0),
+            cursorCol: Number(cursorResponse.position?.column ?? 0),
+          });
+        } catch (error) {
+          console.warn(`Failed to fetch content for window ${window.id}:`, error);
+        }
+      })
+    );
   }
 
   /**
@@ -95,7 +252,6 @@ export class Editor {
    */
   async subscribeToNotifications(): Promise<void> {
     try {
-      // Subscribe to all event types
       const stream = this.client.notification.subscribe({});
 
       for await (const notification of stream) {
@@ -103,14 +259,11 @@ export class Editor {
       }
     } catch (error) {
       console.error("Notification stream error:", error);
-      // TODO: Implement reconnection logic
     }
   }
 
   /**
    * Handle incoming notification from server.
-   *
-   * Uses discriminated union pattern: notification.payload.case identifies the type.
    */
   private handleNotification(notification: Notification): void {
     const { payload } = notification;
@@ -125,21 +278,50 @@ export class Editor {
       }
 
       case "cursorMoved": {
-        const { position } = payload.value;
-        this.state.cursorLine = Number(position?.line ?? 0n);
-        this.state.cursorCol = Number(position?.column ?? 0n);
-        this.renderCursor();
-        this.renderPosition();
+        const { position, windowId } = payload.value;
+        const line = Number(position?.line ?? 0n);
+        const col = Number(position?.column ?? 0n);
+        const winId = Number(windowId ?? 0n);
+
+        // Update legacy state
+        this.state.cursorLine = line;
+        this.state.cursorCol = col;
+
+        // Update per-window state
+        if (this.state.useMultiWindow) {
+          const windowState = this.state.windowStates.get(winId);
+          if (windowState) {
+            windowState.cursorLine = line;
+            windowState.cursorCol = col;
+          }
+        }
+
+        if (this.state.useMultiWindow) {
+          this.renderMultiWindow();
+        } else {
+          this.renderCursor();
+          this.renderPosition();
+        }
         break;
       }
 
-      case "bufferModified":
-        // Refetch buffer content on modification
-        this.refreshBuffer();
+      case "bufferModified": {
+        const { bufferId } = payload.value;
+
+        if (this.state.useMultiWindow) {
+          // Find windows showing this buffer and refresh them
+          this.refreshBufferForBuffer(Number(bufferId ?? 0n));
+        } else {
+          this.refreshBuffer();
+        }
         break;
+      }
 
       case "selectionChanged": {
-        const { hasSelection, selection, visualMode } = payload.value;
+        const { hasSelection, selection, visualMode, windowId } = payload.value;
+        const winId = Number(windowId ?? 0n);
+
+        // Update legacy state
         this.state.hasSelection = hasSelection ?? false;
 
         if (hasSelection && selection) {
@@ -152,26 +334,112 @@ export class Editor {
             col: Number(selection.end?.column ?? 0n),
           };
           this.state.visualMode = (visualMode as VisualMode) ?? null;
+
+          // Update per-window state
+          if (this.state.useMultiWindow) {
+            const windowState = this.state.windowStates.get(winId);
+            if (windowState) {
+              windowState.selection = {
+                anchor: {
+                  x: Number(selection.start?.column ?? 0n),
+                  y: Number(selection.start?.line ?? 0n),
+                },
+                cursor: {
+                  x: Number(selection.end?.column ?? 0n),
+                  y: Number(selection.end?.line ?? 0n),
+                },
+                mode: (visualMode as "char" | "line" | "block") ?? "char",
+              };
+            }
+          }
         } else {
-          // Clear selection state
           this.state.selectionAnchor = null;
           this.state.selectionCursor = null;
           this.state.visualMode = null;
+
+          // Clear per-window selection
+          if (this.state.useMultiWindow) {
+            const windowState = this.state.windowStates.get(winId);
+            if (windowState) {
+              windowState.selection = null;
+            }
+          }
         }
 
-        // Re-render buffer with selection highlighting
-        this.renderBuffer();
+        if (this.state.useMultiWindow) {
+          this.renderMultiWindow();
+        } else {
+          this.renderBuffer();
+        }
+        break;
+      }
+
+      case "layoutChanged": {
+        const { focusedWindowId, windows } = payload.value;
+
+        if (this.state.useMultiWindow) {
+          // Re-fetch full layout (notification only has simplified info)
+          this.refreshLayout(Number(focusedWindowId), windows);
+        }
         break;
       }
 
       default:
-        // Ignore other notification types for now
         break;
     }
   }
 
   /**
-   * Refresh only buffer content.
+   * Refresh layout from server after layoutChanged notification.
+   */
+  private async refreshLayout(
+    focusedId: number,
+    _windowInfos: WindowInfo[]
+  ): Promise<void> {
+    try {
+      const layoutResponse = await this.client.state.getLayout({});
+      if (layoutResponse.root) {
+        const logical = protoToLogicalLayout(layoutResponse.root);
+        if (logical) {
+          this.updateLayout(logical, focusedId);
+          await this.refreshWindowBuffers();
+          this.renderMultiWindow();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to refresh layout:", error);
+    }
+  }
+
+  /**
+   * Refresh buffer content for windows showing a specific buffer.
+   */
+  private async refreshBufferForBuffer(bufferId: number): Promise<void> {
+    if (!this.state.layout) return;
+
+    const windows = allWindows(this.state.layout);
+    const affectedWindows = windows.filter((w) => w.buffer_id === bufferId);
+
+    for (const window of affectedWindows) {
+      try {
+        const bufferResponse = await this.client.buffer.getRawContent({
+          bufferId: BigInt(bufferId),
+        });
+
+        const windowState = this.state.windowStates.get(window.id);
+        if (windowState) {
+          windowState.lines = bufferResponse.lines;
+        }
+      } catch (error) {
+        console.warn(`Failed to refresh buffer ${bufferId}:`, error);
+      }
+    }
+
+    this.renderMultiWindow();
+  }
+
+  /**
+   * Refresh only buffer content (legacy single-window).
    */
   private async refreshBuffer(): Promise<void> {
     try {
@@ -183,10 +451,56 @@ export class Editor {
     }
   }
 
+  // ============ Rendering Methods ============
+
   /**
-   * Render all editor components.
+   * Render in multi-window mode using WASM layout.
    */
-  private render(): void {
+  private renderMultiWindow(): void {
+    if (!this.editorElement || !this.state.layout) {
+      // Fall back to single-window rendering
+      this.renderSingleWindow();
+      return;
+    }
+
+    // Render layout structure
+    this.layoutRenderer.render(
+      this.state.layout,
+      this.editorElement,
+      this.state.focusedWindowId
+    );
+
+    // Render buffer content for each window
+    for (const window of allWindows(this.state.layout)) {
+      const windowEl = this.layoutRenderer.getWindowElement(window.id);
+      if (!windowEl) continue;
+
+      const windowState = this.state.windowStates.get(window.id);
+      if (!windowState) continue;
+
+      const cursor: ScreenPosition = {
+        x: windowState.cursorCol,
+        y: windowState.cursorLine,
+      };
+
+      this.bufferRenderer.render(
+        windowState.lines,
+        windowEl,
+        windowState.selection,
+        cursor,
+        windowState.topLine
+      );
+    }
+
+    // Also render mode indicator
+    this.renderMode();
+    this.renderPosition();
+  }
+
+  /**
+   * Render in single-window mode (legacy).
+   */
+  private renderSingleWindow(): void {
     this.renderMode();
     this.renderBuffer();
     this.renderCursor();
@@ -209,25 +523,20 @@ export class Editor {
   private renderBuffer(): void {
     if (!this.bufferElement) return;
 
-    // Clear existing content
     this.bufferElement.innerHTML = "";
 
-    // Render each line
     this.state.lines.forEach((lineContent, lineIndex) => {
       const lineDiv = document.createElement("div");
       lineDiv.className = "line";
 
-      // Line number
       const lineNumber = document.createElement("span");
       lineNumber.className = "line-number";
       lineNumber.textContent = String(lineIndex + 1);
 
-      // Line content - render with selection if active
       const content = document.createElement("span");
       content.className = "line-content";
 
       if (this.state.hasSelection && lineContent.length > 0) {
-        // Render with selection highlighting
         this.renderLineWithSelection(content, lineContent, lineIndex);
       } else if (
         this.state.hasSelection &&
@@ -235,10 +544,8 @@ export class Editor {
         this.state.visualMode === "line" &&
         this.isLineSelected(lineIndex)
       ) {
-        // Empty line in line-wise selection - show highlighted space
         content.innerHTML = '<span class="selected">\u00A0</span>';
       } else {
-        // No selection or empty line - render normally
         content.textContent = lineContent || "\u00A0";
       }
 
@@ -250,9 +557,6 @@ export class Editor {
 
   /**
    * Render a line with selection highlighting.
-   *
-   * Groups consecutive characters by selection state for efficiency,
-   * creating spans only at selection boundaries.
    */
   private renderLineWithSelection(
     container: HTMLElement,
@@ -267,7 +571,6 @@ export class Editor {
       const isSelected = this.isPositionSelected(lineIndex, col);
 
       if (currentSpan === null || isSelected !== currentSelected) {
-        // Start new span when selection state changes
         currentSpan = document.createElement("span");
         if (isSelected) {
           currentSpan.className = "selected";
@@ -279,7 +582,6 @@ export class Editor {
       currentSpan.textContent += char;
     }
 
-    // Handle empty line (shouldn't happen since we check length > 0 above)
     if (text.length === 0) {
       container.textContent = "\u00A0";
     }
@@ -291,14 +593,10 @@ export class Editor {
   private renderCursor(): void {
     if (!this.cursorElement || !this.bufferElement) return;
 
-    // Calculate cursor position in pixels
-    // This is approximate - a more accurate implementation would measure
-    // actual character widths
-    const charWidth = 8.4; // Approximate monospace character width at 14px
-    const lineHeight = 21; // line-height: 1.5 * 14px
-
-    const lineNumberWidth = 48; // 3rem min-width for line numbers
-    const padding = 8; // 0.5rem padding
+    const charWidth = 8.4;
+    const lineHeight = 21;
+    const lineNumberWidth = 48;
+    const padding = 8;
 
     const x = padding + lineNumberWidth + this.state.cursorCol * charWidth;
     const y = padding + this.state.cursorLine * lineHeight;
@@ -306,7 +604,6 @@ export class Editor {
     this.cursorElement.style.left = `${x}px`;
     this.cursorElement.style.top = `${y}px`;
 
-    // Cursor style based on mode
     if (this.state.mode === "insert") {
       this.cursorElement.classList.add("insert");
       this.cursorElement.classList.remove("visual");
@@ -324,6 +621,15 @@ export class Editor {
   private renderPosition(): void {
     if (!this.positionElement) return;
 
+    // In multi-window mode, show focused window position
+    if (this.state.useMultiWindow && this.state.focusedWindowId) {
+      const windowState = this.state.windowStates.get(this.state.focusedWindowId);
+      if (windowState) {
+        this.positionElement.textContent = `${windowState.cursorLine + 1}:${windowState.cursorCol + 1}`;
+        return;
+      }
+    }
+
     this.positionElement.textContent = `${this.state.cursorLine + 1}:${this.state.cursorCol + 1}`;
   }
 
@@ -335,10 +641,14 @@ export class Editor {
   }
 
   /**
+   * Check if multi-window mode is enabled.
+   */
+  isMultiWindowEnabled(): boolean {
+    return this.state.useMultiWindow && isWasmReady();
+  }
+
+  /**
    * Check if a position is within the current selection.
-   *
-   * Handles all three visual modes (char, line, block) and both
-   * forward and reverse selections.
    */
   private isPositionSelected(line: number, col: number): boolean {
     if (
@@ -352,8 +662,6 @@ export class Editor {
     const anchor = this.state.selectionAnchor;
     const cursor = this.state.selectionCursor;
 
-    // Normalize positions: always work with start <= end
-    // This handles both forward (anchor before cursor) and reverse selections
     const isForward =
       anchor.line < cursor.line ||
       (anchor.line === cursor.line && anchor.col <= cursor.col);
@@ -362,32 +670,23 @@ export class Editor {
 
     switch (this.state.visualMode) {
       case "char": {
-        // Character-wise: position must be between start and end (inclusive)
-        // Out of line range?
         if (line < start.line || line > end.line) return false;
 
-        // Single line selection (same start and end line)
         if (start.line === end.line) {
           return col >= start.col && col <= end.col;
         }
 
-        // Multi-line: first line (from start.col to EOL)
         if (line === start.line) return col >= start.col;
-
-        // Multi-line: last line (from BOL to end.col)
         if (line === end.line) return col <= end.col;
 
-        // Multi-line: middle lines are fully selected
         return true;
       }
 
       case "line": {
-        // Line-wise: entire lines between start and end are selected
         return line >= start.line && line <= end.line;
       }
 
       case "block": {
-        // Block-wise: rectangular region defined by corners
         const minCol = Math.min(anchor.col, cursor.col);
         const maxCol = Math.max(anchor.col, cursor.col);
         return (
@@ -405,7 +704,6 @@ export class Editor {
 
   /**
    * Check if an entire line is within the selection range.
-   * Used for line-wise visual mode and empty line highlighting.
    */
   private isLineSelected(line: number): boolean {
     if (

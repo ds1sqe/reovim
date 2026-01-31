@@ -4,13 +4,17 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::wire::ClientPresence;
 
 /// Tracker for client presence in a session.
 ///
 /// Maintains a map of connected clients and their state,
 /// enabling collaborative features and awareness.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PresenceTracker {
     clients: HashMap<String, ClientPresence>,
 }

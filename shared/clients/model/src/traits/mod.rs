@@ -11,7 +11,7 @@ pub mod panel;
 
 pub use {
     focus::{Focus, FocusManager},
-    interpreter::LayoutInterpreter,
+    interpreter::{DefaultLayoutInterpreter, LayoutInterpreter},
     layout::Layout,
     overlay::{OverlayManager, OverlayRenderer},
     panel::Panel,

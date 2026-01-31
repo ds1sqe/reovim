@@ -3,8 +3,12 @@
 //! These types represent directions for cursor movement,
 //! focus navigation, and window splitting.
 
+use serde::{Deserialize, Serialize};
+
 /// Navigation direction for focus movement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Direction {
     /// Move up (decrease y).
     Up,
@@ -53,7 +57,9 @@ impl Direction {
 }
 
 /// Split direction for window layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SplitDirection {
     /// Split horizontally (windows stacked vertically, one above the other).
     Horizontal,

@@ -3,13 +3,17 @@
 //! These types represent overlays after the client has resolved their
 //! positions and computed rendering properties.
 
+use serde::{Deserialize, Serialize};
+
 use crate::{Rect, ScreenPosition, Size, wire::LogicalOverlay};
 
 /// A rendered overlay with computed screen position.
 ///
 /// Created by the client after resolving the overlay's anchor
 /// to a screen position based on viewport state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RenderedOverlay {
     /// The original logical overlay from the server.
     pub logical: LogicalOverlay,
@@ -74,7 +78,9 @@ impl RenderedOverlay {
 /// Stack of rendered overlays with z-ordering.
 ///
 /// Manages overlay visibility, stacking order, and modal state.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct OverlayStack {
     overlays: Vec<RenderedOverlay>,
     next_z_index: u32,

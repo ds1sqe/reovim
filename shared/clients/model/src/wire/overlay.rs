@@ -3,10 +3,14 @@
 //! Overlays are logical UI elements sent from the server. The client
 //! is responsible for rendering them according to platform capabilities.
 
+use serde::{Deserialize, Serialize};
+
 use super::Anchor;
 
 /// State of an interactive overlay (e.g., completion menu).
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct OverlayState {
     /// Currently selected index (for lists).
     pub selected_index: Option<u32>,
@@ -47,7 +51,9 @@ impl OverlayState {
 /// Contains all information needed to render an overlay, but no
 /// platform-specific details. The client interprets this into
 /// rendered state using its `OverlayRenderer` implementation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct LogicalOverlay {
     /// Unique identifier for this overlay instance.
     pub id: String,
