@@ -378,7 +378,7 @@ Window commands are triggered with `<C-w>` prefix. Implemented in `server/module
 
 ### Microscope (20+)
 
-**Note:** Microscope is currently archived. See `archive/post_kernel/modules/` for reference.
+**Note:** Microscope will be reimplemented as a client-side plugin in a future release.
 
 **Pickers:**
 | Command | Key | Description |

@@ -14,7 +14,7 @@ default = ["grpc"]
 grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream"]
 
 [dependencies]
-# v1 JSON-RPC client removed - archived to archive/post_kernel/lib/clients/tui/
+# v1 JSON-RPC client removed (gRPC v2 is the only supported protocol)
 
 # Protocol types (v2 gRPC when grpc feature enabled)
 reovim-protocol = { workspace = true }

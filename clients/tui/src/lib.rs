@@ -18,7 +18,7 @@
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! NOTE: v1 JSON-RPC code has been archived to `archive/post_kernel/lib/clients/tui/`.
+//! NOTE: v1 JSON-RPC code removed (gRPC v2 is the only supported protocol).
 
 use std::path::PathBuf;
 

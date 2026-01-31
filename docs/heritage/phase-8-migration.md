@@ -48,8 +48,7 @@ reovim/
 │   ├── module-macros/    # FFI macros
 │   └── testing/          # Integration test utilities
 └── archive/
-    ├── pre_kernel/       # v0.8.x code
-    └── post_kernel/      # Pre-Phase 8B code
+    └── pre_kernel/       # v0.8.x code (historical reference)
 ```
 
 ## Path Mapping
@@ -82,7 +81,7 @@ reovim/
 | `modules/` | `server/modules/` |
 | `modules/keymap/` | `server/modules/keymap/` |
 | `modules/motions/` | `server/modules/motions/` |
-| `modules/layout/` | `archive/post_kernel/modules/layout/` (archived) |
+| `modules/layout/` | Archived (replaced by window-ops and LayoutService) |
 | — | `server/modules/window-ops/` (new in Phase 11) |
 
 ### Runner & Application
@@ -145,11 +144,11 @@ The `archive/` directory contains legacy code for reference:
 - `plugins/` - Old plugin system (19 plugins)
 - `runner/` - Old monolithic runner
 
-### `archive/post_kernel/` (v0.9.0 pre-Phase 8B)
+### Removed Archives
 
-- `lib/` - Intermediate architecture (7 crates)
-- `modules/` - Old module locations (26 modules)
-- `runner/` - Pre-split runner with embedded server/TUI
+The `archive/post_kernel/` directory (v0.9.0 pre-Phase 8B code) was removed in January 2026.
+It contained intermediate architecture that has been fully superseded by the current gRPC v2 implementation.
+Historical code remains accessible via git history.
 
 ## Key Architectural Changes
 

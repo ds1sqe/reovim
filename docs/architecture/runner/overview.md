@@ -7,13 +7,17 @@
 > - CLI client: `clients/cli/`
 > - Main binary: `apps/bin/`
 >
-> See [Phase 8 Migration Guide](../phase-8-migration.md) for details on the restructure.
+> See [Phase 8 Migration Guide](../../heritage/phase-8-migration.md) for details on the restructure.
 
 The runner was the application layer that orchestrated kernel, drivers, and modules.
 
-## Source Location (Historical)
+## Source Location
 
-`archive/post_kernel/runner/src/` (archived)
+The runner has been split into:
+- **Server runtime**: `server/lib/server/src/`
+- **TUI client**: `clients/tui/src/`
+- **CLI client**: `clients/cli/src/`
+- **Binary entry**: `apps/bin/src/`
 
 ## Components (Phase 8 locations)
 

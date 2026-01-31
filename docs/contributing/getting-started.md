@@ -106,8 +106,7 @@ reovim/
 │   └── perf-report/       # Performance report generator
 ├── perf/                  # Versioned performance reports
 └── archive/               # Legacy code (reference only)
-    ├── pre_kernel/        # v0.8.x code (lib/core, lib/sys, plugins)
-    └── post_kernel/       # Intermediate v0.9.0 (pre-Phase 8B)
+    └── pre_kernel/        # v0.8.x code (lib/core, lib/sys, plugins)
 ```
 
 ### Module Architecture

@@ -30,7 +30,7 @@ reovim-module-buffer-simple = { workspace = true }
 reovim-module-search = { workspace = true }
 reovim-module-clipboard = { workspace = true }
 # Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
-# archived to archive/post_kernel/modules/ (Epic #465 Phase 11)
+# removed - will be reimplemented as client-side plugins (Epic #465)
 
 [lints]
 workspace = true

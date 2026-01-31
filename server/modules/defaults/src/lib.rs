@@ -10,7 +10,7 @@
 //! # Note on Client-Side Modules
 //!
 //! Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
-//! were archived to `archive/post_kernel/modules/` in Epic #465 Phase 11.
+//! were removed in Epic #465 Phase 11.
 //! These will be reimplemented as client-side plugins.
 //!
 //! # Purpose
@@ -41,7 +41,7 @@ use reovim_kernel::api::v1::{
 use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 
 // Internal-only imports for create_modules() and helper functions
-// Note: Client-side modules archived (Epic #465 Phase 11)
+// Note: Client-side modules removed (Epic #465 Phase 11)
 use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_commands as commands, reovim_module_editor as editor,
@@ -79,7 +79,7 @@ impl DefaultsModule {
     /// # Note
     ///
     /// Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
-    /// were archived in Epic #465 Phase 11. They will be reimplemented as
+    /// were removed in Epic #465 Phase 11. They will be reimplemented as
     /// client-side plugins.
     #[must_use]
     pub fn create_modules() -> Vec<Box<dyn Module>> {
@@ -124,7 +124,7 @@ impl Module for DefaultsModule {
     fn dependencies(&self) -> Vec<ModuleId> {
         // This module depends on its sub-modules
         // Note: operators merged into vim module (Epic #385)
-        // Note: Client-side modules archived (Epic #465 Phase 11)
+        // Note: Client-side modules removed (Epic #465 Phase 11)
         vec![
             // Service modules (Epic #417)
             ModuleId::new("undo"),
@@ -175,7 +175,7 @@ pub fn keybindings() -> Vec<KeybindingRegistration> {
     vim::bindings::all()
 }
 
-// Note: compositor() removed - layout module archived (Epic #465 Phase 11)
+// Note: compositor() removed - layout module removed (Epic #465 Phase 11)
 // Compositor is now a client-side concern.
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
@@ -205,7 +205,7 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Total: 11 modules (client-side modules archived in Epic #465 Phase 11)
+        // Total: 11 modules (client-side modules removed in Epic #465 Phase 11)
         assert_eq!(deps.len(), 11);
     }
 
@@ -215,7 +215,7 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Total: 11 modules (client-side modules archived in Epic #465 Phase 11)
+        // Total: 11 modules (client-side modules removed in Epic #465 Phase 11)
         assert_eq!(modules.len(), 11);
     }
 

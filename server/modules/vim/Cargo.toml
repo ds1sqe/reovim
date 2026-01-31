@@ -34,7 +34,7 @@ reovim-module-window-ops = { workspace = true }
 reovim-driver-display = { workspace = true }
 tracing = { workspace = true }
 
-# [dev-dependencies] removed - tests archived to archive/post_kernel/modules/vim/tests/
+# [dev-dependencies] removed - tests to be rewritten with new infrastructure
 
 [lints]
 workspace = true

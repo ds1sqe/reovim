@@ -34,7 +34,7 @@ reovim-module-macros = { workspace = true }
 # Logging
 tracing.workspace = true
 
-# [dev-dependencies] removed - tests archived to archive/post_kernel/modules/undo/tests/
+# [dev-dependencies] removed - tests to be rewritten with new infrastructure
 
 [features]
 # Enable for building as standalone dynamic library
