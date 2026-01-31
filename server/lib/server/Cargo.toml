@@ -1,0 +1,66 @@
+[package]
+name = "reovim-server"
+version = "0.9.3-dev"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Reovim server - the editing engine"
+repository.workspace = true
+homepage.workspace = true
+
+[features]
+default = ["grpc"]
+grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream", "dep:futures", "dep:async-stream"]
+grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
+
+[dependencies]
+# Core crates
+reovim-kernel = { workspace = true }
+reovim-protocol = { workspace = true }
+reovim-arch = { workspace = true }
+
+# Drivers
+reovim-driver-command = { workspace = true }
+reovim-driver-command-types = { workspace = true }
+reovim-driver-display = { workspace = true }
+reovim-driver-input = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-driver-syntax = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-driver-undo = { workspace = true }
+reovim-driver-search = { workspace = true }
+
+# Async
+tokio = { workspace = true, features = ["full", "sync", "rt-multi-thread"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Concurrency
+arc-swap = "1.7"
+parking_lot = "0.12"
+
+# gRPC (optional)
+tonic = { version = "0.12", optional = true }
+tokio-stream = { version = "0.1", features = ["sync"], optional = true }
+futures = { workspace = true, optional = true }
+async-stream = { version = "0.3", optional = true }
+
+# gRPC-Web (optional, extends grpc)
+tonic-web = { version = "0.12", optional = true }
+tower-http = { version = "0.6", features = ["cors"], optional = true }
+
+[dev-dependencies]
+tempfile = "3.0"
+reovim-driver-buffer = { workspace = true }
+reovim-testing = { workspace = true }
+reovim-client-cli = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

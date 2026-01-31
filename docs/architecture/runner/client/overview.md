@@ -4,15 +4,16 @@ CLI and TUI clients for connecting to reovim servers.
 
 ## Source Location
 
-`runner/src/client/`
+Clients moved to dedicated directories in Phase 8:
 
 ## Components
 
 | Component | Path | Purpose |
 |-----------|------|---------|
-| Common | `runner/src/client/common/` | Shared connection, RPC, discovery |
-| CLI | `runner/src/client/cli/` | Command-line interface |
-| TUI | `runner/src/client/tui/` | Terminal user interface |
+| CLI | `clients/cli/` | Command-line interface (gRPC v2) |
+| TUI | `clients/tui/` | Terminal user interface (gRPC v2) |
+| Web | `clients/web/` | Web client (TypeScript + WASM) |
+| Common Model | `shared/clients/model/` | Platform-agnostic client abstractions |
 
 ## Client Types
 

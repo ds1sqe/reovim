@@ -1,0 +1,226 @@
+/* Overlay Styles (Phase 11.1)
+ *
+ * Styles for floating UI elements: completion menus, command-line,
+ * hover info, signature help.
+ */
+
+/* Base overlay styles */
+.overlay {
+  position: absolute;
+  background: var(--bg-popup, #1e1e2e);
+  border: 1px solid var(--border-color, #45475a);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size, 14px);
+  max-width: 80%;
+  max-height: 60%;
+  overflow: hidden;
+  z-index: 100;
+}
+
+.overlay[aria-hidden="true"] {
+  display: none;
+}
+
+/* ============ Completion Menu ============ */
+
+.overlay-completion {
+  min-width: 200px;
+  max-width: 400px;
+  max-height: 300px;
+}
+
+.completion-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.completion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.completion-item:hover {
+  background: var(--bg-hover, #313244);
+}
+
+.completion-item.selected {
+  background: var(--bg-selected, #45475a);
+  color: var(--text-selected, #f5e0dc);
+}
+
+.completion-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion-kind {
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--bg-badge, #585b70);
+  color: var(--text-badge, #cdd6f4);
+  text-transform: lowercase;
+}
+
+/* Kind-specific colors */
+.completion-kind-function { background: #89b4fa; color: #1e1e2e; }
+.completion-kind-variable { background: #f5c2e7; color: #1e1e2e; }
+.completion-kind-class { background: #f9e2af; color: #1e1e2e; }
+.completion-kind-keyword { background: #cba6f7; color: #1e1e2e; }
+.completion-kind-snippet { background: #94e2d5; color: #1e1e2e; }
+.completion-kind-field { background: #fab387; color: #1e1e2e; }
+.completion-kind-method { background: #89b4fa; color: #1e1e2e; }
+
+.completion-detail {
+  font-size: 0.85em;
+  color: var(--text-muted, #6c7086);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.completion-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted, #6c7086);
+  font-style: italic;
+}
+
+/* ============ Command Line ============ */
+
+.overlay-cmdline {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  max-width: 100%;
+  padding: 8px 12px;
+  z-index: 200;
+}
+
+.cmdline-container {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.cmdline-prefix {
+  color: var(--text-accent, #f38ba8);
+  font-weight: bold;
+  user-select: none;
+}
+
+.cmdline-content {
+  flex: 1;
+  white-space: pre;
+}
+
+.cmdline-cursor {
+  background: var(--cursor-bg, #f5e0dc);
+  color: var(--cursor-text, #1e1e2e);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ============ Hover Info ============ */
+
+.overlay-hover {
+  max-width: 500px;
+  padding: 8px 12px;
+}
+
+.hover-content {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ============ Signature Help ============ */
+
+.overlay-signature {
+  max-width: 600px;
+  padding: 8px 12px;
+}
+
+.signature-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.signature-label {
+  font-family: var(--font-mono, monospace);
+  white-space: pre-wrap;
+}
+
+.signature-documentation {
+  font-size: 0.9em;
+  color: var(--text-muted, #6c7086);
+  border-top: 1px solid var(--border-color, #45475a);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+
+/* ============ Fallback ============ */
+
+.overlay-fallback {
+  padding: 8px;
+  margin: 0;
+  font-size: 0.85em;
+  overflow: auto;
+  max-height: 200px;
+}
+
+/* ============ Dark/Light Theme Variables ============ */
+
+:root {
+  --bg-popup: #1e1e2e;
+  --bg-hover: #313244;
+  --bg-selected: #45475a;
+  --bg-badge: #585b70;
+  --border-color: #45475a;
+  --text-primary: #cdd6f4;
+  --text-selected: #f5e0dc;
+  --text-muted: #6c7086;
+  --text-badge: #cdd6f4;
+  --text-accent: #f38ba8;
+  --cursor-bg: #f5e0dc;
+  --cursor-text: #1e1e2e;
+}
+
+/* Light theme override */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-popup: #eff1f5;
+    --bg-hover: #e6e9ef;
+    --bg-selected: #ccd0da;
+    --bg-badge: #bcc0cc;
+    --border-color: #bcc0cc;
+    --text-primary: #4c4f69;
+    --text-selected: #1e1e2e;
+    --text-muted: #6c6f85;
+    --text-badge: #4c4f69;
+    --text-accent: #d20f39;
+    --cursor-bg: #4c4f69;
+    --cursor-text: #eff1f5;
+  }
+}

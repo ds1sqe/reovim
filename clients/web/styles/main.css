@@ -1,0 +1,147 @@
+:root {
+  --bg: #1e1e2e;
+  --fg: #cdd6f4;
+  --cursor-bg: #f5e0dc;
+  --cursor-fg: #1e1e2e;
+  --statusline-bg: #313244;
+  --statusline-fg: #cdd6f4;
+  --mode-normal: #89b4fa;
+  --mode-insert: #a6e3a1;
+  --mode-visual: #cba6f7;
+  --line-number: #6c7086;
+  /* Selection highlighting (Phase 9.1) */
+  --selection-bg: rgba(203, 166, 247, 0.3); /* mode-visual with alpha */
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  background-color: var(--bg);
+  color: var(--fg);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#statusline {
+  display: flex;
+  gap: 1rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--statusline-bg);
+  color: var(--statusline-fg);
+  font-size: 12px;
+}
+
+#mode {
+  font-weight: bold;
+  padding: 0 0.5rem;
+  border-radius: 2px;
+}
+
+#mode.normal {
+  background-color: var(--mode-normal);
+  color: var(--bg);
+}
+
+#mode.insert {
+  background-color: var(--mode-insert);
+  color: var(--bg);
+}
+
+#mode.visual,
+#mode.visual-line,
+#mode.visual-block {
+  background-color: var(--mode-visual);
+  color: var(--bg);
+}
+
+#editor {
+  flex: 1;
+  position: relative;
+  padding: 0.5rem;
+  overflow: auto;
+}
+
+#buffer {
+  white-space: pre;
+  min-height: 100%;
+}
+
+.line {
+  display: flex;
+}
+
+.line-number {
+  color: var(--line-number);
+  text-align: right;
+  padding-right: 1rem;
+  min-width: 3rem;
+  user-select: none;
+}
+
+.line-content {
+  flex: 1;
+}
+
+#cursor {
+  position: absolute;
+  background-color: var(--cursor-bg);
+  color: var(--cursor-fg);
+  width: 0.6em;
+  height: 1.5em;
+  animation: blink 1s step-end infinite;
+  z-index: 10; /* Ensure cursor is visible over selection */
+}
+
+#cursor.insert {
+  width: 2px;
+}
+
+#cursor.visual {
+  background-color: var(--selection-bg);
+  border: 1px solid var(--mode-visual);
+  animation: none; /* No blink in visual mode */
+}
+
+/* Selection highlighting (Phase 9.1) */
+.line-content .selected {
+  background-color: var(--selection-bg);
+  border-radius: 2px;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+#commandline {
+  padding: 0.25rem 0.5rem;
+  background-color: var(--bg);
+  min-height: 1.5rem;
+}
+
+/* Connection status indicator */
+#app.disconnected #statusline::after {
+  content: "DISCONNECTED";
+  color: #f38ba8;
+  margin-left: auto;
+}
+
+#app.connecting #statusline::after {
+  content: "CONNECTING...";
+  color: #fab387;
+  margin-left: auto;
+}

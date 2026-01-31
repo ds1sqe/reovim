@@ -1,0 +1,183 @@
+// Notification service for server-to-client streaming.
+//
+// Philosophy: Server pushes state changes, client reacts.
+// Uses gRPC server streaming for real-time updates.
+
+syntax = "proto3";
+package reovim.v2;
+
+import "reovim/v2/common.proto";
+
+service NotificationService {
+  // Subscribe to notifications (server streaming).
+  rpc Subscribe(SubscribeRequest) returns (stream Notification);
+}
+
+message SubscribeRequest {
+  // Event types to subscribe to (empty = all events).
+  repeated string event_types = 1;
+}
+
+message Notification {
+  string event_type = 1;
+  uint64 timestamp_ms = 2;  // Unix timestamp in milliseconds
+
+  oneof payload {
+    ModeChangedPayload mode_changed = 10;
+    CursorMovedPayload cursor_moved = 11;
+    BufferModifiedPayload buffer_modified = 12;
+    LayoutChangedPayload layout_changed = 13;
+    OptionChangedPayload option_changed = 14;
+    SelectionChangedPayload selection_changed = 15;
+    BufferListChangedPayload buffer_list_changed = 16;
+    RenderCompletePayload render_complete = 17;
+    DetachPayload detach = 18;
+
+    // Phase 11.1: Viewport updates for incremental scroll/cursor tracking
+    ViewportUpdatedPayload viewport_updated = 19;
+
+    // Capture relay (CLI -> Server -> TUI -> Server -> CLI)
+    CaptureRequestPayload capture_request = 20;
+    CaptureResponsePayload capture_response = 21;
+
+    // Resize relay (CLI -> Server -> TUI)
+    ResizeRequestPayload resize_request = 22;
+  }
+}
+
+// Mode changed
+
+message ModeChangedPayload {
+  string name = 1;      // Internal name
+  string display = 2;   // Display name
+  bool is_insert = 3;
+}
+
+// Cursor moved
+
+message CursorMovedPayload {
+  uint64 window_id = 1;
+  Position position = 2;
+}
+
+// Buffer modified
+
+message BufferModifiedPayload {
+  uint64 buffer_id = 1;
+  // Change details (optional, for incremental updates)
+  optional BufferChange change = 2;
+}
+
+message BufferChange {
+  uint64 start_line = 1;
+  uint64 old_end_line = 2;
+  uint64 new_end_line = 3;
+  repeated string new_lines = 4;
+}
+
+// Layout changed
+
+message LayoutChangedPayload {
+  uint64 focused_window_id = 1;
+  // Window list with positions (simplified from full tree)
+  repeated WindowInfo windows = 2;
+}
+
+message WindowInfo {
+  uint64 window_id = 1;
+  uint64 buffer_id = 2;
+  WindowRect rect = 3;  // WindowRect imported from common.proto
+  bool focused = 4;
+}
+
+// Option changed
+
+message OptionChangedPayload {
+  string name = 1;
+  oneof value {
+    bool bool_value = 2;
+    int64 int_value = 3;
+    string string_value = 4;
+  }
+}
+
+// Selection changed
+
+message SelectionChangedPayload {
+  uint64 window_id = 1;
+  bool has_selection = 2;
+  optional Selection selection = 3;
+  optional string visual_mode = 4;
+}
+
+// Buffer list changed
+
+message BufferListChangedPayload {
+  // Action that triggered the change
+  string action = 1;  // "added", "removed", "modified"
+  uint64 buffer_id = 2;
+}
+
+// Viewport updated (Phase 11.1)
+//
+// Sent when a viewport's scroll or cursor position changes.
+// Enables incremental updates without full layout re-fetch.
+
+message ViewportUpdatedPayload {
+  uint64 viewport_id = 1;
+  // All fields are optional - only changed values are sent
+  optional uint32 top_line = 2;     // Vertical scroll position
+  optional uint32 left_col = 3;     // Horizontal scroll position
+  optional uint32 cursor_line = 4;  // Cursor row
+  optional uint32 cursor_col = 5;   // Cursor column
+}
+
+// Render complete (signal to TUI that a frame is ready)
+
+message RenderCompletePayload {
+  uint64 frame_id = 1;
+}
+
+// Detach (client should disconnect)
+
+message DetachPayload {
+  string reason = 1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Capture relay
+//
+// Enables CLI to request screen capture from TUI via server relay:
+// CLI -> Server (GetScreenContent) -> TUI (capture_request notification)
+// TUI -> Server (capture_response notification) -> CLI (RPC response)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Server requests TUI to capture its frame buffer
+
+message CaptureRequestPayload {
+  uint64 request_id = 1;  // Unique ID to correlate request/response
+  string format = 2;      // "plain_text", "raw_ansi", "cell_grid"
+}
+
+// TUI responds with captured frame content
+
+message CaptureResponsePayload {
+  uint64 request_id = 1;  // Matches the request_id from CaptureRequestPayload
+  uint64 width = 2;       // Frame width
+  uint64 height = 3;      // Frame height
+  string format = 4;      // Format used for capture
+  string content = 5;     // Captured frame content
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Resize relay
+//
+// CLI -> Server -> TUI (one-way, TUI resizes its frame buffer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Server tells TUI to resize its frame buffer
+
+message ResizeRequestPayload {
+  uint64 width = 1;   // New viewport width
+  uint64 height = 2;  // New viewport height
+}

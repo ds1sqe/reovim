@@ -1,0 +1,33 @@
+[package]
+name = "reovim-arch"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Platform abstraction layer for reovim (Linux arch/ equivalent)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+# Platform-optimized primitives and abstractions
+[dependencies]
+# Lock-free data structures for hot paths
+arc-swap = "1.8"
+
+# Faster synchronization primitives
+parking_lot = { workspace = true }
+
+# Platform-specific directory paths (XDG on Unix, AppData on Windows)
+dirs = "5.0"
+
+[target.'cfg(unix)'.dependencies]
+crossterm = { workspace = true }
+# Unix socket support for local transport
+tokio = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+# Named pipe support for local transport
+tokio = { workspace = true }

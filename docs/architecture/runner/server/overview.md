@@ -4,7 +4,7 @@ The RPC server manages sessions, clients, and request dispatching.
 
 ## Source Location
 
-`runner/src/server/`
+`server/lib/server/src/` (moved from `runner/src/server/` in Phase 8)
 
 ## Components
 

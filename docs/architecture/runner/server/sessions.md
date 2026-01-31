@@ -4,9 +4,9 @@ Sessions manage shared editor state while viewports provide per-client independe
 
 ## Source Location
 
-- Sessions: `runner/src/server/session/`
-- Viewports: `runner/src/server/client/viewport.rs`
-- Driver Session: `lib/drivers/session/` (SSOT for per-session state)
+- Sessions: `server/lib/server/src/session/` (moved from `runner/` in Phase 8)
+- Viewports: Per-client state managed by clients
+- Driver Session: `server/lib/drivers/session/` (SSOT for per-session state)
 
 ## Session Architecture
 

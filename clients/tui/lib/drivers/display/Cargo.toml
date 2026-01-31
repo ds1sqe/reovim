@@ -1,0 +1,29 @@
+[package]
+name = "reovim-driver-display"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Display driver for reovim (frame buffer, compositor, windows)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer
+reovim-kernel = { workspace = true }
+
+# Platform abstraction (provides Color type)
+reovim-arch = { workspace = true }
+
+# Common client model (provides Rect, Size, Direction, SplitDirection)
+reovim-client-model = { workspace = true }
+
+# Unicode width detection for wide characters (CJK, emoji)
+unicode-width = "0.2"
+
+# Small vector optimization for annotation storage (avoids heap for ≤2 items)
+smallvec = "1.13"

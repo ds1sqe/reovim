@@ -2,10 +2,330 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.9.2-dev
+## [Unreleased] - v0.9.3-dev
+
+### Changed
+
+- **Directory restructure**: Major codebase restructure to clarify
+  server/client boundaries. New directory layout: `server/` (kernel, drivers,
+  modules), `clients/` (tui, cli), `shared/` (protocol, arch, net, log, trace,
+  module-macros, testing), `apps/` (thin runner binary). Server-side drivers
+  (14 total) moved to `server/lib/drivers/`. Server-side modules (17 total)
+  moved to `server/modules/`. Client-side modules (7 total: layout, pair,
+  cmdline, statusline, which-key, undotree, example) archived to
+  `archive/post_kernel/modules/` - will be reimplemented as client-side plugins.
+  TUI drivers (display, tui) moved to `clients/tui/lib/drivers/`. Window
+  command IDs moved from archived `layout` module to `window-ops` module
+  (server-side). Updated all workspace paths and dependencies. Part of Epic #465. (#465)
+
+- **Legacy cleanup**: Removed legacy crates from workspace as part of
+  aggressive v2 migration cleanup. `runner/` (legacy binary with v1 JSON-RPC server)
+  and `lib/clients/core/` (v1 JSON-RPC client library) removed from workspace -
+  both archived to `archive/post_kernel/`. TUI client (`lib/clients/tui/`) now
+  uses only gRPC v2 (`TuiAppV2`). Module tests (vim, undo, search, which-key)
+  archived - to be rewritten for v2 testing infrastructure (`lib/testing/`).
+  TUI simplified: removed deprecated v1 args (`--tcp`, `--socket-path`, `--instance`),
+  now uses only `--grpc` for gRPC v2 connections. Part of Epic #465. (#465)
+
+### Fixed
+
+- **Visual mode resolver missing**: Fixed bug where Visual mode keys
+  (h, j, k, l, w, b, e, etc.) were not working - either inserting characters or
+  being ignored. Root cause: No resolver registered for Visual modes, causing
+  `ResolverRegistry.get()` to return `None` and bypass mode inheritance. Solution:
+  Created `VimVisualResolver` (~350 LOC) that handles escape, count accumulation,
+  and delegates motion keys to Normal mode keymap. Registered for all 3 visual
+  variants (`VISUAL_ID`, `VISUAL_LINE_ID`, `VISUAL_BLOCK_ID`). Server now has 10
+  resolvers (was 7). Part of Epic #465. (#465)
 
 ### Added
 
+- **Common Client Model**: Created `reovim-client-model` crate at
+  `shared/clients/model/` - a platform-agnostic abstraction layer for all clients
+  (TUI, Web, Android). Separates wire format types (from server) from rendered state
+  (client-side interpretation). Foundation types (`ScreenPosition`, `Size`, `Rect`,
+  `Direction`, `SplitDirection`). Wire format types (`Anchor` enum for positioning,
+  `LogicalOverlay`, `OverlayState`, `LogicalLayout` tree, `ViewportState`,
+  `ClientPresence`, `SyncMode`). Rendered state types (`RenderedOverlay`, `OverlayStack`
+  with z-order, `Window`, `WindowTree` traversal, `PanelState`). Interaction types
+  (`Interaction` enum, `InteractionResult` for overlay input handling). Core traits
+  (`Panel`, `Layout`, `OverlayRenderer` with object-safety for `Box<dyn>`,
+  `OverlayManager`, `FocusManager`, `LayoutInterpreter`). Sync types (`LayoutSyncMode`,
+  `OverlaySyncMode`, `PresenceTracker`). Total: 147 unit tests with comprehensive
+  coverage. No I/O dependencies - pure types and traits. Part of Epic #465. (#465)
+
+- **TUI Adapter for Common Client Model**: Integrated `reovim-client-model` with
+  TUI client using hybrid approach (common model for data interchange, TUI keeps
+  its compositor). Added `clients/tui/src/adapter/` module (6 files, ~1200 LOC) with:
+  `TuiLayoutAdapter` (wraps `RootCompositor`, implements `Layout` trait with split/close/focus
+  operations), `TuiPanel` (wraps `View`, implements `Panel` trait with scroll/cursor/visible-range),
+  `TuiOverlayManager` (implements `OverlayManager` trait with renderer registry, ID mapping,
+  position resolution), `TuiFocusManager` (implements `FocusManager` trait with panel/overlay
+  focus transitions), `AnchorContext` and `convert_anchor()` (wire anchor to TUI anchor conversion
+  with normalized-to-absolute coordinate mapping, cursor context, overlay ID resolution).
+  Type conversions: `WindowId`/`BufferId` (usize) to u64 and back, `Direction`/`SplitDirection`
+  to TUI equivalents, `wire::Anchor` variants to `layout::Anchor`. `TuiAdapterFactory` for
+  convenient adapter creation from compositor. Added `BufferId` re-export from display driver.
+  77 adapter-specific tests (153 total TUI tests). Part of Epic #465. (#465)
+
+- **WASM-based multi-window support for web client**: Integrated `reovim-client-model`
+  with the web client using a hybrid WASM approach - Rust core types compiled to WASM
+  with auto-generated TypeScript types via `tsify-next`, and web-specific rendering in
+  TypeScript. Rust changes: Added `serde` derives to all 25+ types across 14 files in
+  `shared/clients/model/`. Added WASM feature with `wasm-bindgen` and `tsify-next`
+  dependencies. Created `wasm.rs` (~140 LOC) exporting layout interpreter, geometry
+  helpers, and direction utilities. WASM binary: 87KB. Web changes: Added WASM bridge
+  layer (`src/wasm/`) with `bindings.ts` (WASM init + 12 exported functions),
+  `helpers.ts` (9 tree traversal utilities + type guards), `convert.ts` (proto-to-model
+  conversion handling discriminated unions). Added rendering layer (`src/render/`)
+  with `LayoutRenderer` class for WindowTree-to-DOM conversion and `BufferRenderer`
+  for line/selection/cursor rendering. Refactored `editor.ts` for dual-mode operation:
+  multi-window (WASM) or legacy single-window with graceful fallback. Added
+  `layout.css` (227 LOC) with styles for splits, tabs, windows, separators. Added
+  `vitest.config.ts` with JSDOM for DOM tests. Test suite: 109 TypeScript tests
+  (25 wasm-helpers, 27 wasm-convert, 17 render-layout, 40 existing keymapper) +
+  148 Rust tests. Build pipeline: `npm run build:wasm` triggers wasm-pack before
+  Vite build. Part of Epic #465. (#465)
+
+- **Server-managed viewports (Phase 11)**: Implemented server-authoritative
+  window layout with full command support. Server changes: Implemented
+  `GetLayout` RPC (was returning unimplemented) - returns window tree with
+  `WindowNode` (leaf/split) structure, focused window ID, and per-window
+  viewport dimensions. Implemented `GetVisibleLines` RPC - returns visible
+  line range (`first_line`, `last_line`, `viewport_height`) for viewport
+  scrolling support. Window-ops module: Added 19 command handlers implementing
+  `CommandHandler` trait: focus navigation (h/j/k/l, 4 commands), focus cycling
+  (w/W, 2 commands), splitting (s/v/n, 3 commands), closing (c/o, 2 commands),
+  resizing (+/-/>/<=/5 commands), float zone toggle/raise/lower (3 commands).
+  Commands delegate to `CompositorApi` methods on `SessionRuntime`. TUI already
+  integrated: receives `LayoutChanged` notifications via streaming, updates
+  `state.windows` and `focused_window_id`, triggers redraw. End-to-end flow:
+  `<C-w>v` → server executes `SplitVertical` → `CompositorApi::split()` →
+  `record_window_created()` → `layout_changed` notification → TUI updates.
+  Part of Epic #465. (#465)
+
+- **Web client ViewportService integration (Phase 11.1)**: Extended web client
+  to use server-managed viewports with incremental updates and overlay support.
+  Cache layer (`clients/web/src/cache/`): `ViewportCache` class stores viewport
+  state (scroll position, cursor) and applies incremental `ViewportUpdate`s from
+  server notifications. `BufferCache` class stores buffer content with version
+  tracking, reduces redundant RPC calls by caching visible lines. Notification
+  handlers: Added `viewportUpdated` handler that applies incremental updates to
+  cached state without RPC calls. Updated `bufferModified` to invalidate cache
+  only for affected buffer. Updated `layoutChanged` to use `refreshLayoutOnly()`
+  which fetches layout tree but uses cached buffer content for existing windows.
+  Overlay rendering (`clients/web/src/render/overlay.ts`): Created `OverlayRenderer`
+  class (~530 LOC) for floating UI elements. Supports 4 overlay types: completion
+  (listbox with items, selection), cmdline (command-line input with cursor),
+  hover (tooltip), signature (function help). Handles 5 anchor types: Cursor,
+  Center, Buffer position, Screen (normalized), Below (relative to overlay).
+  Proper ARIA roles for accessibility. CSS (`styles/overlay.css`, ~170 LOC):
+  Catppuccin-inspired dark theme with glass-morphism effects. Server changes:
+  Added `ViewportUpdatedPayload` to notification.proto with optional fields
+  (viewport_id, top_line, left_col, cursor_line, cursor_col). Added
+  `build_viewport_notification()` in notification_builder.rs (~20 LOC). Emits
+  viewport updates when `scroll_changed` flag set in `StateChanges`. Performance:
+  ~70-90% reduction in RPC calls during scrolling/cursor movement by using
+  cached state. Part of Epic #465. (#465)
+
+- **TUI ViewportService integration (Phase 11.2)**: Integrated TUI client with
+  server-managed viewports using passive `ServerLayoutMirror` approach. Created
+  `clients/tui/src/layout_mirror.rs` (~150 LOC) with `ServerLayoutMirror` struct
+  that passively mirrors server layout state - simpler than implementing full
+  `RootCompositor` (20+ methods). `WindowPlacement` type stores window bounds
+  (x, y, width, height) and focused state. Key methods: `apply_layout_changed()`
+  replaces all placements from `layout_changed` notification, `set_screen()` for
+  resize, `placements()` for rendering, `has_multiple_windows()` for separator
+  logic. Integrated into `TuiAppV2`: (1) Mirror field initialized with screen
+  dimensions in `connect()`, (2) `apply_layout()` updates mirror from initial
+  `GetLayout` RPC, (3) `handle_notification()` updates mirror on `LayoutChanged`
+  payload, (4) `render_windows()` uses `layout_mirror.placements()` instead of
+  `state.windows`, (5) Resize events call `layout_mirror.set_screen()`. Focus
+  indicator uses `layout_mirror.focused_id()` and `has_multiple_windows()`.
+  6 unit tests covering single/multi window, focus tracking, resize, and filtered
+  windows. Follows same pattern as web client's `ViewportCache` (Phase 11.1).
+  Part of Epic #465. (#465)
+
+- **Web client unit tests (Phase 11.3)**: Added comprehensive unit tests for
+  Phase 11.1 cache and overlay components. Test files: `cache-viewport.test.ts`
+  (25 tests) covers ViewportCache get/set, applyUpdate partial updates, delete,
+  clear, iteration methods. `cache-buffer.test.ts` (40 tests) covers BufferCache
+  version tracking, needsRefresh staleness detection, invalidation, getVisibleLines
+  slicing with bounds clamping, getLine/getLineCount helpers, getStats metrics.
+  `render-overlay.test.ts` (62 tests, jsdom) covers OverlayRenderer show/hide/remove,
+  all 4 overlay types (completion items/selection, cmdline prefix/cursor, hover text,
+  signature with docs), all 5 anchor types (Cursor, Center, Buffer, Screen, Below),
+  ARIA accessibility roles (listbox/textbox/tooltip/dialog), updateState selection
+  changes, custom config (charWidth, lineHeight, padding). Total: 127 new tests,
+  bringing web client to 236 tests (was 109). All tests pass in 1.7s. Addresses
+  Telemetry B grade from Phase 11.1 landing review. Part of Epic #465. (#465)
+
+- **SyntaxService Token Data API (Phase 12)**: Created gRPC SyntaxService to expose
+  syntax tokens for client-side syntax highlighting. Proto definition (`syntax.proto`,
+  ~90 LOC): `GetTokens` RPC returns tokens for buffer range with language detection,
+  `StreamTokens` RPC for real-time token streaming (stub for now), `GetLanguageInfo`
+  RPC returns language metadata (id, name, extensions, parser availability).
+  `TokenSpan` message uses byte offsets and category strings for theme flexibility.
+  Service implementation (`grpc/syntax.rs`, ~500 LOC): `SyntaxServiceImpl` with
+  session registry pattern matching other services. `highlight_group_to_category()`
+  function maps all 47 `HighlightGroup` variants to TextMate-style category strings
+  (keyword, function.builtin, string.escape, etc.) using existing `SyntaxHighlight`
+  trait. Language detection from file extensions (~50 languages including Rust, Python,
+  TypeScript, Go, etc.). 5 unit tests covering category mapping, language detection,
+  extension lookups, and error cases. Server changes: Added `reovim-driver-syntax`
+  dependency. Registered `SyntaxService` in gRPC router. Philosophy: Server provides
+  token categories (mechanism), client applies colors via theme (policy). Foundation
+  for Phase 13 (TUI Theme Engine). Part of Epic #465. (#465)
+
+- **Selection rendering for web client**: Implemented visual selection
+  highlighting in the web client, validating Unix philosophy of server-mechanism /
+  client-policy separation. Server changes: Implemented `GetSelection` RPC in
+  `StateService` (was returning unimplemented) - extracts selection from buffer,
+  normalizes start/end positions, maps `SelectionMode` to string ("char", "line",
+  "block"). Added 6 unit tests covering no-selection, no-buffer, char/line/block
+  modes, and reverse selections. Web client changes (`clients/web/`): Extended
+  `EditorState` with selection fields (`hasSelection`, `selectionAnchor`,
+  `selectionCursor`, `visualMode`). Added `selectionChanged` notification handler
+  in `handleNotification()`. Created `isPositionSelected()` helper (~60 LOC)
+  handling all three visual modes with forward/reverse selection normalization.
+  Added `renderLineWithSelection()` for efficient DOM rendering using span batching
+  (groups consecutive selected characters into single spans). CSS: Added
+  `--selection-bg` variable and `.selected` class with semi-transparent purple
+  highlight. Updated cursor styling for visual mode (border instead of solid
+  background, no blink animation). Part of Epic #465. (#465)
+
+- **Web client PoC with gRPC-Web support**: Added minimal web client that
+  connects to reovim server via gRPC-Web, validating multi-platform architecture.
+  Server changes: Added `grpc-web` feature to `reovim-server` with `tonic-web` middleware
+  layer and CORS support (~44 LOC, feature-gated so existing gRPC unaffected). Web client
+  (`clients/web/`): TypeScript + Connect-Web + Vite stack with generated TypeScript from
+  existing proto files (15 generated files). Components include `keymapper.ts` (browser key
+  to vim notation), `editor.ts` (state management and DOM rendering), `input.ts` (keyboard
+  handler), `client.ts` (gRPC-Web transport). 40 keymapper tests (P0 critical, exceeds 25+
+  requirement). Architecture decision: gRPC-Web over WebSocket - reuses existing proto
+  (zero new protocol code), type-safe generated clients, same port for native gRPC and
+  gRPC-Web. Production bundle: 22.53 KB gzip. Part of Epic #465. (#465)
+
+- **Pytest infrastructure for Python testing module**: Added formal pytest
+  suite for `tools/reovim-testing/` with 171 total tests (87 unit, 84 integration).
+  Unit tests use mocking (no server required, 0.12s): `test_errors.py` (20 exception tests),
+  `test_discovery.py` (19 binary/port tests), `test_client.py` (24 CLI wrapper tests),
+  `test_capture.py` (24 dataclass tests). Integration tests require running server (~45s):
+  `test_editor.py` (27 lifecycle tests), `test_cleanup.py` (6 zombie prevention tests),
+  `test_battle.py` (51 battle-tested scenarios). Infrastructure includes `conftest.py`
+  with module-scoped `binary_info` fixture, function-scoped `editor` with auto-cleanup,
+  pytest markers (`integration`, `slow`, `binary`), and auto-skip when binary unavailable.
+  Fixed `screen_capture_demo.py` imports. Added comprehensive documentation to `input.rs`
+  fallback logic explaining when it triggers, what it does, and its limitations.
+  Part of Epic #465. (#465)
+
+- **Python testing module and capture relay**: Added comprehensive Python
+  testing library at `tools/reovim-testing/` with zero-config `Editor` class featuring
+  fluent API and context manager lifecycle. Includes `Capture` dataclass for rich state
+  snapshots (frame, mode, cursor, buffer, registers), auto-discovery of binary and free
+  ports, and 59 battle test scenarios. Implemented capture relay pattern (CLI → Server →
+  TUI → Server → CLI) where server coordinates but has no screen (correct separation)
+  and TUI owns viewport. Added resize relay from CLI to TUI via server notification.
+  Fixed clippy pedantic issues (doc comments, `map_or`, `Error::other`). Module bootstrap
+  now creates scratch buffer on startup. Part of Epic #465. (#465)
+
+- **Server/client notification pipeline**: Completed the core server/client
+  architecture with working command execution and notification emission. Pillars
+  implemented: (1) `CommandExecutor` trait signature changed from `&mut KernelContext`
+  to `&KernelContext` (interior mutability via `Arc<RwLock>` enables this), enabling
+  `SessionRuntime::execute_command()` to work; (2) Created `notification_builder.rs`
+  to convert `StateChanges` to gRPC notifications (mode, cursor, buffer, layout,
+  selection, option changes); (3) Added `scroll_left` to `Viewport` for horizontal
+  scroll tracking; (4) Created `TuiAppV2Headless` (775 LOC) for headless TUI testing
+  with capture, resize, and event loop support; (5) Created E2E test infrastructure
+  with `vim_commands.rs` (503 LOC) and `notifications.rs` (190 LOC). Macro recording
+  (Pillar 6) deferred. Part of Epic #465. (#465)
+
+- **NotificationService infrastructure**: Implemented gRPC v2
+  NotificationService with server-to-client streaming for real-time notifications.
+  Uses `tokio::sync::broadcast` channel pattern - Session holds broadcast sender,
+  clients subscribe via `subscribe_notifications()`. `NotificationServiceImpl`
+  wraps broadcast receiver in `async_stream::stream!` with event type filtering
+  via `SubscribeRequest.event_types`. Created `TuiGrpcClient` module in
+  `lib/clients/tui/` ready for future TUI migration (wraps Input, State, Buffer,
+  Notification service clients with `subscribe()` method returning
+  `Streaming<Notification>`). Added `grpc` feature to TUI Cargo.toml. This phase
+  lands infrastructure only - full TUI migration deferred. Part of Epic #465. (#465)
+
+- **gRPC v2 CLI client**: Created `lib/clients/cli/` crate
+  (reovim-client-cli v0.9.3-dev) as the gRPC v2 command-line client. Deprecates
+  JSON-RPC v1 for CLI usage. Implements four gRPC services in `lib/server/`:
+  `InputServiceImpl` (SendKeys with vim notation parsing), `StateServiceImpl`
+  (GetMode, GetCursor - other methods return unimplemented), `ServerServiceImpl`
+  (Ping, Info with uptime/buffer count - Kill returns unimplemented). CLI crate
+  contains `GrpcClient` wrapper over tonic clients, command implementations
+  (keys, mode, cursor, buffers, buffer, ping, version), and clap-based argument
+  parsing with `--grpc` address option and `--format` (plain/json) output.
+  Basic character insertion supported; full vim key resolution deferred.
+  Part of Epic #465. (#465)
+
+- **TUI crate extraction**: Created `lib/clients/tui/` crate
+  (reovim-client-tui v0.9.3-dev) as the standalone TUI client library. Contains
+  terminal user interface with crossterm for rendering, async event loop with
+  notifications, and embedded CLI panel. Includes 11 modules: `TuiApp` (main
+  event loop, ~1800 LOC), `HeadlessClient` (CI/capture mode, ~630 LOC),
+  `CliPanelState`/`CliExecutor`/`CliRender` (embedded CLI, ~1250 LOC combined),
+  `LogBuffer`/`LogPanel`/`LogRender` (log panel, ~945 LOC combined),
+  `InputHandler` (keyboard handling, ~224 LOC), `Renderer` (crossterm wrapper,
+  ~186 LOC), `RenderState` (frame capture, ~335 LOC). Uses "copy" approach -
+  runner keeps its own copy unchanged. All 87 unit tests pass. Part of Epic #465. (#465)
+
+- **Client core extraction**: Created `lib/clients/core/` crate
+  (reovim-client-core v0.9.3-dev) as the standalone client connection library.
+  Provides TCP/Unix socket connection abstraction (`Connection`, `ConnectionConfig`),
+  server discovery via port scanning (`list_servers`, `ServerInfo`), and JSON-RPC
+  v1 client (`RpcClient`, `RpcWriter`). Used "copy" approach - runner keeps its
+  own copy unchanged while new crate provides identical functionality. This enables
+  future TUI and CLI extraction in Phases 6-7. All 18 unit tests pass. Part of
+  Epic #465. (#465)
+
+- **New thin runner**: Created `apps/reovim/` crate (reovim-app v0.9.3-dev)
+  as the new architecture binary. This thin CLI wrapper uses `lib/server/` directly,
+  demonstrating the server/client split. Binary named `reovim-new` for parallel
+  installation during migration. Supports server mode with `--tcp`, `--grpc` (feature-
+  gated), and `--socket` (Unix) transport options. Establishes `apps/` directory
+  pattern for future applications (GUI, web). Part of Epic #465. (#465)
+
+- **Server crate extraction**: Created new `lib/server/` crate
+  (reovim-server v0.9.3-dev) as the foundation for server/client split. Implements
+  session management with `SessionRegistry` (lock-free via `ArcSwap`), `Session`
+  (named editing context), and `SessionState` (kernel wrapper). Server supports
+  multiple transports: TCP with fallback, specific TCP port, Unix socket (Unix),
+  and gRPC (feature-gated). Bridges to gRPC v2 protocol via `BufferServiceImpl`.
+  New crate coexists with old runner - no breaking changes. Part of Epic #465. (#465)
+
+- **gRPC v2 transport**: Added gRPC transport listener as parallel
+  transport option alongside existing TCP/JSON-RPC. Server can start with
+  `--grpc <PORT>` flag. Implemented `BufferService` gRPC service with methods:
+  `GetRawContent` (raw buffer lines), `GetLineCount`, `GetAnnotations` (stub),
+  `List` (all open buffers). Other methods (`OpenFile`, `WriteFile`, `SetContent`)
+  return unimplemented status. The gRPC transport follows v2 protocol
+  philosophy: server provides raw data, client renders. Part of Epic #465. (#465)
+
+- **InstanceRegistry migration**: Moved `InstanceRegistry`, `InstanceInfo`, and
+  `TransportInfo` from `runner/src/server/instance/` to `lib/protocol/src/instance/`.
+  These are protocol-level abstractions used by both client and server. Fixed
+  architectural violation where client code imported from `server::instance`.
+  Part of Epic #465. (#465)
+
+---
+
+## [0.9.2] - v0.9.2-dev
+
+### Added
+
+- **Command-line UI**: Implemented cmdline state management and popup
+  rendering for search (/, ?) and Ex command (:) modes. Characters route to
+  cmdline buffer when active. Supports editing keys (Backspace, Delete, Left,
+  Right, Home, End, Ctrl+A, Ctrl+E). Floating popup renders at screen top with
+  box drawing characters showing prompt and input with block cursor. Popup
+  appears on activation and hides on execution (Enter) or cancellation (Esc).
+  Both interactive TUI and headless mode support cmdline rendering. (#451)
 - **Line number display modes**: Added support for `:set number` and `:set
   relativenumber` options with absolute, relative, and hybrid display modes.
   Server-side rendering via `state/screen_content` with reactive notifications
@@ -55,6 +375,61 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   cycles. (3) Matched pair indicator - cursor on a bracket highlights its match
   with bold + underline. Module registers `SharedPairState` service and subscribes
   to `CursorMoved`, `BufferModified`, `BufferClosed` events. (#440)
+- **Command query service**: Added `CommandQueryService` trait and `CommandInfo`
+  struct for command discovery and completion. Enables modules to query commands
+  by name prefix (`search_by_prefix`), exact name (`find_by_name`), or list all
+  ex-commands (`list_ex_commands`). Registered in `ServiceRegistry` for module
+  access. Foundation for cmdline tab-completion and help systems. (#453)
+- **Cmdline UI module**: Created `modules/cmdline/` for command-line popup UI.
+  Provides `SharedCmdlinePopupState` service for popup visibility and content
+  tracking. UI rendering includes rounded border characters (╭╮╰╯), prompt
+  display (:/?), input text with cursor indicator (█), and horizontal scrolling
+  for long input. Input handler now intercepts cmdline editing keys (Backspace,
+  Delete, Left, Right, Home, End, Ctrl+A/E/H) when cmdline is active, routing
+  them to `CmdlineBuffer` methods. This is initial infrastructure; floating
+  popup rendering in TUI to follow. (#451)
+- **Extensible statusline system**: Implemented lualine-inspired statusline with
+  sections (A-B-C | X-Y-Z), pluggable components, and mode-specific theming.
+  Mechanism layer (`lib/drivers/display/src/statusline/`) defines traits:
+  `ComponentProvider`, `StatuslineProvider`, with types for sections, height
+  calculation, multi-row layout, and truncation. Policy layer (`modules/statusline/`)
+  provides `DefaultStatuslineProvider` with built-in components: mode (with
+  NORMAL=blue, INSERT=green, VISUAL=magenta coloring), filename (with [+]/[RO]
+  indicators), position (line:col with percentage), and filetype. Dynamic height
+  adapts to screen size with overflow strategies (Truncate, Wrap, Redistribute).
+  Powerline-style separators with proper color transitions. Cross-module
+  extensibility via `ComponentProviderRegistry` - other modules can register
+  custom components (example: BranchComponent for git, DiagnosticsComponent for
+  LSP). Component visibility conditions support WhenModified, WhenInGitRepo,
+  InModes, etc. Priority-based truncation respects component importance. (#441)
+- **Generic annotation system**: Implemented unified architecture for displaying
+  per-line information in the gutter. Core types: `AnnotationKind` (hierarchical
+  identifiers like `"diagnostic.error"`), `AnnotationTarget` (line/range/point/buffer),
+  `AnnotationPayload` (number/text/severity/state). Architecture follows mechanism/
+  policy separation: display driver provides traits (`AnnotationSource`,
+  `AnnotationPresenter`), storage (`AnnotationStore`), and composition
+  (`GutterComposer`); vim module provides policy implementations
+  (`LineNumberSource`, `LineNumberPresenter`). Data flow: Sources -> Store ->
+  Presenters -> Composer -> Gutter Cells. Added `GutterRenderer` high-level
+  integration helper. Added 8 new highlight groups: `sign_column`,
+  `gutter_separator`, `git.add`, `git.change`, `git.delete`, `fold.open`,
+  `fold.closed`, `bookmark`. (#455)
+- **Which-key plugin**: Added which-key module that displays available keybindings
+  in a popup overlay after a configurable timeout when a prefix key is pressed.
+  Features include: (1) Timeout popup - after pressing a prefix key (like `g`),
+  shows available bindings after 500ms (configurable). (2) Immediate popup -
+  press `?` after a prefix (like `g?`) to show bindings immediately. (3) Filtering -
+  type to narrow down displayed bindings. (4) Lock-free rendering via ArcSwap
+  for render thread performance. (5) Bottom-positioned overlay that adapts to
+  screen size. Module provides `WhichKeyService` for timer management and
+  `WhichKeySessionExt` for per-session state. (#442)
+- **gRPC v2 protocol foundation**: Added protobuf schemas and tonic-build codegen
+  for v2 protocol. Protocol v2 uses gRPC with raw-data model (server provides
+  buffer content, cursor, options; client renders). Defines 7 services:
+  InputService, StateService, BufferService, EditorService, ModuleService,
+  ServerService, NotificationService (streaming). Feature-gated behind `grpc`
+  feature flag. This is foundation-only; runtime gRPC transport followed.
+  Part of Epic #465 (server/client crate split). (#465)
 
 ### Changed
 
@@ -72,9 +447,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   deserialization, eliminating ~100 lines of duplicated parsing code. The
   `ThemeManager` now uses 4-tier lookup: user overrides → theme → module
   defaults → theme fallback. (#440)
+- **Annotation system wiring**: Wired the generic annotation system (#455) into
+  the screen handler rendering pipeline. (1) Added `GutterRendererKey` and
+  `GutterRendererRegistry` following Epic #417 `ServiceRegistry` pattern. (2)
+  Vim module registers `GutterRenderer` with `LineNumberSource`/`LineNumberPresenter`
+  during init. (3) Extended `AnnotationContext` with optional `line_number_mode`
+  for dynamic mode switching from options. (4) Screen handler uses `render_gutter()`
+  helper that queries registry and falls back gracefully when not available. (5)
+  Removed duplicate `calculate_gutter_width()` and `format_line_number()` functions
+  from screen handler - now delegated to annotation system. Proper mechanism/policy
+  separation: display driver provides registry traits, vim module provides policy
+  implementations. (#458)
 
 ### Fixed
 
+- **Shared OptionRegistry**: Fixed module-registered options not being accessible
+  in the session. Modules registering options during `init()` wrote to a different
+  `OptionRegistry` than the one used by the session for `:set` commands. Solution:
+  create shared `OptionRegistry` before module init and pass to both
+  `KernelContext::with_event_bus_services_and_options()` and
+  `real_kernel_context_with_options()`. This enables `:set number` to work
+  correctly with the annotation system. (#458)
 - Integration tests now correctly use worktree-built modules instead of
   globally installed modules. Test harness sets `REOVIM_MODULE_PATH` to
   `target/debug/` automatically. (#433)
@@ -106,6 +499,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   display driver defines traits, pair module implements them. (#440)
 
 ### Removed
+
+- **PromptType enum**: Removed duplicate `PromptType` enum from runner layer.
+  `CmdlinePrompt` in driver layer is now the single source of truth for prompt
+  type. Conversion code eliminated from 3 locations. (#452)
+
+### Refactored
+
+- **Cmdline state architecture**: Simplified `CommandLineState` to `CmdlineBuffer`
+  storing only input text and cursor position. Active state, prompt type, and
+  cancellation flag now read from `CmdlineState` session extension (driver layer).
+  This establishes clear SSOT: driver layer owns state flags, runner layer owns
+  input buffer. Removed ~30 lines of redundant code. (#452)
 
 ---
 

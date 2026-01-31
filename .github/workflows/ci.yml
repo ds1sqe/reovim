@@ -31,6 +31,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Clippy (zero warnings)
         run: cargo +nightly clippy --all-targets --all-features --workspace -- -D warnings
 
@@ -43,6 +45,8 @@ jobs:
         with:
           toolchain: "1.92"
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Build workspace
         run: cargo build --workspace
 
@@ -55,10 +59,12 @@ jobs:
         with:
           toolchain: "1.92"
       - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Build workspace
         run: cargo build --workspace
       - name: Build test modules with FFI symbols
-        run: cargo build -p reovim-module-hot-reload-demo --features dynamic
+        run: cargo build -p reovim-module-defaults --features dynamic
       - name: Run tests
         run: cargo test --workspace
       - name: Run doc tests

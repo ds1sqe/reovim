@@ -4,7 +4,7 @@ Command-line interface for scripting and automation.
 
 ## Source Location
 
-`runner/src/client/cli/`
+`clients/cli/src/` (moved from `runner/src/client/cli/` in Phase 8)
 
 ## Commands
 

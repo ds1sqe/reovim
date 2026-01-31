@@ -4,7 +4,9 @@ Terminal user interface with full rendering.
 
 ## Source Location
 
-`runner/src/client/tui/`
+`clients/tui/src/` (moved from `runner/src/client/tui/` in Phase 8)
+
+Includes adapter module for Common Client Model: `clients/tui/src/adapter/`
 
 ## Usage
 
