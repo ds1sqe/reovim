@@ -4,7 +4,7 @@ Server notifications inform clients of state changes.
 
 ## Source Location
 
-`runner/src/server/notification.rs`
+`server/lib/server/src/grpc/notification.rs` (moved from `runner/` in Phase 8)
 
 ## Notification Scoping
 

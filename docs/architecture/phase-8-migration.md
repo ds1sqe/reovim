@@ -30,12 +30,17 @@ reovim/
 │   ├── lib/kernel/       # Core mechanisms
 │   ├── lib/server/       # Server runtime (gRPC handlers)
 │   ├── lib/drivers/      # Server-side drivers (13 crates)
-│   └── modules/          # Policy modules (17 crates)
+│   └── modules/          # Policy modules (17+ crates)
+│       └── window-ops/   # Window operations (Phase 11) ← NEW
 ├── clients/
 │   ├── cli/              # CLI client (gRPC v2)
-│   └── tui/              # TUI client (gRPC v2)
-│       └── lib/drivers/  # TUI-specific drivers
+│   ├── tui/              # TUI client (gRPC v2)
+│   │   ├── lib/drivers/  # TUI-specific drivers
+│   │   └── src/adapter/  # Common model adapters (Phase 10.1) ← NEW
+│   └── web/              # Web client (TypeScript + WASM) ← NEW
 ├── shared/
+│   ├── clients/
+│   │   └── model/        # Common Client Model (Phase 10) ← NEW
 │   ├── protocol/         # gRPC v2 protocol definitions
 │   ├── arch/             # Platform abstraction
 │   ├── net/              # Network transport
@@ -78,6 +83,7 @@ reovim/
 | `modules/keymap/` | `server/modules/keymap/` |
 | `modules/motions/` | `server/modules/motions/` |
 | `modules/layout/` | `archive/post_kernel/modules/layout/` (archived) |
+| — | `server/modules/window-ops/` (new in Phase 11) |
 
 ### Runner & Application
 
@@ -108,9 +114,17 @@ reovim/
 | `reovim-server` | `server/lib/server/` | Server runtime |
 | `reovim-client-tui` | `clients/tui/` | TUI client |
 | `reovim-client-cli` | `clients/cli/` | CLI client |
+| `reovim-client-model` | `shared/clients/model/` | Common client abstraction (Phase 10) |
 | `reovim-protocol` | `shared/protocol/` | gRPC v2 definitions |
 | `reovim-net` | `shared/net/` | Network transport |
 | `reovim-testing` | `shared/testing/` | Test utilities |
+| `reovim-module-window-ops` | `server/modules/window-ops/` | Window operations (Phase 11) |
+
+### Web Client (Non-Rust)
+
+| Location | Stack | Purpose |
+|----------|-------|---------|
+| `clients/web/` | TypeScript + WASM | Web client using Common Client Model |
 
 ### Renamed/Moved Crates
 

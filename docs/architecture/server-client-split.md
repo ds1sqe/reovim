@@ -1372,108 +1372,128 @@ Server-triggered:
 ## Crate Structure
 
 ```
-lib/
-├── server/                    # Server crate
-│   ├── src/
-│   │   ├── grpc/              # gRPC service implementations
-│   │   │   ├── buffer.rs
-│   │   │   ├── input.rs
-│   │   │   ├── state.rs
-│   │   │   ├── server_service.rs
-│   │   │   ├── notification.rs
-│   │   │   ├── viewport.rs    # Future: ViewportService
-│   │   │   ├── presence.rs    # Future: PresenceService
-│   │   │   └── syntax.rs      # Future: SyntaxService
-│   │   └── session/           # Session management
-│   │       ├── session.rs
-│   │       ├── registry.rs
-│   │       └── presence.rs    # Future: Client presence tracking
-│   └── Cargo.toml
+reovim/
+├── server/
+│   └── lib/server/                # Server crate (reovim-server)
+│       └── src/
+│           ├── grpc/              # gRPC service implementations
+│           │   ├── buffer.rs
+│           │   ├── input.rs
+│           │   ├── state.rs
+│           │   ├── server_service.rs
+│           │   ├── notification.rs
+│           │   └── notification_builder.rs
+│           └── session/           # Session management
+│               ├── mod.rs
+│               └── state.rs
+│
+├── shared/
+│   ├── clients/
+│   │   └── model/                 # Common Client Model (reovim-client-model)
+│   │       └── src/
+│   │           ├── lib.rs
+│   │           ├── geometry.rs    # ScreenPosition, Size, Rect
+│   │           ├── direction.rs   # Direction, SplitDirection
+│   │           │
+│   │           ├── wire/          # Wire format types (from server)
+│   │           │   ├── mod.rs
+│   │           │   ├── anchor.rs  # Anchor enum (Buffer, Cursor, Screen, etc.)
+│   │           │   ├── overlay.rs # LogicalOverlay
+│   │           │   ├── layout.rs  # LogicalLayout enum
+│   │           │   └── viewport.rs# ViewportState, ViewportUpdate
+│   │           │
+│   │           ├── rendered/      # Client-side rendered state
+│   │           │   ├── mod.rs
+│   │           │   ├── overlay.rs # RenderedOverlay, OverlayStack
+│   │           │   ├── window.rs  # Window, WindowTree
+│   │           │   └── panel.rs   # PanelState
+│   │           │
+│   │           ├── traits/        # Core trait definitions
+│   │           │   ├── mod.rs
+│   │           │   ├── layout.rs  # Layout trait
+│   │           │   ├── panel.rs   # Panel trait
+│   │           │   ├── overlay.rs # OverlayManager, OverlayRenderer
+│   │           │   ├── focus.rs   # FocusManager trait
+│   │           │   └── interpreter.rs  # LayoutInterpreter trait
+│   │           │
+│   │           ├── sync/          # Multi-client sync
+│   │           │   ├── mod.rs
+│   │           │   ├── layout.rs  # LayoutSyncMode
+│   │           │   ├── overlay.rs # OverlaySyncMode
+│   │           │   └── presence.rs# ClientPresence, PresenceTracker
+│   │           │
+│   │           ├── interaction.rs # Interaction enum
+│   │           └── wasm.rs        # WASM bindings (feature-gated)
+│   │
+│   └── protocol/                  # Shared protocol types (reovim-protocol)
+│       ├── proto/reovim/v2/       # Protobuf definitions
+│       │   ├── buffer.proto
+│       │   ├── input.proto
+│       │   ├── state.proto
+│       │   └── notification.proto
+│       └── src/v2/                # Generated code
 │
 ├── clients/
-│   ├── model/                 # Common Client Model (shared abstractions)
-│   │   ├── src/
-│   │   │   ├── lib.rs
-│   │   │   │
-│   │   │   ├── wire/          # Wire format types (from server)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── overlay.rs # LogicalOverlay, Anchor, OverlayState
-│   │   │   │   ├── layout.rs  # LogicalLayout enum
-│   │   │   │   └── viewport.rs# ViewportUpdate
-│   │   │   │
-│   │   │   ├── rendered/      # Client-side rendered state
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── overlay.rs # RenderedOverlay, OverlayManager trait
-│   │   │   │   ├── window.rs  # Window, WindowTree
-│   │   │   │   └── panel.rs   # Panel trait
-│   │   │   │
-│   │   │   ├── traits/        # Core trait definitions
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── layout.rs  # Layout trait
-│   │   │   │   ├── renderer.rs# OverlayRenderer trait
-│   │   │   │   ├── focus.rs   # FocusManager trait
-│   │   │   │   └── interpreter.rs  # LayoutInterpreter trait
-│   │   │   │
-│   │   │   ├── sync/          # Multi-client sync
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── layout.rs  # LayoutSyncMode
-│   │   │   │   ├── overlay.rs # OverlaySyncMode
-│   │   │   │   └── presence.rs# Presence tracking
-│   │   │   │
-│   │   │   └── interaction.rs # Interaction enum
-│   │   └── Cargo.toml
+│   ├── tui/                       # TUI client (reovim-client-tui)
+│   │   └── src/
+│   │       ├── app_v2.rs          # Main TUI app
+│   │       ├── grpc_client.rs     # gRPC client wrapper
+│   │       └── adapter/           # Common model adapters (Phase 10.1)
+│   │           ├── mod.rs
+│   │           ├── layout.rs      # TuiLayoutAdapter
+│   │           ├── panel.rs       # TuiPanel
+│   │           ├── focus.rs       # TuiFocusManager
+│   │           ├── overlay.rs     # TuiOverlayManager
+│   │           └── anchor.rs      # AnchorConverter
 │   │
-│   ├── tui/                   # TUI client crate
-│   │   ├── src/
-│   │   │   ├── grpc_client.rs # gRPC client wrapper
-│   │   │   ├── platform.rs    # Platform trait impl (crossterm)
-│   │   │   ├── theme/         # Theme engine (tokens → colors)
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── default.rs
-│   │   │   │   └── loader.rs
-│   │   │   ├── render/        # Platform rendering
-│   │   │   │   ├── mod.rs
-│   │   │   │   ├── panel.rs   # Panel rendering
-│   │   │   │   ├── overlay.rs # Overlay rendering
-│   │   │   │   └── gutter.rs  # Gutter rendering
-│   │   │   └── input.rs       # Key translation
-│   │   └── Cargo.toml         # depends on clients/model
+│   ├── cli/                       # CLI client (reovim-client-cli)
+│   │   └── src/
+│   │       └── lib.rs
 │   │
-│   └── cli/                   # CLI client crate
-│       └── src/
-│           └── client.rs      # GrpcClient
+│   └── web/                       # Web client (TypeScript + WASM)
+│       ├── src/
+│       │   ├── main.ts            # Entry point
+│       │   ├── editor.ts          # Editor state and rendering
+│       │   ├── client.ts          # gRPC-Web client
+│       │   ├── wasm/              # WASM bindings
+│       │   │   ├── bindings.ts
+│       │   │   └── convert.ts
+│       │   ├── render/            # Rendering layers
+│       │   │   ├── layout.ts      # LayoutRenderer
+│       │   │   ├── buffer.ts      # BufferRenderer
+│       │   │   └── overlay.ts     # OverlayRenderer
+│       │   └── cache/             # Caching (Phase 11.1)
+│       │       └── viewport.ts
+│       └── package.json
 │
-└── protocol/                  # Shared protocol types
-    ├── proto/reovim/v2/       # Protobuf definitions
-    │   ├── buffer.proto
-    │   ├── input.proto
-    │   ├── state.proto
-    │   ├── notification.proto
-    │   ├── viewport.proto     # Future: Viewport management
-    │   ├── layout.proto       # Future: Logical layout sharing
-    │   ├── presence.proto     # Future: Multi-client presence
-    │   └── syntax.proto       # Future: Syntax tokens
-    └── src/v2/                # Generated code
+└── server/modules/
+    └── window-ops/                # Window operations module (Phase 11)
+        └── src/
+            ├── lib.rs             # Module registration
+            ├── command.rs         # 19 command handlers
+            └── ids.rs             # Command IDs
 ```
 
 ### Client Model as Shared Library
 
-The `lib/clients/model/` crate can be:
+The `shared/clients/model/` crate can be:
 
 1. **Rust library** - Used directly by TUI (Rust)
-2. **FFI bindings** - Exposed via C ABI for Android (JNI) and iOS (Swift)
-3. **WASM module** - Compiled to WebAssembly for Web client
+2. **FFI bindings** - Exposed via C ABI for Android (JNI) and iOS (Swift) (gated feature)
+3. **WASM module** - Compiled to WebAssembly for Web client (`wasm` feature)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  lib/clients/model/ (Rust)                                  │
+│  shared/clients/model/ (Rust)                               │
 │  • Pure logic, no I/O                                       │
 │  • Platform-agnostic abstractions                           │
+│  • ~2,500 LOC with 28 geometry tests                        │
 └───────────┬─────────────────┬─────────────────┬─────────────┘
             │                 │                 │
     ┌───────▼───────┐ ┌───────▼───────┐ ┌───────▼───────┐
     │  Direct use   │ │   JNI/FFI     │ │     WASM      │
-    │  (TUI, CLI)   │ │  (Android)    │ │    (Web)      │
+    │  (TUI)        │ │  (Android)    │ │    (Web)      │
+    │  via adapters │ │  (gated)      │ │  ✅ Active    │
     └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
@@ -1487,123 +1507,115 @@ The `lib/clients/model/` crate can be:
 - Migrate TUI from JSON-RPC v1 to gRPC v2
 - Remove `lib/clients/core/` dependency
 
-### Phase 9: Web Client PoC (Next)
+### Phase 9: Web Client PoC ✅ (Complete)
 
 **Goal**: Validate multi-platform architecture by building a minimal web client.
 
-#### Why Web First
-- Maximum platform difference from TUI (TypeScript/DOM vs Rust/terminal)
-- Fast iteration (hot reload, browser devtools)
-- Easy to demo (just share URL)
-- Forces clean data/presentation separation
+**Implementation:**
+- Web client at `clients/web/` using Vite + TypeScript
+- gRPC-Web via Connect (`@connectrpc/connect-web`)
+- WASM integration for layout interpretation (`shared/clients/model` with `wasm` feature)
+- Multi-window support with selection/visual mode rendering
 
-#### Transport: WebSocket + Protobuf
-Browsers can't do native gRPC. Add WebSocket transport to server:
-
+#### Architecture (Implemented)
 ```
-┌─────────────┐     WebSocket      ┌─────────────┐
-│  Web Client │ ◄──────────────►   │   Server    │
-│  (browser)  │   protobuf msgs    │  (Rust)     │
-└─────────────┘                    └─────────────┘
-```
-
-- Server: Add WebSocket endpoint alongside gRPC (`/ws`)
-- Messages: Same protobuf types, just different transport
-- No proxy needed (unlike gRPC-Web)
-
-#### Server Changes
-```
-lib/server/src/
-├── transport/
-│   ├── mod.rs
-│   ├── grpc.rs      # Existing gRPC transport
-│   └── websocket.rs # NEW: WebSocket transport
+┌─────────────────────────────────────────────────────────────┐
+│  Web Client (clients/web/)                                  │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+│  │  TypeScript │  │    WASM     │  │  gRPC-Web   │          │
+│  │  Rendering  │◄─│   (model)   │◄─│  (Connect)  │          │
+│  └─────────────┘  └─────────────┘  └─────────────┘          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- Accept WebSocket upgrade on `/ws`
-- Wrap service calls in WebSocket message framing
-- Reuse existing service implementations
+**Key files:**
+- `src/editor.ts` - Editor state and rendering
+- `src/wasm/` - WASM bindings and type conversion
+- `src/render/` - Layout, Buffer, Overlay renderers
+- `src/cache/` - Viewport caching (Phase 11.1)
 
-#### Web Client Structure
+### Phase 10: Common Client Model ✅ (Complete)
+
+**Goal**: Create shared abstraction layer for all clients.
+
+**Implementation:** `shared/clients/model/` (~2,500 LOC)
+
+**Architecture layers:**
 ```
-clients/web/
-├── package.json
-├── vite.config.ts
-├── src/
-│   ├── main.ts           # Entry point
-│   ├── transport/
-│   │   └── websocket.ts  # WebSocket + protobuf client
-│   ├── services/
-│   │   ├── buffer.ts     # BufferService client
-│   │   ├── input.ts      # InputService client
-│   │   ├── state.ts      # StateService client
-│   │   └── notification.ts # NotificationService client
-│   ├── editor/
-│   │   ├── Editor.ts     # Main editor component
-│   │   ├── Buffer.ts     # Buffer display
-│   │   ├── Cursor.ts     # Cursor rendering
-│   │   └── Statusline.ts # Mode/file info
-│   └── theme/
-│       └── default.ts    # Token → CSS class mapping
-└── index.html
+Server (gRPC v2)
+    ↓
+Wire Format (LogicalLayout, LogicalOverlay, Anchor)
+    ↓
+Common Client Model (traits: Panel, Layout, Focus, Overlay)
+    ↓
+Platform Implementations (TUI adapters, Web WASM)
 ```
 
-#### MVP Features
+**Key types:**
+- Foundation: `ScreenPosition`, `Size`, `Rect`, `Direction`
+- Wire: `LogicalLayout`, `LogicalOverlay`, `Anchor`, `ViewportState`
+- Rendered: `WindowTree`, `RenderedOverlay`, `OverlayStack`
+- Traits: `Panel`, `Layout`, `OverlayManager`, `FocusManager`, `LayoutInterpreter`
 
-| Feature | Description | Service Used |
-|---------|-------------|--------------|
-| Connect | WebSocket handshake | — |
-| Display buffer | Show raw lines | `BufferService.GetRawContent` |
-| Send keys | Keyboard → server | `InputService.SendKeys` |
-| Mode display | Show NORMAL/INSERT | `NotificationService.Subscribe` |
-| Cursor | Blinking caret at position | `StateService.GetCursor` |
+### Phase 10.1: TUI Adapter Integration ✅ (Complete)
 
-#### Tech Stack
-- **Build**: Vite (fast, modern)
-- **Language**: TypeScript
-- **Protobuf**: `protobuf.js` or `@bufbuild/protobuf`
-- **Styling**: Plain CSS or Tailwind
-- **No framework**: Vanilla TS for simplicity
+**Goal**: Integrate Common Client Model with TUI without replacing its compositor.
 
-#### Acceptance Criteria
-- [ ] Server accepts WebSocket connections on `/ws`
-- [ ] Web client connects and displays buffer content
-- [ ] Keyboard input sends keys to server
-- [ ] Mode changes reflected in statusline
-- [ ] Cursor position updates in real-time
-- [ ] Works alongside TUI (same server, multiple clients)
+**Philosophy**: "Extension, not replacement" - TUI keeps its sophisticated compositor, adapters bridge to common model.
 
-### Phase 10: Common Client Model (Future)
-- Create `lib/clients/model/` crate
-- Define Panel, Overlay, Layout, Focus traits
-- Implement LogicalLayout structure (splits, tabs)
-- Client-side `<C-w>` key handling
-- LayoutInterpreter trait for platform adaptation
+**Implementation:** `clients/tui/src/adapter/`
 
-### Phase 11: ViewportService (Future)
-- Server tracks viewports (buffer + cursor per viewport)
-- `CreateViewport`, `CloseViewport`, `FocusViewport`
-- Enables multiple cursors in same buffer
+| Adapter | Common Model Trait | TUI Component |
+|---------|-------------------|---------------|
+| `TuiLayoutAdapter` | `Layout` | `RootCompositor` |
+| `TuiPanel` | `Panel` | `View` |
+| `TuiFocusManager` | `FocusManager` | Compositor focus |
+| `TuiOverlayManager` | `OverlayManager` | Renderer registry |
+| `AnchorConverter` | — | `wire::Anchor` → `layout::Anchor` |
 
-### Phase 12: LayoutService (Future)
-- Logical layout storage on server
-- `GetLayout`, `SetLayout`, `StreamLayout` RPCs
-- Layout sync modes (Independent, Broadcast, Follow, Accept)
-- Session layout persistence (save/restore)
+**Test coverage:** 77 adapter tests, 153 total TUI tests
 
-### Phase 13: SyntaxService (Future)
+### Phase 11: Window Operations ✅ (Complete)
+
+**Goal**: Implement full window management with `<C-w>` commands.
+
+**Implementation:** `server/modules/window-ops/` (19 command handlers)
+
+| Category | Commands | Keys |
+|----------|----------|------|
+| Focus Navigation | 4 | `<C-w>h/j/k/l` |
+| Focus Cycling | 2 | `<C-w>w/W` |
+| Splitting | 3 | `<C-w>s/v/n` |
+| Closing | 2 | `<C-w>c/o` |
+| Resizing | 5 | `<C-w>+/-/>/</=` |
+| Float Zone | 3 | `<C-w>f/]/[` |
+
+**Command flow:**
+```
+<C-w>h → VimWindowResolver → window-ops:focus-left
+      → FocusLeft.execute(runtime)
+      → CompositorApi.navigate(Left) + focus()
+      → StateChanges → layout_changed notification
+```
+
+**Event subscriptions:**
+- `WindowCreated`, `WindowClosed`, `WindowFocused`, `ViewportScrolled`
+
+### Future Phases
+
+#### Phase 12: SyntaxService
 - Server provides tokens via treesitter
 - `GetTokens`, `StreamTokens` RPCs
 - Token types: keyword, string, comment, etc.
 - Remove colors from server-side rendering
 
-### Phase 14: TUI Theme Engine (Future)
+#### Phase 13: TUI Theme Engine
 - Token type → color mapping
 - Theme file format (TOML/JSON)
 - Client-side gutter rendering
 - Full data/presentation separation
 
-### Phase 15: PresenceService (Future)
+#### Phase 14: PresenceService
 - Multi-client awareness
 - Cursor sharing between clients
 - Follow mode for presentations

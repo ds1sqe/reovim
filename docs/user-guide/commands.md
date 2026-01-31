@@ -287,6 +287,59 @@ Folds are computed from treesitter queries when a buffer is opened.
 | `jump_older` | Ctrl-o | Jump to older position |
 | `jump_newer` | Ctrl-i | Jump to newer position |
 
+### Window Operations (19)
+
+Window commands are triggered with `<C-w>` prefix. Implemented in `server/modules/window-ops/`.
+
+**Focus Navigation:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `focus_left` | `<C-w>h` | Focus window to the left |
+| `focus_down` | `<C-w>j` | Focus window below |
+| `focus_up` | `<C-w>k` | Focus window above |
+| `focus_right` | `<C-w>l` | Focus window to the right |
+
+**Focus Cycling:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `focus_next` | `<C-w>w` | Focus next window |
+| `focus_prev` | `<C-w>W` | Focus previous window |
+
+**Splitting:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `split_horizontal` | `<C-w>s` | Split window horizontally |
+| `split_vertical` | `<C-w>v` | Split window vertically |
+| `split_new` | `<C-w>n` | New window with empty buffer |
+
+**Closing:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `close` | `<C-w>c` | Close current window |
+| `close_others` | `<C-w>o` | Close all other windows |
+
+**Resizing:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `increase_height` | `<C-w>+` | Increase window height |
+| `decrease_height` | `<C-w>-` | Decrease window height |
+| `increase_width` | `<C-w>>` | Increase window width |
+| `decrease_width` | `<C-w><` | Decrease window width |
+| `equalize` | `<C-w>=` | Equalize all window sizes |
+
+**Float Zone:**
+| Command | Key | Description |
+|---------|-----|-------------|
+| `toggle_float` | `<C-w>f` | Toggle floating mode |
+| `raise_float` | `<C-w>]` | Raise floating window |
+| `lower_float` | `<C-w>[` | Lower floating window |
+
+**Planned (Not Yet Implemented):**
+- `<C-w>_` / `<C-w>|` - Maximize height/width
+- `<C-w>H/J/K/L` - Move window to edge
+- `<C-w>r/R/x` - Rotate/swap windows
+- `<C-w>T` - Move to new tab
+
 ### Explorer (25)
 
 **Navigation:**
