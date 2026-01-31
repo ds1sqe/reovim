@@ -1764,6 +1764,7 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-input",
  "reovim-driver-session",
+ "reovim-driver-syntax",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-defaults",
@@ -1967,7 +1968,20 @@ dependencies = [
 name = "reovim-driver-syntax"
 version = "0.9.3-dev"
 dependencies = [
+ "parking_lot",
  "reovim-kernel",
+]
+
+[[package]]
+name = "reovim-driver-syntax-treesitter"
+version = "0.9.3-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-syntax",
+ "streaming-iterator",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -2070,6 +2084,7 @@ dependencies = [
  "reovim-module-motions",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
+ "reovim-module-treesitter-rust",
  "reovim-module-undo",
  "reovim-module-vfs-local",
  "reovim-module-vim",
@@ -2163,6 +2178,18 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-treesitter-rust"
+version = "0.9.3-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -2517,6 +2544,12 @@ dependencies = [
  "libc",
  "windows-sys 0.60.2",
 ]
+
+[[package]]
+name = "streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
 
 [[package]]
 name = "strsim"
@@ -2981,6 +3014,35 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tree-sitter"
+version = "0.24.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5387dffa7ffc7d2dae12b50c6f7aab8ff79d6210147c6613561fc3d474c6f75"
+dependencies = [
+ "cc",
+ "regex",
+ "regex-syntax",
+ "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-language"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ae62f7eae5eb549c71b76658648b72cc6111f2d87d24a1e31fa907f4943e3ce"
+
+[[package]]
+name = "tree-sitter-rust"
+version = "0.23.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca8ccb3e3a3495c8a943f6c3fd24c3804c471fd7f4f16087623c7fa4c0068e8a"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]

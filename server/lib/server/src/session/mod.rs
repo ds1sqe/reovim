@@ -9,6 +9,7 @@ mod registry;
 #[allow(clippy::module_inception)]
 mod session;
 mod state;
+mod syntax_state;
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
@@ -16,4 +17,5 @@ pub use {
     registry::SessionRegistry,
     session::Session,
     state::SessionState,
+    syntax_state::SyntaxSessionState,
 };

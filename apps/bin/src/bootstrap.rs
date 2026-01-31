@@ -30,12 +30,15 @@ use {
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
+    reovim_driver_syntax::SyntaxFactoryStore,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
-    reovim_server::{CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry, SessionState},
+    reovim_server::{
+        CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry, SessionState, SyntaxSessionState,
+    },
 };
 
 /// Create a session state with fully-initialized module registries.
@@ -89,6 +92,10 @@ pub fn create_session_state() -> SessionState {
         resolver_registry,
         None, // No compositor (client-side concern)
     );
+
+    // Extract syntax factory from SyntaxFactoryStore (populated by treesitter modules)
+    // and configure SyntaxSessionState
+    configure_syntax_highlighting(&mut state, &services);
 
     // Trigger empty session handlers to create scratch buffer if needed
     trigger_empty_session_handlers(&mut state, &services);
@@ -299,6 +306,41 @@ fn initialize_modules(ctx: &ModuleContext) {
     }
 
     tracing::info!("Module initialization complete");
+}
+
+/// Configure syntax highlighting from `SyntaxFactoryStore`.
+///
+/// Extracts syntax factories registered by treesitter modules during `init()`
+/// and configures the `SyntaxSessionState` with the first available factory.
+///
+/// This follows the same extraction pattern as other registries:
+/// - Modules register into `SyntaxFactoryStore` during `init()`
+/// - Bootstrap extracts and configures `SyntaxSessionState`
+/// - NO direct imports of language-specific modules here!
+fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
+    // Get the SyntaxFactoryStore (populated by treesitter modules during init)
+    let Some(store) = services.get::<SyntaxFactoryStore>() else {
+        tracing::debug!("No SyntaxFactoryStore found, syntax highlighting disabled");
+        return;
+    };
+
+    // Take all factories and use the first one
+    // Future: aggregate into CompositeFactory for multiple languages
+    let factories = store.take_factories();
+    if factories.is_empty() {
+        tracing::debug!("No syntax factories registered");
+        return;
+    }
+
+    // For now, use first factory (TODO: CompositeFactory for multiple languages)
+    let factory = factories.into_iter().next().unwrap();
+    let languages = factory.supported_languages();
+
+    tracing::info!(count = 1, ?languages, "Configured syntax highlighting from modules");
+
+    // Configure SyntaxSessionState with the factory (after logging releases borrow)
+    let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+    syntax_state.set_factory(factory);
 }
 
 /// Get the default data directory for modules.

@@ -33,6 +33,9 @@ reovim-driver-session = { workspace = true }
 # Module bundle (provides DefaultsModule::create_modules)
 reovim-module-defaults = { workspace = true }
 
+# Syntax driver (for SyntaxFactoryStore registry extraction)
+reovim-driver-syntax = { workspace = true }
+
 # Client crates (optional, for CLI and TUI commands)
 reovim-client-cli = { workspace = true, optional = true }
 reovim-client-tui = { workspace = true, optional = true }

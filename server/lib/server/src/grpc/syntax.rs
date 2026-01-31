@@ -32,7 +32,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{SessionId, SessionRegistry};
+use crate::session::{SessionId, SessionRegistry, SyntaxSessionState};
 
 /// gRPC `SyntaxService` implementation.
 ///
@@ -237,7 +237,7 @@ impl SyntaxService for SyntaxServiceImpl {
         };
 
         session
-            .with_state(|state| {
+            .with_state_mut(|state| {
                 let buffer_id = requested_buffer_id
                     .or_else(|| state.active_buffer())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
@@ -252,13 +252,51 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Detect language from file path
                 let (language_id, _language_name) = detect_language_from_path(buffer.file_path());
 
-                // TODO: When syntax drivers are integrated into sessions:
-                // 1. Get syntax driver for this buffer from session
-                // 2. Call driver.highlights(byte_range) to get HighlightSpan
-                // 3. Convert HighlightSpan to TokenSpan using highlight_group_to_category()
-                //
-                // For now, return empty tokens - clients should render plain text
-                let tokens: Vec<TokenSpan> = Vec::new();
+                // Get buffer content for byte range calculation
+                let content = buffer.content();
+
+                // Calculate byte range for requested lines
+                let start_line = req.start_line.unwrap_or(0) as usize;
+                let end_line = match req.end_line {
+                    Some(e) if (e as usize) < total_lines => e as usize,
+                    _ => total_lines.saturating_sub(1),
+                };
+
+                // Convert line range to byte range
+                let start_byte =
+                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(start_line, 0));
+                let end_byte = if end_line < total_lines {
+                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(end_line + 1, 0))
+                } else {
+                    content.len()
+                };
+                let byte_range = start_byte..end_byte;
+
+                // Drop buffer read lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Get syntax session state from extensions
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+
+                // Get or create driver for this buffer
+                let tokens = if syntax_state.ensure_driver(buffer_id, language_id, &content) {
+                    syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
+                        // Get highlights from driver and convert to TokenSpan
+                        driver
+                            .highlights(byte_range)
+                            .into_iter()
+                            .map(|span| TokenSpan {
+                                start_byte: span.start_byte as u32,
+                                end_byte: span.end_byte as u32,
+                                category: highlight_group_to_category(span.group).to_string(),
+                            })
+                            .collect()
+                    })
+                } else {
+                    // No driver available for this language
+                    Vec::new()
+                };
 
                 Ok(Response::new(GetTokensResponse {
                     buffer_id: buffer_id.as_usize() as u64,
@@ -335,7 +373,7 @@ impl SyntaxService for SyntaxServiceImpl {
         let session = self.get_session()?;
 
         session
-            .with_state(|state| {
+            .with_state_mut(|state| {
                 let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -346,9 +384,15 @@ impl SyntaxService for SyntaxServiceImpl {
                 let (language_id, language_name) = detect_language_from_path(buffer.file_path());
                 let extensions = extensions_for_language(language_id);
 
-                // TODO: Check SyntaxDriverFactory to see if parser is actually available
-                // For now, report no parser available
-                let has_parser = false;
+                // Drop buffer lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Check if a parser is available via the factory
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+                let has_parser = syntax_state
+                    .factory()
+                    .is_some_and(|f| f.supports(language_id));
 
                 Ok(Response::new(GetLanguageInfoResponse {
                     language_id: language_id.to_string(),

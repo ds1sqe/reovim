@@ -75,6 +75,7 @@ mod fold;
 mod highlight;
 mod injection;
 mod registry;
+mod store;
 
 // ============================================================================
 // Re-exports
@@ -83,7 +84,7 @@ mod registry;
 // Core traits
 pub use {
     cache::SyntaxCache, driver::SyntaxDriver, factory::SyntaxDriverFactory,
-    registry::LanguageRegistry,
+    registry::LanguageRegistry, store::SyntaxFactoryStore,
 };
 
 // Types

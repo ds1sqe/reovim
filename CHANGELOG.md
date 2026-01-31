@@ -177,6 +177,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   token categories (mechanism), client applies colors via theme (policy). Foundation
   for Phase 13 (TUI Theme Engine). Part of Epic #465. (#465)
 
+- **Syntax Driver Integration (Phase 12.1)**: Wired tree-sitter drivers into server
+  so `GetTokens` returns real syntax tokens. Architecture follows self-registration
+  pattern: modules register factories during `init()`, bootstrap extracts via
+  `ServiceRegistry`. Three-layer structure: `reovim-driver-syntax` (traits, ~100 LOC
+  `SyntaxFactoryStore`), `reovim-driver-syntax-treesitter` (~900 LOC, generic
+  `TreeSitterDriver` with thread-safe parsing, `CaptureMapper` with 120+ mappings),
+  `reovim-module-treesitter-rust` (~350 LOC, Rust grammar + highlights.scm query).
+  Server integration: `SyntaxSessionState` stores per-buffer drivers, updated
+  `GetTokens` to use `ensure_driver()` and `driver.highlights()`, `GetLanguageInfo`
+  reports parser availability via factory. Bootstrap: `configure_syntax_highlighting()`
+  extracts factory from `SyntaxFactoryStore` without importing language modules
+  (kernel purity). 29 tests across all layers, 95%+ coverage. Architecture verified:
+  zero tree-sitter deps in driver crate, mechanism/policy separation maintained,
+  matches Linux kernel VFS pattern. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

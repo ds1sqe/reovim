@@ -44,5 +44,5 @@ pub use {
         ModeRegistry,
     },
     server::{Server, SessionFactory},
-    session::{Session, SessionId, SessionRegistry, SessionState},
+    session::{Session, SessionId, SessionRegistry, SessionState, SyntaxSessionState},
 };
