@@ -14,13 +14,32 @@ use {
         GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
         GetScreenContentResponse, GetSelectionRequest, GetSelectionResponse,
         GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, Position, RegisterEntry,
-        SubmitCaptureRequest, SubmitCaptureResponseReply, notification::Payload,
-        state_service_server::StateService,
+        SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, WindowLeaf, WindowNode,
+        WindowRect, WindowSplit, notification::Payload, state_service_server::StateService,
+        window_node::Node,
     },
     tonic::{Request, Response, Status},
 };
 
 use crate::session::{CaptureResult, Session, SessionId, SessionRegistry, wait_for_capture};
+
+/// Convert a driver-layer `Window` to a proto `WindowLeaf`.
+///
+/// This conversion happens in the gRPC layer to keep the driver crate
+/// free of protocol dependencies.
+#[allow(clippy::cast_possible_truncation)]
+fn window_to_leaf(window: &reovim_driver_session::Window) -> WindowLeaf {
+    WindowLeaf {
+        window_id: window.id.as_usize() as u64,
+        buffer_id: window.buffer_id.map_or(0, |id| id.as_usize() as u64),
+        rect: Some(WindowRect {
+            x: 0, // Position calculated by client based on layout
+            y: 0,
+            width: u64::from(window.viewport.width),
+            height: u64::from(window.viewport.height),
+        }),
+    }
+}
 
 /// gRPC `StateService` implementation.
 ///
@@ -129,22 +148,127 @@ impl StateService for StateServiceImpl {
 
     /// Get window layout tree.
     ///
-    /// Not yet implemented - requires layout compositor integration.
+    /// Returns the current window layout as a tree structure. Each window
+    /// is represented as a `WindowLeaf` with its buffer, position, and size.
+    /// Multiple windows are wrapped in a `WindowSplit` container.
+    ///
+    /// # Layout Model
+    ///
+    /// For Phase 11, windows are stored in a flat list. The proto tree is
+    /// constructed as:
+    /// - 0 windows: empty response (no root)
+    /// - 1 window: single `WindowLeaf`
+    /// - N windows: `WindowSplit` with N leaf children (vertical split)
+    ///
+    /// Phase 12 (`LayoutService`) will add proper nested split support.
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_layout(
         &self,
         _request: Request<GetLayoutRequest>,
     ) -> Result<Response<GetLayoutResponse>, Status> {
-        Err(Status::unimplemented("GetLayout not yet implemented"))
+        let session = self.get_session()?;
+
+        let (root, focused_window_id) = session
+            .with_state(|state| {
+                let driver_session = state.driver_session();
+                let layout = &driver_session.windows;
+
+                // Get focused window ID
+                let focused_id = layout.active_id().map_or(0, |id| id.as_usize() as u64);
+
+                // Build window tree
+                let root = match layout.len() {
+                    0 => None,
+                    1 => {
+                        // Single window: return as leaf
+                        layout.active().map(|w| WindowNode {
+                            node: Some(Node::Leaf(window_to_leaf(w))),
+                        })
+                    }
+                    _ => {
+                        // Multiple windows: wrap in vertical split
+                        let children: Vec<WindowNode> = layout
+                            .windows
+                            .iter()
+                            .map(|w| WindowNode {
+                                node: Some(Node::Leaf(window_to_leaf(w))),
+                            })
+                            .collect();
+
+                        Some(WindowNode {
+                            node: Some(Node::Split(WindowSplit {
+                                direction: SplitDirection::Vertical.into(),
+                                children,
+                            })),
+                        })
+                    }
+                };
+
+                (root, focused_id)
+            })
+            .await;
+
+        Ok(Response::new(GetLayoutResponse {
+            root,
+            focused_window_id,
+        }))
     }
 
     /// Get visible line range for a window.
     ///
-    /// Not yet implemented - requires viewport tracking.
+    /// Returns the first and last visible line indices based on the window's
+    /// viewport scroll position and height.
+    ///
+    /// # Arguments
+    ///
+    /// - `window_id`: Optional window ID. If not specified, uses the focused window.
+    ///
+    /// # Returns
+    ///
+    /// - `first_line`: First visible line (0-indexed, based on `scroll_top`)
+    /// - `last_line`: Last visible line (0-indexed, `scroll_top` + height - 1)
+    /// - `viewport_height`: Number of visible lines
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_visible_lines(
         &self,
-        _request: Request<GetVisibleLinesRequest>,
+        request: Request<GetVisibleLinesRequest>,
     ) -> Result<Response<GetVisibleLinesResponse>, Status> {
-        Err(Status::unimplemented("GetVisibleLines not yet implemented"))
+        let requested_window_id = request.into_inner().window_id;
+
+        let session = self.get_session()?;
+
+        let result = session
+            .with_state(|state| {
+                let driver_session = state.driver_session();
+                let layout = &driver_session.windows;
+
+                // Find the requested window or use active
+                let window = requested_window_id.map_or_else(
+                    || layout.active(),
+                    |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
+                );
+
+                window.map(|w| {
+                    let viewport = &w.viewport;
+                    (
+                        w.id.as_usize() as u64,
+                        viewport.scroll_top as u64,
+                        viewport.last_visible_line() as u64,
+                        u64::from(viewport.height),
+                    )
+                })
+            })
+            .await;
+
+        let (window_id, first_line, last_line, viewport_height) =
+            result.ok_or_else(|| Status::not_found("Window not found"))?;
+
+        Ok(Response::new(GetVisibleLinesResponse {
+            window_id,
+            first_line,
+            last_line,
+            viewport_height,
+        }))
     }
 
     /// Get selection state.
@@ -492,15 +616,133 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_layout_unimplemented() {
+    async fn test_get_layout_empty() {
+        // Session with no windows
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetLayoutRequest {});
         let response = service.get_layout(request).await;
 
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        // Empty layout: no root node
+        assert!(resp.root.is_none());
+        assert_eq!(resp.focused_window_id, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_layout_single_window() {
+        use reovim_driver_session::{Viewport, Window};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create a buffer and add a window
+        session
+            .with_state_mut(|state| {
+                let buffer_id = state.create_buffer("hello world");
+                // Create a window with the buffer
+                let mut window = Window::with_buffer(buffer_id);
+                window.viewport = Viewport::new(80, 24);
+                state.driver_session_mut().windows.add(window);
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetLayoutRequest {});
+        let response = service.get_layout(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+
+        // Should have a root node (single leaf)
+        assert!(resp.root.is_some());
+        let root = resp.root.unwrap();
+
+        // Check it's a leaf
+        match root.node {
+            Some(reovim_protocol::v2::window_node::Node::Leaf(leaf)) => {
+                assert_eq!(leaf.rect.as_ref().unwrap().width, 80);
+                assert_eq!(leaf.rect.as_ref().unwrap().height, 24);
+            }
+            _ => panic!("Expected a leaf node"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_visible_lines_no_window() {
+        // Session with no windows
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let response = service.get_visible_lines(request).await;
+
+        // No window = NotFound
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_visible_lines_with_window() {
+        use reovim_driver_session::{Viewport, Window};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create a buffer and window with specific viewport
+        session
+            .with_state_mut(|state| {
+                let buffer_id = state.create_buffer("line0\nline1\nline2\nline3");
+                let mut window = Window::with_buffer(buffer_id);
+                window.viewport = Viewport::new(80, 24);
+                // Set scroll_top to 0 (default)
+                state.driver_session_mut().windows.add(window);
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let response = service.get_visible_lines(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+
+        assert_eq!(resp.first_line, 0);
+        assert_eq!(resp.last_line, 23); // scroll_top(0) + height(24) - 1
+        assert_eq!(resp.viewport_height, 24);
+    }
+
+    #[tokio::test]
+    async fn test_get_visible_lines_with_scroll() {
+        use reovim_driver_session::{Viewport, Window};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create a buffer and window with scrolled viewport
+        session
+            .with_state_mut(|state| {
+                let buffer_id = state.create_buffer("content");
+                let mut window = Window::with_buffer(buffer_id);
+                let mut viewport = Viewport::new(80, 24);
+                viewport.scroll_top = 10; // Scrolled down 10 lines
+                window.viewport = viewport;
+                state.driver_session_mut().windows.add(window);
+            })
+            .await;
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let response = service.get_visible_lines(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+
+        assert_eq!(resp.first_line, 10);
+        assert_eq!(resp.last_line, 33); // scroll_top(10) + height(24) - 1
+        assert_eq!(resp.viewport_height, 24);
     }
 
     #[tokio::test]

@@ -15,6 +15,15 @@
 //! This module also provides command ID constants for window operations
 //! (focus, split, resize, etc.) used by keybinding modules like `vim`.
 //!
+//! # Commands
+//!
+//! This module implements command handlers for window operations:
+//! - Focus navigation: `<C-w>h/j/k/l` - move focus directionally
+//! - Focus cycling: `<C-w>w/W` - cycle through windows
+//! - Splitting: `<C-w>s/v` - horizontal/vertical splits
+//! - Closing: `<C-w>c/o` - close current/close others
+//! - Float zone: Toggle, raise, lower floating windows
+//!
 //! # Event Subscriptions
 //!
 //! - `WindowCreated`: Initialize window-specific state
@@ -22,14 +31,19 @@
 //! - `WindowFocused`: Update active window tracking, trigger highlights
 //! - `ViewportScrolled`: Handle lazy loading, update visible ranges
 
+pub mod command;
 pub mod ids;
 
 use std::sync::Arc;
 
-use reovim_kernel::api::v1::{
-    EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription, Version,
-    events::kernel::{ViewportScrolled, WindowClosed, WindowCreated, WindowFocused, priority},
-    pr_info,
+use {
+    reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
+    reovim_kernel::api::v1::{
+        EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription,
+        Version,
+        events::kernel::{ViewportScrolled, WindowClosed, WindowCreated, WindowFocused, priority},
+        pr_info,
+    },
 };
 
 /// Window operations module.
@@ -71,6 +85,12 @@ impl Module for WindowOps {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register command handlers (Epic #417 Part 3)
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in self.command_handlers() {
+            command_store.add(handler);
+        }
+
         let bus = Arc::clone(&ctx.kernel.event_bus);
 
         // Subscribe to window creation events
@@ -122,7 +142,11 @@ impl Module for WindowOps {
             });
         self.subscriptions.push(sub_scrolled);
 
-        pr_info!("WindowOps module initialized with {} subscriptions", self.subscriptions.len());
+        pr_info!(
+            "WindowOps module initialized with {} commands and {} subscriptions",
+            command::all_commands().len(),
+            self.subscriptions.len()
+        );
         ProbeResult::Success
     }
 
@@ -132,6 +156,12 @@ impl Module for WindowOps {
         self.subscriptions.clear();
         pr_info!("WindowOps module exiting, cleared {} subscriptions", count);
         Ok(())
+    }
+}
+
+impl CommandProvider for WindowOps {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        command::all_commands()
     }
 }
 

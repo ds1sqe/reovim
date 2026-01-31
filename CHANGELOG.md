@@ -87,6 +87,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   148 Rust tests. Build pipeline: `npm run build:wasm` triggers wasm-pack before
   Vite build. Part of Epic #465. (#465)
 
+- **Server-managed viewports (Phase 11)**: Implemented server-authoritative
+  window layout with full command support. Server changes: Implemented
+  `GetLayout` RPC (was returning unimplemented) - returns window tree with
+  `WindowNode` (leaf/split) structure, focused window ID, and per-window
+  viewport dimensions. Implemented `GetVisibleLines` RPC - returns visible
+  line range (`first_line`, `last_line`, `viewport_height`) for viewport
+  scrolling support. Window-ops module: Added 19 command handlers implementing
+  `CommandHandler` trait: focus navigation (h/j/k/l, 4 commands), focus cycling
+  (w/W, 2 commands), splitting (s/v/n, 3 commands), closing (c/o, 2 commands),
+  resizing (+/-/>/<=/5 commands), float zone toggle/raise/lower (3 commands).
+  Commands delegate to `CompositorApi` methods on `SessionRuntime`. TUI already
+  integrated: receives `LayoutChanged` notifications via streaming, updates
+  `state.windows` and `focused_window_id`, triggers redraw. End-to-end flow:
+  `<C-w>v` → server executes `SplitVertical` → `CompositorApi::split()` →
+  `record_window_created()` → `layout_changed` notification → TUI updates.
+  Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

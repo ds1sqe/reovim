@@ -2212,6 +2212,9 @@ dependencies = [
 name = "reovim-module-window-ops"
 version = "0.9.3-dev"
 dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-display",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
