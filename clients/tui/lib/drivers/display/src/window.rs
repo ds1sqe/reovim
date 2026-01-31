@@ -67,20 +67,19 @@ mod tests {
 
     #[test]
     fn test_direction_variants() {
-        // Verify direction variants exist
-        let _up = Direction::Up;
-        let _down = Direction::Down;
-        let _left = Direction::Left;
-        let _right = Direction::Right;
+        // Verify direction variants exist and are distinct
+        assert_ne!(Direction::Up, Direction::Down);
+        assert_ne!(Direction::Left, Direction::Right);
+        assert_ne!(Direction::Up, Direction::Left);
 
         // Verify NavigateDirection alias works
-        let _nav: NavigateDirection = Direction::Left;
+        let nav: NavigateDirection = Direction::Left;
+        assert_eq!(nav, Direction::Left);
     }
 
     #[test]
     fn test_split_direction_variants() {
-        let _h = SplitDirection::Horizontal;
-        let _v = SplitDirection::Vertical;
+        assert_ne!(SplitDirection::Horizontal, SplitDirection::Vertical);
     }
 
     #[test]
