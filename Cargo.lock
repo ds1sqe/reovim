@@ -1978,6 +1978,7 @@ version = "0.9.3-dev"
 dependencies = [
  "parking_lot",
  "reovim-driver-syntax",
+ "reovim-kernel",
  "streaming-iterator",
  "tracing",
  "tree-sitter",

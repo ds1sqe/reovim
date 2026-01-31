@@ -155,6 +155,39 @@ impl InjectionLayer {
     }
 }
 
+/// Factory trait for creating injection layers.
+///
+/// Language modules implement this trait to enable their language to be used
+/// as an embedded language within other documents (e.g., Rust code blocks
+/// inside Markdown files).
+///
+/// This trait lives in the driver crate (not the traits crate) because it
+/// requires tree-sitter types that should not pollute the trait boundary.
+///
+/// # Example
+///
+/// ```ignore
+/// impl InjectionLayerFactory for RustSyntaxFactory {
+///     fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+///         let language = tree_sitter_rust::LANGUAGE;
+///         InjectionLayer::new("rust", &language.into(), self.highlight_query.clone(), capture_mapper)
+///     }
+///
+///     fn language_id(&self) -> &'static str {
+///         "rust"
+///     }
+/// }
+/// ```
+pub trait InjectionLayerFactory: Send + Sync {
+    /// Create an injection layer for embedded language highlighting.
+    ///
+    /// Returns `None` if the layer cannot be created (e.g., query compilation failure).
+    fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer>;
+
+    /// The language ID this factory supports (e.g., "rust", "python").
+    fn language_id(&self) -> &'static str;
+}
+
 /// Manages injection detection and highlighting.
 ///
 /// The injection manager:
@@ -284,6 +317,112 @@ impl std::fmt::Debug for InjectionManager {
             .field("layer_count", &self.layers.len())
             .field("languages", &self.layers.keys().collect::<Vec<_>>())
             .finish_non_exhaustive()
+    }
+}
+
+// ============================================================================
+// InjectionLayerStore - Global Registry for Layer Factories
+// ============================================================================
+
+/// Store for injection layer factories registered by modules during init.
+///
+/// This follows the same pattern as `SyntaxFactoryStore` but lives in the
+/// driver crate to keep tree-sitter types contained.
+///
+/// # Usage
+///
+/// Modules register their factories during `init()`:
+///
+/// ```ignore
+/// impl Module for TreesitterRustModule {
+///     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+///         // Register as SyntaxDriverFactory
+///         let store = ctx.services.get_or_create::<SyntaxFactoryStore>();
+///         store.add(Arc::new(RustSyntaxFactory::new()));
+///
+///         // Also register as InjectionLayerFactory
+///         let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
+///         injection_store.add(Arc::new(RustSyntaxFactory::new()));
+///
+///         ProbeResult::Success
+///     }
+/// }
+/// ```
+///
+/// When creating a driver with injection support (e.g., Markdown), query the
+/// store to get factories for detected languages:
+///
+/// ```ignore
+/// let store = services.get::<InjectionLayerStore>()?;
+/// if let Some(factory) = store.find("rust") {
+///     let layer = factory.create_layer(capture_mapper.clone())?;
+///     manager.register_layer(layer);
+/// }
+/// ```
+#[derive(Default)]
+pub struct InjectionLayerStore {
+    /// Registered factories (populated during module init).
+    factories: parking_lot::RwLock<Vec<Arc<dyn InjectionLayerFactory>>>,
+}
+
+impl InjectionLayerStore {
+    /// Create a new empty store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Add a factory to the store.
+    ///
+    /// Called by syntax modules during `init()`.
+    pub fn add(&self, factory: Arc<dyn InjectionLayerFactory>) {
+        self.factories.write().push(factory);
+    }
+
+    /// Find a factory for the given language.
+    ///
+    /// Returns the first factory that matches the language ID.
+    #[must_use]
+    pub fn find(&self, language_id: &str) -> Option<Arc<dyn InjectionLayerFactory>> {
+        self.factories
+            .read()
+            .iter()
+            .find(|f| f.language_id() == language_id)
+            .cloned()
+    }
+
+    /// Get all supported language IDs.
+    #[must_use]
+    pub fn supported_languages(&self) -> Vec<String> {
+        self.factories
+            .read()
+            .iter()
+            .map(|f| f.language_id().to_string())
+            .collect()
+    }
+
+    /// Get the number of registered factories.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.factories.read().len()
+    }
+
+    /// Check if no factories are registered.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.factories.read().is_empty()
+    }
+}
+
+/// Implement `Service` trait for `ServiceRegistry` compatibility.
+impl reovim_kernel::api::v1::Service for InjectionLayerStore {}
+
+impl std::fmt::Debug for InjectionLayerStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InjectionLayerStore")
+            .field("count", &self.len())
+            .field("languages", &self.supported_languages())
+            .finish()
     }
 }
 
@@ -432,5 +571,68 @@ mod tests {
 
         // Should have highlights now
         assert!(!highlights.is_empty(), "Expected highlights with registered layer");
+    }
+
+    // ========================================================================
+    // InjectionLayerStore Tests
+    // ========================================================================
+
+    /// Mock factory for testing the store.
+    struct MockLayerFactory {
+        language: &'static str,
+    }
+
+    impl InjectionLayerFactory for MockLayerFactory {
+        fn create_layer(&self, _capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+            // For testing, we don't actually create a layer
+            None
+        }
+
+        fn language_id(&self) -> &'static str {
+            self.language
+        }
+    }
+
+    #[test]
+    fn test_injection_layer_store_new_empty() {
+        let store = InjectionLayerStore::new();
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn test_injection_layer_store_add_and_find() {
+        let store = InjectionLayerStore::new();
+
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+        store.add(Arc::new(MockLayerFactory { language: "python" }));
+
+        assert_eq!(store.len(), 2);
+        assert!(store.find("rust").is_some());
+        assert!(store.find("python").is_some());
+        assert!(store.find("javascript").is_none());
+    }
+
+    #[test]
+    fn test_injection_layer_store_supported_languages() {
+        let store = InjectionLayerStore::new();
+
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+        store.add(Arc::new(MockLayerFactory { language: "python" }));
+
+        let languages = store.supported_languages();
+        assert_eq!(languages.len(), 2);
+        assert!(languages.contains(&"rust".to_string()));
+        assert!(languages.contains(&"python".to_string()));
+    }
+
+    #[test]
+    fn test_injection_layer_store_debug() {
+        let store = InjectionLayerStore::new();
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+
+        let debug = format!("{store:?}");
+        assert!(debug.contains("InjectionLayerStore"));
+        assert!(debug.contains("count"));
     }
 }

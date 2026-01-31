@@ -16,6 +16,9 @@ workspace = true
 # Driver layer trait - what we implement
 reovim-driver-syntax = { workspace = true }
 
+# Kernel API for Service trait
+reovim-kernel = { workspace = true }
+
 # Tree-sitter core - NO language grammars here!
 # Language grammars are in modules (treesitter-rust, treesitter-markdown, etc.)
 tree-sitter = "0.24"

@@ -61,7 +61,7 @@ mod injection;
 pub use {
     capture_mapper::CaptureMapper,
     driver::TreeSitterDriver,
-    injection::{InjectionLayer, InjectionManager},
+    injection::{InjectionLayer, InjectionLayerFactory, InjectionLayerStore, InjectionManager},
 };
 
 // Re-export tree_sitter types that language modules need

@@ -26,12 +26,14 @@ use std::{
 
 use {
     parking_lot::{Mutex, RwLock},
-    reovim_driver_syntax::{FoldRange, HighlightSpan, Injection, SyntaxDriver, SyntaxEdit},
+    reovim_driver_syntax::{
+        FoldKind, FoldRange, HighlightSpan, Injection, SyntaxDriver, SyntaxEdit,
+    },
     streaming_iterator::StreamingIterator,
-    tree_sitter::{InputEdit, Parser, Point, Query, QueryCursor, Tree},
+    tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
 };
 
-use crate::CaptureMapper;
+use crate::{CaptureMapper, InjectionManager};
 
 /// Tree-sitter based syntax driver.
 ///
@@ -67,11 +69,16 @@ pub struct TreeSitterDriver {
     highlight_query: Arc<Query>,
 
     /// Optional folds query
-    #[allow(dead_code)]
     folds_query: Option<Arc<Query>>,
 
     /// Optional injections query
     injections_query: Option<Arc<Query>>,
+
+    /// Injection manager for embedded language highlighting.
+    ///
+    /// Present when `injections_query` is provided. Coordinates highlighting
+    /// of embedded languages (e.g., Rust code in Markdown fenced blocks).
+    injection_manager: Option<Mutex<InjectionManager>>,
 
     /// Capture name to HighlightGroup mapper
     capture_mapper: Arc<CaptureMapper>,
@@ -116,6 +123,7 @@ impl TreeSitterDriver {
             highlight_query,
             folds_query: None,
             injections_query: None,
+            injection_manager: None,
             capture_mapper,
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
@@ -144,6 +152,11 @@ impl TreeSitterDriver {
         let mut parser = Parser::new();
         parser.set_language(language).ok()?;
 
+        // Create injection manager if injections query is provided
+        let injection_manager = injections_query
+            .as_ref()
+            .map(|_| Mutex::new(InjectionManager::new(capture_mapper.clone())));
+
         Some(Self {
             language_id: language_id.into(),
             parser: Mutex::new(parser),
@@ -152,6 +165,7 @@ impl TreeSitterDriver {
             highlight_query,
             folds_query,
             injections_query,
+            injection_manager,
             capture_mapper,
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
@@ -174,15 +188,76 @@ impl TreeSitterDriver {
     }
 
     /// Check if this driver supports injections.
+    ///
+    /// Returns `true` if both an injections query and injection manager are
+    /// present. The injection manager coordinates highlighting of embedded
+    /// languages.
     #[must_use]
     pub const fn supports_injections(&self) -> bool {
-        self.injections_query.is_some()
+        self.injections_query.is_some() && self.injection_manager.is_some()
+    }
+
+    /// Get a reference to the injection manager (for registering layers).
+    ///
+    /// Returns `None` if the driver was not created with an injections query.
+    #[must_use]
+    pub const fn injection_manager(&self) -> Option<&Mutex<InjectionManager>> {
+        self.injection_manager.as_ref()
     }
 
     /// Check if this driver supports folds.
     #[must_use]
     pub const fn supports_folds(&self) -> bool {
         self.folds_query.is_some()
+    }
+
+    /// Map a tree-sitter node kind to a `FoldKind`.
+    ///
+    /// Determines the semantic type of a foldable region based on the parent
+    /// node's kind. This allows the UI to display appropriate fold icons.
+    fn node_to_fold_kind(node: Option<Node>) -> FoldKind {
+        let Some(node) = node else {
+            return FoldKind::Block;
+        };
+
+        match node.kind() {
+            // Functions
+            "function_item"
+            | "function_definition"
+            | "closure_expression"
+            | "method_definition" => FoldKind::Function,
+            // Classes/structs
+            "struct_item" | "enum_item" | "impl_item" | "trait_item" | "union_item"
+            | "class_definition" | "class_declaration" => FoldKind::Class,
+            // Imports
+            "use_declaration" | "import_statement" | "import_from_statement" => FoldKind::Import,
+            // Comments
+            "line_comment" | "block_comment" | "comment" => FoldKind::Comment,
+            // Default: generic block
+            _ => FoldKind::Block,
+        }
+    }
+
+    /// Extract the first line of a node as preview text.
+    ///
+    /// Used to show a collapsed fold indicator with meaningful context,
+    /// e.g., "fn main() { ... }" instead of just "{ ... }".
+    fn extract_preview(content: &str, node: Node) -> String {
+        let start_byte = node.start_byte();
+        let end_byte = node.end_byte().min(content.len());
+
+        if start_byte >= end_byte || start_byte >= content.len() {
+            return String::new();
+        }
+
+        let text = &content[start_byte..end_byte];
+        text.lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .take(80) // Limit preview length
+            .collect()
     }
 }
 
@@ -278,57 +353,88 @@ impl SyntaxDriver for TreeSitterDriver {
     }
 
     fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
-        // Get read locks
-        let tree_guard = self.tree.read();
-        let Some(tree) = tree_guard.as_ref() else {
-            return Vec::new();
+        // ===== STEP 1: Get parent language highlights =====
+        let parent_count;
+        let mut highlights = {
+            let tree_guard = self.tree.read();
+            let Some(tree) = tree_guard.as_ref() else {
+                return Vec::new();
+            };
+
+            let content = self.content.read();
+
+            let mut cursor = self.query_cursor.lock();
+            cursor.set_byte_range(byte_range.clone());
+
+            let mut parent_highlights = Vec::new();
+            let capture_names = self.highlight_query.capture_names();
+
+            // Query parent highlights
+            let mut matches =
+                cursor.matches(&self.highlight_query, tree.root_node(), content.as_bytes());
+            while let Some(match_) = matches.next() {
+                for capture in match_.captures {
+                    let capture_name = &capture_names[capture.index as usize];
+
+                    // Skip non-highlight captures (decoration.*, textobject.*, etc.)
+                    if capture_name.starts_with("decoration.")
+                        || capture_name.starts_with("textobject.")
+                        || capture_name.starts_with("local.")
+                        || capture_name.contains(".inner")
+                        || capture_name.contains(".outer")
+                    {
+                        continue;
+                    }
+
+                    let group = self.capture_mapper.map(capture_name);
+                    let node = capture.node;
+
+                    parent_highlights.push(HighlightSpan::new(
+                        node.start_byte(),
+                        node.end_byte(),
+                        group,
+                    ));
+                }
+            }
+
+            parent_count = parent_highlights.len();
+            parent_highlights
+            // Locks dropped here: cursor, content, tree_guard
         };
 
-        let content = self.content.read();
+        // ===== STEP 2: Get injection highlights (if manager exists) =====
+        let injection_count;
+        if let Some(ref manager_mutex) = self.injection_manager {
+            // Get injections (re-acquires tree/content/cursor locks internally)
+            let injections = self.injections();
 
-        // Prepare cursor
-        let mut cursor = self.query_cursor.lock();
-        cursor.set_byte_range(byte_range.clone());
+            if injections.is_empty() {
+                injection_count = 0;
+            } else {
+                // Get content for injection highlighting
+                let content = self.content.read();
 
-        let mut highlights = Vec::new();
-        let capture_names = self.highlight_query.capture_names();
+                // Get injection highlights from manager
+                let mut manager = manager_mutex.lock();
+                let injection_highlights =
+                    manager.highlight_injections(&injections, &content, byte_range.clone());
 
-        // Query highlights
-        let mut matches =
-            cursor.matches(&self.highlight_query, tree.root_node(), content.as_bytes());
-        while let Some(match_) = matches.next() {
-            for capture in match_.captures {
-                let capture_name = &capture_names[capture.index as usize];
-
-                // Skip non-highlight captures (decoration.*, textobject.*, etc.)
-                if capture_name.starts_with("decoration.")
-                    || capture_name.starts_with("textobject.")
-                    || capture_name.starts_with("local.")
-                    || capture_name.contains(".inner")
-                    || capture_name.contains(".outer")
-                {
-                    continue;
-                }
-
-                let group = self.capture_mapper.map(capture_name);
-                let node = capture.node;
-
-                highlights.push(HighlightSpan::new(node.start_byte(), node.end_byte(), group));
+                injection_count = injection_highlights.len();
+                highlights.extend(injection_highlights);
             }
+        } else {
+            injection_count = 0;
         }
 
-        // Sort by start position for consistent rendering
+        // ===== STEP 3: Sort merged highlights by position =====
         highlights.sort_by_key(|h| h.start_byte);
-
-        // Drop locks before tracing to avoid holding them during logging
-        drop(cursor);
-        drop(content);
-        drop(tree_guard);
 
         tracing::trace!(
             language = %self.language_id,
             range = ?byte_range,
-            highlights_count = highlights.len(),
+            parent_highlights = parent_count,
+            injection_highlights = injection_count,
+            total_highlights = highlights.len(),
             "TreeSitterDriver::highlights completed"
         );
 
@@ -433,8 +539,71 @@ impl SyntaxDriver for TreeSitterDriver {
     }
 
     fn folds(&self) -> Vec<FoldRange> {
-        // TODO: Implement fold detection (Phase 12.3)
-        Vec::new()
+        let Some(folds_query) = &self.folds_query else {
+            return Vec::new();
+        };
+
+        // Get read locks
+        let tree_guard = self.tree.read();
+        let Some(tree) = tree_guard.as_ref() else {
+            return Vec::new();
+        };
+
+        let content = self.content.read();
+
+        // Use a new cursor to avoid contention with highlights() cursor
+        let mut cursor = QueryCursor::new();
+
+        let mut folds = Vec::new();
+
+        // Query folds
+        let mut matches = cursor.matches(folds_query, tree.root_node(), content.as_bytes());
+        while let Some(match_) = matches.next() {
+            for capture in match_.captures {
+                let node = capture.node;
+
+                // Get line positions
+                let start_line = node.start_position().row;
+                let end_line = node.end_position().row;
+
+                // Skip single-line regions (not foldable)
+                if end_line <= start_line {
+                    continue;
+                }
+
+                // Determine fold kind: check node itself first (for comments, macros),
+                // then fall back to parent (for blocks inside functions, impl, etc.)
+                let node_kind = Self::node_to_fold_kind(Some(node));
+                let kind = if node_kind == FoldKind::Block {
+                    // Node itself is a generic block, check parent for context
+                    Self::node_to_fold_kind(node.parent())
+                } else {
+                    // Node itself has a specific kind (comment, macro, etc.)
+                    node_kind
+                };
+
+                // Extract preview (first line of fold region)
+                let preview = Self::extract_preview(&content, node);
+
+                #[allow(clippy::cast_possible_truncation)]
+                folds.push(FoldRange::new(start_line as u32, end_line as u32, kind, preview));
+            }
+        }
+
+        // Sort by start line
+        folds.sort_by_key(|f| f.start_line);
+
+        // Drop locks before tracing
+        drop(content);
+        drop(tree_guard);
+
+        tracing::trace!(
+            language = %self.language_id,
+            fold_count = folds.len(),
+            "TreeSitterDriver::folds completed"
+        );
+
+        folds
     }
 
     fn indent_for(&self, _line: usize) -> Option<usize> {
@@ -471,4 +640,173 @@ mod tests {
     }
 
     // Integration tests with real languages are in the treesitter-rust module
+
+    #[test]
+    fn test_driver_with_injections_has_manager() {
+        // Driver with injections query should have an injection manager
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+        // A minimal injections query (doesn't matter what it matches, just needs to compile)
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+
+        let mapper = Arc::new(CaptureMapper::new());
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            None,
+            Some(injections_query),
+            mapper,
+        )
+        .unwrap();
+
+        assert!(
+            driver.supports_injections(),
+            "Driver with injections query should support injections"
+        );
+        assert!(driver.injection_manager().is_some(), "Driver should have an injection manager");
+    }
+
+    #[test]
+    fn test_driver_without_injections_no_manager() {
+        // Basic driver without injections query should not have a manager
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        assert!(!driver.supports_injections(), "Basic driver should not support injections");
+        assert!(
+            driver.injection_manager().is_none(),
+            "Basic driver should not have an injection manager"
+        );
+    }
+
+    #[test]
+    fn test_driver_with_queries_no_injections() {
+        // Driver with folds but no injections query should not have a manager
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(function_item) @fold").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            Some(folds_query),
+            None, // No injections query
+            mapper,
+        )
+        .unwrap();
+
+        assert!(
+            !driver.supports_injections(),
+            "Driver without injections query should not support injections"
+        );
+        assert!(
+            driver.injection_manager().is_none(),
+            "Driver without injections query should not have an injection manager"
+        );
+    }
+
+    #[test]
+    fn test_highlights_with_registered_injection_layer() {
+        use crate::InjectionLayer;
+
+        // Create a driver with injection support
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+        // A minimal injections query that will match string literals as injection content
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query.clone(),
+            None,
+            Some(injections_query),
+            mapper.clone(),
+        )
+        .unwrap();
+
+        // Register a Rust injection layer
+        {
+            let manager = driver.injection_manager().unwrap();
+            let mut manager_guard = manager.lock();
+            let layer = InjectionLayer::new("rust", &language, highlight_query, mapper).unwrap();
+            manager_guard.register_layer(layer);
+        }
+
+        // Parse code (the string content won't actually match Rust syntax properly,
+        // but this tests the wiring)
+        driver.parse("let x = \"hello\";");
+
+        let highlights = driver.highlights(0..100);
+
+        // Should have parent highlights (identifier 'x', etc.)
+        assert!(!highlights.is_empty(), "Expected parent highlights at minimum");
+    }
+
+    #[test]
+    fn test_highlights_no_injection_layer_graceful_skip() {
+        // Create a driver with injection support but no layers registered
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+        // An injections query that matches something
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            None,
+            Some(injections_query),
+            mapper,
+        )
+        .unwrap();
+
+        // Don't register any injection layers
+
+        // Parse code - should not panic even though injections are detected but no layer exists
+        driver.parse("let x = \"hello\";");
+
+        let highlights = driver.highlights(0..100);
+
+        // Should have parent highlights only (no panic, graceful handling)
+        assert!(
+            !highlights.is_empty(),
+            "Expected parent highlights (injection skipped gracefully)"
+        );
+    }
+
+    #[test]
+    fn test_highlights_sorted_by_position() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        driver.parse("let x = y; let z = w;");
+
+        let highlights = driver.highlights(0..100);
+
+        // Verify highlights are sorted by start_byte
+        for i in 1..highlights.len() {
+            assert!(
+                highlights[i - 1].start_byte <= highlights[i].start_byte,
+                "Highlights should be sorted by start_byte"
+            );
+        }
+    }
 }

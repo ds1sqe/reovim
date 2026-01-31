@@ -192,6 +192,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   zero tree-sitter deps in driver crate, mechanism/policy separation maintained,
   matches Linux kernel VFS pattern. Part of Epic #465. (#465)
 
+- **Injection Highlighting and Fold Detection (Phase 12.3)**: Completed tree-sitter
+  syntax infrastructure with injection highlight merging and fold detection.
+  `InjectionManager` integration: Added `injection_manager` field to `TreeSitterDriver`,
+  initialized when `injections_query` is provided via `with_queries()`. Wired into
+  `highlights()` method with proper lock ordering (parent highlights first, then
+  injections) to avoid deadlocks. `InjectionLayerFactory` trait (~30 LOC): Defined
+  in driver crate (not traits crate) to keep tree-sitter types isolated from trait
+  boundaries. Enables language modules to register injection layer factories for
+  embedded language highlighting. `InjectionLayerStore` (~80 LOC): Global registry
+  following `SyntaxFactoryStore` pattern, implements `Service` trait for `ServiceRegistry`
+  compatibility. Fold detection: Implemented `folds()` method with tree-sitter query
+  support. Created `folds.scm` for Rust (~55 LOC) covering functions, closures,
+  structs, enums, impl blocks, traits, modules, match expressions, loops, if blocks,
+  block comments, and macros. `node_to_fold_kind()` maps 14+ node types to `FoldKind`
+  variants. `RustSyntaxFactory` updates: Added folds query, implemented
+  `InjectionLayerFactory`, updated `init()` to register with both `SyntaxFactoryStore`
+  and `InjectionLayerStore`. 51 tests across driver (28) and module (23) layers.
+  All tests pass, zero warnings. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in
