@@ -30,7 +30,7 @@ use {
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload, LayoutChangedPayload,
         ModeChangedPayload, Notification, OptionChangedPayload, Position, SelectionChangedPayload,
-        WindowInfo, WindowRect, notification,
+        ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
     },
 };
 
@@ -108,6 +108,15 @@ pub fn build_notifications(changes: &StateChanges, state: &SessionState) -> Vec<
     // Option changed notifications
     for opt_change in &changes.options_changed {
         notifications.push(build_option_notification(opt_change, timestamp));
+    }
+
+    // Viewport updated notifications (Phase 11.1)
+    if changes.scroll_changed {
+        for window_id in &changes.scrolled_windows {
+            if let Some(notification) = build_viewport_notification(state, *window_id, timestamp) {
+                notifications.push(notification);
+            }
+        }
     }
 
     notifications
@@ -332,6 +341,32 @@ fn build_selection_notification(
             has_selection,
             selection,
             visual_mode,
+        })),
+    })
+}
+
+/// Build a viewport updated notification (Phase 11.1).
+///
+/// Sent when scroll position changes in a window, enabling clients to
+/// apply incremental updates without re-fetching layout.
+#[allow(clippy::cast_possible_truncation)]
+fn build_viewport_notification(
+    state: &SessionState,
+    window_id: reovim_kernel::api::v1::WindowId,
+    timestamp: u64,
+) -> Option<Notification> {
+    // Find the window
+    let window = state.driver_session.windows.get(window_id)?;
+
+    Some(Notification {
+        event_type: "viewport_updated".to_string(),
+        timestamp_ms: timestamp,
+        payload: Some(notification::Payload::ViewportUpdated(ViewportUpdatedPayload {
+            viewport_id: window_id.as_usize() as u64,
+            top_line: Some(window.viewport.scroll_top as u32),
+            left_col: Some(window.viewport.scroll_left as u32),
+            cursor_line: Some(window.cursor.line as u32),
+            cursor_col: Some(window.cursor.column as u32),
         })),
     })
 }

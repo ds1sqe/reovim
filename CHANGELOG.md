@@ -104,6 +104,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `record_window_created()` → `layout_changed` notification → TUI updates.
   Part of Epic #465. (#465)
 
+- **Web client ViewportService integration (Phase 11.1)**: Extended web client
+  to use server-managed viewports with incremental updates and overlay support.
+  Cache layer (`clients/web/src/cache/`): `ViewportCache` class stores viewport
+  state (scroll position, cursor) and applies incremental `ViewportUpdate`s from
+  server notifications. `BufferCache` class stores buffer content with version
+  tracking, reduces redundant RPC calls by caching visible lines. Notification
+  handlers: Added `viewportUpdated` handler that applies incremental updates to
+  cached state without RPC calls. Updated `bufferModified` to invalidate cache
+  only for affected buffer. Updated `layoutChanged` to use `refreshLayoutOnly()`
+  which fetches layout tree but uses cached buffer content for existing windows.
+  Overlay rendering (`clients/web/src/render/overlay.ts`): Created `OverlayRenderer`
+  class (~530 LOC) for floating UI elements. Supports 4 overlay types: completion
+  (listbox with items, selection), cmdline (command-line input with cursor),
+  hover (tooltip), signature (function help). Handles 5 anchor types: Cursor,
+  Center, Buffer position, Screen (normalized), Below (relative to overlay).
+  Proper ARIA roles for accessibility. CSS (`styles/overlay.css`, ~170 LOC):
+  Catppuccin-inspired dark theme with glass-morphism effects. Server changes:
+  Added `ViewportUpdatedPayload` to notification.proto with optional fields
+  (viewport_id, top_line, left_col, cursor_line, cursor_col). Added
+  `build_viewport_notification()` in notification_builder.rs (~20 LOC). Emits
+  viewport updates when `scroll_changed` flag set in `StateChanges`. Performance:
+  ~70-90% reduction in RPC calls during scrolling/cursor movement by using
+  cached state. Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

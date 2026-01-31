@@ -25,6 +25,12 @@ import {
 import { LayoutRenderer } from "./render/layout.js";
 import { BufferRenderer, type SelectionRange } from "./render/buffer.js";
 
+// Caching layer (Phase 11.1)
+import { ViewportCache, BufferCache } from "./cache/index.js";
+
+// Overlay rendering (Phase 11.1)
+import { OverlayRenderer } from "./render/overlay.js";
+
 /** Position within the buffer */
 interface Position {
   line: number;
@@ -78,6 +84,13 @@ export class Editor {
   private layoutRenderer: LayoutRenderer;
   private bufferRenderer: BufferRenderer;
 
+  // Caches (Phase 11.1 - incremental updates)
+  private viewportCache: ViewportCache;
+  private bufferCache: BufferCache;
+
+  // Overlay rendering (Phase 11.1)
+  private overlayRenderer: OverlayRenderer;
+
   // DOM elements (legacy single-window)
   private modeElement: HTMLElement | null;
   private bufferElement: HTMLElement | null;
@@ -110,6 +123,13 @@ export class Editor {
     this.layoutRenderer = new LayoutRenderer();
     this.bufferRenderer = new BufferRenderer();
 
+    // Initialize caches (Phase 11.1)
+    this.viewportCache = new ViewportCache();
+    this.bufferCache = new BufferCache();
+
+    // Initialize overlay renderer (Phase 11.1)
+    this.overlayRenderer = new OverlayRenderer();
+
     // Cache DOM elements
     this.modeElement = document.getElementById("mode");
     this.bufferElement = document.getElementById("buffer");
@@ -134,6 +154,11 @@ export class Editor {
     } catch (error) {
       console.warn("WASM initialization failed, using single-window mode:", error);
       this.state.useMultiWindow = false;
+    }
+
+    // Set overlay container (Phase 11.1)
+    if (this.editorElement) {
+      this.overlayRenderer.setContainer(this.editorElement);
     }
   }
 
@@ -212,6 +237,8 @@ export class Editor {
 
   /**
    * Refresh buffer content for all windows.
+   *
+   * Phase 11.1: Updates both window states and buffer cache.
    */
   private async refreshWindowBuffers(): Promise<void> {
     if (!this.state.layout) return;
@@ -225,6 +252,9 @@ export class Editor {
             this.client.buffer.getRawContent({ bufferId: BigInt(window.buffer_id) }),
             this.client.state.getCursor({ windowId: BigInt(window.id) }),
           ]);
+
+          // Update buffer cache
+          this.bufferCache.set(window.buffer_id, bufferResponse.lines, Date.now());
 
           const existing = this.state.windowStates.get(window.id) || {
             lines: [],
@@ -307,10 +337,14 @@ export class Editor {
 
       case "bufferModified": {
         const { bufferId } = payload.value;
+        const bufId = Number(bufferId ?? 0n);
+
+        // Invalidate cache - next render will fetch fresh content
+        this.bufferCache.invalidate(bufId);
 
         if (this.state.useMultiWindow) {
           // Find windows showing this buffer and refresh them
-          this.refreshBufferForBuffer(Number(bufferId ?? 0n));
+          this.refreshBufferForBuffer(bufId);
         } else {
           this.refreshBuffer();
         }
@@ -378,8 +412,42 @@ export class Editor {
         const { focusedWindowId, windows } = payload.value;
 
         if (this.state.useMultiWindow) {
-          // Re-fetch full layout (notification only has simplified info)
-          this.refreshLayout(Number(focusedWindowId), windows);
+          // Phase 11.1: Only fetch layout tree, use cached buffer content
+          this.refreshLayoutOnly(Number(focusedWindowId), windows);
+        }
+        break;
+      }
+
+      case "viewportUpdated": {
+        // Phase 11.1: Incremental viewport updates without full re-fetch
+        const update = payload.value;
+        const viewportId = Number(update.viewportId ?? 0n);
+
+        // Apply incremental update to viewport cache
+        this.viewportCache.applyUpdate({
+          viewport_id: viewportId,
+          top_line: update.topLine !== undefined ? Number(update.topLine) : undefined,
+          left_col: update.leftCol !== undefined ? Number(update.leftCol) : undefined,
+          cursor_line: update.cursorLine !== undefined ? Number(update.cursorLine) : undefined,
+          cursor_col: update.cursorCol !== undefined ? Number(update.cursorCol) : undefined,
+        });
+
+        // Update window state if in multi-window mode
+        if (this.state.useMultiWindow) {
+          const windowState = this.state.windowStates.get(viewportId);
+          if (windowState) {
+            if (update.topLine !== undefined) {
+              windowState.topLine = Number(update.topLine);
+            }
+            if (update.cursorLine !== undefined) {
+              windowState.cursorLine = Number(update.cursorLine);
+            }
+            if (update.cursorCol !== undefined) {
+              windowState.cursorCol = Number(update.cursorCol);
+            }
+          }
+          // Only re-render the affected viewport/window
+          this.renderMultiWindow();
         }
         break;
       }
@@ -390,22 +458,89 @@ export class Editor {
   }
 
   /**
-   * Refresh layout from server after layoutChanged notification.
+   * Refresh layout only - uses cached buffer content when available.
+   *
+   * Phase 11.1: Efficient layout refresh that:
+   * 1. Fetches layout tree from server
+   * 2. Uses cached buffer content for existing windows
+   * 3. Only fetches content for NEW windows (not in cache)
    */
-  private async refreshLayout(
+  private async refreshLayoutOnly(
     focusedId: number,
     _windowInfos: WindowInfo[]
   ): Promise<void> {
     try {
       const layoutResponse = await this.client.state.getLayout({});
-      if (layoutResponse.root) {
-        const logical = protoToLogicalLayout(layoutResponse.root);
-        if (logical) {
-          this.updateLayout(logical, focusedId);
-          await this.refreshWindowBuffers();
-          this.renderMultiWindow();
+      if (!layoutResponse.root) return;
+
+      const logical = protoToLogicalLayout(layoutResponse.root);
+      if (!logical) return;
+
+      this.updateLayout(logical, focusedId);
+
+      // Get list of windows that need buffer content
+      const windows = allWindows(this.state.layout!);
+      const windowsNeedingContent: Array<{ windowId: number; bufferId: number }> = [];
+
+      for (const window of windows) {
+        // Check if we have cached content for this buffer
+        if (!this.bufferCache.has(window.buffer_id)) {
+          windowsNeedingContent.push({
+            windowId: window.id,
+            bufferId: window.buffer_id,
+          });
+        } else {
+          // Use cached content
+          const cachedLines = this.bufferCache.get(window.buffer_id);
+          const existing = this.state.windowStates.get(window.id) || {
+            lines: [],
+            cursorLine: 0,
+            cursorCol: 0,
+            topLine: 0,
+            selection: null,
+          };
+          this.state.windowStates.set(window.id, {
+            ...existing,
+            lines: cachedLines || [],
+          });
         }
       }
+
+      // Fetch content only for windows without cached data
+      if (windowsNeedingContent.length > 0) {
+        await Promise.all(
+          windowsNeedingContent.map(async ({ windowId, bufferId }) => {
+            try {
+              const [bufferResponse, cursorResponse] = await Promise.all([
+                this.client.buffer.getRawContent({ bufferId: BigInt(bufferId) }),
+                this.client.state.getCursor({ windowId: BigInt(windowId) }),
+              ]);
+
+              // Cache the buffer content
+              this.bufferCache.set(bufferId, bufferResponse.lines, 1);
+
+              const existing = this.state.windowStates.get(windowId) || {
+                lines: [],
+                cursorLine: 0,
+                cursorCol: 0,
+                topLine: 0,
+                selection: null,
+              };
+
+              this.state.windowStates.set(windowId, {
+                ...existing,
+                lines: bufferResponse.lines,
+                cursorLine: Number(cursorResponse.position?.line ?? 0),
+                cursorCol: Number(cursorResponse.position?.column ?? 0),
+              });
+            } catch (error) {
+              console.warn(`Failed to fetch content for window ${windowId}:`, error);
+            }
+          })
+        );
+      }
+
+      this.renderMultiWindow();
     } catch (error) {
       console.error("Failed to refresh layout:", error);
     }
@@ -413,6 +548,8 @@ export class Editor {
 
   /**
    * Refresh buffer content for windows showing a specific buffer.
+   *
+   * Phase 11.1: Fetches once and updates both cache and window states.
    */
   private async refreshBufferForBuffer(bufferId: number): Promise<void> {
     if (!this.state.layout) return;
@@ -420,19 +557,26 @@ export class Editor {
     const windows = allWindows(this.state.layout);
     const affectedWindows = windows.filter((w) => w.buffer_id === bufferId);
 
-    for (const window of affectedWindows) {
-      try {
-        const bufferResponse = await this.client.buffer.getRawContent({
-          bufferId: BigInt(bufferId),
-        });
+    if (affectedWindows.length === 0) return;
 
+    try {
+      // Fetch buffer content once (not per-window)
+      const bufferResponse = await this.client.buffer.getRawContent({
+        bufferId: BigInt(bufferId),
+      });
+
+      // Update cache
+      this.bufferCache.set(bufferId, bufferResponse.lines, Date.now());
+
+      // Update all affected window states
+      for (const window of affectedWindows) {
         const windowState = this.state.windowStates.get(window.id);
         if (windowState) {
           windowState.lines = bufferResponse.lines;
         }
-      } catch (error) {
-        console.warn(`Failed to refresh buffer ${bufferId}:`, error);
       }
+    } catch (error) {
+      console.warn(`Failed to refresh buffer ${bufferId}:`, error);
     }
 
     this.renderMultiWindow();

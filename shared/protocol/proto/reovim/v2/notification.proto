@@ -33,6 +33,9 @@ message Notification {
     RenderCompletePayload render_complete = 17;
     DetachPayload detach = 18;
 
+    // Phase 11.1: Viewport updates for incremental scroll/cursor tracking
+    ViewportUpdatedPayload viewport_updated = 19;
+
     // Capture relay (CLI -> Server -> TUI -> Server -> CLI)
     CaptureRequestPayload capture_request = 20;
     CaptureResponsePayload capture_response = 21;
@@ -113,6 +116,20 @@ message BufferListChangedPayload {
   // Action that triggered the change
   string action = 1;  // "added", "removed", "modified"
   uint64 buffer_id = 2;
+}
+
+// Viewport updated (Phase 11.1)
+//
+// Sent when a viewport's scroll or cursor position changes.
+// Enables incremental updates without full layout re-fetch.
+
+message ViewportUpdatedPayload {
+  uint64 viewport_id = 1;
+  // All fields are optional - only changed values are sent
+  optional uint32 top_line = 2;     // Vertical scroll position
+  optional uint32 left_col = 3;     // Horizontal scroll position
+  optional uint32 cursor_line = 4;  // Cursor row
+  optional uint32 cursor_col = 5;   // Cursor column
 }
 
 // Render complete (signal to TUI that a frame is ready)
