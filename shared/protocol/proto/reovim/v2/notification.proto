@@ -7,6 +7,7 @@ syntax = "proto3";
 package reovim.v2;
 
 import "reovim/v2/common.proto";
+import "reovim/v2/presence.proto";
 
 service NotificationService {
   // Subscribe to notifications (server streaming).
@@ -42,6 +43,11 @@ message Notification {
 
     // Resize relay (CLI -> Server -> TUI)
     ResizeRequestPayload resize_request = 22;
+
+    // Phase 14: Multi-client presence updates
+    PresenceJoinedPayload presence_joined = 23;
+    PresenceLeftPayload presence_left = 24;
+    PresenceUpdatedPayload presence_updated = 25;
   }
 }
 
@@ -180,4 +186,26 @@ message CaptureResponsePayload {
 message ResizeRequestPayload {
   uint64 width = 1;   // New viewport width
   uint64 height = 2;  // New viewport height
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 14: Presence notifications
+//
+// Multi-client awareness updates streamed to all connected clients.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A new client joined the session.
+message PresenceJoinedPayload {
+  ClientPresence client = 1;
+}
+
+// A client left the session.
+message PresenceLeftPayload {
+  uint64 client_id = 1;
+  string display_name = 2;  // For UI display (e.g., "laptop disconnected")
+}
+
+// A client's presence state changed (cursor, viewport, mode, sync_mode).
+message PresenceUpdatedPayload {
+  ClientPresence client = 1;
 }

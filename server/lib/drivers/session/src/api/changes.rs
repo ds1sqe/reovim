@@ -118,6 +118,15 @@ pub struct StateChanges {
     pub scroll_changed: bool,
     /// Windows whose scroll position changed.
     pub scrolled_windows: Vec<WindowId>,
+
+    // === Presence Changes (Phase 14) ===
+    // Note: Presence RPCs emit notifications directly (like CaptureRequest).
+    // These fields are for future cursor sync scenarios where cursor movement
+    // might trigger presence updates.
+    /// Whether presence state changed (for cursor sync scenarios).
+    pub presence_changed: bool,
+    /// Client IDs whose presence changed.
+    pub presence_updates: Vec<usize>,
 }
 
 impl StateChanges {
@@ -143,6 +152,7 @@ impl StateChanges {
             || self.focus_changed
             || self.option_changed
             || self.scroll_changed
+            || self.presence_changed
     }
 
     /// Merge another `StateChanges` into this one.
@@ -164,6 +174,13 @@ impl StateChanges {
         self.options_changed.extend(other.options_changed);
         self.scroll_changed |= other.scroll_changed;
         self.scrolled_windows.extend(other.scrolled_windows);
+        // Phase 14: Presence changes
+        self.presence_changed |= other.presence_changed;
+        for client_id in other.presence_updates {
+            if !self.presence_updates.contains(&client_id) {
+                self.presence_updates.push(client_id);
+            }
+        }
     }
 
     // === Recording helpers ===
@@ -258,6 +275,17 @@ impl StateChanges {
         self.scroll_changed = true;
         if !self.scrolled_windows.contains(&window) {
             self.scrolled_windows.push(window);
+        }
+    }
+
+    /// Record that presence state changed for a client (Phase 14).
+    ///
+    /// Used for future cursor sync scenarios where cursor movement
+    /// might trigger presence updates.
+    pub fn record_presence_change(&mut self, client_id: usize) {
+        self.presence_changed = true;
+        if !self.presence_updates.contains(&client_id) {
+            self.presence_updates.push(client_id);
         }
     }
 }
@@ -463,5 +491,48 @@ mod tests {
         a.merge(b);
         assert!(a.option_changed);
         assert_eq!(a.options_changed.len(), 2);
+    }
+
+    // === Presence change tests (Phase 14) ===
+
+    #[test]
+    fn test_presence_change() {
+        let mut changes = StateChanges::new();
+        assert!(!changes.has_changes());
+        assert!(!changes.presence_changed);
+
+        changes.record_presence_change(42);
+
+        assert!(changes.has_changes());
+        assert!(changes.presence_changed);
+        assert_eq!(changes.presence_updates.len(), 1);
+        assert!(changes.presence_updates.contains(&42));
+    }
+
+    #[test]
+    fn test_presence_change_no_duplicates() {
+        let mut changes = StateChanges::new();
+
+        changes.record_presence_change(42);
+        changes.record_presence_change(42);
+        changes.record_presence_change(42);
+
+        assert_eq!(changes.presence_updates.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_presence_changes() {
+        let mut a = StateChanges::new();
+        a.record_presence_change(1);
+
+        let mut b = StateChanges::new();
+        b.record_presence_change(2);
+        b.record_presence_change(1); // Duplicate
+
+        a.merge(b);
+        assert!(a.presence_changed);
+        assert_eq!(a.presence_updates.len(), 2);
+        assert!(a.presence_updates.contains(&1));
+        assert!(a.presence_updates.contains(&2));
     }
 }

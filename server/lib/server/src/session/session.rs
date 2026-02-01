@@ -6,6 +6,8 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 
 #[cfg(feature = "grpc")]
 use super::CaptureTracker;
+#[cfg(feature = "grpc")]
+use super::PresenceMap;
 use super::{SessionId, SessionState};
 
 /// Default channel capacity for notifications.
@@ -30,6 +32,10 @@ pub struct Session {
     /// Capture request tracker for CLI→Server→TUI→Server→CLI relay (gRPC only).
     #[cfg(feature = "grpc")]
     capture_tracker: CaptureTracker,
+
+    /// Multi-client presence tracking (Phase 14, gRPC only).
+    #[cfg(feature = "grpc")]
+    presence: PresenceMap,
 }
 
 impl Session {
@@ -46,6 +52,8 @@ impl Session {
             notification_tx,
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
+            #[cfg(feature = "grpc")]
+            presence: PresenceMap::new(),
         }
     }
 
@@ -81,6 +89,8 @@ impl Session {
             notification_tx,
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
+            #[cfg(feature = "grpc")]
+            presence: PresenceMap::new(),
         }
     }
 
@@ -117,6 +127,13 @@ impl Session {
     #[must_use]
     pub const fn capture_tracker(&self) -> &CaptureTracker {
         &self.capture_tracker
+    }
+
+    /// Get the presence map for multi-client tracking (Phase 14, gRPC only).
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub const fn presence(&self) -> &PresenceMap {
+        &self.presence
     }
 
     /// Get the session ID.

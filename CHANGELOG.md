@@ -40,6 +40,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Multi-client presence awareness (Phase 14)**: Implemented `PresenceService`
+  gRPC for collaborative editing scenarios. Protocol layer (`presence.proto`):
+  6 RPCs (`Join`, `Leave`, `StreamPresence`, `UpdatePresence`, `SetSyncMode`,
+  `ListClients`), `ClientPresence` message with client_id, client_type, display_name,
+  cursor, visible_lines, mode, sync_mode fields, `SyncMode` enum (INDEPENDENT,
+  FOLLOW, PRESENT), `PresenceUpdate` oneof for streaming (joined/updated/left).
+  Session layer (`presence.rs`): `SyncMode` enum, `ClientPresence` struct with
+  `joined_at_ms()` helper, `PresenceMap` thread-safe container with RwLock for
+  join/leave/update/get/list/followers_of operations. `ClientId` generation via
+  `AtomicUsize` counter in `SessionRegistry` (lock-free). Session holds
+  `PresenceMap` for per-session client tracking. gRPC layer (`presence.rs`):
+  `PresenceServiceImpl` with all 6 RPC implementations, direct notification
+  emission (not via `StateChanges`) for presence events, `presence_joined`,
+  `presence_left`, `presence_updated` notification payloads (slots 23-25).
+  Disconnect handling: clean disconnect via `Leave()` RPC, stream-based cleanup
+  documented for future enhancement. `StateChanges` extended with `presence_changed`
+  flag and `presence_updates` vector for future cursor sync scenarios. Tests:
+  32 unit tests (18 PresenceMap + 14 gRPC methods) covering join/leave lifecycle,
+  sync mode transitions, follower tracking, thread safety, error paths. 13
+  integration test stubs for future CLI client support. Part of Epic #465. (#465)
+
 - **TUI Theme Engine (Phase 13.0)**: Complete theme engine for TUI client with
   TOML-based user themes and token-to-style integration. Theme file format:
   `~/.config/reovim/themes/*.toml` with palette section for color reuse, syntax/ui/

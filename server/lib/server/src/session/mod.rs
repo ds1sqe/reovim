@@ -5,6 +5,7 @@
 
 mod capture;
 mod id;
+mod presence;
 mod registry;
 #[allow(clippy::module_inception)]
 mod session;
@@ -14,6 +15,7 @@ mod syntax_state;
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
     id::{ClientId, SessionId},
+    presence::{ClientPresence, PresenceMap, SyncMode},
     registry::SessionRegistry,
     session::Session,
     state::SessionState,

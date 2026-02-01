@@ -203,7 +203,8 @@ impl Server {
         use {
             crate::grpc::{
                 BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
-                NotificationServiceImpl, ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
+                NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
+                SyntaxServiceImpl,
             },
             reovim_protocol::v2::{
                 buffer_service_server::BufferServiceServer,
@@ -211,6 +212,7 @@ impl Server {
                 input_service_server::InputServiceServer,
                 module_service_server::ModuleServiceServer,
                 notification_service_server::NotificationServiceServer,
+                presence_service_server::PresenceServiceServer,
                 server_service_server::ServerServiceServer,
                 state_service_server::StateServiceServer,
                 syntax_service_server::SyntaxServiceServer,
@@ -244,7 +246,12 @@ impl Server {
         let module_service = ModuleServiceImpl::new();
 
         // SyntaxService provides token data for syntax highlighting
-        let syntax_service = SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+        let syntax_service =
+            SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+
+        // PresenceService for multi-client awareness (Phase 14)
+        let presence_service =
+            PresenceServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
 
         // Build gRPC server with optional gRPC-Web support
         #[cfg(feature = "grpc-web")]
@@ -273,6 +280,7 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
+                .add_service(PresenceServiceServer::new(presence_service))
                 .serve(addr)
                 .await
                 .map_err(std::io::Error::other)
@@ -289,6 +297,7 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
+                .add_service(PresenceServiceServer::new(presence_service))
                 .serve(addr)
                 .await
                 .map_err(std::io::Error::other)
