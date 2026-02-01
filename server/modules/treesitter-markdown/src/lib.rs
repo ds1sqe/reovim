@@ -41,7 +41,10 @@ use std::sync::Arc;
 
 use {
     reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore},
-    reovim_driver_syntax_treesitter::{CaptureMapper, Language, Query, TreeSitterDriver},
+    reovim_driver_syntax_treesitter::{
+        CaptureMapper, InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
+        TreeSitterDriver,
+    },
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -118,6 +121,7 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
             self.highlight_query.clone(),
             None, // No folds query yet
             Some(self.injections_query.clone()),
+            None, // No indents query for Markdown
             self.capture_mapper.clone(),
         )
         .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
@@ -129,6 +133,17 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
 
     fn supports(&self, language_id: &str) -> bool {
         language_id == "markdown"
+    }
+}
+
+impl InjectionLayerFactory for MarkdownSyntaxFactory {
+    fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+        let language: Language = tree_sitter_md::LANGUAGE.into();
+        InjectionLayer::new("markdown", &language, self.highlight_query.clone(), capture_mapper)
+    }
+
+    fn language_id(&self) -> &'static str {
+        "markdown"
     }
 }
 
@@ -172,12 +187,20 @@ impl Module for TreesitterMarkdownModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        // Self-register factory into SyntaxFactoryStore
-        // (like TreesitterRustModule does)
-        let store = ctx.services.get_or_create::<SyntaxFactoryStore>();
-        store.add(Arc::new(MarkdownSyntaxFactory::new()));
+        let factory = Arc::new(MarkdownSyntaxFactory::new());
 
-        tracing::info!("TreesitterMarkdownModule: registered Markdown syntax factory");
+        // Register as SyntaxDriverFactory (for creating Markdown drivers)
+        let syntax_store = ctx.services.get_or_create::<SyntaxFactoryStore>();
+        syntax_store.add(factory.clone());
+
+        // Register as InjectionLayerFactory (for embedding Markdown in other languages)
+        // This enables Rust doc comments to inject Markdown highlighting
+        let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
+        injection_store.add(factory);
+
+        tracing::info!(
+            "TreesitterMarkdownModule: registered Markdown syntax and injection factories"
+        );
         ProbeResult::Success
     }
 

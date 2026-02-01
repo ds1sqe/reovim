@@ -211,6 +211,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   and `InjectionLayerStore`. 51 tests across driver (28) and module (23) layers.
   All tests pass, zero warnings. Part of Epic #465. (#465)
 
+- **Doc Comment Injection and Indentation Hints (Phase 12.4)**: Completed syntax
+  service infrastructure with Rust doc comment injection and AST-based indentation.
+  Doc comment injection: Created `injections.scm` (~34 LOC) for Rust doc comments
+  (`///`, `//!`, `/** */`, `/*! */`) that injects Markdown highlighting. Implemented
+  `InjectionLayerFactory` trait for `MarkdownSyntaxFactory` and registered with
+  `InjectionLayerStore` during module init. Doc comments now display Markdown syntax
+  highlighting (headings, code blocks, links). Indentation hints: Created `indents.scm`
+  (~60 LOC) with 21 indent-increasing constructs (functions, closures, structs, enums,
+  impl blocks, match expressions, loops, blocks, etc.) following nvim-treesitter
+  conventions (@indent, @indent_end, @branch, @ignore). Implemented `indent_for(line)`
+  method in `TreeSitterDriver` that walks up the AST tree counting @indent captures,
+  returns suggested indentation in spaces (4 per nesting level). Minor cleanups:
+  Removed outdated `#[allow(dead_code)]` from `highlight_group_to_category()` (now
+  used by GetTokens/StreamTokens), updated TODO comment in injection.rs. 7 new tests
+  for injection detection and indentation verification. All 69 syntax tests pass.
+  Part of Epic #465. (#465)
+
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /
   client-policy separation. Server changes: Implemented `GetSelection` RPC in

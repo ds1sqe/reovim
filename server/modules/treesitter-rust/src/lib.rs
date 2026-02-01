@@ -54,10 +54,19 @@ const RUST_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// Rust folds query (embedded from queries/folds.scm)
 const RUST_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// Rust injections query (embedded from queries/injections.scm)
+/// Injects Markdown highlighting into doc comments (/// and //!)
+const RUST_INJECTIONS_QUERY: &str = include_str!("queries/injections.scm");
+
+/// Rust indents query (embedded from queries/indents.scm)
+/// Provides indentation hints for smart auto-indent
+const RUST_INDENTS_QUERY: &str = include_str!("queries/indents.scm");
+
 /// Factory for creating Rust syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
-/// Rust syntax highlighting and fold detection using the tree-sitter-rust grammar.
+/// Rust syntax highlighting, fold detection, doc comment injection,
+/// and indentation hints using the tree-sitter-rust grammar.
 pub struct RustSyntaxFactory {
     /// Shared capture mapper (reused across driver instances)
     capture_mapper: Arc<CaptureMapper>,
@@ -65,12 +74,16 @@ pub struct RustSyntaxFactory {
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
     folds_query: Arc<Query>,
+    /// Pre-compiled injections query (doc comments → Markdown)
+    injections_query: Arc<Query>,
+    /// Pre-compiled indents query (indentation hints)
+    indents_query: Arc<Query>,
 }
 
 impl RustSyntaxFactory {
     /// Create a new Rust syntax factory.
     ///
-    /// Pre-compiles the highlights and folds queries for efficiency.
+    /// Pre-compiles the highlights, folds, and injections queries for efficiency.
     ///
     /// # Panics
     ///
@@ -86,10 +99,18 @@ impl RustSyntaxFactory {
         let folds_query =
             Query::new(&language, RUST_FOLDS_QUERY).expect("Failed to compile Rust folds query");
 
+        let injections_query = Query::new(&language, RUST_INJECTIONS_QUERY)
+            .expect("Failed to compile Rust injections query");
+
+        let indents_query = Query::new(&language, RUST_INDENTS_QUERY)
+            .expect("Failed to compile Rust indents query");
+
         Self {
             capture_mapper: Arc::new(CaptureMapper::new()),
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
+            injections_query: Arc::new(injections_query),
+            indents_query: Arc::new(indents_query),
         }
     }
 
@@ -126,7 +147,8 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
             &language,
             self.highlight_query.clone(),
             Some(self.folds_query.clone()),
-            None, // TODO: Add injections query for doc comments (Markdown) and raw strings
+            Some(self.injections_query.clone()), // Doc comments → Markdown injection
+            Some(self.indents_query.clone()),    // Indentation hints
             self.capture_mapper.clone(),
         )
         .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
@@ -404,6 +426,112 @@ mod tests {
     fn test_injection_layer_factory_language_id() {
         let factory = RustSyntaxFactory::new();
         assert_eq!(factory.language_id(), "rust");
+    }
+
+    // ========================================================================
+    // Doc Comment Injection Tests (Phase 12.4)
+    // ========================================================================
+
+    #[test]
+    fn test_injections_detects_doc_comments() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("/// This is a doc comment\nfn main() {}");
+        let injections = driver.injections();
+
+        // Should detect one injection for the doc comment
+        assert!(!injections.is_empty(), "Expected injection for doc comment");
+        assert_eq!(injections[0].language_id, "markdown", "Doc comments should inject Markdown");
+    }
+
+    #[test]
+    fn test_injections_inner_doc_comments() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("//! Module documentation\n\nfn foo() {}");
+        let injections = driver.injections();
+
+        assert!(!injections.is_empty(), "Expected injection for inner doc comment");
+        assert_eq!(injections[0].language_id, "markdown");
+    }
+
+    #[test]
+    fn test_no_injection_for_regular_comments() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("// Regular comment\nfn main() {}");
+        let injections = driver.injections();
+
+        // Regular comments should NOT produce injections
+        assert!(injections.is_empty(), "Regular comments should not have injections");
+    }
+
+    #[test]
+    fn test_multiple_doc_comments() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("/// First doc\n/// Second doc\nfn main() {}");
+        let injections = driver.injections();
+
+        // Each doc comment line should be a separate injection
+        assert_eq!(injections.len(), 2, "Expected 2 injections for 2 doc comment lines");
+    }
+
+    // ========================================================================
+    // Indentation Hints Tests (Phase 12.4)
+    // ========================================================================
+
+    #[test]
+    fn test_indent_for_function_body() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        let code = "fn main() {\n    let x = 1;\n}";
+        driver.parse(code);
+
+        // Line 0: fn main() { - top level, should be 0 or small
+        let indent_0 = driver.indent_for(0);
+        assert!(indent_0.is_some(), "Should have indent for line 0");
+
+        // Line 1: let x = 1; - inside function, should be indented
+        let indent_1 = driver.indent_for(1);
+        assert!(indent_1.is_some(), "Should have indent for line 1");
+        assert!(
+            indent_1.unwrap() > indent_0.unwrap(),
+            "Line inside function should have more indent"
+        );
+    }
+
+    #[test]
+    fn test_indent_for_nested_blocks() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        let code = "fn main() {\n    if true {\n        let x = 1;\n    }\n}";
+        driver.parse(code);
+
+        // Line 2: let x = 1; - should be double indented (function + if)
+        let indent_2 = driver.indent_for(2);
+        assert!(indent_2.is_some(), "Should have indent for nested line");
+        assert!(indent_2.unwrap() >= 8, "Doubly nested should have at least 8 spaces indent");
+    }
+
+    #[test]
+    fn test_indent_for_top_level() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        let code = "fn foo() {}\n\nfn bar() {}";
+        driver.parse(code);
+
+        // Top level functions should have minimal indent
+        let indent = driver.indent_for(0);
+        assert!(indent.is_some());
+        // Function item itself doesn't increase indent (body does)
     }
 
     // ========================================================================

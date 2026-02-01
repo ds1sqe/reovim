@@ -74,6 +74,9 @@ pub struct TreeSitterDriver {
     /// Optional injections query
     injections_query: Option<Arc<Query>>,
 
+    /// Optional indents query for indentation hints
+    indents_query: Option<Arc<Query>>,
+
     /// Injection manager for embedded language highlighting.
     ///
     /// Present when `injections_query` is provided. Coordinates highlighting
@@ -123,6 +126,7 @@ impl TreeSitterDriver {
             highlight_query,
             folds_query: None,
             injections_query: None,
+            indents_query: None,
             injection_manager: None,
             capture_mapper,
             query_cursor: Mutex::new(QueryCursor::new()),
@@ -140,6 +144,7 @@ impl TreeSitterDriver {
     /// * `highlight_query` - Pre-compiled highlights query
     /// * `folds_query` - Optional pre-compiled folds query
     /// * `injections_query` - Optional pre-compiled injections query
+    /// * `indents_query` - Optional pre-compiled indents query for indentation hints
     /// * `capture_mapper` - Capture name to HighlightGroup mapper
     pub fn with_queries(
         language_id: impl Into<String>,
@@ -147,6 +152,7 @@ impl TreeSitterDriver {
         highlight_query: Arc<Query>,
         folds_query: Option<Arc<Query>>,
         injections_query: Option<Arc<Query>>,
+        indents_query: Option<Arc<Query>>,
         capture_mapper: Arc<CaptureMapper>,
     ) -> Option<Self> {
         let mut parser = Parser::new();
@@ -165,6 +171,7 @@ impl TreeSitterDriver {
             highlight_query,
             folds_query,
             injections_query,
+            indents_query,
             injection_manager,
             capture_mapper,
             query_cursor: Mutex::new(QueryCursor::new()),
@@ -209,6 +216,12 @@ impl TreeSitterDriver {
     #[must_use]
     pub const fn supports_folds(&self) -> bool {
         self.folds_query.is_some()
+    }
+
+    /// Check if this driver supports indentation hints.
+    #[must_use]
+    pub const fn supports_indents(&self) -> bool {
+        self.indents_query.is_some()
     }
 
     /// Map a tree-sitter node kind to a `FoldKind`.
@@ -606,9 +619,55 @@ impl SyntaxDriver for TreeSitterDriver {
         folds
     }
 
-    fn indent_for(&self, _line: usize) -> Option<usize> {
-        // TODO: Implement indentation hints (Phase 12.3)
-        None
+    fn indent_for(&self, line: usize) -> Option<usize> {
+        let indents_query = self.indents_query.as_ref()?;
+
+        // Get tree and content
+        let tree_guard = self.tree.read();
+        let tree = tree_guard.as_ref()?;
+        let content = self.content.read();
+
+        // Find the node at the start of this line
+        let point = Point::new(line, 0);
+        let node = tree.root_node().descendant_for_point_range(point, point)?;
+
+        // Get capture names to identify @indent
+        let capture_names = indents_query.capture_names();
+        #[allow(clippy::cast_possible_truncation)]
+        let indent_idx = capture_names
+            .iter()
+            .position(|n| *n == "indent")
+            .map(|i| i as u32);
+
+        let Some(indent_idx) = indent_idx else {
+            return Some(0); // No @indent capture defined
+        };
+
+        // Count indent levels by walking up the tree
+        let mut indent_level = 0;
+        let mut current = Some(node);
+
+        while let Some(n) = current {
+            // Check if this node matches @indent
+            let mut cursor = QueryCursor::new();
+            cursor.set_point_range(n.start_position()..n.end_position());
+
+            let mut matches = cursor.matches(indents_query, n, content.as_bytes());
+            while let Some(m) = matches.next() {
+                for cap in m.captures {
+                    // Only count if this capture is for the current node
+                    if cap.index == indent_idx && cap.node.id() == n.id() {
+                        indent_level += 1;
+                    }
+                }
+            }
+
+            current = n.parent();
+        }
+
+        // Return indent level in spaces (4 spaces per level)
+        // Note: The caller should handle configuration for different indent widths
+        Some(indent_level * 4)
     }
 
     fn is_parsed(&self) -> bool {
@@ -658,6 +717,7 @@ mod tests {
             highlight_query,
             None,
             Some(injections_query),
+            None, // No indents query
             mapper,
         )
         .unwrap();
@@ -699,6 +759,7 @@ mod tests {
             highlight_query,
             Some(folds_query),
             None, // No injections query
+            None, // No indents query
             mapper,
         )
         .unwrap();
@@ -732,6 +793,7 @@ mod tests {
             highlight_query.clone(),
             None,
             Some(injections_query),
+            None, // No indents query
             mapper.clone(),
         )
         .unwrap();
@@ -771,6 +833,7 @@ mod tests {
             highlight_query,
             None,
             Some(injections_query),
+            None, // No indents query
             mapper,
         )
         .unwrap();

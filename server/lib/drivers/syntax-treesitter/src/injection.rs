@@ -224,12 +224,12 @@ impl InjectionManager {
             return self.layers.get_mut(language_id);
         }
 
-        // Try to create a layer using the factory
-        // Note: We can't directly use the factory because it creates SyntaxDriver,
-        // not InjectionLayer. For now, we'll skip injection highlighting for
-        // languages not pre-registered.
+        // Try to create a layer using the factory.
+        // Note: Dynamic layer creation requires InjectionLayerFactory implementations
+        // to be registered in InjectionLayerStore during module init(). Languages not
+        // pre-registered will be skipped.
         //
-        // TODO(#465 Phase 12.3): Add InjectionLayer factory method to SyntaxDriverFactory
+        // See: Phase 12.4 added InjectionLayerFactory to RustSyntaxFactory and MarkdownSyntaxFactory
         tracing::debug!(
             language_id = %language_id,
             "Injection layer requested but factory-based creation not yet implemented"

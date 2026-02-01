@@ -78,10 +78,8 @@ impl SyntaxServiceImpl {
 ///
 /// # Note
 ///
-/// Currently unused because syntax drivers aren't integrated into sessions yet.
-/// Will be used when `GetTokens` returns real tokens from syntax drivers.
+/// Used by `GetTokens` and `StreamTokens` to convert highlight groups to client-facing categories.
 #[must_use]
-#[allow(dead_code)] // Used when syntax drivers are integrated
 pub fn highlight_group_to_category(group: HighlightGroup) -> &'static str {
     group.category()
 }
