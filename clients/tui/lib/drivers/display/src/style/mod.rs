@@ -49,17 +49,21 @@
 //! Future Phase 6 may migrate `HighlightGroup` to this driver.
 
 mod builtin;
+pub mod file;
 pub mod groups;
 mod icons;
+pub mod loader;
 mod manager;
 mod registry;
 mod theme;
 
 pub use {
+    file::{FileTheme, ThemeError, ThemeFile},
     groups::ALL_GROUPS,
     icons::{
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
+    loader::ThemeLoader,
     manager::{SharedThemeManager, ThemeManager},
     registry::StyleGroupRegistry,
     theme::{BuiltinTheme, ThemeProvider},

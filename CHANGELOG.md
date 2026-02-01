@@ -40,6 +40,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **TUI Theme Engine (Phase 13.0)**: Complete theme engine for TUI client with
+  TOML-based user themes and token-to-style integration. Theme file format:
+  `~/.config/reovim/themes/*.toml` with palette section for color reuse, syntax/ui/
+  diagnostic/gutter sections for style definitions. `ThemeLoader` with multi-path
+  search (`~/.config/reovim/themes/`, `/usr/share/reovim/themes/`), theme caching,
+  and platform-aware paths. `ThemeManager` with 4-tier lookup (overrides → theme →
+  module defaults → fallback) and hierarchical fallback (`keyword.control` →
+  `keyword` → default). `TokenCache` for client-side syntax token caching with
+  byte-to-position conversion (handles UTF-8 correctly), multi-line token splitting,
+  and LRU eviction (max 10 buffers). `TokenCacheManager` for per-buffer token
+  management. Integration with `StreamTokens` RPC for real-time token updates.
+  Runtime theme switching via `--theme` CLI argument and `colorscheme` option
+  notification. 88 tests (76 style + 12 syntax) with 100% pass rate. Part of
+  Epic #465. (#470)
+
 - **Common Client Model**: Created `reovim-client-model` crate at
   `shared/clients/model/` - a platform-agnostic abstraction layer for all clients
   (TUI, Web, Android). Separates wire format types (from server) from rendered state

@@ -19,17 +19,19 @@ use {
         GetActiveBufferRequest, GetActiveBufferResponse, GetCursorRequest, GetCursorResponse,
         GetLayoutRequest, GetLayoutResponse, GetModeRequest, GetModeResponse, GetOptionsRequest,
         GetOptionsResponse, GetRawContentRequest, GetRawContentResponse, GetSelectionRequest,
-        GetSelectionResponse, GetVisibleLinesRequest, GetVisibleLinesResponse, InfoRequest,
-        InfoResponse, KillRequest, KillResponse, ListBuffersRequest, ListBuffersResponse,
-        ListModulesRequest, ListModulesResponse, Notification, OpenFileRequest, OpenFileResponse,
-        PingRequest, PingResponse, QuitRequest, QuitResponse, ResizeRequest, ResizeResponse,
-        SendKeysRequest, SendKeysResponse, SetActiveBufferRequest, SetActiveBufferResponse,
-        SubmitCaptureRequest, SubmitCaptureResponseReply, SubscribeRequest, WriteFileRequest,
+        GetSelectionResponse, GetTokensRequest, GetTokensResponse, GetVisibleLinesRequest,
+        GetVisibleLinesResponse, InfoRequest, InfoResponse, KillRequest, KillResponse,
+        ListBuffersRequest, ListBuffersResponse, ListModulesRequest, ListModulesResponse,
+        Notification, OpenFileRequest, OpenFileResponse, PingRequest, PingResponse, QuitRequest,
+        QuitResponse, ResizeRequest, ResizeResponse, SendKeysRequest, SendKeysResponse,
+        SetActiveBufferRequest, SetActiveBufferResponse, StreamTokensRequest, SubmitCaptureRequest,
+        SubmitCaptureResponseReply, SubscribeRequest, TokenUpdate, WriteFileRequest,
         WriteFileResponse, buffer_service_client::BufferServiceClient,
         editor_service_client::EditorServiceClient, input_service_client::InputServiceClient,
         module_service_client::ModuleServiceClient,
         notification_service_client::NotificationServiceClient,
         server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
+        syntax_service_client::SyntaxServiceClient,
     },
     tonic::{Streaming, transport::Channel},
 };
@@ -78,6 +80,7 @@ pub struct TuiGrpcClient {
     server: ServerServiceClient<Channel>,
     editor: EditorServiceClient<Channel>,
     module: ModuleServiceClient<Channel>,
+    syntax: SyntaxServiceClient<Channel>,
 }
 
 impl TuiGrpcClient {
@@ -104,7 +107,8 @@ impl TuiGrpcClient {
             notification: NotificationServiceClient::new(channel.clone()),
             server: ServerServiceClient::new(channel.clone()),
             editor: EditorServiceClient::new(channel.clone()),
-            module: ModuleServiceClient::new(channel),
+            module: ModuleServiceClient::new(channel.clone()),
+            syntax: SyntaxServiceClient::new(channel),
         })
     }
 
@@ -503,6 +507,58 @@ impl TuiGrpcClient {
     pub async fn list_modules(&mut self) -> Result<ListModulesResponse, TuiGrpcError> {
         let request = ListModulesRequest {};
         let response = self.module.list(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Syntax Service (Phase 13.0 #470)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Get syntax tokens for a buffer range.
+    ///
+    /// One-shot query for initial buffer load or after major edits.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - Buffer to get tokens for.
+    /// * `start_line` - Optional start line (default: 0).
+    /// * `end_line` - Optional end line (default: end of buffer).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_tokens(
+        &mut self,
+        buffer_id: u64,
+        start_line: Option<u64>,
+        end_line: Option<u64>,
+    ) -> Result<GetTokensResponse, TuiGrpcError> {
+        let request = GetTokensRequest {
+            buffer_id,
+            start_line,
+            end_line,
+        };
+        let response = self.syntax.get_tokens(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Subscribe to real-time syntax token updates.
+    ///
+    /// Returns a stream of `TokenUpdate` messages for incremental highlighting.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - Buffer to stream tokens for.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the subscription fails.
+    pub async fn stream_tokens(
+        &mut self,
+        buffer_id: u64,
+    ) -> Result<Streaming<TokenUpdate>, TuiGrpcError> {
+        let request = StreamTokensRequest { buffer_id };
+        let response = self.syntax.stream_tokens(request).await?;
         Ok(response.into_inner())
     }
 }

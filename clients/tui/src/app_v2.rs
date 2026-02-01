@@ -32,9 +32,13 @@ use std::{collections::HashMap, io, time::Duration};
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_arch::Color,
+    reovim_driver_display::{
+        BuiltinTheme, ThemeLoader, ThemeManager, TokenCacheManager, TokenSpan,
+    },
     reovim_driver_tui::{Cursor, CursorStyle, InputEvent, InputReader, Screen, Style, Terminal},
     reovim_protocol::v2::{
         GetLayoutResponse, Notification, WindowInfo, WindowNode, notification::Payload,
+        option_changed_payload::Value as OptionValue,
     },
     tokio::{select, time::interval},
     tonic::Streaming,
@@ -160,6 +164,21 @@ pub struct TuiAppV2 {
     /// Passive data structure that mirrors server-managed window layout.
     /// Updated from `layout_changed` notifications, used for rendering.
     layout_mirror: ServerLayoutMirror,
+    /// Syntax token cache manager (Phase 13.0).
+    ///
+    /// Caches syntax tokens from `GetTokens` RPC for syntax highlighting.
+    /// Per-buffer caches with byte-to-position conversion.
+    /// TODO: Add real-time streaming via `StreamTokens` in Phase 13.1
+    token_cache_manager: TokenCacheManager,
+    /// Theme manager for syntax highlighting (Phase 13.0).
+    ///
+    /// Maps token categories to styles using the current theme.
+    /// Supports hierarchical fallback (e.g., `keyword.control` → `keyword`).
+    theme_manager: ThemeManager,
+    /// Theme loader for finding and loading theme files (Phase 13.0).
+    ///
+    /// Searches `~/.config/reovim/themes/` and system paths for TOML theme files.
+    theme_loader: ThemeLoader,
 }
 
 impl TuiAppV2 {
@@ -169,6 +188,7 @@ impl TuiAppV2 {
     ///
     /// * `addr` - Server address in `host:port` format.
     /// * `debug_config` - Optional debug configuration.
+    /// * `initial_theme` - Optional initial theme name.
     ///
     /// # Errors
     ///
@@ -176,6 +196,7 @@ impl TuiAppV2 {
     pub async fn connect(
         addr: &str,
         debug_config: Option<TuiDebugConfig>,
+        initial_theme: Option<&str>,
     ) -> Result<Self, TuiAppV2Error> {
         // Connect gRPC client
         let mut client = TuiGrpcClient::connect(addr).await?;
@@ -200,6 +221,39 @@ impl TuiAppV2 {
         // Create server layout mirror (Phase 11.2)
         let layout_mirror = ServerLayoutMirror::new(width, height);
 
+        // Create token cache manager (Phase 13.0)
+        let token_cache_manager = TokenCacheManager::new();
+
+        // Create theme loader and manager (Phase 13.0)
+        let theme_loader = ThemeLoader::new();
+        let mut theme_manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Apply initial theme if specified
+        if let Some(theme_name) = initial_theme {
+            // Try user theme first
+            if let Ok(theme) = theme_loader.load(theme_name) {
+                theme_manager.set_theme(theme);
+                tracing::info!(theme = theme_name, "Applied initial user theme");
+            } else {
+                // Try builtin themes
+                let builtin = match theme_name.to_lowercase().as_str() {
+                    "dark" => Some(BuiltinTheme::Dark),
+                    "light" => Some(BuiltinTheme::Light),
+                    "tokyo-night" | "tokyo-night-orange" | "tokyonight" => {
+                        Some(BuiltinTheme::TokyoNightOrange)
+                    }
+                    _ => None,
+                };
+
+                if let Some(theme) = builtin {
+                    theme_manager.set_theme(theme.load());
+                    tracing::info!(theme = theme_name, "Applied initial builtin theme");
+                } else {
+                    tracing::warn!(theme = theme_name, "Initial theme not found, using dark");
+                }
+            }
+        }
+
         Ok(Self {
             client,
             notification_stream,
@@ -212,6 +266,9 @@ impl TuiAppV2 {
             server_address: addr.to_string(),
             debug_config,
             layout_mirror,
+            token_cache_manager,
+            theme_manager,
+            theme_loader,
         })
     }
 
@@ -361,10 +418,96 @@ impl TuiAppV2 {
                     .get_buffer_content(Some(buffer_id), None, None)
                     .await?;
                 self.state.buffer_cache.insert(buffer_id, content.lines);
+
+                // Fetch initial tokens for syntax highlighting (Phase 13.0)
+                self.fetch_tokens_for_buffer(buffer_id).await;
             }
         }
 
         Ok(())
+    }
+
+    /// Fetch syntax tokens for a buffer.
+    ///
+    /// Uses one-shot `GetTokens` RPC. Tokens are cached in `token_cache_manager`.
+    /// Called on initial content load and after buffer modifications.
+    async fn fetch_tokens_for_buffer(&mut self, buffer_id: u64) {
+        // Get buffer content for byte-to-position conversion
+        let content = self
+            .state
+            .buffer_cache
+            .get(&buffer_id)
+            .map(|lines| lines.join("\n"))
+            .unwrap_or_default();
+
+        // Request tokens from server
+        match self.client.get_tokens(buffer_id, None, None).await {
+            Ok(response) => {
+                // Convert protocol TokenSpan to our local TokenSpan type
+                let token_spans: Vec<TokenSpan> = response
+                    .tokens
+                    .into_iter()
+                    .map(|t| TokenSpan {
+                        start_byte: t.start_byte,
+                        end_byte: t.end_byte,
+                        category: t.category,
+                    })
+                    .collect();
+
+                // Apply tokens to cache (full refresh)
+                self.token_cache_manager.apply_token_update(
+                    buffer_id,
+                    &token_spans,
+                    0,
+                    u64::MAX, // Full buffer range
+                    true,     // Full refresh
+                    &content,
+                );
+
+                tracing::debug!(buffer_id, token_count = token_spans.len(), "Cached syntax tokens");
+            }
+            Err(e) => {
+                // Log but don't fail - syntax highlighting is optional
+                tracing::debug!(buffer_id, error = %e, "Could not fetch tokens");
+            }
+        }
+    }
+
+    /// Apply a colorscheme by name (Phase 13.0).
+    ///
+    /// Attempts to load the theme in this order:
+    /// 1. User theme file (e.g., `~/.config/reovim/themes/name.toml`)
+    /// 2. Builtin theme (dark, light, tokyo-night-orange)
+    fn apply_colorscheme(&mut self, name: &str) {
+        // Try user theme first
+        match self.theme_loader.load(name) {
+            Ok(theme) => {
+                self.theme_manager.set_theme(theme);
+                tracing::info!(theme = name, "Applied user theme");
+                return;
+            }
+            Err(e) => {
+                tracing::debug!(theme = name, error = %e, "User theme not found, trying builtin");
+            }
+        }
+
+        // Try builtin themes
+        let builtin = match name.to_lowercase().as_str() {
+            "dark" => Some(BuiltinTheme::Dark),
+            "light" => Some(BuiltinTheme::Light),
+            "tokyo-night" | "tokyo-night-orange" | "tokyonight" => {
+                Some(BuiltinTheme::TokyoNightOrange)
+            }
+            _ => None,
+        };
+
+        if let Some(theme) = builtin {
+            self.theme_manager.set_theme(theme.load());
+            tracing::info!(theme = name, "Applied builtin theme");
+        } else {
+            tracing::warn!(theme = name, "Theme not found");
+            self.state.last_error = Some(format!("Theme not found: {name}"));
+        }
     }
 
     /// Main event loop.
@@ -479,6 +622,9 @@ impl TuiAppV2 {
                         .await
                     {
                         self.state.buffer_cache.insert(buf.buffer_id, content.lines);
+
+                        // Refresh syntax tokens (Phase 13.0)
+                        self.fetch_tokens_for_buffer(buf.buffer_id).await;
                     }
                     self.state.needs_redraw = true;
                 }
@@ -501,11 +647,18 @@ impl TuiAppV2 {
                     self.running = false;
                 }
                 Payload::OptionChanged(opt) => {
-                    // Refetch options if line number settings changed
+                    // Handle option changes (Phase 13.0)
                     match opt.name.as_str() {
                         "number" | "relativenumber" => {
                             // Refetch display options asynchronously
                             self.fetch_display_options().await;
+                            self.state.needs_redraw = true;
+                        }
+                        "colorscheme" => {
+                            // Load and apply new theme
+                            if let Some(OptionValue::StringValue(theme_name)) = opt.value {
+                                self.apply_colorscheme(&theme_name);
+                            }
                             self.state.needs_redraw = true;
                         }
                         _ => {
@@ -609,11 +762,100 @@ impl TuiAppV2 {
         self.screen.write_str(x, y, &number_str, &style);
     }
 
+    /// Convert display driver Style to TUI driver Style.
+    ///
+    /// Both types are structurally similar with fg, bg, and attributes.
+    /// The attribute bits are compatible (BOLD, ITALIC, etc. at same positions).
+    fn convert_style(display_style: &reovim_driver_display::Style) -> Style {
+        use {
+            reovim_driver_display::Attributes as DisplayAttrs,
+            reovim_driver_tui::Attributes as TuiAttrs,
+        };
+
+        let mut tui_style = Style::default();
+
+        if let Some(fg) = display_style.fg {
+            tui_style = tui_style.with_fg(fg);
+        }
+        if let Some(bg) = display_style.bg {
+            tui_style = tui_style.with_bg(bg);
+        }
+
+        // Convert attributes (same bit positions)
+        if display_style.attributes.contains(DisplayAttrs::BOLD) {
+            tui_style.attrs.set(TuiAttrs::BOLD);
+        }
+        if display_style.attributes.contains(DisplayAttrs::ITALIC) {
+            tui_style.attrs.set(TuiAttrs::ITALIC);
+        }
+        if display_style.attributes.contains(DisplayAttrs::UNDERLINE) {
+            tui_style.attrs.set(TuiAttrs::UNDERLINE);
+        }
+        if display_style
+            .attributes
+            .contains(DisplayAttrs::STRIKETHROUGH)
+        {
+            tui_style.attrs.set(TuiAttrs::STRIKETHROUGH);
+        }
+
+        tui_style
+    }
+
+    /// Render a line with syntax highlighting.
+    ///
+    /// Gets tokens from the cache and applies styles from the theme manager.
+    /// Falls back to default style for regions without tokens.
+    #[allow(clippy::too_many_arguments)]
+    fn render_line_with_syntax(
+        &mut self,
+        x: u16,
+        y: u16,
+        max_width: u16,
+        line: &str,
+        line_number: u32,
+        buffer_id: u64,
+    ) {
+        let default_style = Style::default();
+
+        // Get tokens for this line
+        let tokens: Vec<_> = self
+            .token_cache_manager
+            .tokens_for_line(buffer_id, line_number)
+            .collect();
+
+        if tokens.is_empty() {
+            // No tokens - render with default style
+            let display_line: String = line.chars().take(max_width as usize).collect();
+            self.screen.write_str(x, y, &display_line, &default_style);
+            return;
+        }
+
+        // Render with syntax highlighting
+        let chars: Vec<char> = line.chars().take(max_width as usize).collect();
+
+        for (col, ch) in (0_u32..).zip(chars.iter()) {
+            // Find token covering this column (if any)
+            let style = tokens
+                .iter()
+                .find(|t| col >= t.start_col && col < t.end_col)
+                .map_or_else(
+                    || default_style.clone(),
+                    |t| {
+                        let display_style = self.theme_manager.get_style(&t.category);
+                        Self::convert_style(&display_style)
+                    },
+                );
+
+            #[allow(clippy::cast_possible_truncation)]
+            let screen_x = x + col as u16;
+            self.screen.put_char(screen_x, y, *ch, &style);
+        }
+    }
+
     /// Render all windows to screen buffer.
     ///
     /// Uses `ServerLayoutMirror` (Phase 11.2) for placement data.
     fn render_windows(&mut self) {
-        let default_style = Style::default();
         let tilde_style = Style::default().with_fg(Color::DarkBlue);
 
         // Get placements from layout mirror (Phase 11.2)
@@ -654,10 +896,17 @@ impl TuiAppV2 {
                         self.render_line_number(x, screen_y, gutter_width, row, cursor_line);
                     }
 
-                    // Truncate line to content width
-                    let display_line: String = line.chars().take(content_width as usize).collect();
-                    self.screen
-                        .write_str(content_x, screen_y, &display_line, &default_style);
+                    // Render line with syntax highlighting (Phase 13.0)
+                    #[allow(clippy::cast_possible_truncation)]
+                    let line_num = row as u32;
+                    self.render_line_with_syntax(
+                        content_x,
+                        screen_y,
+                        content_width,
+                        line,
+                        line_num,
+                        placement.buffer_id,
+                    );
                 }
 
                 // Render empty lines past EOF with tilde (~)
