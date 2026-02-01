@@ -1,9 +1,12 @@
-// Buffer rendering - renders lines with selection highlighting.
+// Buffer rendering - renders lines with selection highlighting and syntax.
 //
 // This module handles rendering buffer content (lines of text) into
-// window elements, including cursor positioning and selection highlighting.
+// window elements, including cursor positioning, selection highlighting,
+// and syntax highlighting via the theme system.
 
 import type { ScreenPosition } from "../wasm/index.js";
+import type { TokenCache } from "../syntax/index.js";
+import type { ThemeManager } from "../theme/index.js";
 
 /**
  * Selection range for highlighting.
@@ -27,12 +30,15 @@ export interface BufferRendererOptions {
   showLineNumbers: boolean;
   /** Tab width in spaces. */
   tabWidth: number;
+  /** Whether to enable syntax highlighting. */
+  syntaxHighlighting: boolean;
 }
 
 const DEFAULT_OPTIONS: BufferRendererOptions = {
   lineNumberWidth: 4,
   showLineNumbers: true,
   tabWidth: 4,
+  syntaxHighlighting: true,
 };
 
 /**
@@ -40,9 +46,25 @@ const DEFAULT_OPTIONS: BufferRendererOptions = {
  */
 export class BufferRenderer {
   private options: BufferRendererOptions;
+  private themeManager: ThemeManager | null = null;
+  private tokenCache: TokenCache | null = null;
 
   constructor(options: Partial<BufferRendererOptions> = {}) {
     this.options = { ...DEFAULT_OPTIONS, ...options };
+  }
+
+  /**
+   * Set the theme manager for syntax highlighting.
+   */
+  setThemeManager(themeManager: ThemeManager): void {
+    this.themeManager = themeManager;
+  }
+
+  /**
+   * Set the token cache for the current buffer.
+   */
+  setTokenCache(tokenCache: TokenCache | null): void {
+    this.tokenCache = tokenCache;
   }
 
   /**
@@ -115,7 +137,7 @@ export class BufferRenderer {
       lineEl.appendChild(lineNumEl);
     }
 
-    // Line content with selection
+    // Line content with selection and syntax highlighting
     const contentEl = document.createElement("span");
     contentEl.className = "line-content";
 
@@ -125,12 +147,77 @@ export class BufferRenderer {
         lineNum,
         selection
       );
+    } else if (
+      this.options.syntaxHighlighting &&
+      this.themeManager &&
+      this.tokenCache
+    ) {
+      // Render with syntax highlighting
+      this.renderLineWithSyntax(contentEl, line, lineNum);
     } else {
       contentEl.textContent = line || " "; // Non-breaking space for empty lines
     }
 
     lineEl.appendChild(contentEl);
     return lineEl;
+  }
+
+  /**
+   * Render a line with syntax highlighting.
+   */
+  private renderLineWithSyntax(
+    contentEl: HTMLElement,
+    line: string,
+    lineNum: number
+  ): void {
+    if (!line) {
+      contentEl.textContent = " ";
+      return;
+    }
+
+    const tokens = this.tokenCache!.tokensForLine(lineNum);
+    if (tokens.length === 0) {
+      contentEl.textContent = line;
+      return;
+    }
+
+    // Expand tabs for consistent column calculation
+    const expandedLine = this.expandTabs(line);
+    let pos = 0;
+
+    for (const token of tokens) {
+      // Text before this token (unstyled)
+      if (token.startCol > pos) {
+        const text = expandedLine.substring(pos, token.startCol);
+        contentEl.appendChild(document.createTextNode(text));
+      }
+
+      // Token span with theme color
+      const span = document.createElement("span");
+      const style = this.themeManager!.getStyle(token.category);
+
+      span.style.color = style.fg;
+      if (style.bold) span.style.fontWeight = "bold";
+      if (style.italic) span.style.fontStyle = "italic";
+      if (style.underline) span.style.textDecoration = "underline";
+      if (style.strikethrough) {
+        span.style.textDecoration = span.style.textDecoration
+          ? `${span.style.textDecoration} line-through`
+          : "line-through";
+      }
+
+      span.textContent = expandedLine.substring(token.startCol, token.endCol);
+      contentEl.appendChild(span);
+
+      pos = token.endCol;
+    }
+
+    // Remaining text after last token
+    if (pos < expandedLine.length) {
+      contentEl.appendChild(
+        document.createTextNode(expandedLine.substring(pos))
+      );
+    }
   }
 
   private isLineInSelection(lineNum: number, selection: SelectionRange): boolean {

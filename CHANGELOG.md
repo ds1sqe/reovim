@@ -55,6 +55,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   notification. 88 tests (76 style + 12 syntax) with 100% pass rate. Part of
   Epic #465. (#470)
 
+- **Web Theme Engine (Phase 13.1)**: Complete theme engine for web client mirroring
+  TUI Phase 13.0 design but adapted for browser environments. `ThemeManager` with
+  same 4-tier lookup (overrides → theme → module defaults → fallback) and hierarchical
+  fallback (`keyword.control` → `keyword` → default). `ThemeProvider` interface matches
+  TUI trait. 42 highlight groups (13 syntax, 17 UI, 4 diagnostic, 8 gutter) defined as
+  constants. `parseTheme()` resolves palette references to hex colors. Three built-in
+  themes matching TUI: Dark (OneDark-inspired), Light (high-contrast), Tokyo Night
+  Orange. `StyleGroupRegistry` for module-provided defaults. `applyToCSSVariables()`
+  applies all 42 groups as CSS custom properties (`--theme-*`). Theme choice persisted
+  to localStorage. `TokenCache` for web with byte-to-position conversion and LRU
+  eviction (max 10 buffers). `TokenCacheManager` for per-buffer token management.
+  `BufferRenderer` integration for syntax-highlighted rendering via `setThemeManager()`
+  and `setTokenCache()`. CSS files (`main.css`, `layout.css`, `overlay.css`) migrated
+  from hardcoded colors to theme variables. 102 tests (53 theme + 49 syntax) with
+  100% pass rate. Part of Epic #465. (#465)
+
 - **Common Client Model**: Created `reovim-client-model` crate at
   `shared/clients/model/` - a platform-agnostic abstraction layer for all clients
   (TUI, Web, Android). Separates wire format types (from server) from rendered state

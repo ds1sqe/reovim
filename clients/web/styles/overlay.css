@@ -7,8 +7,8 @@
 /* Base overlay styles */
 .overlay {
   position: absolute;
-  background: var(--bg-popup, #1e1e2e);
-  border: 1px solid var(--border-color, #45475a);
+  background: var(--theme-popup-bg);
+  border: 1px solid var(--theme-border);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   font-family: var(--font-mono, monospace);
@@ -49,12 +49,12 @@
 }
 
 .completion-item:hover {
-  background: var(--bg-hover, #313244);
+  background: var(--theme-statusline-bg);
 }
 
 .completion-item.selected {
-  background: var(--bg-selected, #45475a);
-  color: var(--text-selected, #f5e0dc);
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
 }
 
 .completion-label {
@@ -68,8 +68,8 @@
   font-size: 0.75em;
   padding: 2px 6px;
   border-radius: 3px;
-  background: var(--bg-badge, #585b70);
-  color: var(--text-badge, #cdd6f4);
+  background: var(--theme-border);
+  color: var(--theme-fg);
   text-transform: lowercase;
 }
 
@@ -84,7 +84,7 @@
 
 .completion-detail {
   font-size: 0.85em;
-  color: var(--text-muted, #6c7086);
+  color: var(--theme-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -94,7 +94,7 @@
 .completion-empty {
   padding: 12px;
   text-align: center;
-  color: var(--text-muted, #6c7086);
+  color: var(--theme-text-muted);
   font-style: italic;
 }
 
@@ -121,7 +121,7 @@
 }
 
 .cmdline-prefix {
-  color: var(--text-accent, #f38ba8);
+  color: var(--theme-text-accent);
   font-weight: bold;
   user-select: none;
 }
@@ -132,8 +132,8 @@
 }
 
 .cmdline-cursor {
-  background: var(--cursor-bg, #f5e0dc);
-  color: var(--cursor-text, #1e1e2e);
+  background: var(--theme-cursor-bg);
+  color: var(--theme-cursor-fg);
   animation: blink 1s step-end infinite;
 }
 
@@ -174,8 +174,8 @@
 
 .signature-documentation {
   font-size: 0.9em;
-  color: var(--text-muted, #6c7086);
-  border-top: 1px solid var(--border-color, #45475a);
+  color: var(--theme-text-muted);
+  border-top: 1px solid var(--theme-border);
   padding-top: 4px;
   margin-top: 4px;
 }
@@ -190,37 +190,8 @@
   max-height: 200px;
 }
 
-/* ============ Dark/Light Theme Variables ============ */
-
-:root {
-  --bg-popup: #1e1e2e;
-  --bg-hover: #313244;
-  --bg-selected: #45475a;
-  --bg-badge: #585b70;
-  --border-color: #45475a;
-  --text-primary: #cdd6f4;
-  --text-selected: #f5e0dc;
-  --text-muted: #6c7086;
-  --text-badge: #cdd6f4;
-  --text-accent: #f38ba8;
-  --cursor-bg: #f5e0dc;
-  --cursor-text: #1e1e2e;
-}
-
-/* Light theme override */
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg-popup: #eff1f5;
-    --bg-hover: #e6e9ef;
-    --bg-selected: #ccd0da;
-    --bg-badge: #bcc0cc;
-    --border-color: #bcc0cc;
-    --text-primary: #4c4f69;
-    --text-selected: #1e1e2e;
-    --text-muted: #6c6f85;
-    --text-badge: #4c4f69;
-    --text-accent: #d20f39;
-    --cursor-bg: #4c4f69;
-    --cursor-text: #eff1f5;
-  }
-}
+/* Theme variables are now managed by ThemeManager.
+ * The 'light' theme can be activated via:
+ *   themeManager.setTheme('light');
+ * See main.css for fallback variable definitions.
+ */

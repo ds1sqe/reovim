@@ -1,15 +1,8 @@
-/* Multi-window layout styles (Phase 10.2C) */
-
-:root {
-  --border: #45475a;
-  --border-focused: #89b4fa;
-  --accent: #89b4fa;
-  --accent-glow: rgba(137, 180, 250, 0.3);
-  --bg-alt: #181825;
-  --separator: #313244;
-  --tab-active: #1e1e2e;
-  --tab-inactive: #181825;
-}
+/* Multi-window layout styles (Phase 10.2C)
+ *
+ * Uses theme variables from ThemeManager.applyToCSSVariables().
+ * See main.css for the complete variable list.
+ */
 
 /* ============ Layout Container ============ */
 
@@ -42,16 +35,16 @@
 
 .window {
   position: absolute;
-  border: 1px solid var(--border);
+  border: 1px solid var(--theme-border);
   overflow: hidden;
-  background: var(--bg);
+  background: var(--theme-bg);
   display: flex;
   flex-direction: column;
 }
 
 .window.focused {
-  border-color: var(--border-focused);
-  box-shadow: 0 0 4px var(--accent-glow);
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent) 30%, transparent);
   z-index: 1;
 }
 
@@ -66,7 +59,7 @@
   position: absolute;
   width: 0.6em;
   height: 21px; /* Match line height */
-  background: var(--cursor-bg);
+  background: var(--theme-cursor-bg);
   animation: cursor-blink 1s step-end infinite;
   pointer-events: none;
   z-index: 10;
@@ -101,7 +94,7 @@
 
 .separator {
   position: absolute;
-  background: var(--separator);
+  background: var(--theme-border);
   z-index: 2;
 }
 
@@ -118,7 +111,7 @@
 }
 
 .separator:hover {
-  background: var(--accent);
+  background: var(--theme-accent);
 }
 
 /* ============ Tab Styles ============ */
@@ -131,8 +124,8 @@
 
 .tab-bar {
   display: flex;
-  background: var(--bg-alt);
-  border-bottom: 1px solid var(--border);
+  background: var(--theme-statusline-bg);
+  border-bottom: 1px solid var(--theme-border);
   min-height: 28px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -143,33 +136,33 @@
 }
 
 .tab-bar::-webkit-scrollbar-track {
-  background: var(--bg-alt);
+  background: var(--theme-statusline-bg);
 }
 
 .tab-bar::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--theme-border);
 }
 
 .tab {
   padding: 4px 16px;
   cursor: pointer;
-  border-right: 1px solid var(--border);
-  background: var(--tab-inactive);
-  color: var(--line-number);
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-statusline-bg);
+  color: var(--theme-line-number);
   white-space: nowrap;
   transition: background 0.1s, color 0.1s;
   user-select: none;
 }
 
 .tab:hover {
-  background: var(--statusline-bg);
-  color: var(--fg);
+  background: var(--theme-popup-bg);
+  color: var(--theme-fg);
 }
 
 .tab.active {
-  background: var(--tab-active);
-  color: var(--fg);
-  border-bottom: 1px solid var(--tab-active);
+  background: var(--theme-bg);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-bg);
   margin-bottom: -1px;
 }
 
@@ -187,7 +180,7 @@
 }
 
 .line-number {
-  color: var(--line-number);
+  color: var(--theme-line-number);
   text-align: right;
   padding-right: 1em;
   min-width: 4em;
@@ -203,7 +196,7 @@
 /* ============ Selection ============ */
 
 .selected {
-  background-color: var(--selection-bg);
+  background-color: var(--theme-selection-bg);
   border-radius: 2px;
 }
 
@@ -222,5 +215,5 @@
 }
 
 .window.focused::before {
-  background: var(--accent);
+  background: var(--theme-accent);
 }
