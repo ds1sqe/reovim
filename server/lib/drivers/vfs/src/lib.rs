@@ -68,6 +68,7 @@
 
 mod error;
 mod filetype;
+mod instance;
 mod metadata;
 mod mock;
 mod module_ext;
@@ -111,3 +112,6 @@ pub use {
 
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
 pub use {registry::VfsProviderRegistry, scheme::VfsScheme};
+
+// Re-export VFS instance wrapper (Epic #465 - ex-command VFS access)
+pub use instance::VfsInstance;

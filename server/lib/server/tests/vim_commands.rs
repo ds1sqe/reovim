@@ -3,10 +3,19 @@
 //! These tests verify that vim commands work correctly through the full
 //! server/client architecture using gRPC v2 protocol.
 //!
+//! # Status (Phase 15)
+//!
+//! - 28 of 34 tests are enabled and passing
+//! - 6 tests are ignored pending text object and dot repeat fixes
+//!
 //! # Running Tests
 //!
 //! ```bash
+//! # Run enabled tests
 //! cargo test -p reovim-server --test vim_commands
+//!
+//! # Run ignored tests (text objects, dot repeat)
+//! cargo test -p reovim-server --test vim_commands -- --ignored
 //! ```
 //!
 //! # Log Files
@@ -22,7 +31,6 @@ use reovim_testing::IntegrationTest;
 
 /// Test `h` motion (move left).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_h_move_left() {
     let result = IntegrationTest::new()
         .await
@@ -36,7 +44,6 @@ async fn test_h_move_left() {
 
 /// Test `l` motion (move right).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_l_move_right() {
     let result = IntegrationTest::new()
         .await
@@ -49,7 +56,6 @@ async fn test_l_move_right() {
 
 /// Test `j` motion (move down).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_j_move_down() {
     let result = IntegrationTest::new()
         .await
@@ -62,7 +68,6 @@ async fn test_j_move_down() {
 
 /// Test `k` motion (move up).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_k_move_up() {
     let result = IntegrationTest::new()
         .await
@@ -76,7 +81,6 @@ async fn test_k_move_up() {
 
 /// Test `w` motion (word forward).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_w_word_forward() {
     let result = IntegrationTest::new()
         .await
@@ -89,7 +93,6 @@ async fn test_w_word_forward() {
 
 /// Test `b` motion (word backward).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_b_word_backward() {
     let result = IntegrationTest::new()
         .await
@@ -103,7 +106,6 @@ async fn test_b_word_backward() {
 
 /// Test `e` motion (end of word).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_e_end_of_word() {
     let result = IntegrationTest::new()
         .await
@@ -116,7 +118,6 @@ async fn test_e_end_of_word() {
 
 /// Test `0` motion (start of line).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_0_start_of_line() {
     let result = IntegrationTest::new()
         .await
@@ -130,7 +131,6 @@ async fn test_0_start_of_line() {
 
 /// Test `$` motion (end of line).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_dollar_end_of_line() {
     let result = IntegrationTest::new()
         .await
@@ -147,7 +147,6 @@ async fn test_dollar_end_of_line() {
 
 /// Test `i` enters insert mode.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_i_enters_insert_mode() {
     let result = IntegrationTest::new()
         .await
@@ -160,7 +159,6 @@ async fn test_i_enters_insert_mode() {
 
 /// Test `i` + text + `<Esc>` inserts text.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_i_inserts_text() {
     let result = IntegrationTest::new()
         .await
@@ -174,7 +172,6 @@ async fn test_i_inserts_text() {
 
 /// Test `a` appends after cursor.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_a_appends() {
     let result = IntegrationTest::new()
         .await
@@ -187,7 +184,6 @@ async fn test_a_appends() {
 
 /// Test `A` appends at end of line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_capital_a_appends_eol() {
     let result = IntegrationTest::new()
         .await
@@ -200,7 +196,6 @@ async fn test_capital_a_appends_eol() {
 
 /// Test `o` opens line below.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_o_opens_line_below() {
     let result = IntegrationTest::new()
         .await
@@ -213,7 +208,6 @@ async fn test_o_opens_line_below() {
 
 /// Test `O` opens line above.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_capital_o_opens_line_above() {
     let result = IntegrationTest::new()
         .await
@@ -230,7 +224,6 @@ async fn test_capital_o_opens_line_above() {
 
 /// Test `dw` deletes word.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_dw_delete_word() {
     let result = IntegrationTest::new()
         .await
@@ -243,7 +236,6 @@ async fn test_dw_delete_word() {
 
 /// Test `dd` deletes line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_dd_delete_line() {
     let result = IntegrationTest::new()
         .await
@@ -256,7 +248,6 @@ async fn test_dd_delete_line() {
 
 /// Test `d$` deletes to end of line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_d_dollar_delete_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -270,7 +261,6 @@ async fn test_d_dollar_delete_to_eol() {
 
 /// Test `D` (alias for `d$`).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_capital_d_delete_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -284,7 +274,6 @@ async fn test_capital_d_delete_to_eol() {
 
 /// Test `x` deletes character under cursor.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_x_delete_char() {
     let result = IntegrationTest::new()
         .await
@@ -301,7 +290,6 @@ async fn test_x_delete_char() {
 
 /// Test `cw` changes word.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_cw_change_word() {
     let result = IntegrationTest::new()
         .await
@@ -314,7 +302,6 @@ async fn test_cw_change_word() {
 
 /// Test `cc` changes entire line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_cc_change_line() {
     let result = IntegrationTest::new()
         .await
@@ -327,7 +314,6 @@ async fn test_cc_change_line() {
 
 /// Test `C` (change to end of line).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_capital_c_change_to_eol() {
     let result = IntegrationTest::new()
         .await
@@ -345,7 +331,6 @@ async fn test_capital_c_change_to_eol() {
 
 /// Test `yy` + `p` yanks and puts line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_yy_p_yank_put_line() {
     let result = IntegrationTest::new()
         .await
@@ -358,7 +343,6 @@ async fn test_yy_p_yank_put_line() {
 
 /// Test `yw` + `p` yanks and puts word.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_yw_p_yank_put_word() {
     let result = IntegrationTest::new()
         .await
@@ -375,7 +359,7 @@ async fn test_yw_p_yank_put_word() {
 
 /// Test `diw` deletes inner word.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Text object iw not fully implemented"]
 async fn test_diw_delete_inner_word() {
     let result = IntegrationTest::new()
         .await
@@ -389,7 +373,7 @@ async fn test_diw_delete_inner_word() {
 
 /// Test `daw` deletes a word (with surrounding whitespace).
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Text object aw not fully implemented"]
 async fn test_daw_delete_a_word() {
     let result = IntegrationTest::new()
         .await
@@ -403,7 +387,7 @@ async fn test_daw_delete_a_word() {
 
 /// Test `di"` deletes inside quotes.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Text object i\" not fully implemented"]
 async fn test_di_quote_delete_inside() {
     let result = IntegrationTest::new()
         .await
@@ -417,7 +401,7 @@ async fn test_di_quote_delete_inside() {
 
 /// Test `ci{` changes inside braces.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Text object i{ not fully implemented"]
 async fn test_ci_brace_change_inside() {
     let result = IntegrationTest::new()
         .await
@@ -435,7 +419,6 @@ async fn test_ci_brace_change_inside() {
 
 /// Test `v` enters visual mode.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_v_enters_visual_mode() {
     let result = IntegrationTest::new()
         .await
@@ -448,7 +431,6 @@ async fn test_v_enters_visual_mode() {
 
 /// Test visual selection + `d` deletes.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_visual_delete() {
     let result = IntegrationTest::new()
         .await
@@ -461,7 +443,6 @@ async fn test_visual_delete() {
 
 /// Test `V` (visual line) + `d` deletes line.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
 async fn test_visual_line_delete() {
     let result = IntegrationTest::new()
         .await
@@ -478,7 +459,7 @@ async fn test_visual_line_delete() {
 
 /// Test `.` repeats last change.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Dot repeat not fully implemented"]
 async fn test_dot_repeats_change() {
     let result = IntegrationTest::new()
         .await
@@ -491,7 +472,7 @@ async fn test_dot_repeats_change() {
 
 /// Test `.` repeats delete.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded"]
+#[ignore = "Dot repeat not fully implemented"]
 async fn test_dot_repeats_delete() {
     let result = IntegrationTest::new()
         .await

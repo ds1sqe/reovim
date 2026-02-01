@@ -1830,6 +1830,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-tui",
  "reovim-protocol",
+ "reovim-testing",
  "serde",
  "serde_json",
  "tokio",
@@ -2069,6 +2070,7 @@ name = "reovim-module-commands"
 version = "0.9.3-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-driver-command",
  "reovim-driver-display",
  "reovim-kernel",
  "reovim-module-macros",

@@ -20,8 +20,11 @@ async function main() {
 
   try {
     // Create gRPC-Web client
-    // Use the same hostname as the page, with the gRPC port
-    const serverUrl = `http://${window.location.hostname}:12521`;
+    // Allow port override via URL query parameter for E2E testing
+    // e.g., http://localhost:5173/?port=12522
+    const urlParams = new URLSearchParams(window.location.search);
+    const port = urlParams.get("port") || "12521";
+    const serverUrl = `http://${window.location.hostname}:${port}`;
     console.log("Connecting to:", serverUrl);
     const client = createClient(serverUrl);
 

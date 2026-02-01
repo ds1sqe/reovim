@@ -162,6 +162,66 @@ enum CliSubcommand {
     Ping,
     /// Get server version and info.
     Version,
+    /// Presence operations for multi-client awareness.
+    Presence {
+        #[command(subcommand)]
+        action: PresenceAction,
+    },
+}
+
+/// Presence subcommands.
+#[cfg(feature = "grpc")]
+#[derive(Debug, Subcommand)]
+enum PresenceAction {
+    /// Join the session with a display name.
+    Join {
+        /// Display name for this client.
+        name: String,
+        /// Client type identifier.
+        #[arg(long, default_value = "cli")]
+        client_type: String,
+    },
+    /// Leave the session.
+    Leave {
+        /// Client ID to remove.
+        client_id: u64,
+    },
+    /// List all connected clients.
+    List,
+    /// Update presence state.
+    Update {
+        /// Client ID making the update.
+        client_id: u64,
+        /// Buffer ID to switch to.
+        #[arg(long)]
+        buffer: Option<u64>,
+        /// Cursor line position.
+        #[arg(long)]
+        line: Option<u64>,
+        /// Cursor column position.
+        #[arg(long)]
+        column: Option<u64>,
+        /// Mode name.
+        #[arg(long)]
+        mode: Option<String>,
+    },
+    /// Set sync mode to follow another client.
+    Follow {
+        /// Client ID setting the mode.
+        client_id: u64,
+        /// Target client ID to follow.
+        target: u64,
+    },
+    /// Set sync mode to present (others can follow you).
+    Present {
+        /// Client ID to set as presenter.
+        client_id: u64,
+    },
+    /// Set sync mode to independent.
+    Independent {
+        /// Client ID to set as independent.
+        client_id: u64,
+    },
 }
 
 fn main() -> std::io::Result<()> {
@@ -277,6 +337,51 @@ async fn run_cli(
         }
         CliSubcommand::Ping => commands::ping(&mut client, output_format).await,
         CliSubcommand::Version => commands::version(&mut client, output_format).await,
+        CliSubcommand::Presence { action } => match action {
+            PresenceAction::Join { name, client_type } => {
+                commands::presence_join(&mut client, &client_type, &name, output_format).await
+            }
+            PresenceAction::Leave { client_id } => {
+                commands::presence_leave(&mut client, client_id, output_format).await
+            }
+            PresenceAction::List => commands::presence_list(&mut client, output_format).await,
+            PresenceAction::Update {
+                client_id,
+                buffer,
+                line,
+                column,
+                mode,
+            } => {
+                commands::presence_update(
+                    &mut client,
+                    client_id,
+                    buffer,
+                    line,
+                    column,
+                    mode,
+                    output_format,
+                )
+                .await
+            }
+            PresenceAction::Follow { client_id, target } => {
+                commands::presence_set_sync_mode(
+                    &mut client,
+                    client_id,
+                    1,
+                    Some(target),
+                    output_format,
+                )
+                .await
+            }
+            PresenceAction::Present { client_id } => {
+                commands::presence_set_sync_mode(&mut client, client_id, 2, None, output_format)
+                    .await
+            }
+            PresenceAction::Independent { client_id } => {
+                commands::presence_set_sync_mode(&mut client, client_id, 0, None, output_format)
+                    .await
+            }
+        },
     };
     drop(client); // Release gRPC connection early
 

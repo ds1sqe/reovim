@@ -25,18 +25,23 @@
 //! ```
 
 mod colorscheme;
+mod edit;
 mod quit;
 mod session;
 mod types;
 mod write;
 
-use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
+use {
+    reovim_driver_command::ExCommandHandlerStore,
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+};
 
 // Re-export command types
 pub use types::{CommandError, ExCommandContext, ExCommandHandler, Range};
 
 pub use {
     colorscheme::ColorschemeCommand,
+    edit::EditCommand,
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
     write::{WriteCommand, WriteQuitCommand},
@@ -46,6 +51,7 @@ pub use {
 #[must_use]
 pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
     let mut cmds: Vec<Box<dyn ExCommandHandler>> = vec![
+        Box::new(EditCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
@@ -90,7 +96,13 @@ impl Module for CommandsModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Register ex-command handlers (#465)
+        let ex_store = ctx.services.get_or_create::<ExCommandHandlerStore>();
+        for handler in commands() {
+            ex_store.add(handler);
+        }
+
         ProbeResult::Success
     }
 
@@ -110,10 +122,11 @@ mod tests {
     #[test]
     fn test_commands_list() {
         let cmds = commands();
-        assert_eq!(cmds.len(), 7); // 4 base + 3 session commands
+        assert_eq!(cmds.len(), 8); // 5 base + 3 session commands
 
         // Check commands are present
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        assert!(ids.contains(&"edit")); // #465 - needed for vim_commands.rs tests
         assert!(ids.contains(&"quit"));
         assert!(ids.contains(&"write"));
         assert!(ids.contains(&"write-quit"));

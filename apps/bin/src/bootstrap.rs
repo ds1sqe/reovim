@@ -26,11 +26,12 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_command::CommandHandlerStore,
+    reovim_driver_command::{CommandHandlerStore, ExCommandHandlerStore, ExCommandRegistry},
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
     reovim_driver_syntax::SyntaxFactoryStore,
+    reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
@@ -78,9 +79,17 @@ pub fn create_session_state() -> SessionState {
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
         extract_registries(&services);
 
+    // Extract ex-command handlers and create registry (#465)
+    extract_ex_command_registry(&services);
+
     // Create session state with populated registries
     let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
-    let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(reovim_driver_vfs::MockVfs::new());
+    // Use StandardVfs for real file system operations (required for :e command)
+    let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> =
+        Arc::new(reovim_driver_vfs::StandardVfs::new());
+
+    // Register VFS in ServiceRegistry so ex-commands can access it (#465)
+    services.register(Arc::new(VfsInstance::new(Arc::clone(&vfs))));
 
     let mut state = SessionState::with_registries(
         kernel,
@@ -187,6 +196,29 @@ fn extract_registries(
     tracing::info!(count = resolver_registry.len(), "Extracted resolvers");
 
     (mode_registry, command_registry, keymap_registry, resolver_registry)
+}
+
+/// Extract ex-command handlers and create `ExCommandRegistry`.
+///
+/// Follows the same pattern as `extract_registries`:
+/// - `ExCommandHandlerStore` → `ExCommandRegistry`
+///
+/// The registry is stored back in `ServiceRegistry` so the vim module's
+/// `ExitCommandLineMode` can look it up at runtime.
+fn extract_ex_command_registry(services: &Arc<ServiceRegistry>) {
+    // 5. Ex-commands: ExCommandHandlerStore → ExCommandRegistry (#465)
+    //    Ex-commands like :w, :q, :e are dispatched through this registry
+    if let Some(store) = services.get::<ExCommandHandlerStore>() {
+        let handlers = store.take_handlers();
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let count = registry.len();
+        services.register(Arc::new(registry));
+        tracing::info!(count, "Extracted ex-commands");
+    } else {
+        // No ex-commands registered - create empty registry
+        services.register(Arc::new(ExCommandRegistry::new()));
+        tracing::debug!("No ex-commands registered, created empty registry");
+    }
 }
 
 /// Resolve a mode string like `"vim:normal"` to a `ModeId`.

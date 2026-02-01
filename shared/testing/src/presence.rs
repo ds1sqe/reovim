@@ -1,0 +1,302 @@
+//! Presence testing utilities for multi-client E2E tests.
+//!
+//! Provides `PresenceTestClient` for presence-aware integration testing,
+//! wrapping the CLI's `GrpcClient` with convenient presence operations.
+//!
+//! # Protocol
+//!
+//! This module uses **gRPC v2** for communication with the server.
+//!
+//! # Example
+//!
+//! ```ignore
+//! use reovim_testing::{MultiClientPresenceTest, PresenceTestClient};
+//!
+//! MultiClientPresenceTest::with_clients(2)
+//!     .await
+//!     .run(|mut clients| async move {
+//!         let peers = clients[1].peers().await.unwrap();
+//!         assert_eq!(peers.len(), 1);
+//!         assert_eq!(peers[0].display_name, "client_0");
+//!     })
+//!     .await;
+//! ```
+
+// Test infrastructure - suppress pedantic docs requirements
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
+
+use std::time::Duration;
+
+use {reovim_client_cli::GrpcClient, reovim_protocol::v2::ClientPresence};
+
+use super::harness::TestServerHarness;
+
+/// Presence-aware test client wrapper.
+///
+/// Provides convenient methods for presence operations during E2E testing.
+/// Each client maintains its own gRPC connection and client ID.
+pub struct PresenceTestClient {
+    client: GrpcClient,
+    client_id: Option<u64>,
+    display_name: String,
+}
+
+impl PresenceTestClient {
+    /// Create a new presence test client (not yet joined).
+    ///
+    /// Call `join()` to register with the presence service.
+    pub fn new(client: GrpcClient, display_name: &str) -> Self {
+        Self {
+            client,
+            client_id: None,
+            display_name: display_name.to_string(),
+        }
+    }
+
+    /// Join the presence session.
+    ///
+    /// Registers this client with the server and receives an assigned client ID.
+    /// Returns the full join response including peer list.
+    pub async fn join(&mut self) -> Result<reovim_protocol::v2::JoinResponse, String> {
+        let response = self
+            .client
+            .presence_join("test", &self.display_name)
+            .await
+            .map_err(|e| format!("Join failed: {e}"))?;
+        self.client_id = Some(response.client_id);
+        Ok(response)
+    }
+
+    /// Leave the presence session.
+    ///
+    /// Unregisters this client from the server. Safe to call multiple times.
+    pub async fn leave(&mut self) -> Result<(), String> {
+        if let Some(id) = self.client_id.take() {
+            self.client
+                .presence_leave(id)
+                .await
+                .map_err(|e| format!("Leave failed: {e}"))?;
+        }
+        Ok(())
+    }
+
+    /// Get client ID (panics if not joined).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `join()` has not been called or if the client has left.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // expect() is not const
+    pub fn client_id(&self) -> u64 {
+        self.client_id
+            .expect("Client not joined - call join() first")
+    }
+
+    /// Check if this client has joined.
+    #[must_use]
+    pub const fn is_joined(&self) -> bool {
+        self.client_id.is_some()
+    }
+
+    /// Get this client's display name.
+    #[must_use]
+    pub fn display_name(&self) -> &str {
+        &self.display_name
+    }
+
+    /// Update cursor position.
+    pub async fn update_cursor(&mut self, line: u64, col: u64) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_update(id, None, Some(line), Some(col), None)
+            .await
+            .map_err(|e| format!("Update cursor failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Update buffer ID.
+    pub async fn update_buffer(&mut self, buffer_id: u64) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_update(id, Some(buffer_id), None, None, None)
+            .await
+            .map_err(|e| format!("Update buffer failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Update mode.
+    pub async fn update_mode(&mut self, mode: &str) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_update(id, None, None, None, Some(mode.to_string()))
+            .await
+            .map_err(|e| format!("Update mode failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Set follow mode (sync mode = 1).
+    pub async fn follow(&mut self, target_id: u64) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_set_sync_mode(id, 1, Some(target_id))
+            .await
+            .map_err(|e| format!("Set follow mode failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Set present mode (sync mode = 2).
+    pub async fn present(&mut self) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_set_sync_mode(id, 2, None)
+            .await
+            .map_err(|e| format!("Set present mode failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Set independent mode (sync mode = 0).
+    pub async fn independent(&mut self) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .presence_set_sync_mode(id, 0, None)
+            .await
+            .map_err(|e| format!("Set independent mode failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Get all peers (excludes self).
+    pub async fn peers(&mut self) -> Result<Vec<ClientPresence>, String> {
+        let response = self
+            .client
+            .presence_list()
+            .await
+            .map_err(|e| format!("List peers failed: {e}"))?;
+        let my_id = self.client_id;
+        Ok(response
+            .clients
+            .into_iter()
+            .filter(|c| Some(c.client_id) != my_id)
+            .collect())
+    }
+
+    /// Get all clients including self.
+    pub async fn all_clients(&mut self) -> Result<Vec<ClientPresence>, String> {
+        let response = self
+            .client
+            .presence_list()
+            .await
+            .map_err(|e| format!("List clients failed: {e}"))?;
+        Ok(response.clients)
+    }
+
+    /// Access underlying gRPC client for other operations (e.g., `send_keys`).
+    #[allow(clippy::missing_const_for_fn)] // mutable reference prevents const
+    pub fn grpc(&mut self) -> &mut GrpcClient {
+        &mut self.client
+    }
+}
+
+/// Multi-client test with automatic presence join/leave.
+///
+/// Each client automatically joins on setup with display names `client_0`,
+/// `client_1`, etc. All clients are cleaned up on test completion.
+///
+/// # Example
+///
+/// ```ignore
+/// MultiClientPresenceTest::with_clients(2)
+///     .await
+///     .run(|mut clients| async move {
+///         // clients[0] and clients[1] are already joined
+///         let peers = clients[1].peers().await.unwrap();
+///         assert_eq!(peers.len(), 1);
+///     })
+///     .await;
+/// ```
+pub struct MultiClientPresenceTest {
+    harness: TestServerHarness,
+    client_count: usize,
+}
+
+impl MultiClientPresenceTest {
+    /// Create test with N presence-aware clients.
+    ///
+    /// Server logs are captured to `tmp/test-logs/{test_name}_presence_{timestamp}.log`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if server fails to spawn.
+    pub async fn with_clients(n: usize) -> Self {
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_presence_test")
+            .to_string();
+
+        Self {
+            harness: TestServerHarness::spawn_with_name(&format!("{test_name}_presence"))
+                .await
+                .expect("Failed to spawn server"),
+            client_count: n,
+        }
+    }
+
+    /// Get the path to the server log file for debugging.
+    #[must_use]
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.harness.log_path()
+    }
+
+    /// Get the server port.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // harness.port() is not const
+    pub fn port(&self) -> u16 {
+        self.harness.port()
+    }
+
+    /// Run test with presence-aware clients.
+    ///
+    /// Each client is auto-joined with name `client_0`, `client_1`, etc.
+    /// All clients auto-leave when test completes.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn run<F, Fut>(self, test_fn: F)
+    where
+        F: FnOnce(Vec<PresenceTestClient>) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let addr = format!("127.0.0.1:{}", self.harness.port());
+        let mut clients = Vec::with_capacity(self.client_count);
+
+        // Create and join all clients
+        for i in 0..self.client_count {
+            let grpc = Self::connect_with_retry(&addr)
+                .await
+                .expect("Failed to connect");
+            let mut client = PresenceTestClient::new(grpc, &format!("client_{i}"));
+            client.join().await.expect("Failed to join presence");
+            // Small delay to ensure server processes the join
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            clients.push(client);
+        }
+
+        // Run test
+        test_fn(clients).await;
+
+        // Cleanup is automatic when harness is dropped
+    }
+
+    /// Connect to server with retry logic.
+    async fn connect_with_retry(addr: &str) -> Result<GrpcClient, String> {
+        let mut attempts = 0;
+        loop {
+            match GrpcClient::connect(addr).await {
+                Ok(c) => return Ok(c),
+                Err(e) if attempts < 20 => {
+                    attempts += 1;
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                Err(e) => return Err(format!("Failed to connect after {attempts} attempts: {e}")),
+            }
+        }
+    }
+}

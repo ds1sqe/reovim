@@ -4,12 +4,40 @@
 
 use {
     reovim_protocol::v2::{
-        GetCursorRequest, GetCursorResponse, GetModeRequest, GetModeResponse, GetRawContentRequest,
-        GetRawContentResponse, GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
-        GetScreenContentResponse, InfoRequest, InfoResponse, ListBuffersRequest,
-        ListBuffersResponse, PingRequest, PingResponse, SendKeysRequest, SendKeysResponse,
-        buffer_service_client::BufferServiceClient, input_service_client::InputServiceClient,
-        server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
+        GetCursorRequest,
+        GetCursorResponse,
+        GetModeRequest,
+        GetModeResponse,
+        GetRawContentRequest,
+        GetRawContentResponse,
+        GetRegistersRequest,
+        GetRegistersResponse,
+        GetScreenContentRequest,
+        GetScreenContentResponse,
+        InfoRequest,
+        InfoResponse,
+        // Phase 15: Presence types
+        JoinRequest,
+        JoinResponse,
+        LeaveRequest,
+        LeaveResponse,
+        ListBuffersRequest,
+        ListBuffersResponse,
+        ListClientsRequest,
+        ListClientsResponse,
+        PingRequest,
+        PingResponse,
+        SendKeysRequest,
+        SendKeysResponse,
+        SetSyncModeRequest,
+        SetSyncModeResponse,
+        UpdatePresenceRequest,
+        UpdatePresenceResponse,
+        buffer_service_client::BufferServiceClient,
+        input_service_client::InputServiceClient,
+        presence_service_client::PresenceServiceClient,
+        server_service_client::ServerServiceClient,
+        state_service_client::StateServiceClient,
     },
     tonic::transport::Channel,
 };
@@ -48,13 +76,14 @@ impl From<tonic::transport::Error> for GrpcClientError {
 
 /// gRPC v2 client for interacting with the reovim server.
 ///
-/// Wraps all service clients (Input, State, Buffer, Server) and provides
+/// Wraps all service clients (Input, State, Buffer, Server, Presence) and provides
 /// a unified interface.
 pub struct GrpcClient {
     input: InputServiceClient<Channel>,
     state: StateServiceClient<Channel>,
     buffer: BufferServiceClient<Channel>,
     server: ServerServiceClient<Channel>,
+    presence: PresenceServiceClient<Channel>,
 }
 
 impl GrpcClient {
@@ -79,7 +108,8 @@ impl GrpcClient {
             input: InputServiceClient::new(channel.clone()),
             state: StateServiceClient::new(channel.clone()),
             buffer: BufferServiceClient::new(channel.clone()),
-            server: ServerServiceClient::new(channel),
+            server: ServerServiceClient::new(channel.clone()),
+            presence: PresenceServiceClient::new(channel),
         })
     }
 
@@ -219,6 +249,141 @@ impl GrpcClient {
             format: format.to_string(),
         };
         let response = self.state.get_screen_content(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // =========================================================================
+    // Presence Service Methods (Phase 15)
+    // =========================================================================
+
+    /// Join the presence session.
+    ///
+    /// Registers this client with the session and receives an assigned client ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_type` - Client type identifier ("cli", "tui", "web", "test").
+    /// * `display_name` - User-friendly display name.
+    ///
+    /// # Returns
+    ///
+    /// The response containing assigned client ID and list of connected peers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_join(
+        &mut self,
+        client_type: &str,
+        display_name: &str,
+    ) -> Result<JoinResponse, GrpcClientError> {
+        let request = JoinRequest {
+            client_type: client_type.to_string(),
+            display_name: display_name.to_string(),
+        };
+        let response = self.presence.join(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Leave the presence session.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID to remove.
+    ///
+    /// # Returns
+    ///
+    /// The response indicating success or failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_leave(
+        &mut self,
+        client_id: u64,
+    ) -> Result<LeaveResponse, GrpcClientError> {
+        let request = LeaveRequest { client_id };
+        let response = self.presence.leave(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List all connected clients.
+    ///
+    /// # Returns
+    ///
+    /// The response containing all connected clients.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_list(&mut self) -> Result<ListClientsResponse, GrpcClientError> {
+        let request = ListClientsRequest {};
+        let response = self.presence.list_clients(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Update this client's presence state.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID making the update.
+    /// * `buffer_id` - Optional new buffer ID.
+    /// * `cursor_line` - Optional cursor line.
+    /// * `cursor_column` - Optional cursor column.
+    /// * `mode` - Optional mode name.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_update(
+        &mut self,
+        client_id: u64,
+        buffer_id: Option<u64>,
+        cursor_line: Option<u64>,
+        cursor_column: Option<u64>,
+        mode: Option<String>,
+    ) -> Result<UpdatePresenceResponse, GrpcClientError> {
+        use reovim_protocol::v2::Position;
+
+        let cursor = match (cursor_line, cursor_column) {
+            (Some(line), Some(column)) => Some(Position { line, column }),
+            _ => None,
+        };
+
+        let request = UpdatePresenceRequest {
+            client_id,
+            buffer_id,
+            cursor,
+            visible_lines: None,
+            mode,
+        };
+        let response = self.presence.update_presence(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Set sync mode for this client.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID setting the mode.
+    /// * `sync_mode` - The sync mode (0 = Independent, 1 = Follow, 2 = Present).
+    /// * `follow_target` - Target client ID when mode is Follow.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_set_sync_mode(
+        &mut self,
+        client_id: u64,
+        sync_mode: i32,
+        follow_target: Option<u64>,
+    ) -> Result<SetSyncModeResponse, GrpcClientError> {
+        let request = SetSyncModeRequest {
+            client_id,
+            mode: sync_mode,
+            follow_target,
+        };
+        let response = self.presence.set_sync_mode(request).await?;
         Ok(response.into_inner())
     }
 }

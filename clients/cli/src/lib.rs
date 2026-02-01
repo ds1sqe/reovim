@@ -116,6 +116,83 @@ pub enum CliCommand {
 
     /// Get server version and info.
     Version,
+
+    /// Presence operations for multi-client awareness.
+    ///
+    /// Enables clients to see each other's cursors, follow viewports,
+    /// and support collaborative editing scenarios.
+    Presence {
+        #[command(subcommand)]
+        action: PresenceAction,
+    },
+}
+
+/// Presence subcommands for multi-client awareness.
+#[derive(Debug, Subcommand)]
+pub enum PresenceAction {
+    /// Join the session with a display name.
+    ///
+    /// Returns an assigned client ID and list of connected peers.
+    Join {
+        /// Display name for this client (e.g., "laptop", "phone").
+        name: String,
+
+        /// Client type identifier.
+        #[arg(long, default_value = "cli")]
+        client_type: String,
+    },
+
+    /// Leave the session.
+    Leave {
+        /// Client ID to remove.
+        client_id: u64,
+    },
+
+    /// List all connected clients.
+    List,
+
+    /// Update presence state (cursor, buffer, mode).
+    Update {
+        /// Client ID making the update.
+        client_id: u64,
+
+        /// Buffer ID to switch to.
+        #[arg(long)]
+        buffer: Option<u64>,
+
+        /// Cursor line position.
+        #[arg(long)]
+        line: Option<u64>,
+
+        /// Cursor column position.
+        #[arg(long)]
+        column: Option<u64>,
+
+        /// Mode name.
+        #[arg(long)]
+        mode: Option<String>,
+    },
+
+    /// Set sync mode to follow another client.
+    Follow {
+        /// Client ID setting the mode.
+        client_id: u64,
+
+        /// Target client ID to follow.
+        target: u64,
+    },
+
+    /// Set sync mode to present (others can follow you).
+    Present {
+        /// Client ID to set as presenter.
+        client_id: u64,
+    },
+
+    /// Set sync mode to independent (default).
+    Independent {
+        /// Client ID to set as independent.
+        client_id: u64,
+    },
 }
 
 impl CliArgs {
@@ -141,6 +218,51 @@ impl CliArgs {
             }
             CliCommand::Ping => commands::ping(&mut client, self.format).await,
             CliCommand::Version => commands::version(&mut client, self.format).await,
+            CliCommand::Presence { action } => match action {
+                PresenceAction::Join { name, client_type } => {
+                    commands::presence_join(&mut client, client_type, name, self.format).await
+                }
+                PresenceAction::Leave { client_id } => {
+                    commands::presence_leave(&mut client, *client_id, self.format).await
+                }
+                PresenceAction::List => commands::presence_list(&mut client, self.format).await,
+                PresenceAction::Update {
+                    client_id,
+                    buffer,
+                    line,
+                    column,
+                    mode,
+                } => {
+                    commands::presence_update(
+                        &mut client,
+                        *client_id,
+                        *buffer,
+                        *line,
+                        *column,
+                        mode.clone(),
+                        self.format,
+                    )
+                    .await
+                }
+                PresenceAction::Follow { client_id, target } => {
+                    commands::presence_set_sync_mode(
+                        &mut client,
+                        *client_id,
+                        1,
+                        Some(*target),
+                        self.format,
+                    )
+                    .await
+                }
+                PresenceAction::Present { client_id } => {
+                    commands::presence_set_sync_mode(&mut client, *client_id, 2, None, self.format)
+                        .await
+                }
+                PresenceAction::Independent { client_id } => {
+                    commands::presence_set_sync_mode(&mut client, *client_id, 0, None, self.format)
+                        .await
+                }
+            },
         }
     }
 }
@@ -171,5 +293,83 @@ mod tests {
     fn test_cli_args_json_format() {
         let args = CliArgs::parse_from(["reovim-cli", "--format", "json", "version"]);
         assert_eq!(args.format, OutputFormat::Json);
+    }
+
+    // Phase 15: Presence command tests
+    #[test]
+    fn test_cli_args_presence_join() {
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "join", "laptop"]);
+        match &args.command {
+            CliCommand::Presence { action } => match action {
+                PresenceAction::Join { name, client_type } => {
+                    assert_eq!(name, "laptop");
+                    assert_eq!(client_type, "cli");
+                }
+                _ => panic!("Expected Join action"),
+            },
+            _ => panic!("Expected Presence command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_presence_join_with_type() {
+        let args = CliArgs::parse_from([
+            "reovim-cli",
+            "presence",
+            "join",
+            "phone",
+            "--client-type",
+            "android",
+        ]);
+        match &args.command {
+            CliCommand::Presence { action } => match action {
+                PresenceAction::Join { name, client_type } => {
+                    assert_eq!(name, "phone");
+                    assert_eq!(client_type, "android");
+                }
+                _ => panic!("Expected Join action"),
+            },
+            _ => panic!("Expected Presence command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_presence_leave() {
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "leave", "42"]);
+        match &args.command {
+            CliCommand::Presence { action } => match action {
+                PresenceAction::Leave { client_id } => {
+                    assert_eq!(*client_id, 42);
+                }
+                _ => panic!("Expected Leave action"),
+            },
+            _ => panic!("Expected Presence command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_presence_list() {
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "list"]);
+        match &args.command {
+            CliCommand::Presence { action } => {
+                assert!(matches!(action, PresenceAction::List));
+            }
+            _ => panic!("Expected Presence command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_presence_follow() {
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "follow", "1", "2"]);
+        match &args.command {
+            CliCommand::Presence { action } => match action {
+                PresenceAction::Follow { client_id, target } => {
+                    assert_eq!(*client_id, 1);
+                    assert_eq!(*target, 2);
+                }
+                _ => panic!("Expected Follow action"),
+            },
+            _ => panic!("Expected Presence command"),
+        }
     }
 }

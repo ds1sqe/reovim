@@ -40,6 +40,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Automated E2E Testing Infrastructure (Phase 15)**: Comprehensive E2E testing
+  framework for validating client-server interactions. TUI headless testing
+  (`clients/tui/tests/headless_tests.rs`): 6 tests using `TuiAppV2Headless` with
+  `connect_with_size()` for controlled terminal dimensions, `capture(ScreenFormat)`
+  for frame assertions, `wait_for()` with timeout and predicate for async verification,
+  `send_keys()` for input simulation. Frame assertion helpers (`shared/testing/src/frame.rs`):
+  `assert_frame_contains()`, `assert_frame_not_contains()`, `assert_frame_line_contains()`,
+  `assert_statusline_mode()`, `assert_frame_line_count()`, `assert_frame_min_width()`,
+  plus non-panicking variants `frame_contains()`, `frame_line_contains()`, `get_statusline()`,
+  `get_line()`. 12 unit tests for frame helpers. `IntegrationTest` harness uses
+  `TestServerHarness` with OS-assigned gRPC ports and auto-cleanup. vim_commands.rs
+  tests (34 total) documented as blocked pending `:e` command implementation - harness
+  requires `:e {path}<CR>` for buffer setup. Tests deferred: 2 TUI tests (module loading),
+  3 streaming presence tests, 34 vim command tests (`:e` command). Part of Epic #465. (#465)
+
 - **Multi-client presence awareness (Phase 14)**: Implemented `PresenceService`
   gRPC for collaborative editing scenarios. Protocol layer (`presence.proto`):
   6 RPCs (`Join`, `Leave`, `StreamPresence`, `UpdatePresence`, `SetSyncMode`,

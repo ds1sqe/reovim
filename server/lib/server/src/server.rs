@@ -224,7 +224,13 @@ impl Server {
             .parse()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
-        tracing::info!(address = %addr, "Starting gRPC server");
+        // Bind first to get actual port (handles port 0 for testing)
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let local_addr = listener.local_addr()?;
+
+        tracing::info!(address = %local_addr, "Starting gRPC server");
+        // Output for test harness (expects exact format)
+        eprintln!("Listening on 127.0.0.1:{}", local_addr.port());
 
         let default_session_id = SessionId::new(&*self.config.default_session_name);
 
@@ -268,6 +274,7 @@ impl Server {
                 .allow_methods(Any)
                 .expose_headers(Any);
 
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             tonic::transport::Server::builder()
                 .accept_http1(true) // Required for gRPC-Web
                 .layer(cors)
@@ -281,13 +288,14 @@ impl Server {
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
                 .add_service(PresenceServiceServer::new(presence_service))
-                .serve(addr)
+                .serve_with_incoming(incoming)
                 .await
                 .map_err(std::io::Error::other)
         }
 
         #[cfg(not(feature = "grpc-web"))]
         {
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             tonic::transport::Server::builder()
                 .add_service(BufferServiceServer::new(buffer_service))
                 .add_service(EditorServiceServer::new(editor_service))
@@ -298,7 +306,7 @@ impl Server {
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
                 .add_service(PresenceServiceServer::new(presence_service))
-                .serve(addr)
+                .serve_with_incoming(incoming)
                 .await
                 .map_err(std::io::Error::other)
         }

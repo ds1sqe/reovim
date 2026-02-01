@@ -7,15 +7,9 @@
 //! | Category | Description |
 //! |----------|-------------|
 //! | Join/Leave | Client lifecycle operations |
-//! | Streaming | Presence update streaming |
+//! | Streaming | Presence update streaming (deferred) |
 //! | Follow Mode | Sync mode functionality |
 //! | Concurrent | Thread safety under load |
-//!
-//! # Prerequisites
-//!
-//! Integration tests require:
-//! 1. Server binary built with modules
-//! 2. CLI client with presence RPC support (not yet implemented)
 //!
 //! # Running Tests
 //!
@@ -44,14 +38,12 @@
 //! - All 6 gRPC RPC methods
 //! - Error paths (not found, invalid arguments)
 
-use reovim_testing::TestServerHarness;
+use std::time::Duration;
 
-/// Helper to spawn server with retry.
-async fn spawn_server() -> TestServerHarness {
-    TestServerHarness::spawn()
-        .await
-        .expect("Failed to spawn server")
-}
+use {
+    reovim_client_cli::GrpcClient,
+    reovim_testing::{MultiClientPresenceTest, PresenceTestClient, TestServerHarness},
+};
 
 // ============================================================================
 // Join/Leave Tests
@@ -59,95 +51,61 @@ async fn spawn_server() -> TestServerHarness {
 
 /// Test that first client joins with empty peer list.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
 async fn test_multi_client_first_joins_empty_peers() {
-    let _harness = spawn_server().await;
-    // TODO: When CLI client supports presence:
-    // let mut client = connect(&harness).await;
-    // let response = client.presence_join("tui", "laptop").await;
-    // assert!(response.peers.is_empty());
+    MultiClientPresenceTest::with_clients(1)
+        .await
+        .run(|mut clients| async move {
+            let peers = clients[0].peers().await.expect("Failed to get peers");
+            assert!(peers.is_empty(), "First client should have no peers");
+        })
+        .await;
 }
 
 /// Test that second client sees first client as peer.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
 async fn test_multi_client_second_sees_first_peer() {
-    let _harness = spawn_server().await;
-    // TODO: When CLI client supports presence:
-    // let mut client1 = connect(&harness).await;
-    // client1.presence_join("tui", "laptop").await;
-    //
-    // let mut client2 = connect(&harness).await;
-    // let response = client2.presence_join("android", "phone").await;
-    // assert_eq!(response.peers.len(), 1);
-    // assert_eq!(response.peers[0].display_name, "laptop");
+    MultiClientPresenceTest::with_clients(2)
+        .await
+        .run(|mut clients| async move {
+            // Client 1 (index 1) should see client 0 as peer
+            let peers = clients[1].peers().await.expect("Failed to get peers");
+            assert_eq!(peers.len(), 1, "Second client should see one peer");
+            assert_eq!(peers[0].display_name, "client_0", "Peer should be client_0");
+        })
+        .await;
 }
 
 /// Test that multiple clients can join and leave.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_multi_client_join_leave() {
-    let _harness = spawn_server().await;
-    // TODO: When CLI client supports presence:
-    // let mut client1 = connect(&harness).await;
-    // let resp1 = client1.presence_join("tui", "laptop").await;
-    //
-    // let mut client2 = connect(&harness).await;
-    // client2.presence_join("android", "phone").await;
-    //
-    // let mut client3 = connect(&harness).await;
-    // let resp3 = client3.presence_join("web", "browser").await;
-    // assert_eq!(resp3.peers.len(), 2);
-    //
-    // // Client 2 leaves
-    // client2.presence_leave(resp2.client_id).await;
-    //
-    // // Verify via list_clients
-    // let clients = client1.presence_list().await;
-    // assert_eq!(clients.len(), 2);
-}
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
 
-// ============================================================================
-// Streaming Tests
-// ============================================================================
+    // Connect 3 clients
+    let mut client1 = connect_presence(&addr, "laptop").await;
+    let mut client2 = connect_presence(&addr, "phone").await;
+    let mut client3 = connect_presence(&addr, "browser").await;
 
-/// Test that streaming receives join notifications.
-#[tokio::test]
-#[ignore = "Requires CLI client with presence streaming support (#465)"]
-async fn test_stream_receives_join_notification() {
-    let _harness = spawn_server().await;
-    // TODO: When CLI client supports presence streaming:
-    // let mut client1 = connect(&harness).await;
-    // client1.presence_join("tui", "observer").await;
-    // let mut stream = client1.presence_stream().await;
-    //
-    // // Client 2 joins
-    // let mut client2 = connect(&harness).await;
-    // client2.presence_join("android", "phone").await;
-    //
-    // // Observer should receive joined notification
-    // let update = tokio::time::timeout(
-    //     Duration::from_secs(1),
-    //     stream.next()
-    // ).await.expect("Timeout").expect("Stream ended");
-    //
-    // assert!(matches!(update.update, Some(Update::Joined(_))));
-}
+    // Client 3 should see 2 peers
+    let peers = client3.peers().await.expect("Failed to get peers");
+    assert_eq!(peers.len(), 2, "Client 3 should see 2 peers");
 
-/// Test that streaming receives leave notifications.
-#[tokio::test]
-#[ignore = "Requires CLI client with presence streaming support (#465)"]
-async fn test_stream_receives_leave_notification() {
-    let _harness = spawn_server().await;
-    // Similar to above, but test Leave notification
-}
+    // Client 2 leaves
+    client2.leave().await.expect("Failed to leave");
 
-/// Test that streaming receives update notifications.
-#[tokio::test]
-#[ignore = "Requires CLI client with presence streaming support (#465)"]
-async fn test_stream_receives_update_notification() {
-    let _harness = spawn_server().await;
-    // Test that cursor/viewport updates emit notifications
+    // Small delay for server to process
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    // Verify client 1 sees only client 3
+    let all = client1.all_clients().await.expect("Failed to list clients");
+    assert_eq!(all.len(), 2, "Should have 2 clients after leave");
+
+    // Cleanup
+    client1.leave().await.ok();
+    client3.leave().await.ok();
 }
 
 // ============================================================================
@@ -156,38 +114,140 @@ async fn test_stream_receives_update_notification() {
 
 /// Test setting FOLLOW mode with valid target.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_set_sync_mode_follow() {
-    let _harness = spawn_server().await;
-    // TODO:
-    // let mut presenter = connect(&harness).await;
-    // let resp1 = presenter.presence_join("tui", "presenter").await;
-    // presenter.presence_set_sync_mode(resp1.client_id, SyncMode::Present, None).await;
-    //
-    // let mut follower = connect(&harness).await;
-    // let resp2 = follower.presence_join("android", "follower").await;
-    // follower.presence_set_sync_mode(resp2.client_id, SyncMode::Follow, Some(resp1.client_id)).await;
-    //
-    // // Verify via list_clients
-    // let clients = presenter.presence_list().await;
-    // let follower_info = clients.iter().find(|c| c.display_name == "follower").unwrap();
-    // assert_eq!(follower_info.sync_mode, SyncMode::Follow as i32);
+    MultiClientPresenceTest::with_clients(2)
+        .await
+        .run(|mut clients| async move {
+            // Client 0 becomes presenter
+            clients[0].present().await.expect("Failed to set present");
+
+            // Client 1 follows client 0
+            let target_id = clients[0].client_id();
+            clients[1]
+                .follow(target_id)
+                .await
+                .expect("Failed to follow");
+
+            // Verify via list_clients (client 0's view)
+            let all = clients[0]
+                .all_clients()
+                .await
+                .expect("Failed to list clients");
+            let follower = all
+                .iter()
+                .find(|c| c.display_name == "client_1")
+                .expect("Follower not found");
+            assert_eq!(follower.sync_mode, 1, "Should be in FOLLOW mode");
+            assert_eq!(follower.follow_target, Some(target_id), "Should follow client_0");
+        })
+        .await;
 }
 
 /// Test that FOLLOW mode without target fails.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_set_sync_mode_follow_missing_target() {
-    let _harness = spawn_server().await;
-    // Should return InvalidArgument
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let mut client = connect_presence(&addr, "test").await;
+
+    // Try to set FOLLOW mode without target (sync_mode=1, no follow_target)
+    let client_id = client.client_id();
+    let result = client
+        .grpc()
+        .presence_set_sync_mode(client_id, 1, None)
+        .await;
+
+    // Should fail with InvalidArgument
+    assert!(result.is_err(), "FOLLOW without target should fail");
+
+    client.leave().await.ok();
 }
 
 /// Test that following non-existent target fails.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_set_sync_mode_follow_invalid_target() {
-    let _harness = spawn_server().await;
-    // Should return InvalidArgument
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let mut client = connect_presence(&addr, "test").await;
+
+    // Try to follow a non-existent client (ID 9999)
+    let client_id = client.client_id();
+    let result = client
+        .grpc()
+        .presence_set_sync_mode(client_id, 1, Some(9999))
+        .await;
+
+    // Should fail with InvalidArgument
+    assert!(result.is_err(), "FOLLOW with invalid target should fail");
+
+    client.leave().await.ok();
+}
+
+// ============================================================================
+// Presence Update Tests
+// ============================================================================
+
+/// Test updating cursor position.
+#[tokio::test]
+async fn test_update_cursor() {
+    MultiClientPresenceTest::with_clients(1)
+        .await
+        .run(|mut clients| async move {
+            // Update cursor
+            clients[0]
+                .update_cursor(10, 5)
+                .await
+                .expect("Failed to update cursor");
+
+            // Verify via list
+            let all = clients[0]
+                .all_clients()
+                .await
+                .expect("Failed to list clients");
+            let me = all
+                .iter()
+                .find(|c| c.display_name == "client_0")
+                .expect("Self not found");
+            let cursor = me.cursor.as_ref().expect("Cursor should be set");
+            assert_eq!(cursor.line, 10, "Cursor line should be 10");
+            assert_eq!(cursor.column, 5, "Cursor column should be 5");
+        })
+        .await;
+}
+
+/// Test updating mode.
+#[tokio::test]
+async fn test_update_mode() {
+    MultiClientPresenceTest::with_clients(1)
+        .await
+        .run(|mut clients| async move {
+            // Update mode
+            clients[0]
+                .update_mode("INSERT")
+                .await
+                .expect("Failed to update mode");
+
+            // Verify via list
+            let all = clients[0]
+                .all_clients()
+                .await
+                .expect("Failed to list clients");
+            let me = all
+                .iter()
+                .find(|c| c.display_name == "client_0")
+                .expect("Self not found");
+            assert_eq!(me.mode, "INSERT", "Mode should be INSERT");
+        })
+        .await;
 }
 
 // ============================================================================
@@ -196,23 +256,72 @@ async fn test_set_sync_mode_follow_invalid_target() {
 
 /// Test concurrent join/leave operations.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_concurrent_join_leave() {
-    let _harness = spawn_server().await;
-    // Spawn 10 tasks that each:
-    // 1. Join
-    // 2. Update presence a few times
-    // 3. Leave
-    // Verify no panics or data races
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // Spawn 10 tasks that each join, wait briefly, then leave
+    let handles: Vec<_> = (0..10)
+        .map(|i| {
+            let addr = addr.clone();
+            tokio::spawn(async move {
+                let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
+                let resp = client
+                    .presence_join("test", &format!("client_{i}"))
+                    .await
+                    .expect("Failed to join");
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                client
+                    .presence_leave(resp.client_id)
+                    .await
+                    .expect("Failed to leave");
+            })
+        })
+        .collect();
+
+    // Wait for all to complete
+    for handle in handles {
+        handle.await.expect("Task panicked");
+    }
+
+    // Verify all left
+    let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
+    let list = client.presence_list().await.expect("Failed to list");
+    assert!(list.clients.is_empty(), "All clients should have left");
 }
 
 /// Test high-frequency update operations.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_high_frequency_updates() {
-    let _harness = spawn_server().await;
-    // Single client sending rapid cursor updates
-    // Verify all updates are processed correctly
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let mut client = connect_presence(&addr, "rapid").await;
+
+    // Send 50 rapid cursor updates
+    for i in 0..50 {
+        client
+            .update_cursor(i, i % 80)
+            .await
+            .expect("Failed to update cursor");
+    }
+
+    // Verify final state
+    let all = client.all_clients().await.expect("Failed to list clients");
+    let me = all
+        .iter()
+        .find(|c| c.display_name == "rapid")
+        .expect("Self not found");
+    let cursor = me.cursor.as_ref().expect("Cursor should be set");
+    assert_eq!(cursor.line, 49, "Final cursor line should be 49");
+
+    client.leave().await.ok();
 }
 
 // ============================================================================
@@ -221,16 +330,91 @@ async fn test_high_frequency_updates() {
 
 /// Test leave for unknown client returns ok: false.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_leave_unknown_client() {
-    let _harness = spawn_server().await;
-    // client.presence_leave(9999) should return { ok: false }
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
+
+    // Leave with non-existent client ID
+    let response = client
+        .presence_leave(9999)
+        .await
+        .expect("Leave should not error");
+    assert!(!response.ok, "Leave unknown client should return ok=false");
 }
 
-/// Test update for unknown client returns `NotFound`.
+/// Test update for unknown client returns error.
 #[tokio::test]
-#[ignore = "Requires CLI client with presence RPC support (#465)"]
+#[allow(clippy::significant_drop_tightening)]
 async fn test_update_unknown_client() {
-    let _harness = spawn_server().await;
-    // client.presence_update(9999, ...) should return NotFound error
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
+
+    // Update with non-existent client ID
+    let result = client
+        .presence_update(9999, None, Some(10), Some(5), None)
+        .await;
+
+    // Should fail with NotFound
+    assert!(result.is_err(), "Update unknown client should fail");
+}
+
+// ============================================================================
+// Streaming Tests (Deferred - require notification stream support)
+// ============================================================================
+
+/// Test that streaming receives join notifications.
+#[tokio::test]
+#[ignore = "Requires CLI notification stream support (#465 Phase 16)"]
+async fn test_stream_receives_join_notification() {
+    // Deferred: CLI doesn't expose StreamPresence yet
+}
+
+/// Test that streaming receives leave notifications.
+#[tokio::test]
+#[ignore = "Requires CLI notification stream support (#465 Phase 16)"]
+async fn test_stream_receives_leave_notification() {
+    // Deferred: CLI doesn't expose StreamPresence yet
+}
+
+/// Test that streaming receives update notifications.
+#[tokio::test]
+#[ignore = "Requires CLI notification stream support (#465 Phase 16)"]
+async fn test_stream_receives_update_notification() {
+    // Deferred: CLI doesn't expose StreamPresence yet
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Connect a presence-aware client to the server.
+async fn connect_presence(addr: &str, display_name: &str) -> PresenceTestClient {
+    let grpc = connect_with_retry(addr).await;
+    let mut client = PresenceTestClient::new(grpc, display_name);
+    client.join().await.expect("Failed to join presence");
+    client
+}
+
+/// Connect to server with retry logic.
+async fn connect_with_retry(addr: &str) -> GrpcClient {
+    let mut attempts = 0;
+    loop {
+        match GrpcClient::connect(addr).await {
+            Ok(c) => return c,
+            Err(e) if attempts < 20 => {
+                attempts += 1;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(e) => panic!("Failed to connect after {attempts} attempts: {e}"),
+        }
+    }
 }

@@ -56,7 +56,9 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+reovim-testing = { workspace = true }
+reovim-protocol = { workspace = true, features = ["grpc"] }
 
 [lints]
 workspace = true
