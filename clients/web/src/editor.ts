@@ -994,4 +994,53 @@ export class Editor {
       windowStates: this.state.windowStates,
     };
   }
+
+  // ==========================================================================
+  // Buffer State (Phase: Browser Keyboard Policy)
+  // ==========================================================================
+
+  /**
+   * Check if any buffer has unsaved changes.
+   *
+   * Used by exit protection to warn users before closing the tab.
+   * Currently returns true if any content exists (simple heuristic).
+   *
+   * TODO: Implement proper dirty tracking via server notifications.
+   */
+  hasUnsavedChanges(): boolean {
+    // Simple heuristic: if there's any content, assume it might be unsaved
+    // A proper implementation would track buffer dirty state from server
+    return this.state.lines.length > 0 && this.state.lines.some((line) => line.length > 0);
+  }
+
+  // ==========================================================================
+  // Leader Key Indicator (Phase: Browser Keyboard Policy)
+  // ==========================================================================
+
+  /**
+   * Show leader key indicator in command line.
+   *
+   * Called when user presses the leader key (\) to indicate
+   * that we're waiting for the next key in the sequence.
+   */
+  showLeaderIndicator(): void {
+    const cmdline = document.getElementById("commandline");
+    if (cmdline) {
+      cmdline.textContent = "\\";
+      cmdline.classList.add("leader-pending");
+    }
+  }
+
+  /**
+   * Hide leader key indicator.
+   *
+   * Called when leader sequence completes, times out, or is cancelled.
+   */
+  hideLeaderIndicator(): void {
+    const cmdline = document.getElementById("commandline");
+    if (cmdline) {
+      cmdline.textContent = "";
+      cmdline.classList.remove("leader-pending");
+    }
+  }
 }

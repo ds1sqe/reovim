@@ -309,3 +309,255 @@ describe("shouldPreventDefault", () => {
     );
   });
 });
+
+// ============================================================================
+// WebKeymapper Tests (Browser Keyboard Policy)
+// ============================================================================
+
+import { WebKeymapper } from "../src/keymapper.js";
+
+/**
+ * Helper to create a mock KeyboardEvent with preventDefault.
+ */
+function mockKeyEventWithPreventDefault(
+  key: string,
+  modifiers: {
+    ctrlKey?: boolean;
+    altKey?: boolean;
+    shiftKey?: boolean;
+    metaKey?: boolean;
+  } = {}
+): KeyboardEvent {
+  return {
+    key,
+    ctrlKey: modifiers.ctrlKey ?? false,
+    altKey: modifiers.altKey ?? false,
+    shiftKey: modifiers.shiftKey ?? false,
+    metaKey: modifiers.metaKey ?? false,
+    preventDefault: () => {},
+  } as KeyboardEvent;
+}
+
+describe("WebKeymapper", () => {
+  describe("leader key sequences", () => {
+    it("translates \\w to <C-w>", () => {
+      const keymapper = new WebKeymapper();
+
+      // Press backslash - should return null (waiting for next key)
+      const leaderResult = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("\\")
+      );
+      expect(leaderResult).toBeNull();
+      expect(keymapper.isLeaderPending()).toBe(true);
+
+      // Press w - should return <C-w>
+      const wResult = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("w")
+      );
+      expect(wResult).toBe("<C-w>");
+      expect(keymapper.isLeaderPending()).toBe(false);
+    });
+
+    it("translates \\t to <C-t>", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("t")
+      );
+
+      expect(result).toBe("<C-t>");
+    });
+
+    it("translates \\n to <C-n>", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("n")
+      );
+
+      expect(result).toBe("<C-n>");
+    });
+
+    it("translates \\d to <C-d> (half page down)", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("d")
+      );
+
+      expect(result).toBe("<C-d>");
+    });
+
+    it("translates \\u to <C-u> (half page up)", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("u")
+      );
+
+      expect(result).toBe("<C-u>");
+    });
+
+    it("translates \\r to <C-r> (redo)", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("r")
+      );
+
+      expect(result).toBe("<C-r>");
+    });
+
+    it("is case-insensitive for leader mappings", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("W")
+      );
+
+      expect(result).toBe("<C-w>");
+    });
+  });
+
+  describe("leader cancellation", () => {
+    it("cancels leader on Escape", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      expect(keymapper.isLeaderPending()).toBe(true);
+
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("Escape")
+      );
+
+      expect(result).toBeNull();
+      expect(keymapper.isLeaderPending()).toBe(false);
+    });
+
+    it("passes through unmapped keys after leader", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      // 'q' is not in the leader map
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("q")
+      );
+
+      // Should pass through the key normally
+      expect(result).toBe("q");
+      expect(keymapper.isLeaderPending()).toBe(false);
+    });
+  });
+
+  describe("normal mode behavior", () => {
+    it("passes through regular keys", () => {
+      const keymapper = new WebKeymapper();
+
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("j")
+      );
+
+      expect(result).toBe("j");
+      expect(keymapper.isLeaderPending()).toBe(false);
+    });
+
+    it("passes through Ctrl+key combinations", () => {
+      const keymapper = new WebKeymapper();
+
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("a", { ctrlKey: true })
+      );
+
+      expect(result).toBe("<C-a>");
+    });
+
+    it("ignores modifier-only presses", () => {
+      const keymapper = new WebKeymapper();
+
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("Control")
+      );
+
+      expect(result).toBeNull();
+    });
+
+    it("does not trigger leader with Ctrl+backslash", () => {
+      const keymapper = new WebKeymapper();
+
+      const result = keymapper.handleKeyEvent(
+        mockKeyEventWithPreventDefault("\\", { ctrlKey: true })
+      );
+
+      // Should be treated as Ctrl+\ not leader
+      expect(result).toBe("<C-Bslash>");
+      expect(keymapper.isLeaderPending()).toBe(false);
+    });
+  });
+
+  describe("callbacks", () => {
+    it("calls onLeaderStart when leader pressed", () => {
+      let called = false;
+      const keymapper = new WebKeymapper({
+        onLeaderStart: () => {
+          called = true;
+        },
+      });
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+
+      expect(called).toBe(true);
+    });
+
+    it("calls onLeaderEnd when sequence completes", () => {
+      let called = false;
+      const keymapper = new WebKeymapper({
+        onLeaderEnd: () => {
+          called = true;
+        },
+      });
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("w"));
+
+      expect(called).toBe(true);
+    });
+
+    it("calls onLeaderEnd when leader cancelled", () => {
+      let called = false;
+      const keymapper = new WebKeymapper({
+        onLeaderEnd: () => {
+          called = true;
+        },
+      });
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("Escape"));
+
+      expect(called).toBe(true);
+    });
+  });
+
+  describe("state management", () => {
+    it("starts in normal state", () => {
+      const keymapper = new WebKeymapper();
+      expect(keymapper.getState()).toBe("normal");
+    });
+
+    it("reset() returns to normal state", () => {
+      const keymapper = new WebKeymapper();
+
+      keymapper.handleKeyEvent(mockKeyEventWithPreventDefault("\\"));
+      expect(keymapper.isLeaderPending()).toBe(true);
+
+      keymapper.reset();
+      expect(keymapper.isLeaderPending()).toBe(false);
+      expect(keymapper.getState()).toBe("normal");
+    });
+  });
+});
