@@ -158,6 +158,12 @@ body {
   min-height: 1.5rem;
 }
 
+/* Leader key indicator (Browser Keyboard Policy) */
+#commandline.leader-pending {
+  color: var(--theme-mode-command, #e5c07b);
+  font-weight: bold;
+}
+
 /* Connection status indicator */
 #app.disconnected #statusline::after {
   content: "DISCONNECTED";

@@ -7,6 +7,7 @@
 import { createClient } from "./client.js";
 import { setupKeyboardHandler } from "./input.js";
 import { Editor } from "./editor.js";
+import { setupExitProtection } from "./protection.js";
 
 async function main() {
   const app = document.getElementById("app");
@@ -43,8 +44,11 @@ async function main() {
     // Initialize WASM module for multi-window support
     await editor.init();
 
-    // Setup keyboard input with client ID
+    // Setup keyboard input with client ID (includes leader key for browser-reserved shortcuts)
     setupKeyboardHandler(client, editor, myClientId);
+
+    // Setup exit protection (beforeunload warning for unsaved changes)
+    setupExitProtection(editor);
 
     // Initial state fetch
     await editor.refresh();

@@ -4,6 +4,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.3-dev
 
+### Added
+
+- **Web client leader key for browser-reserved shortcuts**: Browsers reserve
+  Ctrl+W, Ctrl+T, Ctrl+N, etc. for security and these cannot be captured by
+  JavaScript. Added `WebKeymapper` class with leader key (`\`) support that
+  translates sequences like `\w` → `<C-w>`, `\t` → `<C-t>`, etc. This is a
+  web-only translation layer - the server receives standard vim notation and
+  doesn't know about the leader key. TUI clients still capture Ctrl+W natively.
+  Also added `beforeunload` exit protection to warn users about unsaved changes
+  if they accidentally press Ctrl+W. Includes visual leader indicator in
+  command line when leader is pending. (#473)
+
 ### Changed
 
 - **Directory restructure**: Major codebase restructure to clarify
