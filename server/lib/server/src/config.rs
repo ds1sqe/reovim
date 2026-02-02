@@ -31,7 +31,6 @@ pub enum TransportMode {
     ///
     /// Uses HTTP/2 and Protocol Buffers for efficient binary communication.
     /// This is the primary transport for v0.9.3+ clients.
-    #[cfg(feature = "grpc")]
     Grpc {
         /// Port to bind gRPC server to.
         port: u16,
@@ -63,7 +62,6 @@ impl Default for ServerConfig {
 
 impl ServerConfig {
     /// Create config for gRPC transport on specific port.
-    #[cfg(feature = "grpc")]
     #[must_use]
     pub fn grpc(port: u16) -> Self {
         Self {

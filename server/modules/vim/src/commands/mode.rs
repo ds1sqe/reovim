@@ -261,24 +261,37 @@ impl Command for ExitCommandLineMode {
 
 impl CommandHandler for ExitCommandLineMode {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        // Check if this is a search (pending_search set)
-        let pending = {
-            let search_state = runtime.ext_mut::<SearchState>();
-            search_state.take_pending_search()
-        };
+        // Get the prompt type to determine how to handle the input
+        let prompt = runtime.ext_mut::<CmdlineState>().prompt();
 
-        if let Some(direction) = pending {
-            // Get the search pattern from cmdline input
-            let pattern = runtime.ext_mut::<CmdlineState>().take_cmdline_input();
+        // Get the cmdline input
+        let cmdline = runtime.ext_mut::<CmdlineState>().take_cmdline_input();
 
-            if !pattern.is_empty() {
-                // Store pattern and direction for n/N repeat
-                runtime
-                    .ext_mut::<SearchState>()
-                    .set(pattern.clone(), direction);
+        match prompt {
+            CmdlinePrompt::SearchForward | CmdlinePrompt::SearchBackward => {
+                // Handle search
+                let pending = {
+                    let search_state = runtime.ext_mut::<SearchState>();
+                    search_state.take_pending_search()
+                };
 
-                // Execute the search
-                execute_search(runtime, args, &pattern, direction);
+                if let Some(direction) = pending
+                    && !cmdline.is_empty()
+                {
+                    // Store pattern and direction for n/N repeat
+                    runtime
+                        .ext_mut::<SearchState>()
+                        .set(cmdline.clone(), direction);
+
+                    // Execute the search
+                    execute_search(runtime, args, &cmdline, direction);
+                }
+            }
+            CmdlinePrompt::Command => {
+                // Handle ex-command (e.g., :w, :q, :e)
+                if !cmdline.is_empty() {
+                    execute_ex_command(runtime, args, &cmdline);
+                }
             }
         }
 
@@ -286,6 +299,40 @@ impl CommandHandler for ExitCommandLineMode {
         runtime.ext_mut::<CmdlineState>().exit();
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
+    }
+}
+
+/// Execute an ex-command via the `ExCommandRegistry` service.
+///
+/// Looks up the registry in `ServiceRegistry` and dispatches the command.
+/// If the registry is not registered (no ex-commands loaded), logs a warning.
+fn execute_ex_command(runtime: &SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
+    use reovim_driver_command::{
+        ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext,
+    };
+
+    // Get registry from ServiceRegistry
+    let Some(registry) = runtime.kernel().services.get::<ExCommandRegistry>() else {
+        tracing::warn!("ExCommandRegistry not registered - ex-commands not available");
+        return;
+    };
+
+    // Build dispatch context
+    let ctx = ExDispatchContext::new(args.buffer_id(), None);
+
+    // Dispatch the command
+    match registry.dispatch(cmdline, runtime.kernel(), &ctx) {
+        ExCommandResult::Success => {
+            tracing::debug!(cmdline, "Ex-command executed successfully");
+        }
+        ExCommandResult::NotFound(name) => {
+            tracing::warn!(name, "Unknown ex-command");
+            // TODO: Show error message to user via status line
+        }
+        ExCommandResult::Error(msg) => {
+            tracing::warn!(cmdline, msg, "Ex-command failed");
+            // TODO: Show error message to user via status line
+        }
     }
 }
 
@@ -400,7 +447,6 @@ impl Command for EnterSearchForward {
 
 impl CommandHandler for EnterSearchForward {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        eprintln!("[DEBUG] EnterSearchForward command executed");
         // Set pending search direction
         runtime
             .ext_mut::<SearchState>()
@@ -411,7 +457,6 @@ impl CommandHandler for EnterSearchForward {
             .enter(CmdlinePrompt::SearchForward);
         // Enter command-line mode
         runtime.set_mode(VimMode::COMMANDLINE_ID, TransitionContext::new());
-        eprintln!("[DEBUG] Entered commandline mode with SearchForward prompt");
         CommandResult::Success
     }
 }

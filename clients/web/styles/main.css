@@ -1,16 +1,41 @@
+/* Theme variables are set by ThemeManager.applyToCSSVariables()
+ * Fallback values provide reasonable defaults for initial render
+ * before ThemeManager initializes.
+ *
+ * Variables provided by ThemeManager:
+ *   --theme-bg, --theme-fg
+ *   --theme-cursor-bg, --theme-cursor-fg
+ *   --theme-statusline-bg, --theme-statusline-fg
+ *   --theme-mode-normal, --theme-mode-insert, --theme-mode-visual, --theme-mode-command
+ *   --theme-line-number, --theme-line-number-active
+ *   --theme-selection-bg
+ *   --theme-border, --theme-accent
+ *   --theme-popup-bg, --theme-popup-fg
+ *   --theme-menu-selected-bg
+ *   --theme-text-muted, --theme-text-accent
+ */
 :root {
-  --bg: #1e1e2e;
-  --fg: #cdd6f4;
-  --cursor-bg: #f5e0dc;
-  --cursor-fg: #1e1e2e;
-  --statusline-bg: #313244;
-  --statusline-fg: #cdd6f4;
-  --mode-normal: #89b4fa;
-  --mode-insert: #a6e3a1;
-  --mode-visual: #cba6f7;
-  --line-number: #6c7086;
-  /* Selection highlighting (Phase 9.1) */
-  --selection-bg: rgba(203, 166, 247, 0.3); /* mode-visual with alpha */
+  /* Fallback values for pre-ThemeManager render (Dark theme defaults) */
+  --theme-bg: #282c34;
+  --theme-fg: #abb2bf;
+  --theme-cursor-bg: #61afef;
+  --theme-cursor-fg: #282c34;
+  --theme-statusline-bg: #21252b;
+  --theme-statusline-fg: #abb2bf;
+  --theme-mode-normal: #61afef;
+  --theme-mode-insert: #98c379;
+  --theme-mode-visual: #c678dd;
+  --theme-mode-command: #e5c07b;
+  --theme-line-number: #4b5263;
+  --theme-line-number-active: #abb2bf;
+  --theme-selection-bg: #3e4451;
+  --theme-border: #3e4451;
+  --theme-accent: #61afef;
+  --theme-popup-bg: #21252b;
+  --theme-popup-fg: #abb2bf;
+  --theme-menu-selected-bg: #3e4451;
+  --theme-text-muted: #5c6370;
+  --theme-text-accent: #e06c75;
 }
 
 * {
@@ -23,8 +48,8 @@ body {
   font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
   font-size: 14px;
   line-height: 1.5;
-  background-color: var(--bg);
-  color: var(--fg);
+  background-color: var(--theme-bg);
+  color: var(--theme-fg);
   height: 100vh;
   overflow: hidden;
 }
@@ -39,8 +64,8 @@ body {
   display: flex;
   gap: 1rem;
   padding: 0.25rem 0.5rem;
-  background-color: var(--statusline-bg);
-  color: var(--statusline-fg);
+  background-color: var(--theme-statusline-bg);
+  color: var(--theme-statusline-fg);
   font-size: 12px;
 }
 
@@ -51,20 +76,20 @@ body {
 }
 
 #mode.normal {
-  background-color: var(--mode-normal);
-  color: var(--bg);
+  background-color: var(--theme-mode-normal);
+  color: var(--theme-bg);
 }
 
 #mode.insert {
-  background-color: var(--mode-insert);
-  color: var(--bg);
+  background-color: var(--theme-mode-insert);
+  color: var(--theme-bg);
 }
 
 #mode.visual,
 #mode.visual-line,
 #mode.visual-block {
-  background-color: var(--mode-visual);
-  color: var(--bg);
+  background-color: var(--theme-mode-visual);
+  color: var(--theme-bg);
 }
 
 #editor {
@@ -84,7 +109,7 @@ body {
 }
 
 .line-number {
-  color: var(--line-number);
+  color: var(--theme-line-number);
   text-align: right;
   padding-right: 1rem;
   min-width: 3rem;
@@ -97,8 +122,8 @@ body {
 
 #cursor {
   position: absolute;
-  background-color: var(--cursor-bg);
-  color: var(--cursor-fg);
+  background-color: var(--theme-cursor-bg);
+  color: var(--theme-cursor-fg);
   width: 0.6em;
   height: 1.5em;
   animation: blink 1s step-end infinite;
@@ -110,14 +135,14 @@ body {
 }
 
 #cursor.visual {
-  background-color: var(--selection-bg);
-  border: 1px solid var(--mode-visual);
+  background-color: var(--theme-selection-bg);
+  border: 1px solid var(--theme-mode-visual);
   animation: none; /* No blink in visual mode */
 }
 
 /* Selection highlighting (Phase 9.1) */
 .line-content .selected {
-  background-color: var(--selection-bg);
+  background-color: var(--theme-selection-bg);
   border-radius: 2px;
 }
 
@@ -129,19 +154,19 @@ body {
 
 #commandline {
   padding: 0.25rem 0.5rem;
-  background-color: var(--bg);
+  background-color: var(--theme-bg);
   min-height: 1.5rem;
 }
 
 /* Connection status indicator */
 #app.disconnected #statusline::after {
   content: "DISCONNECTED";
-  color: #f38ba8;
+  color: var(--theme-text-accent);
   margin-left: auto;
 }
 
 #app.connecting #statusline::after {
   content: "CONNECTING...";
-  color: #fab387;
+  color: var(--theme-mode-command);
   margin-left: auto;
 }

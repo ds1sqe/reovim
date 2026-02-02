@@ -11,6 +11,11 @@ service InputService {
 message SendKeysRequest {
   // Keys in vim notation (e.g., "iHello<Esc>", "<C-w>h").
   string keys = 1;
+
+  // Client ID sending the keys (Phase 11.2, Epic #465).
+  // Used for per-client input routing based on client role (Owner/Follow/Share).
+  // If not specified, uses the default client.
+  optional uint64 client_id = 2;
 }
 
 message SendKeysResponse {

@@ -157,7 +157,6 @@ impl Server {
             TransportMode::Tcp { port } => self.run_tcp(*port).await,
             #[cfg(unix)]
             TransportMode::UnixSocket { path } => self.run_unix(path).await,
-            #[cfg(feature = "grpc")]
             TransportMode::Grpc { port } => self.run_grpc(*port).await,
         }
     }
@@ -198,12 +197,12 @@ impl Server {
     }
 
     /// Run with gRPC transport.
-    #[cfg(feature = "grpc")]
     async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
         use {
             crate::grpc::{
                 BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
-                NotificationServiceImpl, ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
+                NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
+                SyntaxServiceImpl,
             },
             reovim_protocol::v2::{
                 buffer_service_server::BufferServiceServer,
@@ -211,6 +210,7 @@ impl Server {
                 input_service_server::InputServiceServer,
                 module_service_server::ModuleServiceServer,
                 notification_service_server::NotificationServiceServer,
+                presence_service_server::PresenceServiceServer,
                 server_service_server::ServerServiceServer,
                 state_service_server::StateServiceServer,
                 syntax_service_server::SyntaxServiceServer,
@@ -222,7 +222,13 @@ impl Server {
             .parse()
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
-        tracing::info!(address = %addr, "Starting gRPC server");
+        // Bind first to get actual port (handles port 0 for testing)
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        let local_addr = listener.local_addr()?;
+
+        tracing::info!(address = %local_addr, "Starting gRPC server");
+        // Output for test harness (expects exact format)
+        eprintln!("Listening on 127.0.0.1:{}", local_addr.port());
 
         let default_session_id = SessionId::new(&*self.config.default_session_name);
 
@@ -244,7 +250,12 @@ impl Server {
         let module_service = ModuleServiceImpl::new();
 
         // SyntaxService provides token data for syntax highlighting
-        let syntax_service = SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+        let syntax_service =
+            SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+
+        // PresenceService for multi-client awareness (Phase 14)
+        let presence_service =
+            PresenceServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
 
         // Build gRPC server with optional gRPC-Web support
         #[cfg(feature = "grpc-web")]
@@ -261,6 +272,7 @@ impl Server {
                 .allow_methods(Any)
                 .expose_headers(Any);
 
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             tonic::transport::Server::builder()
                 .accept_http1(true) // Required for gRPC-Web
                 .layer(cors)
@@ -273,13 +285,15 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
-                .serve(addr)
+                .add_service(PresenceServiceServer::new(presence_service))
+                .serve_with_incoming(incoming)
                 .await
                 .map_err(std::io::Error::other)
         }
 
         #[cfg(not(feature = "grpc-web"))]
         {
+            let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
             tonic::transport::Server::builder()
                 .add_service(BufferServiceServer::new(buffer_service))
                 .add_service(EditorServiceServer::new(editor_service))
@@ -289,7 +303,8 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
-                .serve(addr)
+                .add_service(PresenceServiceServer::new(presence_service))
+                .serve_with_incoming(incoming)
                 .await
                 .map_err(std::io::Error::other)
         }

@@ -20,6 +20,7 @@ mod input;
 mod module;
 mod notification;
 pub mod notification_builder;
+mod presence;
 mod server_service;
 mod state;
 mod syntax;
@@ -27,5 +28,6 @@ mod syntax;
 pub use {
     buffer::BufferServiceImpl, editor::EditorServiceImpl, input::InputServiceImpl,
     module::ModuleServiceImpl, notification::NotificationServiceImpl,
-    server_service::ServerServiceImpl, state::StateServiceImpl, syntax::SyntaxServiceImpl,
+    presence::PresenceServiceImpl, server_service::ServerServiceImpl, state::StateServiceImpl,
+    syntax::SyntaxServiceImpl,
 };

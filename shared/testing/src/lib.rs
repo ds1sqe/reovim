@@ -45,15 +45,18 @@
 #![allow(dead_code)]
 
 mod assertions;
+pub mod frame;
 mod harness;
 mod integration;
 mod multi_client;
+mod presence;
 mod step_test;
 
 pub use {
     harness::TestServerHarness,
     integration::{IntegrationTest, RegisterInfo, TestResult},
     multi_client::{MultiClientTest, TestClient},
+    presence::{MultiClientPresenceTest, PresenceTestClient},
     step_test::{StateSnapshot, StepTest, StepTrace},
 };
 

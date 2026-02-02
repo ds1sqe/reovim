@@ -16,3 +16,6 @@ workspace = true
 # Only depends on kernel layer
 # NOTE: NO tree-sitter! That's an implementation detail of language modules.
 reovim-kernel = { workspace = true }
+
+# Sync primitives for SyntaxFactoryStore
+parking_lot = { workspace = true }

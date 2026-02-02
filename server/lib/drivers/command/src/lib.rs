@@ -60,6 +60,9 @@
 //! ```
 
 // Internal modules
+mod ex_dispatch;
+mod ex_handler;
+mod ex_registry;
 mod provider;
 mod query;
 mod registry;
@@ -78,6 +81,15 @@ pub use registry::CommandHandlerStore;
 
 // Re-export query service (#453)
 pub use query::{CommandInfo, CommandQueryService};
+
+// Re-export ex-command dispatcher and registry (#465)
+pub use ex_dispatch::{ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext};
+
+// Re-export ex-command handler (#465)
+pub use ex_handler::{ExCommandContext, ExCommandError, ExCommandHandler, ExCommandRange};
+
+// Re-export ex-command handler store (#465)
+pub use ex_registry::ExCommandHandlerStore;
 
 // Re-export traits
 pub use traits::{Command, CommandHandler};

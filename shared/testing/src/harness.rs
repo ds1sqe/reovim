@@ -60,7 +60,7 @@ fn binary_path() -> PathBuf {
         .expect("lib/testing should have parent")
         .parent()
         .expect("lib should have parent (workspace root)")
-        .join("target/debug/reovim")
+        .join("target/debug/reovim-new")
 }
 
 /// Get the workspace's target/debug directory for module loading.
@@ -229,7 +229,7 @@ impl TestServerHarness {
         let module_dir = workspace_module_dir();
 
         let mut process = Command::new(binary_path())
-            .args(["server", "--tcp", "0"])
+            .args(["server", "--grpc", "0"])
             .env("REOVIM_LOG", log_level)
             .env("REOVIM_MODULE_PATH", &module_dir)
             .stdout(Stdio::null())
@@ -308,8 +308,8 @@ mod tests {
     fn test_binary_path_ends_with_reovim() {
         let path = binary_path();
         assert!(
-            path.ends_with("target/debug/reovim"),
-            "Expected path ending with target/debug/reovim, got: {}",
+            path.ends_with("target/debug/reovim-new"),
+            "Expected path ending with target/debug/reovim-new, got: {}",
             path.display()
         );
     }

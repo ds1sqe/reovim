@@ -25,6 +25,10 @@ echo -e "\033[1;33m==> Building workspace...\033[0m"
 cargo build --workspace $EXCLUDE
 echo -e "\033[0;32m✓ Build succeeded\033[0m"
 
+echo -e "\033[1;33m==> Building reovim-app with gRPC for integration tests...\033[0m"
+cargo build -p reovim-app --features grpc
+echo -e "\033[0;32m✓ gRPC build succeeded\033[0m"
+
 echo -e "\033[1;33m==> Running clippy...\033[0m"
 cargo +nightly clippy --all-targets --all-features --workspace $EXCLUDE -- -D warnings
 echo -e "\033[0;32m✓ Clippy passed\033[0m"

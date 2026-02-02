@@ -29,6 +29,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Visual selection not visible in TUI (Phase 17)**: Fixed bug where entering
+  visual mode (`v`) showed no highlighting. Root cause: `CommandRegistry::execute()`
+  created `SessionRuntime` for command execution but never called `take_changes()`,
+  so selection changes from `EnterVisualMode::execute()` were dropped when runtime
+  went out of scope. Fix: Changed `execute()` return type from `Option<CommandResult>`
+  to `Option<(CommandResult, StateChanges)>` and propagate changes to callers.
+  TUI enhancements: Added `SelectionState` struct for tracking per-window selections,
+  `window_selections: HashMap<u64, SelectionState>` in `TuiState`, `SelectionChanged`
+  notification handler, magenta background highlighting in `render_line_with_syntax()`.
+  Also added `CursorPosition` struct and `window_cursors` map for per-window cursor
+  tracking. Selection now uses exclusive end semantics (like Rust ranges) - to include
+  character at cursor, `end = cursor + 1`. Part of Epic #465. (#465)
+
 - **Visual mode resolver missing**: Fixed bug where Visual mode keys
   (h, j, k, l, w, b, e, etc.) were not working - either inserting characters or
   being ignored. Root cause: No resolver registered for Visual modes, causing
@@ -39,6 +52,90 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   resolvers (was 7). Part of Epic #465. (#465)
 
 ### Added
+
+- **Web Client Capture Test Infrastructure (Phase 16)**: Headless web client and
+  capture relay for programmatic testing. CaptureHandler (`src/capture/handler.ts`):
+  handles `captureRequest` notifications from server, formats state as text matching
+  TUI capture format, enables `reovim cli capture` to work with web client. Shared
+  by browser Editor and Node.js HeadlessWebClient (mechanism vs policy separation).
+  HeadlessWebClient (`src/headless/client.ts`): Node.js-only client using native
+  gRPC transport (`@connectrpc/connect-node`), maintains internal state without DOM,
+  API mirrors TUI headless: `connect()`, `sendKeys()`, `capture()`, `waitFor()`,
+  `getMode()`, `getCursor()`, `getBuffer()`. Test infrastructure: WebTestServerHarness
+  spawns reovim server on dynamic port with auto-cleanup, WebIntegrationTest provides
+  fluent builder for tests, frameAssertions helpers extract mode/cursor from captures.
+  Integration tests (`tests/integration/headless.test.ts`): 17 tests (11 passing,
+  6 skipped pending module loading) covering connection, state, capture, and frame
+  assertions. Vitest config updated with 30s test timeout for server startup.
+  Dependencies: `@connectrpc/connect-node@^1.7.0`, `@types/node@^22.0.0`.
+  Part of Epic #465. (#465)
+
+- **Automated E2E Testing Infrastructure (Phase 15)**: Comprehensive E2E testing
+  framework for validating client-server interactions. TUI headless testing
+  (`clients/tui/tests/headless_tests.rs`): 6 tests using `TuiAppV2Headless` with
+  `connect_with_size()` for controlled terminal dimensions, `capture(ScreenFormat)`
+  for frame assertions, `wait_for()` with timeout and predicate for async verification,
+  `send_keys()` for input simulation. Frame assertion helpers (`shared/testing/src/frame.rs`):
+  `assert_frame_contains()`, `assert_frame_not_contains()`, `assert_frame_line_contains()`,
+  `assert_statusline_mode()`, `assert_frame_line_count()`, `assert_frame_min_width()`,
+  plus non-panicking variants `frame_contains()`, `frame_line_contains()`, `get_statusline()`,
+  `get_line()`. 12 unit tests for frame helpers. `IntegrationTest` harness uses
+  `TestServerHarness` with OS-assigned gRPC ports and auto-cleanup. vim_commands.rs
+  tests (34 total) documented as blocked pending `:e` command implementation - harness
+  requires `:e {path}<CR>` for buffer setup. Tests deferred: 2 TUI tests (module loading),
+  3 streaming presence tests, 34 vim command tests (`:e` command). Part of Epic #465. (#465)
+
+- **Multi-client presence awareness (Phase 14)**: Implemented `PresenceService`
+  gRPC for collaborative editing scenarios. Protocol layer (`presence.proto`):
+  6 RPCs (`Join`, `Leave`, `StreamPresence`, `UpdatePresence`, `SetSyncMode`,
+  `ListClients`), `ClientPresence` message with client_id, client_type, display_name,
+  cursor, visible_lines, mode, sync_mode fields, `SyncMode` enum (INDEPENDENT,
+  FOLLOW, PRESENT), `PresenceUpdate` oneof for streaming (joined/updated/left).
+  Session layer (`presence.rs`): `SyncMode` enum, `ClientPresence` struct with
+  `joined_at_ms()` helper, `PresenceMap` thread-safe container with RwLock for
+  join/leave/update/get/list/followers_of operations. `ClientId` generation via
+  `AtomicUsize` counter in `SessionRegistry` (lock-free). Session holds
+  `PresenceMap` for per-session client tracking. gRPC layer (`presence.rs`):
+  `PresenceServiceImpl` with all 6 RPC implementations, direct notification
+  emission (not via `StateChanges`) for presence events, `presence_joined`,
+  `presence_left`, `presence_updated` notification payloads (slots 23-25).
+  Disconnect handling: clean disconnect via `Leave()` RPC, stream-based cleanup
+  documented for future enhancement. `StateChanges` extended with `presence_changed`
+  flag and `presence_updates` vector for future cursor sync scenarios. Tests:
+  32 unit tests (18 PresenceMap + 14 gRPC methods) covering join/leave lifecycle,
+  sync mode transitions, follower tracking, thread safety, error paths. 13
+  integration test stubs for future CLI client support. Part of Epic #465. (#465)
+
+- **TUI Theme Engine (Phase 13.0)**: Complete theme engine for TUI client with
+  TOML-based user themes and token-to-style integration. Theme file format:
+  `~/.config/reovim/themes/*.toml` with palette section for color reuse, syntax/ui/
+  diagnostic/gutter sections for style definitions. `ThemeLoader` with multi-path
+  search (`~/.config/reovim/themes/`, `/usr/share/reovim/themes/`), theme caching,
+  and platform-aware paths. `ThemeManager` with 4-tier lookup (overrides → theme →
+  module defaults → fallback) and hierarchical fallback (`keyword.control` →
+  `keyword` → default). `TokenCache` for client-side syntax token caching with
+  byte-to-position conversion (handles UTF-8 correctly), multi-line token splitting,
+  and LRU eviction (max 10 buffers). `TokenCacheManager` for per-buffer token
+  management. Integration with `StreamTokens` RPC for real-time token updates.
+  Runtime theme switching via `--theme` CLI argument and `colorscheme` option
+  notification. 88 tests (76 style + 12 syntax) with 100% pass rate. Part of
+  Epic #465. (#470)
+
+- **Web Theme Engine (Phase 13.1)**: Complete theme engine for web client mirroring
+  TUI Phase 13.0 design but adapted for browser environments. `ThemeManager` with
+  same 4-tier lookup (overrides → theme → module defaults → fallback) and hierarchical
+  fallback (`keyword.control` → `keyword` → default). `ThemeProvider` interface matches
+  TUI trait. 42 highlight groups (13 syntax, 17 UI, 4 diagnostic, 8 gutter) defined as
+  constants. `parseTheme()` resolves palette references to hex colors. Three built-in
+  themes matching TUI: Dark (OneDark-inspired), Light (high-contrast), Tokyo Night
+  Orange. `StyleGroupRegistry` for module-provided defaults. `applyToCSSVariables()`
+  applies all 42 groups as CSS custom properties (`--theme-*`). Theme choice persisted
+  to localStorage. `TokenCache` for web with byte-to-position conversion and LRU
+  eviction (max 10 buffers). `TokenCacheManager` for per-buffer token management.
+  `BufferRenderer` integration for syntax-highlighted rendering via `setThemeManager()`
+  and `setTokenCache()`. CSS files (`main.css`, `layout.css`, `overlay.css`) migrated
+  from hardcoded colors to theme variables. 102 tests (53 theme + 49 syntax) with
+  100% pass rate. Part of Epic #465. (#465)
 
 - **Common Client Model**: Created `reovim-client-model` crate at
   `shared/clients/model/` - a platform-agnostic abstraction layer for all clients
@@ -146,6 +243,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   windows. Follows same pattern as web client's `ViewportCache` (Phase 11.1).
   Part of Epic #465. (#465)
 
+- **Per-client state architecture (Phase 11.2 extension)**: Extended session model
+  to support per-client editing state for collaborative editing scenarios. Client
+  roles (`session/client.rs`, ~300 LOC): `Client` enum with Owner/Follow/Share
+  variants - Owner has own `EditingState` (mode_stack, pending_keys, cursor,
+  viewport, selection), Follow is read-only spectator (input ignored), Share enables
+  bidirectional co-editing with owner. `effective_state()` resolves state through
+  chains with depth limit for cycle protection. Session changes (`session.rs`):
+  Added `clients: RwLock<HashMap<ClientId, Client>>` for per-client tracking.
+  Methods: `add_client()` (defaults to Owner), `remove_client()`, `get_client()`,
+  `set_client_role()`, `client_state()`, `update_client_state()` (routes input
+  based on role), `with_clients()`/`with_clients_mut()` for direct access.
+  Protocol changes (`input.proto`, `presence.proto`): Added `client_id` to
+  `SendKeysRequest` for per-client input routing, added `ClientRole` enum
+  (OWNER/FOLLOW/SHARE) and `SetRole` RPC with `SetRoleRequest`/`SetRoleResponse`.
+  Input routing (`grpc/input.rs`): Extracts `client_id` from request, auto-creates
+  client as Owner if not exists, ignores input for Follow clients, normal processing
+  for Owner/Share. Client-side empty layout handling: TUI (`app_v2.rs`) creates
+  default window when server returns empty layout (via `create_default_window()`),
+  Web (`editor.ts`) uses `createDefaultView()` for same scenario - both fetch active
+  buffer and render single-window fallback. Foundation for spectator mode (Follow)
+  and pair programming (Share). 28 unit tests (14 Client + 14 gRPC). Part of Epic
+  #465. (#465)
+
 - **Web client unit tests (Phase 11.3)**: Added comprehensive unit tests for
   Phase 11.1 cache and overlay components. Test files: `cache-viewport.test.ts`
   (25 tests) covers ViewportCache get/set, applyUpdate partial updates, delete,
@@ -176,6 +296,57 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   dependency. Registered `SyntaxService` in gRPC router. Philosophy: Server provides
   token categories (mechanism), client applies colors via theme (policy). Foundation
   for Phase 13 (TUI Theme Engine). Part of Epic #465. (#465)
+
+- **Syntax Driver Integration (Phase 12.1)**: Wired tree-sitter drivers into server
+  so `GetTokens` returns real syntax tokens. Architecture follows self-registration
+  pattern: modules register factories during `init()`, bootstrap extracts via
+  `ServiceRegistry`. Three-layer structure: `reovim-driver-syntax` (traits, ~100 LOC
+  `SyntaxFactoryStore`), `reovim-driver-syntax-treesitter` (~900 LOC, generic
+  `TreeSitterDriver` with thread-safe parsing, `CaptureMapper` with 120+ mappings),
+  `reovim-module-treesitter-rust` (~350 LOC, Rust grammar + highlights.scm query).
+  Server integration: `SyntaxSessionState` stores per-buffer drivers, updated
+  `GetTokens` to use `ensure_driver()` and `driver.highlights()`, `GetLanguageInfo`
+  reports parser availability via factory. Bootstrap: `configure_syntax_highlighting()`
+  extracts factory from `SyntaxFactoryStore` without importing language modules
+  (kernel purity). 29 tests across all layers, 95%+ coverage. Architecture verified:
+  zero tree-sitter deps in driver crate, mechanism/policy separation maintained,
+  matches Linux kernel VFS pattern. Part of Epic #465. (#465)
+
+- **Injection Highlighting and Fold Detection (Phase 12.3)**: Completed tree-sitter
+  syntax infrastructure with injection highlight merging and fold detection.
+  `InjectionManager` integration: Added `injection_manager` field to `TreeSitterDriver`,
+  initialized when `injections_query` is provided via `with_queries()`. Wired into
+  `highlights()` method with proper lock ordering (parent highlights first, then
+  injections) to avoid deadlocks. `InjectionLayerFactory` trait (~30 LOC): Defined
+  in driver crate (not traits crate) to keep tree-sitter types isolated from trait
+  boundaries. Enables language modules to register injection layer factories for
+  embedded language highlighting. `InjectionLayerStore` (~80 LOC): Global registry
+  following `SyntaxFactoryStore` pattern, implements `Service` trait for `ServiceRegistry`
+  compatibility. Fold detection: Implemented `folds()` method with tree-sitter query
+  support. Created `folds.scm` for Rust (~55 LOC) covering functions, closures,
+  structs, enums, impl blocks, traits, modules, match expressions, loops, if blocks,
+  block comments, and macros. `node_to_fold_kind()` maps 14+ node types to `FoldKind`
+  variants. `RustSyntaxFactory` updates: Added folds query, implemented
+  `InjectionLayerFactory`, updated `init()` to register with both `SyntaxFactoryStore`
+  and `InjectionLayerStore`. 51 tests across driver (28) and module (23) layers.
+  All tests pass, zero warnings. Part of Epic #465. (#465)
+
+- **Doc Comment Injection and Indentation Hints (Phase 12.4)**: Completed syntax
+  service infrastructure with Rust doc comment injection and AST-based indentation.
+  Doc comment injection: Created `injections.scm` (~34 LOC) for Rust doc comments
+  (`///`, `//!`, `/** */`, `/*! */`) that injects Markdown highlighting. Implemented
+  `InjectionLayerFactory` trait for `MarkdownSyntaxFactory` and registered with
+  `InjectionLayerStore` during module init. Doc comments now display Markdown syntax
+  highlighting (headings, code blocks, links). Indentation hints: Created `indents.scm`
+  (~60 LOC) with 21 indent-increasing constructs (functions, closures, structs, enums,
+  impl blocks, match expressions, loops, blocks, etc.) following nvim-treesitter
+  conventions (@indent, @indent_end, @branch, @ignore). Implemented `indent_for(line)`
+  method in `TreeSitterDriver` that walks up the AST tree counting @indent captures,
+  returns suggested indentation in spaces (4 per nesting level). Minor cleanups:
+  Removed outdated `#[allow(dead_code)]` from `highlight_group_to_category()` (now
+  used by GetTokens/StreamTokens), updated TODO comment in injection.rs. 7 new tests
+  for injection detection and indentation verification. All 69 syntax tests pass.
+  Part of Epic #465. (#465)
 
 - **Selection rendering for web client**: Implemented visual selection
   highlighting in the web client, validating Unix philosophy of server-mechanism /

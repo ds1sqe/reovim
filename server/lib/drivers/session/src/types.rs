@@ -18,7 +18,7 @@ use {
     reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId},
 };
 
-use crate::extension::ExtensionMap;
+use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
 
 /// Range computed by a text object command.
 ///
@@ -238,7 +238,15 @@ impl From<CursorPosition> for Position {
 ///
 /// A window displays a portion of a buffer. Sessions can have multiple
 /// windows (splits), each with its own viewport and cursor.
-#[derive(Debug)]
+///
+/// # Per-Window Selection (Phase 8 #465)
+///
+/// Selection is stored per-window, not per-buffer. This enables:
+/// - Multi-window same-buffer independence (different selections in each window)
+/// - Multi-client selection isolation (each client's visual mode is independent)
+///
+/// Uses API's `Selection` type with explicit start/end, NOT kernel's Selection.
+#[derive(Debug, Clone)]
 pub struct Window {
     /// Unique window identifier.
     pub id: WindowId,
@@ -248,6 +256,11 @@ pub struct Window {
     pub cursor: CursorPosition,
     /// Visible viewport.
     pub viewport: Viewport,
+    /// Selection state for visual mode (Phase 8 #465).
+    ///
+    /// Uses API's Selection type with explicit start/end positions.
+    /// `None` means no active selection.
+    pub selection: Option<ApiSelection>,
 }
 
 impl Window {
@@ -259,6 +272,7 @@ impl Window {
             buffer_id: None,
             cursor: CursorPosition::origin(),
             viewport: Viewport::default(),
+            selection: None,
         }
     }
 
@@ -270,6 +284,7 @@ impl Window {
             buffer_id: Some(buffer_id),
             cursor: CursorPosition::origin(),
             viewport: Viewport::default(),
+            selection: None,
         }
     }
 }
@@ -321,14 +336,34 @@ impl WindowLayout {
     }
 
     /// Get the active window.
+    ///
+    /// If no window is explicitly active but windows exist, returns the first window.
+    /// This ensures a valid window is always available when the layout is non-empty.
     #[must_use]
     pub fn active(&self) -> Option<&Window> {
-        self.active_index.and_then(|i| self.windows.get(i))
+        // Try explicit active index first, fallback to first window
+        if let Some(idx) = self.active_index
+            && let Some(window) = self.windows.get(idx)
+        {
+            return Some(window);
+        }
+        // Fallback: return first window if layout is non-empty
+        self.windows.first()
     }
 
     /// Get the active window mutably.
+    ///
+    /// If no window is explicitly active but windows exist, returns the first window.
+    /// This ensures a valid window is always available when the layout is non-empty.
     pub fn active_mut(&mut self) -> Option<&mut Window> {
-        self.active_index.and_then(|i| self.windows.get_mut(i))
+        // Try explicit active index first, fallback to first window
+        if let Some(idx) = self.active_index
+            && idx < self.windows.len()
+        {
+            return self.windows.get_mut(idx);
+        }
+        // Fallback: return first window if layout is non-empty
+        self.windows.first_mut()
     }
 
     /// Get the active window ID.
@@ -772,6 +807,45 @@ mod tests {
     // =========================================================================
     // TextObjRange tests
     // =========================================================================
+
+    #[test]
+    fn test_window_layout_active_fallback() {
+        // Regression test for cursor visibility bug (#465):
+        // active() should return first window when active_index is None
+        let mut layout = WindowLayout::empty();
+
+        // Empty layout returns None
+        assert!(layout.active().is_none());
+        assert!(layout.active_id().is_none());
+
+        // Add window but don't set active_index explicitly
+        let w1 = Window::new();
+        let id1 = w1.id;
+        layout.windows.push(w1); // Direct push bypasses active_index setting
+
+        // Fallback should return first window
+        assert!(layout.active().is_some());
+        assert_eq!(layout.active_id(), Some(id1));
+
+        // active_mut should also work
+        assert!(layout.active_mut().is_some());
+    }
+
+    #[test]
+    fn test_window_layout_active_stale_index() {
+        // Test fallback when active_index points to invalid index
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let id1 = w1.id;
+        layout.add(w1);
+
+        // Manually set invalid index
+        layout.active_index = Some(999);
+
+        // Should fallback to first window
+        assert!(layout.active().is_some());
+        assert_eq!(layout.active_id(), Some(id1));
+    }
 
     #[test]
     fn test_textobj_range_characterwise() {

@@ -10,7 +10,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-default = ["grpc"]
+default = ["grpc-web"]
 grpc = ["reovim-protocol/grpc", "dep:tonic", "dep:tokio-stream", "dep:futures", "dep:async-stream"]
 grpc-web = ["grpc", "dep:tonic-web", "dep:tower-http"]
 

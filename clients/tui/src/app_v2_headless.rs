@@ -51,7 +51,10 @@ use {
     reovim_driver_display::FrameBuffer,
     reovim_protocol::{
         v1::ScreenFormat,
-        v2::{GetLayoutResponse, Notification, WindowInfo, WindowNode, notification::Payload},
+        v2::{
+            GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
+            notification::Payload,
+        },
     },
     tokio::{
         select,
@@ -168,6 +171,8 @@ struct HeadlessState {
     width: u16,
     /// Viewport height.
     height: u16,
+    /// Whether client needs to create a default window (empty server layout).
+    needs_default_window: bool,
 }
 
 /// Headless TUI application handle.
@@ -482,6 +487,15 @@ impl HeadlessEventLoop {
             Err(e) => tracing::warn!("Layout not available during init: {e}"),
         }
 
+        // Handle empty layout - create default local window
+        if self.state.needs_default_window
+            && let Ok(active_buffer_resp) = self.client.get_active_buffer().await
+            && let Some(buffer_id) = active_buffer_resp.buffer_id
+        {
+            self.create_default_window(buffer_id);
+            tracing::info!(buffer_id, "Created default window for empty server layout");
+        }
+
         // Buffer content depends on having windows from layout
         if !self.state.windows.is_empty()
             && let Err(e) = self.fetch_buffer_contents().await
@@ -501,6 +515,32 @@ impl HeadlessEventLoop {
         if let Some(root) = &layout.root {
             self.collect_windows(root);
         }
+
+        // Mark if we need to create a default window
+        self.state.needs_default_window = self.state.windows.is_empty();
+    }
+
+    /// Create a default window view for empty layout.
+    fn create_default_window(&mut self, buffer_id: u64) {
+        let content_height = self.state.height.saturating_sub(1);
+
+        let window = WindowInfo {
+            window_id: 1,
+            buffer_id,
+            rect: Some(WindowRect {
+                x: 0,
+                y: 0,
+                width: u64::from(self.state.width),
+                height: u64::from(content_height),
+            }),
+            focused: true,
+        };
+
+        self.state.windows.push(window);
+        self.state.focused_window_id = 1;
+        self.state.needs_default_window = false;
+
+        tracing::debug!(buffer_id, "Created default window for empty layout (headless)");
     }
 
     /// Recursively collect windows from layout tree.

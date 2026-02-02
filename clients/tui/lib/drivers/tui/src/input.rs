@@ -147,20 +147,32 @@ impl InputReader {
     ///
     /// Returns `None` if the stream ends.
     pub async fn next_event(&mut self) -> Option<InputEvent> {
-        self.stream.next().await.and_then(|result| {
-            result.ok().map(|event| match event {
-                CrosstermEvent::Key(key) => InputEvent::Key(KeyEvent::from_crossterm(key)),
-                CrosstermEvent::Mouse(mouse) => {
-                    InputEvent::Mouse(MouseEvent::from_crossterm(mouse))
-                }
-                CrosstermEvent::Resize(width, height) => {
-                    InputEvent::Resize(ResizeEvent { width, height })
-                }
-                CrosstermEvent::FocusGained => InputEvent::FocusGained,
-                CrosstermEvent::FocusLost => InputEvent::FocusLost,
-                CrosstermEvent::Paste(text) => InputEvent::Paste(text),
-            })
-        })
+        match self.stream.next().await {
+            Some(Ok(event)) => {
+                let input_event = match event {
+                    CrosstermEvent::Key(key) => InputEvent::Key(KeyEvent::from_crossterm(key)),
+                    CrosstermEvent::Mouse(mouse) => {
+                        InputEvent::Mouse(MouseEvent::from_crossterm(mouse))
+                    }
+                    CrosstermEvent::Resize(width, height) => {
+                        InputEvent::Resize(ResizeEvent { width, height })
+                    }
+                    CrosstermEvent::FocusGained => InputEvent::FocusGained,
+                    CrosstermEvent::FocusLost => InputEvent::FocusLost,
+                    CrosstermEvent::Paste(text) => InputEvent::Paste(text),
+                };
+                tracing::trace!(?input_event, "Input event received");
+                Some(input_event)
+            }
+            Some(Err(e)) => {
+                tracing::warn!(?e, "Input stream error");
+                None
+            }
+            None => {
+                tracing::debug!("Input stream ended");
+                None
+            }
+        }
     }
 
     /// Try to get an event with timeout.

@@ -6,7 +6,7 @@
 
 use std::hash::{Hash, Hasher};
 
-use super::{BufferId, Cursor, Edit, Position, Selection};
+use super::{BufferId, Cursor, Edit, Position};
 
 /// A text buffer with line-based storage.
 ///
@@ -43,10 +43,11 @@ pub struct Buffer {
     cursor: Cursor,
     /// Whether the buffer has unsaved modifications.
     modified: bool,
-    /// Selection state for visual mode.
-    selection: Selection,
     /// File path associated with this buffer.
     file_path: Option<String>,
+    // NOTE: Selection removed in Phase 8 (#465).
+    // Selection now lives in Window (per-window state), not Buffer.
+    // See: server/lib/drivers/session/src/types.rs - Window.selection
 }
 
 impl Buffer {
@@ -58,7 +59,6 @@ impl Buffer {
             lines: Vec::new(),
             cursor: Cursor::origin(),
             modified: false,
-            selection: Selection::new(),
             file_path: None,
         }
     }
@@ -73,7 +73,6 @@ impl Buffer {
             lines: Vec::new(),
             cursor: Cursor::origin(),
             modified: false,
-            selection: Selection::new(),
             file_path: None,
         }
     }
@@ -94,7 +93,6 @@ impl Buffer {
             lines,
             cursor: Cursor::origin(),
             modified: false,
-            selection: Selection::new(),
             file_path: None,
         }
     }
@@ -142,18 +140,9 @@ impl Buffer {
         self.modified = modified;
     }
 
-    // === Selection ===
-
-    /// Get the selection state.
-    #[must_use]
-    pub const fn selection(&self) -> Selection {
-        self.selection
-    }
-
-    /// Get a mutable reference to selection state.
-    pub const fn selection_mut(&mut self) -> &mut Selection {
-        &mut self.selection
-    }
+    // NOTE: Selection methods removed in Phase 8 (#465).
+    // Selection now lives in Window (per-window state), not Buffer.
+    // Use SessionRuntime::selection(buffer_id) via BufferApi trait.
 
     // === File Path ===
 

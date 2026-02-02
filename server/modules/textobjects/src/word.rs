@@ -254,7 +254,7 @@ mod tests {
         super::*,
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{ClientId, Session, api::CommandExecutor},
+        reovim_driver_session::{ClientId, Session, Window, api::CommandExecutor},
         reovim_kernel::api::{
             ServiceRegistry,
             v1::{
@@ -597,6 +597,11 @@ mod tests {
         let buffer_id = setup_buffer(&kernel, "hello world");
         // Use visual mode
         let mut session = Session::new(ClientId::new(1), visual_mode());
+        // Phase 8 #465: Selection lives in Window, so we need to create one
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        session.windows.add(window);
+
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -611,10 +616,10 @@ mod tests {
         assert!(selection.is_some(), "Selection should be set in visual mode");
 
         // Verify selection covers the word "hello" (indices 0-4)
-        // Selection end is cursor position (inclusive), not exclusive
+        // Selection end is exclusive (first position NOT in selection)
         let sel = selection.unwrap();
         assert_eq!(sel.start, Position::new(0, 0));
-        assert_eq!(sel.end, Position::new(0, 4)); // 'o' in "hello"
+        assert_eq!(sel.end, Position::new(0, 5)); // exclusive: position after 'o'
     }
 
     #[test]
@@ -622,6 +627,11 @@ mod tests {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
         let mut session = Session::new(ClientId::new(1), visual_mode());
+        // Phase 8 #465: Selection lives in Window, so we need to create one
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        session.windows.add(window);
+
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
 
@@ -636,10 +646,10 @@ mod tests {
         assert!(selection.is_some(), "Selection should be set in visual mode for around-word");
 
         // Around word includes trailing whitespace ("hello ")
-        // Selection end is cursor position (inclusive), not exclusive
+        // Selection end is exclusive (first position NOT in selection)
         let sel = selection.unwrap();
         assert_eq!(sel.start, Position::new(0, 0));
-        assert_eq!(sel.end, Position::new(0, 5)); // space after "hello"
+        assert_eq!(sel.end, Position::new(0, 6)); // exclusive: position after space
     }
 
     #[test]

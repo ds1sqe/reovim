@@ -1,4 +1,16 @@
 //! Session - a named editing context.
+//!
+//! # Per-Client State (Phase 11.2)
+//!
+//! Sessions track connected clients via the `clients` map. Each client has a role:
+//! - **Owner**: Owns editing state (mode, cursor, etc.)
+//! - **Follow**: Read-only spectator
+//! - **Share**: Bidirectional co-edit with owner
+//!
+//! The `presence` map tracks display preferences (cursor position for rendering).
+//! The `clients` map tracks editing roles and state ownership.
+
+use std::collections::HashMap;
 
 use parking_lot::RwLock;
 #[cfg(feature = "grpc")]
@@ -6,7 +18,9 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 
 #[cfg(feature = "grpc")]
 use super::CaptureTracker;
-use super::{SessionId, SessionState};
+#[cfg(feature = "grpc")]
+use super::PresenceMap;
+use super::{Client, ClientId, SessionId, SessionState};
 
 /// Default channel capacity for notifications.
 #[cfg(feature = "grpc")]
@@ -16,12 +30,26 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 256;
 ///
 /// Sessions hold the kernel state (buffers, options, etc.) and can have
 /// multiple clients attached. Think of it like a tmux session.
+///
+/// # Client Management (Phase 11.2)
+///
+/// The session tracks connected clients via two maps:
+/// - `clients`: Role and editing state ownership (Owner/Follow/Share)
+/// - `presence`: Display preferences and cursor positions (for rendering)
 pub struct Session {
     /// Unique session identifier.
     id: SessionId,
 
     /// Session state protected by `RwLock`.
     state: RwLock<SessionState>,
+
+    /// Per-client roles and editing state (Phase 11.2).
+    ///
+    /// Maps `ClientId` to `Client` enum which tracks:
+    /// - Owner: Has own `EditingState`
+    /// - Follow: References another client (read-only)
+    /// - Share: Co-edits with owner (bidirectional)
+    clients: RwLock<HashMap<ClientId, Client>>,
 
     /// Notification broadcast channel (gRPC only).
     #[cfg(feature = "grpc")]
@@ -30,6 +58,10 @@ pub struct Session {
     /// Capture request tracker for CLI→Server→TUI→Server→CLI relay (gRPC only).
     #[cfg(feature = "grpc")]
     capture_tracker: CaptureTracker,
+
+    /// Multi-client presence tracking (Phase 14, gRPC only).
+    #[cfg(feature = "grpc")]
+    presence: PresenceMap,
 }
 
 impl Session {
@@ -42,10 +74,13 @@ impl Session {
         Self {
             id,
             state: RwLock::new(SessionState::default()),
+            clients: RwLock::new(HashMap::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
+            #[cfg(feature = "grpc")]
+            presence: PresenceMap::new(),
         }
     }
 
@@ -77,10 +112,13 @@ impl Session {
         Self {
             id,
             state: RwLock::new(state),
+            clients: RwLock::new(HashMap::new()),
             #[cfg(feature = "grpc")]
             notification_tx,
             #[cfg(feature = "grpc")]
             capture_tracker: CaptureTracker::new(),
+            #[cfg(feature = "grpc")]
+            presence: PresenceMap::new(),
         }
     }
 
@@ -117,6 +155,130 @@ impl Session {
     #[must_use]
     pub const fn capture_tracker(&self) -> &CaptureTracker {
         &self.capture_tracker
+    }
+
+    /// Get the presence map for multi-client tracking (Phase 14, gRPC only).
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub const fn presence(&self) -> &PresenceMap {
+        &self.presence
+    }
+
+    // =========================================================================
+    // Client Management (Phase 11.2)
+    // =========================================================================
+
+    /// Add a client to the session as an Owner.
+    ///
+    /// New clients default to Owner role with their own editing state.
+    /// Call `set_client_role()` to change to Follow/Share.
+    pub fn add_client(&self, client_id: ClientId) {
+        let mut clients = self.clients.write();
+        clients.insert(client_id, Client::new_owner());
+    }
+
+    /// Add a client with a specific initial role.
+    pub fn add_client_with_role(&self, client_id: ClientId, role: Client) {
+        let mut clients = self.clients.write();
+        clients.insert(client_id, role);
+    }
+
+    /// Remove a client from the session.
+    ///
+    /// Returns the removed client's role if found.
+    pub fn remove_client(&self, client_id: ClientId) -> Option<Client> {
+        let mut clients = self.clients.write();
+        clients.remove(&client_id)
+    }
+
+    /// Get a client's role (immutable).
+    #[must_use]
+    pub fn get_client(&self, client_id: ClientId) -> Option<Client> {
+        let clients = self.clients.read();
+        clients.get(&client_id).cloned()
+    }
+
+    /// Set a client's role.
+    ///
+    /// Use this to change between Owner/Follow/Share modes.
+    pub fn set_client_role(&self, client_id: ClientId, role: Client) {
+        let mut clients = self.clients.write();
+        clients.insert(client_id, role);
+    }
+
+    /// Get the effective editing state for a client.
+    ///
+    /// - Owner: Returns own state
+    /// - Follow: Returns target's state (read-only access)
+    /// - Share: Returns owner's state (for display)
+    ///
+    /// Returns `None` if client not found or target chain is broken.
+    #[must_use]
+    pub fn client_state(&self, client_id: ClientId) -> Option<super::EditingState> {
+        let clients = self.clients.read();
+        clients
+            .get(&client_id)
+            .and_then(|c| c.effective_state(&clients))
+            .cloned()
+    }
+
+    /// Update a client's editing state via closure.
+    ///
+    /// - Owner: Updates own state
+    /// - Follow: No-op (input ignored)
+    /// - Share: Updates owner's state
+    ///
+    /// Returns `true` if state was updated.
+    pub fn update_client_state<F>(&self, client_id: ClientId, f: F) -> bool
+    where
+        F: FnOnce(&mut super::EditingState),
+    {
+        let mut clients = self.clients.write();
+
+        // Find the target client ID based on role
+        let target_id = match clients.get(&client_id) {
+            Some(Client::Owner { .. }) => client_id,
+            Some(Client::Share { owner }) => *owner,
+            Some(Client::Follow { .. }) | None => return false, // Input ignored for followers
+        };
+
+        // Update the target's state
+        if let Some(Client::Owner { state }) = clients.get_mut(&target_id) {
+            f(state);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Execute a closure with read access to the clients map.
+    pub fn with_clients<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&HashMap<ClientId, Client>) -> R,
+    {
+        let clients = self.clients.read();
+        f(&clients)
+    }
+
+    /// Execute a closure with write access to the clients map.
+    pub fn with_clients_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut HashMap<ClientId, Client>) -> R,
+    {
+        let mut clients = self.clients.write();
+        f(&mut clients)
+    }
+
+    /// Get count of connected clients.
+    #[must_use]
+    pub fn client_count(&self) -> usize {
+        self.clients.read().len()
+    }
+
+    /// Check if a client is connected.
+    #[must_use]
+    pub fn has_client(&self, client_id: ClientId) -> bool {
+        self.clients.read().contains_key(&client_id)
     }
 
     /// Get the session ID.

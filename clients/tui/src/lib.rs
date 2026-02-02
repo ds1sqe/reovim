@@ -158,6 +158,14 @@ pub struct TuiArgs {
     /// Used in log filenames. Default: "default"
     #[arg(long, value_name = "NAME")]
     pub debug_name: Option<String>,
+
+    /// Color theme to use.
+    ///
+    /// Specify a builtin theme (dark, light, tokyo-night-orange) or
+    /// a user theme name from ~/.config/reovim/themes/.
+    /// Default: dark
+    #[arg(long, value_name = "THEME")]
+    pub theme: Option<String>,
 }
 
 impl TuiArgs {

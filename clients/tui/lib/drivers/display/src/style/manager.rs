@@ -127,34 +127,59 @@ impl ThemeManager {
         self.overrides.len()
     }
 
-    /// Get the style for a highlight group.
+    /// Get the style for a highlight group with hierarchical fallback.
     ///
-    /// Uses 4-tier lookup order:
+    /// Uses 4-tier lookup order with hierarchical fallback:
     /// 1. User overrides (`set_override`)
     /// 2. Current theme (`ThemeProvider.get_style`)
     /// 3. Module defaults (`StyleGroupRegistry`)
     /// 4. Theme default (`ThemeProvider.default_style`)
+    ///
+    /// **Hierarchical Fallback**: If a group like `"keyword.control"` is not found,
+    /// the lookup walks up the hierarchy: `"keyword.control"` → `"keyword"` → default.
+    /// This allows themes to define broad styles and override specific variants.
     #[must_use]
     pub fn get_style(&self, group: &str) -> Style {
+        // Try exact match with full 4-tier lookup
+        if let Some(style) = self.lookup_exact(group) {
+            return style;
+        }
+
+        // Hierarchical fallback: walk up the dot-separated hierarchy
+        let mut current = group;
+        while let Some((parent, _)) = current.rsplit_once('.') {
+            if let Some(style) = self.lookup_exact(parent) {
+                return style;
+            }
+            current = parent;
+        }
+
+        // Final fallback to theme default
+        self.current.default_style()
+    }
+
+    /// Perform exact lookup through all 4 tiers (no hierarchical fallback).
+    ///
+    /// This is used internally by `get_style` for each level of the hierarchy.
+    fn lookup_exact(&self, group: &str) -> Option<Style> {
         // Tier 1: User overrides
         if let Some(style) = self.overrides.get(group) {
-            return style.clone();
+            return Some(style.clone());
         }
 
         // Tier 2: Current theme
         if let Some(style) = self.current.get_style(group) {
-            return style;
+            return Some(style);
         }
 
         // Tier 3: Module defaults
         if let Some(ref registry) = self.module_defaults
             && let Some(style) = registry.get(group)
         {
-            return style;
+            return Some(style);
         }
 
-        // Tier 4: Theme default
-        self.current.default_style()
+        None
     }
 
     /// Get the style for a highlight group, returning None if not found.
@@ -367,5 +392,72 @@ mod tests {
 
         // Should not find unknown (no tier 4 fallback in try_get_style)
         assert!(manager.try_get_style("nonexistent").is_none());
+    }
+
+    // =========================================================================
+    // Hierarchical Fallback Tests (Phase 13.0 #470)
+    // =========================================================================
+
+    #[test]
+    fn test_hierarchical_fallback_single_level() {
+        use super::StyleGroupRegistry;
+
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Register a style for "custom" but not "custom.specific"
+        let registry = Arc::new(StyleGroupRegistry::new());
+        registry.register("custom", Style::new().fg(Color::Yellow));
+        manager.set_module_defaults(registry);
+
+        // "custom.specific" should fall back to "custom"
+        let style = manager.get_style("custom.specific");
+        assert_eq!(style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_hierarchical_fallback_multi_level() {
+        use super::StyleGroupRegistry;
+
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Register only the base level
+        let registry = Arc::new(StyleGroupRegistry::new());
+        registry.register("my", Style::new().fg(Color::Cyan));
+        manager.set_module_defaults(registry);
+
+        // "my.deep.nested.group" should fall back through the hierarchy
+        // my.deep.nested.group → my.deep.nested → my.deep → my
+        let style = manager.get_style("my.deep.nested.group");
+        assert_eq!(style.fg, Some(Color::Cyan));
+    }
+
+    #[test]
+    fn test_hierarchical_fallback_prefers_specific() {
+        use super::StyleGroupRegistry;
+
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Register both base and specific
+        let registry = Arc::new(StyleGroupRegistry::new());
+        registry.register("test", Style::new().fg(Color::Red));
+        registry.register("test.specific", Style::new().fg(Color::Blue));
+        manager.set_module_defaults(registry);
+
+        // Specific should be returned (not fallback to base)
+        let specific = manager.get_style("test.specific");
+        assert_eq!(specific.fg, Some(Color::Blue));
+
+        // Base should return base
+        let base = manager.get_style("test");
+        assert_eq!(base.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn test_hierarchical_fallback_to_default() {
+        let manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "completely.unknown.group" should fall back to default style
+        let style = manager.get_style("completely.unknown.group");
+        assert_eq!(style, manager.current_theme().default_style());
     }
 }

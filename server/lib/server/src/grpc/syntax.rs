@@ -32,7 +32,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{SessionId, SessionRegistry};
+use crate::session::{SessionId, SessionRegistry, SyntaxSessionState};
 
 /// gRPC `SyntaxService` implementation.
 ///
@@ -78,10 +78,8 @@ impl SyntaxServiceImpl {
 ///
 /// # Note
 ///
-/// Currently unused because syntax drivers aren't integrated into sessions yet.
-/// Will be used when `GetTokens` returns real tokens from syntax drivers.
+/// Used by `GetTokens` and `StreamTokens` to convert highlight groups to client-facing categories.
 #[must_use]
-#[allow(dead_code)] // Used when syntax drivers are integrated
 pub fn highlight_group_to_category(group: HighlightGroup) -> &'static str {
     group.category()
 }
@@ -237,7 +235,7 @@ impl SyntaxService for SyntaxServiceImpl {
         };
 
         session
-            .with_state(|state| {
+            .with_state_mut(|state| {
                 let buffer_id = requested_buffer_id
                     .or_else(|| state.active_buffer())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
@@ -252,13 +250,51 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Detect language from file path
                 let (language_id, _language_name) = detect_language_from_path(buffer.file_path());
 
-                // TODO: When syntax drivers are integrated into sessions:
-                // 1. Get syntax driver for this buffer from session
-                // 2. Call driver.highlights(byte_range) to get HighlightSpan
-                // 3. Convert HighlightSpan to TokenSpan using highlight_group_to_category()
-                //
-                // For now, return empty tokens - clients should render plain text
-                let tokens: Vec<TokenSpan> = Vec::new();
+                // Get buffer content for byte range calculation
+                let content = buffer.content();
+
+                // Calculate byte range for requested lines
+                let start_line = req.start_line.unwrap_or(0) as usize;
+                let end_line = match req.end_line {
+                    Some(e) if (e as usize) < total_lines => e as usize,
+                    _ => total_lines.saturating_sub(1),
+                };
+
+                // Convert line range to byte range
+                let start_byte =
+                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(start_line, 0));
+                let end_byte = if end_line < total_lines {
+                    buffer.position_to_byte(reovim_kernel::api::v1::Position::new(end_line + 1, 0))
+                } else {
+                    content.len()
+                };
+                let byte_range = start_byte..end_byte;
+
+                // Drop buffer read lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Get syntax session state from extensions
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+
+                // Get or create driver for this buffer
+                let tokens = if syntax_state.ensure_driver(buffer_id, language_id, &content) {
+                    syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
+                        // Get highlights from driver and convert to TokenSpan
+                        driver
+                            .highlights(byte_range)
+                            .into_iter()
+                            .map(|span| TokenSpan {
+                                start_byte: span.start_byte as u32,
+                                end_byte: span.end_byte as u32,
+                                category: highlight_group_to_category(span.group).to_string(),
+                            })
+                            .collect()
+                    })
+                } else {
+                    // No driver available for this language
+                    Vec::new()
+                };
 
                 Ok(Response::new(GetTokensResponse {
                     buffer_id: buffer_id.as_usize() as u64,
@@ -275,10 +311,8 @@ impl SyntaxService for SyntaxServiceImpl {
 
     /// Stream token updates in real-time.
     ///
-    /// # Current Implementation
-    ///
-    /// Returns an empty stream. Real-time token streaming will be enabled
-    /// when buffer modification events are connected to syntax driver updates.
+    /// Subscribes to the `SyntaxSessionState` to receive token updates when
+    /// buffers are modified. Sends an initial full refresh with current tokens.
     #[allow(clippy::cast_possible_truncation)]
     async fn stream_tokens(
         &self,
@@ -286,36 +320,83 @@ impl SyntaxService for SyntaxServiceImpl {
     ) -> Result<Response<Self::StreamTokensStream>, Status> {
         let req = request.into_inner();
         let session = self.get_session()?;
+        let session_clone = Arc::clone(&session);
 
-        // Verify buffer exists
+        // Verify buffer exists and get initial tokens
         let buffer_id = BufferId::from_raw(req.buffer_id as usize);
-        session
-            .with_state(|state| {
-                state.buffer(buffer_id).ok_or_else(|| {
+        let (initial_update, syntax_rx) = session
+            .with_state_mut(|state| {
+                // Verify buffer exists
+                let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
                     Status::not_found(format!("Buffer {} not found", buffer_id.as_usize()))
                 })?;
-                Ok::<(), Status>(())
+
+                let buffer = buffer_arc.read();
+                let total_lines = buffer.line_count() as u64;
+                let content = buffer.content();
+                let (language_id, _) = detect_language_from_path(buffer.file_path());
+
+                // Drop buffer lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Get syntax state and ensure driver exists
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+
+                // Ensure driver is created for this buffer
+                syntax_state.ensure_driver(buffer_id, language_id, &content);
+
+                // Subscribe to updates
+                let rx = syntax_state.subscribe();
+
+                // Get initial tokens
+                let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
+                    driver
+                        .highlights(0..content.len())
+                        .into_iter()
+                        .map(|span| TokenSpan {
+                            start_byte: span.start_byte as u32,
+                            end_byte: span.end_byte as u32,
+                            category: highlight_group_to_category(span.group).to_string(),
+                        })
+                        .collect()
+                });
+
+                let initial = TokenUpdate {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    tokens,
+                    start_line: 0,
+                    end_line: total_lines.saturating_sub(1),
+                    full_refresh: true,
+                };
+
+                Ok::<_, Status>((initial, rx))
             })
             .await?;
 
-        // Create a channel for streaming updates
-        // Currently returns empty stream - will be connected to buffer events later
-        let (tx, rx) = mpsc::channel(16);
+        // Create output channel for the gRPC stream
+        let (tx, rx) = mpsc::channel(32);
 
-        // Send an initial full refresh with empty tokens to signal connection
-        let initial = TokenUpdate {
-            buffer_id: buffer_id.as_usize() as u64,
-            tokens: Vec::new(),
-            start_line: 0,
-            end_line: 0,
-            full_refresh: true,
-        };
-
-        // Spawn a task to send the initial update
+        // Spawn a task to forward updates
         tokio::spawn(async move {
-            let _ = tx.send(Ok(initial)).await;
-            // Keep the channel open but don't send more updates yet
-            // Future: subscribe to buffer modification events
+            // Send initial full refresh
+            if tx.send(Ok(initial_update)).await.is_err() {
+                return; // Client disconnected
+            }
+
+            // Forward updates from syntax state
+            let mut syntax_rx = syntax_rx;
+            while let Some(update) = syntax_rx.recv().await {
+                // Only forward updates for the requested buffer
+                if update.buffer_id == buffer_id.as_usize() as u64
+                    && tx.send(Ok(update)).await.is_err()
+                {
+                    break; // Client disconnected
+                }
+            }
+
+            tracing::debug!(buffer_id = buffer_id.as_usize(), "StreamTokens stream ended");
+            let _ = session_clone;
         });
 
         Ok(Response::new(ReceiverStream::new(rx)))
@@ -335,7 +416,7 @@ impl SyntaxService for SyntaxServiceImpl {
         let session = self.get_session()?;
 
         session
-            .with_state(|state| {
+            .with_state_mut(|state| {
                 let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -346,9 +427,15 @@ impl SyntaxService for SyntaxServiceImpl {
                 let (language_id, language_name) = detect_language_from_path(buffer.file_path());
                 let extensions = extensions_for_language(language_id);
 
-                // TODO: Check SyntaxDriverFactory to see if parser is actually available
-                // For now, report no parser available
-                let has_parser = false;
+                // Drop buffer lock before accessing extensions
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Check if a parser is available via the factory
+                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+                let has_parser = syntax_state
+                    .factory()
+                    .is_some_and(|f| f.supports(language_id));
 
                 Ok(Response::new(GetLanguageInfoResponse {
                     language_id: language_id.to_string(),

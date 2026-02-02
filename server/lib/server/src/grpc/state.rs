@@ -280,54 +280,66 @@ impl StateService for StateServiceImpl {
         &self,
         _request: Request<GetSelectionRequest>,
     ) -> Result<Response<GetSelectionResponse>, Status> {
-        use {reovim_kernel::api::v1::SelectionMode, reovim_protocol::v2::Selection};
+        use reovim_protocol::v2::Selection;
 
         let session = self.get_session()?;
 
         let (has_selection, selection, visual_mode) = session
             .with_state(|state| {
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let buf = buffer_arc.read();
-                    let sel = buf.selection();
+                // Phase 8 (#465): Read selection from WINDOW, not buffer.
+                let driver_session = state.driver_session();
 
-                    if sel.is_active() {
-                        let cursor_pos = buf.position();
-                        let anchor = sel.anchor;
-                        let mode = sel.mode();
-                        drop(buf); // Release lock early
+                // Get buffer ID from active buffer
+                let Some(buffer_id) = state.active_buffer() else {
+                    return (false, None, None);
+                };
 
-                        // Get bounds in document order (start <= end)
-                        let (start, end) = if anchor <= cursor_pos {
-                            (anchor, cursor_pos)
-                        } else {
-                            (cursor_pos, anchor)
-                        };
-
-                        // Map kernel SelectionMode to protocol string
-                        let mode_str = match mode {
-                            SelectionMode::Character => "char",
-                            SelectionMode::Line => "line",
-                            SelectionMode::Block => "block",
-                        };
-
-                        return (
-                            true,
-                            Some(Selection {
-                                start: Some(Position {
-                                    line: start.line as u64,
-                                    column: start.column as u64,
-                                }),
-                                end: Some(Position {
-                                    line: end.line as u64,
-                                    column: end.column as u64,
-                                }),
-                            }),
-                            Some(mode_str.to_string()),
-                        );
+                // Find focused window first, fallback to any window displaying buffer
+                let window = {
+                    let focused = driver_session.windows.active();
+                    if focused.is_some_and(|f| f.buffer_id == Some(buffer_id)) {
+                        focused
+                    } else {
+                        driver_session
+                            .windows
+                            .windows
+                            .iter()
+                            .find(|w| w.buffer_id == Some(buffer_id))
                     }
+                };
+
+                let Some(window) = window else {
+                    return (false, None, None);
+                };
+
+                // Phase 8 (#465): Selection now lives in Window with explicit start/end.
+                // Read directly from window.selection.
+                if let Some(ref sel) = window.selection {
+                    use reovim_driver_session::SelectionMode;
+
+                    // Map SelectionMode to protocol string
+                    let mode_str = match sel.mode {
+                        SelectionMode::Character => "char",
+                        SelectionMode::Line => "line",
+                        SelectionMode::Block => "block",
+                    };
+
+                    return (
+                        true,
+                        Some(Selection {
+                            start: Some(Position {
+                                line: sel.start.line as u64,
+                                column: sel.start.column as u64,
+                            }),
+                            end: Some(Position {
+                                line: sel.end.line as u64,
+                                column: sel.end.column as u64,
+                            }),
+                        }),
+                        Some(mode_str.to_string()),
+                    );
                 }
+
                 // No active selection
                 (false, None, None)
             })
@@ -633,18 +645,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_layout_single_window() {
-        use reovim_driver_session::{Viewport, Window};
+        use reovim_driver_session::Viewport;
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer and add a window
+        // Create a buffer (which also creates a window via Phase 8 change)
+        // Then modify the existing window's viewport
         session
             .with_state_mut(|state| {
-                let buffer_id = state.create_buffer("hello world");
-                // Create a window with the buffer
-                let mut window = Window::with_buffer(buffer_id);
-                window.viewport = Viewport::new(80, 24);
-                state.driver_session_mut().windows.add(window);
+                let _buffer_id = state.create_buffer("hello world");
+                // Modify the existing window created by create_buffer
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                }
             })
             .await;
 
@@ -686,18 +699,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_visible_lines_with_window() {
-        use reovim_driver_session::{Viewport, Window};
+        use reovim_driver_session::Viewport;
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer and window with specific viewport
+        // Create a buffer (which also creates a window via Phase 8 change)
+        // Then modify the existing window's viewport
         session
             .with_state_mut(|state| {
-                let buffer_id = state.create_buffer("line0\nline1\nline2\nline3");
-                let mut window = Window::with_buffer(buffer_id);
-                window.viewport = Viewport::new(80, 24);
-                // Set scroll_top to 0 (default)
-                state.driver_session_mut().windows.add(window);
+                let _buffer_id = state.create_buffer("line0\nline1\nline2\nline3");
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                    // scroll_top is 0 by default
+                }
             })
             .await;
 
@@ -716,19 +730,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_visible_lines_with_scroll() {
-        use reovim_driver_session::{Viewport, Window};
+        use reovim_driver_session::Viewport;
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer and window with scrolled viewport
+        // Create a buffer (which also creates a window via Phase 8 change)
+        // Then modify the existing window's viewport with scroll
         session
             .with_state_mut(|state| {
-                let buffer_id = state.create_buffer("content");
-                let mut window = Window::with_buffer(buffer_id);
-                let mut viewport = Viewport::new(80, 24);
-                viewport.scroll_top = 10; // Scrolled down 10 lines
-                window.viewport = viewport;
-                state.driver_session_mut().windows.add(window);
+                let _buffer_id = state.create_buffer("content");
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    let mut viewport = Viewport::new(80, 24);
+                    viewport.scroll_top = 10; // Scrolled down 10 lines
+                    window.viewport = viewport;
+                }
             })
             .await;
 
@@ -876,23 +891,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_selection_with_char_selection() {
-        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+        use {
+            reovim_driver_session::{Viewport, api::Selection},
+            reovim_kernel::api::v1::Position as KernelPosition,
+        };
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create buffer and start character selection
+        // Create buffer and set up window with selection
+        // Phase 8 (#465): Selection now lives in Window, not Buffer.
+        // create_buffer() already creates a Window, so modify it rather than adding a new one.
         session
             .with_state_mut(|state| {
-                state.create_buffer("hello world");
-                // Simulate starting visual mode at position (0, 0)
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let mut buf = buffer_arc.write();
-                    buf.selection_mut()
-                        .start(KernelPosition::new(0, 0), SelectionMode::Character);
-                    // Move cursor to (0, 4) to select "hello"
-                    buf.set_position(KernelPosition::new(0, 4));
+                let _buffer_id = state.create_buffer("hello world");
+                // Modify the existing window created by create_buffer
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                    // Set selection for "hello" (0,0 to 0,5 exclusive)
+                    window.selection = Some(Selection::character(
+                        KernelPosition::new(0, 0),
+                        KernelPosition::new(0, 5),
+                    ));
                 }
             })
             .await;
@@ -911,28 +930,31 @@ mod tests {
         assert_eq!(sel.start.as_ref().unwrap().line, 0);
         assert_eq!(sel.start.as_ref().unwrap().column, 0);
         assert_eq!(sel.end.as_ref().unwrap().line, 0);
-        assert_eq!(sel.end.as_ref().unwrap().column, 4);
+        assert_eq!(sel.end.as_ref().unwrap().column, 5); // exclusive end
         assert_eq!(resp.visual_mode, Some("char".to_string()));
     }
 
     #[tokio::test]
     async fn test_get_selection_line_mode() {
-        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+        use {
+            reovim_driver_session::{Viewport, api::Selection},
+            reovim_kernel::api::v1::Position as KernelPosition,
+        };
 
         let (registry, session) = test_registry_with_buffer_manager();
 
+        // Phase 8 (#465): Selection now lives in Window.
+        // create_buffer() already creates a Window, so modify it rather than adding a new one.
         session
             .with_state_mut(|state| {
-                state.create_buffer("line1\nline2\nline3");
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let mut buf = buffer_arc.write();
-                    // Start line-wise selection on line 0
-                    buf.selection_mut()
-                        .start(KernelPosition::new(0, 0), SelectionMode::Line);
-                    // Move to line 1
-                    buf.set_position(KernelPosition::new(1, 0));
+                let _buffer_id = state.create_buffer("line1\nline2\nline3");
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                    // Line-wise selection for lines 0-1
+                    window.selection = Some(Selection::line(
+                        KernelPosition::new(0, 0),
+                        KernelPosition::new(2, 0), // exclusive end
+                    ));
                 }
             })
             .await;
@@ -950,22 +972,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_selection_block_mode() {
-        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+        use {
+            reovim_driver_session::{Viewport, api::Selection},
+            reovim_kernel::api::v1::Position as KernelPosition,
+        };
 
         let (registry, session) = test_registry_with_buffer_manager();
 
+        // Phase 8 (#465): Selection now lives in Window.
+        // create_buffer() already creates a Window, so modify it rather than adding a new one.
         session
             .with_state_mut(|state| {
-                state.create_buffer("ABC\nDEF\nGHI");
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let mut buf = buffer_arc.write();
-                    // Start block selection at (0, 0)
-                    buf.selection_mut()
-                        .start(KernelPosition::new(0, 0), SelectionMode::Block);
-                    // Move to (1, 1) for a 2x2 block
-                    buf.set_position(KernelPosition::new(1, 1));
+                let _buffer_id = state.create_buffer("ABC\nDEF\nGHI");
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                    // Block selection from (0,0) to (1,2) - a 2x2 block
+                    window.selection = Some(Selection::block(
+                        KernelPosition::new(0, 0),
+                        KernelPosition::new(2, 2), // exclusive end
+                    ));
                 }
             })
             .await;
@@ -983,21 +1008,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_selection_reverse() {
-        use reovim_kernel::api::v1::{Position as KernelPosition, SelectionMode};
+        use {
+            reovim_driver_session::{Viewport, api::Selection},
+            reovim_kernel::api::v1::Position as KernelPosition,
+        };
 
         let (registry, session) = test_registry_with_buffer_manager();
 
+        // Phase 8 (#465): Selection now lives in Window.
+        // Selection stores start/end directly - normalized to start < end.
+        // create_buffer() already creates a Window, so modify it rather than adding a new one.
         session
             .with_state_mut(|state| {
-                state.create_buffer("hello world");
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let mut buf = buffer_arc.write();
-                    // Start selection at column 5, move cursor to column 2 (reverse)
-                    buf.selection_mut()
-                        .start(KernelPosition::new(0, 5), SelectionMode::Character);
-                    buf.set_position(KernelPosition::new(0, 2));
+                let _buffer_id = state.create_buffer("hello world");
+                if let Some(window) = state.driver_session_mut().windows.active_mut() {
+                    window.viewport = Viewport::new(80, 24);
+                    // Selection from column 2 to column 5 (already normalized)
+                    window.selection = Some(Selection::character(
+                        KernelPosition::new(0, 2),
+                        KernelPosition::new(0, 5),
+                    ));
                 }
             })
             .await;

@@ -1,0 +1,35 @@
+[package]
+name = "reovim-driver-syntax-treesitter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Tree-sitter based syntax driver implementation for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Driver layer trait - what we implement
+reovim-driver-syntax = { workspace = true }
+
+# Kernel API for Service trait
+reovim-kernel = { workspace = true }
+
+# Tree-sitter core - NO language grammars here!
+# Language grammars are in modules (treesitter-rust, treesitter-markdown, etc.)
+tree-sitter = "0.24"
+streaming-iterator = "0.1"
+
+# Logging
+tracing = { workspace = true }
+
+# Thread safety
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+# For tests with real parsing
+tree-sitter-rust = "0.23"

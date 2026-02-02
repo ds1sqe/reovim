@@ -47,6 +47,7 @@ mod render;
 mod screen;
 pub mod statusline;
 pub mod style;
+pub mod syntax;
 mod traits;
 pub mod ui;
 mod window;
@@ -147,7 +148,7 @@ pub use decoration::{
 
 pub use style::{
     BuiltinFileIconProvider, BuiltinTheme, IconDef, IconProvider, IconRegistry, IconSet,
-    StyleGroupRegistry, ThemeManager, ThemeProvider,
+    StyleGroupRegistry, ThemeLoader, ThemeManager, ThemeProvider,
 };
 
 // ============================================================================
@@ -268,3 +269,13 @@ pub use statusline::{
 pub use overlay_content::{
     OverlayContentKey, OverlayContentProvider, OverlayContentRegistry, OverlayContentStorage,
 };
+
+// ============================================================================
+// Syntax Token Cache (Phase 13.0 #470 - StreamTokens Integration)
+// ============================================================================
+//
+// Client-side caching of syntax tokens from StreamTokens RPC.
+// Converts byte offsets to positions and provides efficient line queries.
+// ============================================================================
+
+pub use syntax::{CachedToken, TokenCache, TokenCacheManager, TokenSpan};

@@ -76,25 +76,50 @@ impl ServerLayoutMirror {
     /// Apply a `layout_changed` notification.
     ///
     /// Replaces all stored placements with the new layout from server.
+    /// Note: Server sends x=0, y=0 for all windows, so we calculate positions
+    /// based on actual screen size. For single window, use full screen minus statusline.
     pub fn apply_layout_changed(&mut self, focused_id: u64, windows: &[WindowInfo]) {
         self.focused_id = Some(focused_id);
+
+        // Reserve 1 row for statusline
+        let content_height = self.screen_height.saturating_sub(1);
+
+        // For now, simple single-window layout: full width, height minus statusline
+        // TODO: Handle multi-window splits properly
         self.windows = windows
             .iter()
-            .filter_map(|w| {
-                let rect = w.rect.as_ref()?;
-                Some(WindowPlacement {
+            .enumerate()
+            .map(|(idx, w)| {
+                // For single window, use full screen
+                // For multiple windows, we'd need to calculate splits
+                let (x, y, width, height) = if windows.len() == 1 {
+                    (0, 0, self.screen_width, content_height)
+                } else {
+                    // Fallback: use server rect if available, or stack windows
+                    w.rect.as_ref().map_or_else(
+                        || {
+                            // Stack windows vertically as fallback
+                            #[allow(clippy::cast_possible_truncation)]
+                            let h = content_height / windows.len() as u16;
+                            #[allow(clippy::cast_possible_truncation)]
+                            (0, (idx as u16) * h, self.screen_width, h)
+                        },
+                        |r| {
+                            #[allow(clippy::cast_possible_truncation)]
+                            (r.x as u16, r.y as u16, r.width as u16, r.height as u16)
+                        },
+                    )
+                };
+
+                WindowPlacement {
                     window_id: w.window_id,
                     buffer_id: w.buffer_id,
-                    #[allow(clippy::cast_possible_truncation)]
-                    x: rect.x as u16,
-                    #[allow(clippy::cast_possible_truncation)]
-                    y: rect.y as u16,
-                    #[allow(clippy::cast_possible_truncation)]
-                    width: rect.width as u16,
-                    #[allow(clippy::cast_possible_truncation)]
-                    height: rect.height as u16,
+                    x,
+                    y,
+                    width,
+                    height,
                     focused: w.focused,
-                })
+                }
             })
             .collect();
     }
@@ -252,22 +277,42 @@ mod tests {
     }
 
     #[test]
-    fn test_window_without_rect_filtered() {
+    fn test_window_without_rect_uses_fallback() {
         let mut mirror = ServerLayoutMirror::new(80, 24);
+        // 24 - 1 (statusline) = 23 content height
+        // 2 windows → each gets 11 rows (23 / 2 = 11)
         let windows = vec![
             WindowInfo {
                 window_id: 1,
                 buffer_id: 100,
-                rect: None, // No rect - should be filtered
+                rect: None, // No rect - uses fallback vertical stacking
                 focused: true,
             },
-            make_window_info(2, 101, 0, 0, 80, 23, false),
+            WindowInfo {
+                window_id: 2,
+                buffer_id: 101,
+                rect: None, // No rect - uses fallback vertical stacking
+                focused: false,
+            },
         ];
 
         mirror.apply_layout_changed(1, &windows);
 
-        // Only window 2 should be in placements (window 1 has no rect)
-        assert_eq!(mirror.window_count(), 1);
-        assert_eq!(mirror.placements().first().unwrap().window_id, 2);
+        // Both windows should be present with calculated positions
+        assert_eq!(mirror.window_count(), 2);
+
+        // First window at top
+        let first = mirror.get_placement(1).unwrap();
+        assert_eq!(first.x, 0);
+        assert_eq!(first.y, 0);
+        assert_eq!(first.width, 80);
+        assert_eq!(first.height, 11);
+
+        // Second window below first
+        let second = mirror.get_placement(2).unwrap();
+        assert_eq!(second.x, 0);
+        assert_eq!(second.y, 11);
+        assert_eq!(second.width, 80);
+        assert_eq!(second.height, 11);
     }
 }

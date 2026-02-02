@@ -31,6 +31,9 @@ import { ViewportCache, BufferCache } from "./cache/index.js";
 // Overlay rendering (Phase 11.1)
 import { OverlayRenderer } from "./render/overlay.js";
 
+// Capture handler (Phase 16)
+import { CaptureHandler, type CaptureableState } from "./capture/index.js";
+
 /** Position within the buffer */
 interface Position {
   line: number;
@@ -78,6 +81,8 @@ interface EditorState {
  */
 export class Editor {
   private client: ReovimClient;
+  /** This client's unique ID (Phase 11.2 - per-client state). */
+  readonly myClientId: bigint;
   private state: EditorState;
 
   // Renderers
@@ -91,6 +96,9 @@ export class Editor {
   // Overlay rendering (Phase 11.1)
   private overlayRenderer: OverlayRenderer;
 
+  // Capture handler (Phase 16)
+  private captureHandler: CaptureHandler;
+
   // DOM elements (legacy single-window)
   private modeElement: HTMLElement | null;
   private bufferElement: HTMLElement | null;
@@ -100,8 +108,15 @@ export class Editor {
   // DOM elements (multi-window)
   private editorElement: HTMLElement | null;
 
-  constructor(client: ReovimClient) {
+  /**
+   * Create a new Editor instance.
+   *
+   * @param client - gRPC client for server communication
+   * @param myClientId - This client's unique ID (Phase 11.2)
+   */
+  constructor(client: ReovimClient, myClientId: bigint) {
     this.client = client;
+    this.myClientId = myClientId;
     this.state = {
       mode: "normal",
       modeDisplay: "NORMAL",
@@ -129,6 +144,12 @@ export class Editor {
 
     // Initialize overlay renderer (Phase 11.1)
     this.overlayRenderer = new OverlayRenderer();
+
+    // Initialize capture handler (Phase 16)
+    this.captureHandler = new CaptureHandler({
+      client: this.client,
+      getState: () => this.getCaptureableState(),
+    });
 
     // Cache DOM elements
     this.modeElement = document.getElementById("mode");
@@ -198,6 +219,9 @@ export class Editor {
 
   /**
    * Refresh for multi-window mode (WASM-based).
+   *
+   * Phase 11.2: Handles empty layout by creating a default local view.
+   * When server returns no windows, client creates its own view of the buffer.
    */
   private async refreshMultiWindow(): Promise<void> {
     const [modeResponse, layoutResponse] = await Promise.all([
@@ -210,11 +234,19 @@ export class Editor {
     this.state.modeDisplay = modeResponse.display;
 
     // Convert proto to logical layout and interpret
+    let hasLayout = false;
     if (layoutResponse.root) {
       const logical = protoToLogicalLayout(layoutResponse.root);
       if (logical) {
         this.updateLayout(logical, Number(layoutResponse.focusedWindowId));
+        hasLayout = true;
       }
+    }
+
+    // If no layout from server, create default local view (Phase 11.2)
+    if (!hasLayout) {
+      await this.createDefaultView();
+      return;
     }
 
     // Fetch buffer content for each window
@@ -222,6 +254,36 @@ export class Editor {
 
     // Render
     this.renderMultiWindow();
+  }
+
+  /**
+   * Create a default local view when server has no windows.
+   *
+   * Phase 11.2: Client-side handling of empty layout.
+   * Fetches active buffer and populates single-window state for rendering.
+   */
+  private async createDefaultView(): Promise<void> {
+    try {
+      // Fetch buffer content and cursor for single-window fallback
+      const [cursorResponse, bufferResponse] = await Promise.all([
+        this.client.state.getCursor({}),
+        this.client.buffer.getRawContent({}),
+      ]);
+
+      // Populate legacy single-window state
+      this.state.cursorLine = Number(cursorResponse.position?.line ?? 0);
+      this.state.cursorCol = Number(cursorResponse.position?.column ?? 0);
+      this.state.lines = bufferResponse.lines;
+
+      // Clear multi-window state to trigger single-window fallback
+      this.state.layout = null;
+      this.state.focusedWindowId = 0;
+
+      // Render in single-window mode
+      this.renderSingleWindow();
+    } catch (error) {
+      console.error("Failed to create default view:", error);
+    }
   }
 
   /**
@@ -281,14 +343,18 @@ export class Editor {
    * Subscribe to server notifications for real-time updates.
    */
   async subscribeToNotifications(): Promise<void> {
+    console.log("[notifications] Starting subscription...");
     try {
       const stream = this.client.notification.subscribe({});
+      console.log("[notifications] Stream established, waiting for notifications...");
 
       for await (const notification of stream) {
+        console.log("[notifications] Received:", notification.eventType, notification.payload);
         this.handleNotification(notification);
       }
+      console.log("[notifications] Stream ended normally");
     } catch (error) {
-      console.error("Notification stream error:", error);
+      console.error("[notifications] Stream error:", error);
     }
   }
 
@@ -301,6 +367,7 @@ export class Editor {
     switch (payload.case) {
       case "modeChanged": {
         const { name, display } = payload.value;
+        console.log("[modeChanged] mode:", name, "display:", display);
         this.state.mode = (name || "normal").toLowerCase();
         this.state.modeDisplay = display || "NORMAL";
         this.renderMode();
@@ -317,18 +384,16 @@ export class Editor {
         this.state.cursorLine = line;
         this.state.cursorCol = col;
 
-        // Update per-window state
-        if (this.state.useMultiWindow) {
+        // Update per-window state (only if we have a layout)
+        if (this.state.useMultiWindow && this.state.layout) {
           const windowState = this.state.windowStates.get(winId);
           if (windowState) {
             windowState.cursorLine = line;
             windowState.cursorCol = col;
           }
-        }
-
-        if (this.state.useMultiWindow) {
           this.renderMultiWindow();
         } else {
+          // Single-window fallback
           this.renderCursor();
           this.renderPosition();
         }
@@ -338,15 +403,18 @@ export class Editor {
       case "bufferModified": {
         const { bufferId } = payload.value;
         const bufId = Number(bufferId ?? 0n);
+        console.log("[bufferModified] Buffer", bufId, "modified, useMultiWindow:", this.state.useMultiWindow, "hasLayout:", !!this.state.layout);
 
         // Invalidate cache - next render will fetch fresh content
         this.bufferCache.invalidate(bufId);
 
-        if (this.state.useMultiWindow) {
+        // Use multi-window refresh only if we have a layout, otherwise fall back to single-window
+        if (this.state.useMultiWindow && this.state.layout) {
           // Find windows showing this buffer and refresh them
-          this.refreshBufferForBuffer(bufId);
+          this.refreshBufferForBuffer(bufId).catch(e => console.error("[bufferModified] refresh error:", e));
         } else {
-          this.refreshBuffer();
+          // Single-window fallback (also used when layout is null)
+          this.refreshBuffer().catch(e => console.error("[bufferModified] refresh error:", e));
         }
         break;
       }
@@ -369,8 +437,8 @@ export class Editor {
           };
           this.state.visualMode = (visualMode as VisualMode) ?? null;
 
-          // Update per-window state
-          if (this.state.useMultiWindow) {
+          // Update per-window state (only if we have a layout)
+          if (this.state.useMultiWindow && this.state.layout) {
             const windowState = this.state.windowStates.get(winId);
             if (windowState) {
               windowState.selection = {
@@ -391,8 +459,8 @@ export class Editor {
           this.state.selectionCursor = null;
           this.state.visualMode = null;
 
-          // Clear per-window selection
-          if (this.state.useMultiWindow) {
+          // Clear per-window selection (only if we have a layout)
+          if (this.state.useMultiWindow && this.state.layout) {
             const windowState = this.state.windowStates.get(winId);
             if (windowState) {
               windowState.selection = null;
@@ -400,7 +468,8 @@ export class Editor {
           }
         }
 
-        if (this.state.useMultiWindow) {
+        // Render with fallback to single-window if no layout
+        if (this.state.useMultiWindow && this.state.layout) {
           this.renderMultiWindow();
         } else {
           this.renderBuffer();
@@ -432,8 +501,8 @@ export class Editor {
           cursor_col: update.cursorCol !== undefined ? Number(update.cursorCol) : undefined,
         });
 
-        // Update window state if in multi-window mode
-        if (this.state.useMultiWindow) {
+        // Update window state if in multi-window mode with layout
+        if (this.state.useMultiWindow && this.state.layout) {
           const windowState = this.state.windowStates.get(viewportId);
           if (windowState) {
             if (update.topLine !== undefined) {
@@ -449,6 +518,14 @@ export class Editor {
           // Only re-render the affected viewport/window
           this.renderMultiWindow();
         }
+        // Note: No single-window fallback needed here - viewport updates are
+        // only meaningful in multi-window mode
+        break;
+      }
+
+      case "captureRequest": {
+        // Phase 16: Handle capture request from server (e.g., from CLI)
+        this.captureHandler.handleCaptureRequest(payload.value);
         break;
       }
 
@@ -464,6 +541,8 @@ export class Editor {
    * 1. Fetches layout tree from server
    * 2. Uses cached buffer content for existing windows
    * 3. Only fetches content for NEW windows (not in cache)
+   *
+   * Phase 11.2: Handles empty layout by creating default view.
    */
   private async refreshLayoutOnly(
     focusedId: number,
@@ -471,10 +550,18 @@ export class Editor {
   ): Promise<void> {
     try {
       const layoutResponse = await this.client.state.getLayout({});
-      if (!layoutResponse.root) return;
+
+      // Phase 11.2: Handle empty layout from server
+      if (!layoutResponse.root) {
+        await this.createDefaultView();
+        return;
+      }
 
       const logical = protoToLogicalLayout(layoutResponse.root);
-      if (!logical) return;
+      if (!logical) {
+        await this.createDefaultView();
+        return;
+      }
 
       this.updateLayout(logical, focusedId);
 
@@ -552,18 +639,27 @@ export class Editor {
    * Phase 11.1: Fetches once and updates both cache and window states.
    */
   private async refreshBufferForBuffer(bufferId: number): Promise<void> {
-    if (!this.state.layout) return;
+    console.log("[refreshBufferForBuffer] bufferId:", bufferId, "hasLayout:", !!this.state.layout);
+    if (!this.state.layout) {
+      console.log("[refreshBufferForBuffer] No layout, returning early");
+      return;
+    }
 
     const windows = allWindows(this.state.layout);
     const affectedWindows = windows.filter((w) => w.buffer_id === bufferId);
+    console.log("[refreshBufferForBuffer] windows:", windows.length, "affected:", affectedWindows.length);
 
-    if (affectedWindows.length === 0) return;
+    if (affectedWindows.length === 0) {
+      console.log("[refreshBufferForBuffer] No affected windows, returning early");
+      return;
+    }
 
     try {
       // Fetch buffer content once (not per-window)
       const bufferResponse = await this.client.buffer.getRawContent({
         bufferId: BigInt(bufferId),
       });
+      console.log("[refreshBufferForBuffer] Got", bufferResponse.lines.length, "lines");
 
       // Update cache
       this.bufferCache.set(bufferId, bufferResponse.lines, Date.now());
@@ -576,9 +672,10 @@ export class Editor {
         }
       }
     } catch (error) {
-      console.warn(`Failed to refresh buffer ${bufferId}:`, error);
+      console.warn(`[refreshBufferForBuffer] Failed to refresh buffer ${bufferId}:`, error);
     }
 
+    console.log("[refreshBufferForBuffer] Rendering...");
     this.renderMultiWindow();
   }
 
@@ -586,12 +683,15 @@ export class Editor {
    * Refresh only buffer content (legacy single-window).
    */
   private async refreshBuffer(): Promise<void> {
+    console.log("[refreshBuffer] Fetching buffer content...");
     try {
       const response = await this.client.buffer.getRawContent({});
+      console.log("[refreshBuffer] Got", response.lines.length, "lines, rendering...");
       this.state.lines = response.lines;
       this.renderBuffer();
+      console.log("[refreshBuffer] Render complete");
     } catch (error) {
-      console.error("Failed to refresh buffer:", error);
+      console.error("[refreshBuffer] Failed:", error);
     }
   }
 
@@ -866,5 +966,32 @@ export class Editor {
       this.state.selectionCursor.line
     );
     return line >= startLine && line <= endLine;
+  }
+
+  /**
+   * Get current state in a format suitable for frame capture.
+   *
+   * Phase 16: Used by CaptureHandler to generate frame captures.
+   */
+  private getCaptureableState(): CaptureableState {
+    // Get viewport dimensions from editor element or use defaults
+    const width = this.editorElement?.clientWidth
+      ? Math.floor(this.editorElement.clientWidth / 8) // Approximate char width
+      : 80;
+    const height = this.editorElement?.clientHeight
+      ? Math.floor(this.editorElement.clientHeight / 16) // Approximate line height
+      : 24;
+
+    return {
+      mode: this.state.mode,
+      modeDisplay: this.state.modeDisplay,
+      cursorLine: this.state.cursorLine,
+      cursorCol: this.state.cursorCol,
+      lines: this.state.lines,
+      width,
+      height,
+      focusedWindowId: this.state.focusedWindowId,
+      windowStates: this.state.windowStates,
+    };
   }
 }
