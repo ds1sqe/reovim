@@ -40,6 +40,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Web Client Capture Test Infrastructure (Phase 16)**: Headless web client and
+  capture relay for programmatic testing. CaptureHandler (`src/capture/handler.ts`):
+  handles `captureRequest` notifications from server, formats state as text matching
+  TUI capture format, enables `reovim cli capture` to work with web client. Shared
+  by browser Editor and Node.js HeadlessWebClient (mechanism vs policy separation).
+  HeadlessWebClient (`src/headless/client.ts`): Node.js-only client using native
+  gRPC transport (`@connectrpc/connect-node`), maintains internal state without DOM,
+  API mirrors TUI headless: `connect()`, `sendKeys()`, `capture()`, `waitFor()`,
+  `getMode()`, `getCursor()`, `getBuffer()`. Test infrastructure: WebTestServerHarness
+  spawns reovim server on dynamic port with auto-cleanup, WebIntegrationTest provides
+  fluent builder for tests, frameAssertions helpers extract mode/cursor from captures.
+  Integration tests (`tests/integration/headless.test.ts`): 17 tests (11 passing,
+  6 skipped pending module loading) covering connection, state, capture, and frame
+  assertions. Vitest config updated with 30s test timeout for server startup.
+  Dependencies: `@connectrpc/connect-node@^1.7.0`, `@types/node@^22.0.0`.
+  Part of Epic #465. (#465)
+
 - **Automated E2E Testing Infrastructure (Phase 15)**: Comprehensive E2E testing
   framework for validating client-server interactions. TUI headless testing
   (`clients/tui/tests/headless_tests.rs`): 6 tests using `TuiAppV2Headless` with

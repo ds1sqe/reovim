@@ -31,6 +31,9 @@ import { ViewportCache, BufferCache } from "./cache/index.js";
 // Overlay rendering (Phase 11.1)
 import { OverlayRenderer } from "./render/overlay.js";
 
+// Capture handler (Phase 16)
+import { CaptureHandler, type CaptureableState } from "./capture/index.js";
+
 /** Position within the buffer */
 interface Position {
   line: number;
@@ -91,6 +94,9 @@ export class Editor {
   // Overlay rendering (Phase 11.1)
   private overlayRenderer: OverlayRenderer;
 
+  // Capture handler (Phase 16)
+  private captureHandler: CaptureHandler;
+
   // DOM elements (legacy single-window)
   private modeElement: HTMLElement | null;
   private bufferElement: HTMLElement | null;
@@ -129,6 +135,12 @@ export class Editor {
 
     // Initialize overlay renderer (Phase 11.1)
     this.overlayRenderer = new OverlayRenderer();
+
+    // Initialize capture handler (Phase 16)
+    this.captureHandler = new CaptureHandler({
+      client: this.client,
+      getState: () => this.getCaptureableState(),
+    });
 
     // Cache DOM elements
     this.modeElement = document.getElementById("mode");
@@ -449,6 +461,12 @@ export class Editor {
           // Only re-render the affected viewport/window
           this.renderMultiWindow();
         }
+        break;
+      }
+
+      case "captureRequest": {
+        // Phase 16: Handle capture request from server (e.g., from CLI)
+        this.captureHandler.handleCaptureRequest(payload.value);
         break;
       }
 
@@ -866,5 +884,32 @@ export class Editor {
       this.state.selectionCursor.line
     );
     return line >= startLine && line <= endLine;
+  }
+
+  /**
+   * Get current state in a format suitable for frame capture.
+   *
+   * Phase 16: Used by CaptureHandler to generate frame captures.
+   */
+  private getCaptureableState(): CaptureableState {
+    // Get viewport dimensions from editor element or use defaults
+    const width = this.editorElement?.clientWidth
+      ? Math.floor(this.editorElement.clientWidth / 8) // Approximate char width
+      : 80;
+    const height = this.editorElement?.clientHeight
+      ? Math.floor(this.editorElement.clientHeight / 16) // Approximate line height
+      : 24;
+
+    return {
+      mode: this.state.mode,
+      modeDisplay: this.state.modeDisplay,
+      cursorLine: this.state.cursorLine,
+      cursorCol: this.state.cursorCol,
+      lines: this.state.lines,
+      width,
+      height,
+      focusedWindowId: this.state.focusedWindowId,
+      windowStates: this.state.windowStates,
+    };
   }
 }
