@@ -129,6 +129,7 @@ impl GrpcClient {
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
         let request = SendKeysRequest {
             keys: keys.to_string(),
+            client_id: None, // Use default client (Phase 11.2)
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())

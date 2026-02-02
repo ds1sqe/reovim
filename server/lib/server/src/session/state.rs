@@ -22,7 +22,7 @@ use {
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
     reovim_driver_input::{ExtensionMap, FallbackContext, ResolverRegistry},
-    reovim_driver_session::{ClientId, Session as DriverSession},
+    reovim_driver_session::{ClientId, Session as DriverSession, Window},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack},
 };
@@ -141,6 +141,14 @@ impl SessionState {
         if let Some(&first_buffer) = buffer_ids.first() {
             driver_session.set_active_buffer(Some(first_buffer));
 
+            // Phase 8 (#465): Create Window in driver_session.windows for selection tracking.
+            // This Window stores the per-window cursor and selection state.
+            if driver_session.windows.windows.is_empty() {
+                let window = Window::with_buffer(first_buffer);
+                driver_session.windows.add(window);
+                tracing::debug!("Created initial window in driver_session.windows");
+            }
+
             // Create initial window in compositor for the first buffer.
             if let Some(compositor) = driver_session.compositor_mut()
                 && let Some(active_layer) = compositor.active_layer()
@@ -253,12 +261,15 @@ impl SessionState {
     ///
     /// Flushes any pending edits before execution to ensure undo batching
     /// works correctly (commands break insert mode batches).
+    ///
+    /// Returns `(CommandResult, StateChanges)` - the result and any state
+    /// changes from execution (selection, buffer modifications, etc.).
     #[must_use]
     pub fn execute_command(
         &mut self,
         id: &CommandId,
         args: &CommandContext,
-    ) -> Option<CommandResult> {
+    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
         // Flush pending edits before command execution
         self.app.flush_pending_edits();
         // Use driver_session as SSOT for mode_stack and active_buffer
@@ -327,10 +338,26 @@ impl SessionState {
         let mut buffer = Buffer::new();
         buffer.set_content(content);
         let id = self.app.kernel.buffers.register(buffer);
+
         // Set as active if this is the first buffer
         if self.driver_session.active_buffer().is_none() {
             self.driver_session.set_active_buffer(Some(id));
         }
+
+        // Phase 8 (#465): Ensure there's always a Window for selection tracking.
+        // If no windows exist, create one for this buffer.
+        if self.driver_session.windows.windows.is_empty() {
+            let window = Window::with_buffer(id);
+            self.driver_session.windows.add(window);
+            tracing::debug!(?id, "Created window for buffer in driver_session.windows");
+        } else if let Some(window) = self.driver_session.windows.active_mut()
+            && window.buffer_id.is_none()
+        {
+            // Assign to active window if it has no buffer
+            window.buffer_id = Some(id);
+            tracing::debug!(?id, "Assigned buffer to active window");
+        }
+
         id
     }
 

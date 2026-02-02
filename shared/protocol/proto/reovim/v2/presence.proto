@@ -37,6 +37,10 @@ service PresenceService {
 
   // List all connected clients in the session.
   rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+
+  // Set client's editing role (Phase 11.2, Epic #465).
+  // Controls input routing: Owner→self, Follow→ignored, Share→owner.
+  rpc SetRole(SetRoleRequest) returns (SetRoleResponse);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,7 +86,8 @@ message LineRange {
   uint64 end = 2;    // Last visible line (exclusive)
 }
 
-// Synchronization mode for a client.
+// Synchronization mode for a client (display-level).
+// Controls what cursor position/viewport a client sees.
 enum SyncMode {
   // Own cursor, own scroll. Receives updates but ignores them.
   INDEPENDENT = 0;
@@ -93,6 +98,19 @@ enum SyncMode {
 
   // Presenting mode. Normal editing, tagged so others can follow.
   PRESENT = 2;
+}
+
+// Client role for editing state ownership (Phase 11.2, Epic #465).
+// Controls input routing and editing state.
+enum ClientRole {
+  // Owns editing state. Input goes to own mode stack, cursor, etc.
+  CLIENT_ROLE_OWNER = 0;
+
+  // Read-only spectator. Input is ignored, sees target's state.
+  CLIENT_ROLE_FOLLOW = 1;
+
+  // Bidirectional co-edit with owner. Input goes to owner's state.
+  CLIENT_ROLE_SHARE = 2;
 }
 
 // Presence update event (streamed to clients).
@@ -199,4 +217,25 @@ message ListClientsRequest {
 message ListClientsResponse {
   // All currently connected clients.
   repeated ClientPresence clients = 1;
+}
+
+// Set role request (Phase 11.2, Epic #465).
+message SetRoleRequest {
+  // Client ID to set role for.
+  uint64 client_id = 1;
+
+  // New role.
+  ClientRole role = 2;
+
+  // Target client ID (required for FOLLOW and SHARE roles).
+  optional uint64 target_id = 3;
+}
+
+// Set role response.
+message SetRoleResponse {
+  // True if role was set.
+  bool ok = 1;
+
+  // Error message if not ok.
+  optional string error = 2;
 }

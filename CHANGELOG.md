@@ -29,6 +29,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Visual selection not visible in TUI (Phase 17)**: Fixed bug where entering
+  visual mode (`v`) showed no highlighting. Root cause: `CommandRegistry::execute()`
+  created `SessionRuntime` for command execution but never called `take_changes()`,
+  so selection changes from `EnterVisualMode::execute()` were dropped when runtime
+  went out of scope. Fix: Changed `execute()` return type from `Option<CommandResult>`
+  to `Option<(CommandResult, StateChanges)>` and propagate changes to callers.
+  TUI enhancements: Added `SelectionState` struct for tracking per-window selections,
+  `window_selections: HashMap<u64, SelectionState>` in `TuiState`, `SelectionChanged`
+  notification handler, magenta background highlighting in `render_line_with_syntax()`.
+  Also added `CursorPosition` struct and `window_cursors` map for per-window cursor
+  tracking. Selection now uses exclusive end semantics (like Rust ranges) - to include
+  character at cursor, `end = cursor + 1`. Part of Epic #465. (#465)
+
 - **Visual mode resolver missing**: Fixed bug where Visual mode keys
   (h, j, k, l, w, b, e, etc.) were not working - either inserting characters or
   being ignored. Root cause: No resolver registered for Visual modes, causing
@@ -229,6 +242,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   6 unit tests covering single/multi window, focus tracking, resize, and filtered
   windows. Follows same pattern as web client's `ViewportCache` (Phase 11.1).
   Part of Epic #465. (#465)
+
+- **Per-client state architecture (Phase 11.2 extension)**: Extended session model
+  to support per-client editing state for collaborative editing scenarios. Client
+  roles (`session/client.rs`, ~300 LOC): `Client` enum with Owner/Follow/Share
+  variants - Owner has own `EditingState` (mode_stack, pending_keys, cursor,
+  viewport, selection), Follow is read-only spectator (input ignored), Share enables
+  bidirectional co-editing with owner. `effective_state()` resolves state through
+  chains with depth limit for cycle protection. Session changes (`session.rs`):
+  Added `clients: RwLock<HashMap<ClientId, Client>>` for per-client tracking.
+  Methods: `add_client()` (defaults to Owner), `remove_client()`, `get_client()`,
+  `set_client_role()`, `client_state()`, `update_client_state()` (routes input
+  based on role), `with_clients()`/`with_clients_mut()` for direct access.
+  Protocol changes (`input.proto`, `presence.proto`): Added `client_id` to
+  `SendKeysRequest` for per-client input routing, added `ClientRole` enum
+  (OWNER/FOLLOW/SHARE) and `SetRole` RPC with `SetRoleRequest`/`SetRoleResponse`.
+  Input routing (`grpc/input.rs`): Extracts `client_id` from request, auto-creates
+  client as Owner if not exists, ignores input for Follow clients, normal processing
+  for Owner/Share. Client-side empty layout handling: TUI (`app_v2.rs`) creates
+  default window when server returns empty layout (via `create_default_window()`),
+  Web (`editor.ts`) uses `createDefaultView()` for same scenario - both fetch active
+  buffer and render single-window fallback. Foundation for spectator mode (Follow)
+  and pair programming (Share). 28 unit tests (14 Client + 14 gRPC). Part of Epic
+  #465. (#465)
 
 - **Web client unit tests (Phase 11.3)**: Added comprehensive unit tests for
   Phase 11.1 cache and overlay components. Test files: `cache-viewport.test.ts`

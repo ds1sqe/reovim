@@ -21,11 +21,17 @@
 //! # Start with specific TCP port
 //! reovim-new server --tcp 12522
 //!
-//! # Start with gRPC transport (requires --features grpc)
+//! # Start with gRPC transport
 //! reovim-new server --grpc 12540
 //!
 //! # Start with Unix socket (Unix only)
 //! reovim-new server --socket /tmp/reovim.sock
+//!
+//! # Connect interactive TUI to running server
+//! reovim-new tui --grpc 127.0.0.1:12540
+//!
+//! # Connect headless TUI (for scripting/testing)
+//! reovim-new tui --grpc 127.0.0.1:12540 --headless
 //! ```
 
 mod bootstrap;
@@ -35,11 +41,10 @@ use {
     reovim_server::{Server, ServerConfig, TransportMode},
 };
 
-#[cfg(feature = "grpc")]
-use reovim_client_cli::OutputFormat;
-
-#[cfg(feature = "grpc")]
-use reovim_client_tui::TuiAppV2Headless;
+use {
+    reovim_client_cli::OutputFormat,
+    reovim_client_tui::{TuiAppV2, TuiAppV2Headless},
+};
 
 /// Reovim editor - new architecture.
 #[derive(Parser)]
@@ -64,8 +69,7 @@ enum Commands {
         #[arg(long, value_name = "PORT")]
         tcp: Option<u16>,
 
-        /// gRPC port to listen on (requires --features grpc).
-        #[cfg(feature = "grpc")]
+        /// gRPC port to listen on.
         #[arg(long, value_name = "PORT")]
         grpc: Option<u16>,
 
@@ -84,7 +88,6 @@ enum Commands {
     },
 
     /// Execute CLI commands (gRPC v2).
-    #[cfg(feature = "grpc")]
     Cli {
         /// gRPC server address (host:port).
         #[arg(long, default_value = "127.0.0.1:12540")]
@@ -99,8 +102,7 @@ enum Commands {
         command: CliSubcommand,
     },
 
-    /// Connect headless TUI to server (gRPC v2).
-    #[cfg(feature = "grpc")]
+    /// Connect TUI to server (gRPC v2).
     Tui {
         /// gRPC server address (host:port).
         #[arg(long, default_value = "127.0.0.1:12540")]
@@ -121,7 +123,6 @@ enum Commands {
 }
 
 /// CLI output format.
-#[cfg(feature = "grpc")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 enum CliOutputFormat {
     /// Plain text output.
@@ -131,7 +132,6 @@ enum CliOutputFormat {
 }
 
 /// CLI subcommands.
-#[cfg(feature = "grpc")]
 #[derive(Debug, Subcommand)]
 enum CliSubcommand {
     /// Send keys to the editor.
@@ -170,7 +170,6 @@ enum CliSubcommand {
 }
 
 /// Presence subcommands.
-#[cfg(feature = "grpc")]
 #[derive(Debug, Subcommand)]
 enum PresenceAction {
     /// Join the session with a display name.
@@ -242,7 +241,6 @@ async fn run(cli: Cli) -> std::io::Result<()> {
     match cli.command {
         Some(Commands::Server {
             tcp,
-            #[cfg(feature = "grpc")]
             grpc,
             #[cfg(unix)]
             socket,
@@ -252,7 +250,6 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             // Determine transport mode based on arguments
             let transport = determine_transport(
                 tcp,
-                #[cfg(feature = "grpc")]
                 grpc,
                 #[cfg(unix)]
                 socket,
@@ -272,14 +269,12 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             server.run().await
         }
 
-        #[cfg(feature = "grpc")]
         Some(Commands::Cli {
             grpc,
             format,
             command,
         }) => run_cli(&grpc, format, command).await,
 
-        #[cfg(feature = "grpc")]
         Some(Commands::Tui {
             grpc,
             headless,
@@ -289,8 +284,7 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             if headless {
                 run_headless_tui(&grpc, width, height).await
             } else {
-                eprintln!("Interactive TUI not implemented yet - use --headless");
-                std::process::exit(1);
+                run_interactive_tui(&grpc).await
             }
         }
 
@@ -306,7 +300,6 @@ async fn run(cli: Cli) -> std::io::Result<()> {
 }
 
 /// Run CLI command.
-#[cfg(feature = "grpc")]
 async fn run_cli(
     addr: &str,
     format: CliOutputFormat,
@@ -395,7 +388,6 @@ async fn run_cli(
 }
 
 /// Run headless TUI.
-#[cfg(feature = "grpc")]
 async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Result<()> {
     tracing::info!("Connecting headless TUI to {addr} ({width}x{height})");
 
@@ -413,15 +405,31 @@ async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Resul
     Ok(())
 }
 
+/// Run interactive TUI.
+async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
+    tracing::info!("Connecting interactive TUI to {addr}");
+
+    let mut tui = TuiAppV2::connect(addr, None, None)
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+
+    let result = tui
+        .run()
+        .await
+        .map_err(|e| std::io::Error::other(e.to_string()));
+
+    drop(tui);
+    result
+}
+
 /// Determine transport mode from CLI arguments.
 #[allow(unused_variables)]
 fn determine_transport(
     tcp: Option<u16>,
-    #[cfg(feature = "grpc")] grpc: Option<u16>,
+    grpc: Option<u16>,
     #[cfg(unix)] socket: Option<std::path::PathBuf>,
 ) -> TransportMode {
     // Priority: gRPC > Unix socket > TCP > TCP fallback
-    #[cfg(feature = "grpc")]
     if let Some(port) = grpc {
         return TransportMode::Grpc { port };
     }

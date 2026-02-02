@@ -29,11 +29,12 @@ use std::{pin::Pin, sync::Arc, time::SystemTime};
 use {
     futures::Stream,
     reovim_protocol::v2::{
-        ClientPresence as ProtoClientPresence, JoinRequest, JoinResponse, LeaveRequest,
-        LeaveResponse, LineRange, ListClientsRequest, ListClientsResponse, Notification, Position,
-        PresenceUpdate, SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest,
-        SyncMode as ProtoSyncMode, UpdatePresenceRequest, UpdatePresenceResponse,
-        notification::Payload, presence_service_server::PresenceService, presence_update::Update,
+        ClientPresence as ProtoClientPresence, ClientRole as ProtoRole, JoinRequest, JoinResponse,
+        LeaveRequest, LeaveResponse, LineRange, ListClientsRequest, ListClientsResponse,
+        Notification, Position, PresenceUpdate, SetRoleRequest, SetRoleResponse,
+        SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
+        UpdatePresenceRequest, UpdatePresenceResponse, notification::Payload,
+        presence_service_server::PresenceService, presence_update::Update,
     },
     tokio_stream::wrappers::{BroadcastStream, errors::BroadcastStreamRecvError},
     tonic::{Request, Response, Status},
@@ -380,6 +381,56 @@ impl PresenceService for PresenceServiceImpl {
             .collect();
 
         Ok(Response::new(ListClientsResponse { clients }))
+    }
+
+    /// Set a client's editing role (Phase 11.2, Epic #465).
+    ///
+    /// Controls input routing:
+    /// - Owner: Input goes to own state
+    /// - Follow: Input is ignored (read-only spectator)
+    /// - Share: Input goes to owner's state
+    async fn set_role(
+        &self,
+        request: Request<SetRoleRequest>,
+    ) -> Result<Response<SetRoleResponse>, Status> {
+        use crate::session::Client as ClientEnum;
+
+        let session = self.get_session()?;
+        let req = request.into_inner();
+        let client_id = ClientId::new(req.client_id as usize);
+
+        // Validate client exists
+        if !session.has_client(client_id) {
+            return Ok(Response::new(SetRoleResponse {
+                ok: false,
+                error: Some(format!("Client {client_id} not found")),
+            }));
+        }
+
+        // Map proto role to internal Client enum
+        let role = match req.role() {
+            ProtoRole::Owner => ClientEnum::new_owner(),
+            ProtoRole::Follow => {
+                let target_id = req.target_id.ok_or_else(|| {
+                    Status::invalid_argument("target_id required for FOLLOW role")
+                })?;
+                ClientEnum::follow(ClientId::new(target_id as usize))
+            }
+            ProtoRole::Share => {
+                let owner_id = req.target_id.ok_or_else(|| {
+                    Status::invalid_argument("target_id (owner) required for SHARE role")
+                })?;
+                ClientEnum::share(ClientId::new(owner_id as usize))
+            }
+        };
+
+        // Set the role
+        session.set_client_role(client_id, role);
+
+        Ok(Response::new(SetRoleResponse {
+            ok: true,
+            error: None,
+        }))
     }
 }
 

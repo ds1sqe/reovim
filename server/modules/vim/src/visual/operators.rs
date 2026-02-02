@@ -22,9 +22,12 @@ use crate::{ids, modes::VimMode};
 ///
 /// This converts an API Selection into start/end positions suitable for
 /// text extraction and deletion, taking selection mode into account:
-/// - Character mode: Include character at end position
+/// - Character mode: End is already exclusive, use as-is
 /// - Line mode: Expand to full lines including trailing newline
-/// - Block mode: Treat as character range (full block support deferred)
+/// - Block mode: End is already exclusive, use as-is
+///
+/// Phase 8 (#465): Selection.end is EXCLUSIVE (like Rust ranges).
+/// The selection (0,0) to (0,5) means columns 0..5 = "hello" (5 chars).
 ///
 /// Returns `(start, end, is_linewise)`.
 fn expand_selection_range(
@@ -36,28 +39,23 @@ fn expand_selection_range(
     let end = selection.end;
 
     match selection.mode {
-        SelectionMode::Character => {
-            // Include the character at end position
-            (start, Position::new(end.line, end.column + 1), false)
-        }
         SelectionMode::Line => {
             // Expand to full lines, including the trailing newline
             let start = Position::new(start.line, 0);
-            // For non-last lines, extend to start of next line (includes newline)
+            // For line mode, end.line is already the exclusive end line
+            // For non-last lines, extend to start of end line (includes previous line's newline)
             // For last line, end at line length
             let end_line_len = end_line_len.unwrap_or(0);
-            let end = if end.line + 1 < total_lines {
-                Position::new(end.line + 1, 0)
+            let end = if end.line < total_lines {
+                Position::new(end.line, 0)
             } else {
-                Position::new(end.line, end_line_len)
+                // End is past buffer, cap at last line's length
+                Position::new(end.line - 1, end_line_len)
             };
             (start, end, true)
         }
-        SelectionMode::Block => {
-            // Block mode: for now, treat as character range
-            // Full block support is deferred
-            (start, Position::new(end.line, end.column + 1), false)
-        }
+        // Character and Block modes: End is already exclusive - use as-is
+        SelectionMode::Character | SelectionMode::Block => (start, end, false),
     }
 }
 
@@ -267,13 +265,14 @@ impl CommandHandler for IndentSelection {
         };
 
         // Get line range from normalized selection
+        // Phase 8 (#465): Selection.end is EXCLUSIVE (like Rust ranges)
         let start_line = selection.start.line;
-        let end_line = selection.end.line;
+        let end_line = selection.end.line; // exclusive
 
         // Indent each line (add tab/spaces at start)
         // Using 4 spaces as default indent
         let indent = "    ";
-        for line_idx in start_line..=end_line {
+        for line_idx in start_line..end_line {
             runtime.insert_text(buffer_id, Position::new(line_idx, 0), indent);
         }
 
@@ -315,11 +314,12 @@ impl CommandHandler for DedentSelection {
         };
 
         // Get line range from normalized selection
+        // Phase 8 (#465): Selection.end is EXCLUSIVE (like Rust ranges)
         let start_line = selection.start.line;
-        let end_line = selection.end.line;
+        let end_line = selection.end.line; // exclusive
 
         // Dedent each line (remove leading whitespace, up to 4 chars or one tab)
-        for line_idx in start_line..=end_line {
+        for line_idx in start_line..end_line {
             if let Some(line) = runtime.buffer_line(buffer_id, line_idx) {
                 let mut chars_to_remove = 0;
                 for (i, c) in line.chars().enumerate() {

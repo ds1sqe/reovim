@@ -48,6 +48,7 @@ import { StateService } from "../gen/reovim/v2/state_connect.js";
 import { BufferService } from "../gen/reovim/v2/buffer_connect.js";
 import { NotificationService } from "../gen/reovim/v2/notification_connect.js";
 import { ServerService } from "../gen/reovim/v2/server_connect.js";
+import { PresenceService } from "../gen/reovim/v2/presence_connect.js";
 import {
   CaptureHandler,
   type CaptureFormat,
@@ -63,6 +64,7 @@ interface ReovimClient {
   buffer: ReturnType<typeof createConnectClient<typeof BufferService>>;
   notification: ReturnType<typeof createConnectClient<typeof NotificationService>>;
   server: ReturnType<typeof createConnectClient<typeof ServerService>>;
+  presence: ReturnType<typeof createConnectClient<typeof PresenceService>>;
 }
 
 /**
@@ -80,6 +82,7 @@ function createNodeClient(baseUrl: string): ReovimClient {
     buffer: createConnectClient(BufferService, transport),
     notification: createConnectClient(NotificationService, transport),
     server: createConnectClient(ServerService, transport),
+    presence: createConnectClient(PresenceService, transport),
   };
 }
 

@@ -34,7 +34,7 @@
 //! assert_eq!(snapshot.content(), "Hello\nWorld"); // Original content
 //! ```
 
-use super::{BufferId, Cursor, Position, Selection};
+use super::{BufferId, Cursor, Position};
 
 /// Read-only snapshot of buffer state.
 ///
@@ -51,9 +51,10 @@ use super::{BufferId, Cursor, Position, Selection};
 /// - `id`: Buffer identifier
 /// - `lines`: All text lines
 /// - `cursor`: Cursor state (position, anchor, preferred column)
-/// - `selection`: Selection state
 /// - `file_path`: Associated file path (if any)
 /// - `modified`: Whether buffer had unsaved changes
+///
+/// Note: Selection removed in Phase 8 (#465) - it now lives in Window.
 #[derive(Debug, Clone)]
 pub struct BufferSnapshot {
     /// Buffer identifier.
@@ -62,8 +63,6 @@ pub struct BufferSnapshot {
     pub lines: Vec<String>,
     /// Cursor state.
     pub cursor: Cursor,
-    /// Selection state.
-    pub selection: Selection,
     /// File path (if buffer is associated with a file).
     pub file_path: Option<String>,
     /// Whether buffer has unsaved modifications.
@@ -81,7 +80,6 @@ impl BufferSnapshot {
             id: buffer.id(),
             lines: buffer.lines().to_vec(),
             cursor: *buffer.cursor(),
-            selection: buffer.selection(),
             file_path: buffer.file_path().map(String::from),
             modified: buffer.is_modified(),
         }
@@ -96,7 +94,6 @@ impl BufferSnapshot {
         id: BufferId,
         lines: Vec<String>,
         cursor: Cursor,
-        selection: Selection,
         file_path: Option<String>,
         modified: bool,
     ) -> Self {
@@ -104,7 +101,6 @@ impl BufferSnapshot {
             id,
             lines,
             cursor,
-            selection,
             file_path,
             modified,
         }
@@ -228,26 +224,9 @@ impl BufferSnapshot {
             .is_some_and(|line| pos.column <= line.chars().count())
     }
 
-    // === Selection Queries ===
-
-    /// Get the selection bounds if selection is active.
-    #[must_use]
-    pub fn selection_bounds(&self) -> Option<(Position, Position)> {
-        self.selection.bounds(self.cursor.position)
-    }
-
-    /// Check if selection is active.
-    #[must_use]
-    pub const fn has_selection(&self) -> bool {
-        self.selection.is_active()
-    }
-
-    /// Get the selected text, if any.
-    #[must_use]
-    pub fn selected_text(&self) -> Option<String> {
-        let (start, end) = self.selection_bounds()?;
-        Some(self.text_in_range(start, end))
-    }
+    // NOTE: Selection methods removed in Phase 8 (#465).
+    // Selection now lives in Window (per-window state), not Buffer/BufferSnapshot.
+    // Use SessionRuntime::selection(buffer_id) via BufferApi trait.
 }
 
 #[cfg(test)]
@@ -351,28 +330,8 @@ mod tests {
         assert!(!snapshot.is_valid_position(Position::new(100, 0))); // Past last line
     }
 
-    #[test]
-    fn test_snapshot_selection_text() {
-        let mut buffer = super::super::Buffer::from_string("Hello World");
-        buffer
-            .selection_mut()
-            .start(Position::new(0, 0), super::super::SelectionMode::Character);
-        buffer.set_position(Position::new(0, 5));
-
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
-
-        assert!(snapshot.has_selection());
-        assert_eq!(snapshot.selected_text(), Some("Hello".to_string()));
-    }
-
-    #[test]
-    fn test_snapshot_no_selection() {
-        let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
-
-        assert!(!snapshot.has_selection());
-        assert!(snapshot.selected_text().is_none());
-    }
+    // NOTE: Selection tests removed in Phase 8 (#465).
+    // Selection now lives in Window, not Buffer/BufferSnapshot.
 
     #[test]
     fn test_snapshot_immutability() {
@@ -392,7 +351,6 @@ mod tests {
             BufferId::new(),
             vec!["Line 1".to_string(), "Line 2".to_string()],
             Cursor::origin(),
-            Selection::new(),
             Some("/path/to/file".to_string()),
             true,
         );

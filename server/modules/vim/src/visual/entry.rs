@@ -11,7 +11,7 @@ use {
         BufferApi, SessionRuntime, TransitionContext,
         api::{ModeApi, Selection},
     },
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::{ids, modes::VimMode};
@@ -33,17 +33,26 @@ impl Command for EnterVisualMode {
 impl CommandHandler for EnterVisualMode {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
+            tracing::warn!("EnterVisualMode: No active buffer in args");
             return CommandResult::error("No active buffer");
         };
 
         // Get current cursor position
         let Some(pos) = runtime.buffer_position(buffer_id) else {
+            tracing::warn!(?buffer_id, "EnterVisualMode: Buffer not found");
             return CommandResult::error("Buffer not found");
         };
 
-        // Start character-wise selection at current cursor position
-        let selection = Selection::character(pos, pos);
+        // Start character-wise selection at current cursor position.
+        // Phase 8 (#465): Use exclusive end semantics - to include the character
+        // at the cursor, end must be cursor + 1.
+        let selection = Selection::character(pos, Position::new(pos.line, pos.column + 1));
+        tracing::debug!(?buffer_id, ?pos, ?selection, "EnterVisualMode: Setting selection");
         runtime.set_selection(buffer_id, Some(selection));
+
+        // Verify selection was set
+        let sel_check = runtime.selection(buffer_id);
+        tracing::debug!(?sel_check, "EnterVisualMode: Selection after set");
 
         // Change to visual mode
         runtime.set_mode(VimMode::VISUAL_ID, TransitionContext::new());
@@ -77,8 +86,10 @@ impl CommandHandler for EnterVisualLineMode {
             return CommandResult::error("Buffer not found");
         };
 
-        // Start line-wise selection at current cursor position
-        let selection = Selection::line(pos, pos);
+        // Start line-wise selection at current cursor position.
+        // Phase 8 (#465): Use exclusive end semantics - to select the current line,
+        // end.line must be pos.line + 1.
+        let selection = Selection::line(Position::new(pos.line, 0), Position::new(pos.line + 1, 0));
         runtime.set_selection(buffer_id, Some(selection));
 
         // Change to visual line mode
@@ -113,8 +124,10 @@ impl CommandHandler for EnterVisualBlockMode {
             return CommandResult::error("Buffer not found");
         };
 
-        // Start block selection at current cursor position
-        let selection = Selection::block(pos, pos);
+        // Start block selection at current cursor position.
+        // Phase 8 (#465): Use exclusive end semantics - to include the character
+        // at the cursor, end must be cursor + 1.
+        let selection = Selection::block(pos, Position::new(pos.line, pos.column + 1));
         runtime.set_selection(buffer_id, Some(selection));
 
         // Change to visual block mode

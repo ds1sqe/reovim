@@ -157,7 +157,6 @@ impl Server {
             TransportMode::Tcp { port } => self.run_tcp(*port).await,
             #[cfg(unix)]
             TransportMode::UnixSocket { path } => self.run_unix(path).await,
-            #[cfg(feature = "grpc")]
             TransportMode::Grpc { port } => self.run_grpc(*port).await,
         }
     }
@@ -198,7 +197,6 @@ impl Server {
     }
 
     /// Run with gRPC transport.
-    #[cfg(feature = "grpc")]
     async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
         use {
             crate::grpc::{

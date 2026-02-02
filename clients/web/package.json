@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build:wasm": "cd ../../shared/clients/model && wasm-pack build --target web --features wasm --out-dir ../../../clients/web/pkg",
+    "build:wasm": "cd ../../shared/clients/model && wasm-pack build --target web --features wasm && rm -rf ../../../clients/web/pkg && mv pkg ../../../clients/web/",
     "prebuild": "npm run build:wasm",
     "predev": "npm run build:wasm",
     "dev": "vite",

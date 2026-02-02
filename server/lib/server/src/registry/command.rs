@@ -116,6 +116,8 @@ impl CommandRegistry {
     /// Execute a command by ID.
     ///
     /// Returns `None` if the command isn't registered.
+    /// Returns `(CommandResult, StateChanges)` with the result and any state
+    /// changes that occurred during execution (selection, buffer mods, etc.).
     ///
     /// The active buffer ID from `driver_session` is automatically populated
     /// into the `CommandContext` before execution, allowing commands to
@@ -136,7 +138,8 @@ impl CommandRegistry {
         app: &mut AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
-    ) -> Option<CommandResult> {
+    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
+        use reovim_driver_session::api::ChangeTracker;
         profile_scope!("command_execute", "server::command");
 
         self.entries.get(id).map(|entry| {
@@ -152,7 +155,12 @@ impl CommandRegistry {
             let mut runtime = SessionRuntime::new(driver_session, &app.kernel, &stub_executor);
 
             // Execute command
-            entry.handler.execute(&mut runtime, &ctx)
+            let result = entry.handler.execute(&mut runtime, &ctx);
+
+            // Phase 8 (#465): Take accumulated changes (selection, buffer mods, etc.)
+            let changes = runtime.take_changes();
+
+            (result, changes)
         })
     }
 
@@ -391,7 +399,9 @@ mod tests {
         let args = CommandContext::new();
 
         let result = registry.execute(&id, &mut driver_session, &mut app, &vfs, &args);
-        assert_eq!(result, Some(CommandResult::Success));
+        assert!(result.is_some());
+        let (cmd_result, _changes) = result.unwrap();
+        assert_eq!(cmd_result, CommandResult::Success);
     }
 
     #[test]

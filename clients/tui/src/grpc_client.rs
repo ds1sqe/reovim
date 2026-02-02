@@ -20,8 +20,9 @@ use {
         GetLayoutRequest, GetLayoutResponse, GetModeRequest, GetModeResponse, GetOptionsRequest,
         GetOptionsResponse, GetRawContentRequest, GetRawContentResponse, GetSelectionRequest,
         GetSelectionResponse, GetTokensRequest, GetTokensResponse, GetVisibleLinesRequest,
-        GetVisibleLinesResponse, InfoRequest, InfoResponse, KillRequest, KillResponse,
-        ListBuffersRequest, ListBuffersResponse, ListModulesRequest, ListModulesResponse,
+        GetVisibleLinesResponse, InfoRequest, InfoResponse, JoinRequest, JoinResponse, KillRequest,
+        KillResponse, LeaveRequest, LeaveResponse, ListBuffersRequest, ListBuffersResponse,
+        ListClientsRequest, ListClientsResponse, ListModulesRequest, ListModulesResponse,
         Notification, OpenFileRequest, OpenFileResponse, PingRequest, PingResponse, QuitRequest,
         QuitResponse, ResizeRequest, ResizeResponse, SendKeysRequest, SendKeysResponse,
         SetActiveBufferRequest, SetActiveBufferResponse, StreamTokensRequest, SubmitCaptureRequest,
@@ -30,8 +31,8 @@ use {
         editor_service_client::EditorServiceClient, input_service_client::InputServiceClient,
         module_service_client::ModuleServiceClient,
         notification_service_client::NotificationServiceClient,
-        server_service_client::ServerServiceClient, state_service_client::StateServiceClient,
-        syntax_service_client::SyntaxServiceClient,
+        presence_service_client::PresenceServiceClient, server_service_client::ServerServiceClient,
+        state_service_client::StateServiceClient, syntax_service_client::SyntaxServiceClient,
     },
     tonic::{Streaming, transport::Channel},
 };
@@ -81,6 +82,7 @@ pub struct TuiGrpcClient {
     editor: EditorServiceClient<Channel>,
     module: ModuleServiceClient<Channel>,
     syntax: SyntaxServiceClient<Channel>,
+    presence: PresenceServiceClient<Channel>,
 }
 
 impl TuiGrpcClient {
@@ -108,7 +110,8 @@ impl TuiGrpcClient {
             server: ServerServiceClient::new(channel.clone()),
             editor: EditorServiceClient::new(channel.clone()),
             module: ModuleServiceClient::new(channel.clone()),
-            syntax: SyntaxServiceClient::new(channel),
+            syntax: SyntaxServiceClient::new(channel.clone()),
+            presence: PresenceServiceClient::new(channel),
         })
     }
 
@@ -128,6 +131,7 @@ impl TuiGrpcClient {
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, TuiGrpcError> {
         let request = SendKeysRequest {
             keys: keys.to_string(),
+            client_id: None, // Use default client (Phase 11.2)
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
@@ -559,6 +563,95 @@ impl TuiGrpcClient {
     ) -> Result<Streaming<TokenUpdate>, TuiGrpcError> {
         let request = StreamTokensRequest { buffer_id };
         let response = self.syntax.stream_tokens(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Presence Service (Phase 11.2 #465)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Join the presence session to get a unique client ID.
+    ///
+    /// Each client MUST call this on connect to get an independent identity.
+    /// Without a unique `client_id`, all clients share state (cursor, mode, etc.).
+    ///
+    /// # Arguments
+    ///
+    /// * `client_type` - Client type identifier ("tui", "web", "cli").
+    /// * `display_name` - User-friendly display name for this client.
+    ///
+    /// # Returns
+    ///
+    /// Response containing the assigned `client_id` and list of connected peers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_join(
+        &mut self,
+        client_type: &str,
+        display_name: &str,
+    ) -> Result<JoinResponse, TuiGrpcError> {
+        let request = JoinRequest {
+            client_type: client_type.to_string(),
+            display_name: display_name.to_string(),
+        };
+        let response = self.presence.join(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Leave the presence session.
+    ///
+    /// Called on graceful disconnect to notify other clients.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID to remove.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_leave(&mut self, client_id: u64) -> Result<LeaveResponse, TuiGrpcError> {
+        let request = LeaveRequest { client_id };
+        let response = self.presence.leave(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List all connected clients.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_list(&mut self) -> Result<ListClientsResponse, TuiGrpcError> {
+        let request = ListClientsRequest {};
+        let response = self.presence.list_clients(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Send keys to the editor with explicit client ID.
+    ///
+    /// This is the preferred method for sending keys. It ensures each client's
+    /// input is routed to their own state (cursor, mode, etc.) rather than
+    /// sharing state with all other clients.
+    ///
+    /// # Arguments
+    ///
+    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `client_id` - The client ID from `presence_join()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn send_keys_with_client(
+        &mut self,
+        keys: &str,
+        client_id: u64,
+    ) -> Result<SendKeysResponse, TuiGrpcError> {
+        let request = SendKeysRequest {
+            keys: keys.to_string(),
+            client_id: Some(client_id),
+        };
+        let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
     }
 }

@@ -46,8 +46,8 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position,
-        SelectionMode as KernelSelectionMode, UndoResult, WindowId,
+        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, UndoResult,
+        WindowId,
         events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
 };
@@ -188,6 +188,47 @@ impl<'a> SessionRuntime<'a> {
         self.changes
             .record_window_option_change(name, value, window_id);
     }
+
+    // === Per-Window Selection Helpers (#465) ===
+
+    /// Find window displaying a buffer (prefer focused window).
+    ///
+    /// Returns the focused window if it displays the buffer, otherwise
+    /// returns any window displaying the buffer.
+    fn find_window_for_buffer(&self, buffer: BufferId) -> Option<&Window> {
+        // Check if focused window has this buffer
+        if let Some(focused) = self.session.windows.active()
+            && focused.buffer_id == Some(buffer)
+        {
+            return Some(focused);
+        }
+        // Fallback: find any window with this buffer
+        self.session
+            .windows
+            .windows
+            .iter()
+            .find(|w| w.buffer_id == Some(buffer))
+    }
+
+    /// Find window displaying a buffer mutably (prefer focused window).
+    fn find_window_for_buffer_mut(&mut self, buffer: BufferId) -> Option<&mut Window> {
+        // Check if focused window has this buffer
+        let focused_has_buffer = self
+            .session
+            .windows
+            .active()
+            .is_some_and(|f| f.buffer_id == Some(buffer));
+
+        if focused_has_buffer {
+            self.session.windows.active_mut()
+        } else {
+            self.session
+                .windows
+                .windows
+                .iter_mut()
+                .find(|w| w.buffer_id == Some(buffer))
+        }
+    }
 }
 
 // === ModeApi ===
@@ -277,6 +318,39 @@ impl BufferApi for SessionRuntime<'_> {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
             buf.write().set_position(pos);
         }
+
+        // Phase 8 (#465): Also sync window cursor for the window displaying this buffer.
+        // This ensures selection extends when motion commands update position.
+        // Previously, motion commands used set_buffer_position() but window cursor
+        // never updated, breaking visual mode selection extension.
+        if let Some(window) = self
+            .session
+            .windows
+            .windows
+            .iter_mut()
+            .find(|w| w.buffer_id == Some(buffer))
+        {
+            window.cursor.line = pos.line;
+            window.cursor.column = pos.column;
+            self.changes.record_cursor_move(buffer);
+
+            // If selection is active, extend it to follow cursor.
+            // Phase 8 (#465): Use exclusive end semantics - to include the character
+            // at the cursor, end must be cursor + 1.
+            if let Some(ref mut sel) = window.selection {
+                use crate::api::SelectionMode;
+                match sel.mode {
+                    SelectionMode::Character | SelectionMode::Block => {
+                        sel.end = Position::new(pos.line, pos.column + 1);
+                    }
+                    SelectionMode::Line => {
+                        // For line mode, end.line is the exclusive end line
+                        sel.end = Position::new(pos.line + 1, 0);
+                    }
+                }
+                self.changes.record_selection_change(buffer);
+            }
+        }
     }
 
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
@@ -286,34 +360,11 @@ impl BufferApi for SessionRuntime<'_> {
             .and_then(|buf| buf.read().line_len(line))
     }
 
-    #[allow(clippy::significant_drop_tightening)]
     fn selection(&self, buffer: BufferId) -> Option<Selection> {
-        let buf_arc = self.kernel.buffers.get(buffer)?;
-        let buf = buf_arc.read();
-
-        let selection = buf.selection();
-        if !selection.is_active() {
-            return None;
-        }
-
-        let anchor = selection.anchor;
-        let cursor = buf.position();
-
-        // Normalize: start should be before end
-        let (start, end) = if anchor <= cursor {
-            (anchor, cursor)
-        } else {
-            (cursor, anchor)
-        };
-
-        // Convert kernel SelectionMode to API SelectionMode
-        let mode = match selection.mode() {
-            KernelSelectionMode::Character => SelectionMode::Character,
-            KernelSelectionMode::Line => SelectionMode::Line,
-            KernelSelectionMode::Block => SelectionMode::Block,
-        };
-
-        Some(Selection::new(start, end, mode))
+        // Phase 8 (#465): Read selection from WINDOW, not buffer.
+        // Window.selection is now Option<ApiSelection> with explicit start/end.
+        // Simply return it - no cursor computation needed.
+        self.find_window_for_buffer(buffer)?.selection.clone()
     }
 
     #[allow(clippy::significant_drop_tightening)]
@@ -474,58 +525,46 @@ impl BufferApi for SessionRuntime<'_> {
             window.cursor.line = pos.line;
             window.cursor.column = pos.column;
             self.changes.record_cursor_move(buffer);
+
+            // Phase 8 (#465): Check WINDOW selection, not buffer selection.
+            // If window has active selection, cursor movement extends the selection end.
+            // Record selection change so clients can update visual highlighting.
+            if let Some(ref mut sel) = window.selection {
+                // Update selection end to follow cursor (selection is anchor to cursor)
+                sel.end = pos;
+                self.changes.record_selection_change(buffer);
+            }
         }
     }
 
     fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            match sel {
-                Some(selection) => {
-                    // Convert API SelectionMode to kernel SelectionMode
-                    let mode = match selection.mode {
-                        SelectionMode::Character => KernelSelectionMode::Character,
-                        SelectionMode::Line => KernelSelectionMode::Line,
-                        SelectionMode::Block => KernelSelectionMode::Block,
-                    };
-                    // Start selection at the start position with given mode
-                    // The "end" is determined by cursor position
-                    buf.selection_mut().start(selection.start, mode);
-                }
-                None => {
-                    // Clear the selection
-                    buf.selection_mut().clear();
-                }
-            }
+        // Phase 8 (#465): Write selection to WINDOW, not buffer.
+        // Store the complete Selection with explicit start/end directly.
+        // DO NOT modify window.cursor - cursor and selection are independent.
+        if let Some(window) = self.find_window_for_buffer_mut(buffer) {
+            window.selection = sel;
         }
         self.changes.record_selection_change(buffer);
     }
 
     fn swap_selection_ends(&mut self, buffer: BufferId) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            if buf.selection().is_active() {
-                // Swap anchor and cursor
-                let old_anchor = buf.selection().anchor;
-                let cursor = buf.position();
-                buf.selection_mut().anchor = cursor;
-                buf.set_position(old_anchor);
-            }
+        // Phase 8 (#465): Selection is stored in Window with explicit start/end.
+        // Swap the start and end positions of the selection.
+        if let Some(window) = self.find_window_for_buffer_mut(buffer)
+            && let Some(ref mut sel) = window.selection
+        {
+            std::mem::swap(&mut sel.start, &mut sel.end);
         }
         self.changes.record_selection_change(buffer);
     }
 
     fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode) {
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            if buf.selection().is_active() {
-                let kernel_mode = match mode {
-                    SelectionMode::Character => KernelSelectionMode::Character,
-                    SelectionMode::Line => KernelSelectionMode::Line,
-                    SelectionMode::Block => KernelSelectionMode::Block,
-                };
-                buf.selection_mut().set_mode(kernel_mode);
-            }
+        // Phase 8 (#465): Selection is stored in Window.
+        // Update the mode field directly.
+        if let Some(window) = self.find_window_for_buffer_mut(buffer)
+            && let Some(ref mut sel) = window.selection
+        {
+            sel.mode = mode;
         }
         self.changes.record_selection_change(buffer);
     }
@@ -619,6 +658,10 @@ impl WindowApi for SessionRuntime<'_> {
             return Err(WindowError::BufferNotFound(buffer));
         }
         if let Some(w) = self.session.windows.get_mut(window) {
+            // Phase 8 (#465): Clear selection when switching buffers.
+            // Selection is per-window but associated with a specific buffer,
+            // so it makes no sense to keep selection when viewing a different buffer.
+            w.selection = None;
             w.buffer_id = Some(buffer);
             self.changes.window_changed = true;
             Ok(())
@@ -1453,29 +1496,27 @@ mod tests {
         // Get the buffer ID
         let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
 
-        // Set buffer position to column 5 (at 'w')
+        // Move cursor to column 5 (at 'w') - selection end will be at cursor
         test.with_runtime(|runtime| {
-            runtime.set_buffer_position(buffer_id, Position::new(0, 5));
+            runtime.move_cursor(buffer_id, Position::new(0, 5));
         });
 
         // Selection is None initially
         let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
         assert!(sel.is_none());
 
-        // Start a selection at position (0, 0) in character mode via kernel
-        {
-            let buf = test.kernel().buffers.get(buffer_id).unwrap();
-            buf.write()
-                .selection_mut()
-                .start(Position::new(0, 0), KernelSelectionMode::Character);
-        }
+        // Set selection via BufferApi (Phase 8: now writes to Window)
+        test.with_runtime(|runtime| {
+            let sel = Selection::character(Position::new(0, 0), Position::new(0, 5));
+            runtime.set_selection(buffer_id, Some(sel));
+        });
 
         // Now selection should be Some
         let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
         assert!(sel.is_some());
         let sel = sel.unwrap();
         assert_eq!(sel.start, Position::new(0, 0));
-        assert_eq!(sel.end, Position::new(0, 5)); // cursor position
+        assert_eq!(sel.end, Position::new(0, 5));
         assert_eq!(sel.mode, SelectionMode::Character);
 
         // Clear selection via set_selection
@@ -1492,7 +1533,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::significant_drop_tightening)]
     fn test_selection_api_set_selection() {
         use crate::testing::TestSessionRuntime;
 
@@ -1502,21 +1542,26 @@ mod tests {
         // Get the buffer ID
         let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
 
-        // Set selection via API
+        // Set selection via API (Phase 8: now writes to Window)
         test.with_runtime(|runtime| {
             let sel = Selection::line(Position::new(0, 2), Position::new(0, 8));
             runtime.set_selection(buffer_id, Some(sel));
         });
 
-        // Verify kernel state was updated
-        {
-            let buf = test.kernel().buffers.get(buffer_id).unwrap();
-            let buf = buf.read();
-            let kernel_sel = buf.selection();
-            assert!(kernel_sel.is_active());
-            assert_eq!(kernel_sel.anchor, Position::new(0, 2));
-            assert_eq!(kernel_sel.mode(), KernelSelectionMode::Line);
-        }
+        // Verify Window selection was updated (Phase 8: selection lives in Window)
+        let window_sel = test.session().windows.active().unwrap().selection.as_ref();
+        assert!(window_sel.is_some());
+        let window_sel = window_sel.unwrap();
+        assert_eq!(window_sel.start, Position::new(0, 2));
+        assert_eq!(window_sel.mode, SelectionMode::Line);
+
+        // Verify via BufferApi round-trip
+        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
+        assert!(sel.is_some());
+        let sel = sel.unwrap();
+        assert_eq!(sel.start, Position::new(0, 2));
+        assert_eq!(sel.end, Position::new(0, 8));
+        assert_eq!(sel.mode, SelectionMode::Line);
     }
 
     #[test]

@@ -282,55 +282,51 @@ fn build_selection_notification(
     buffer_id: reovim_kernel::api::v1::BufferId,
     timestamp: u64,
 ) -> Option<Notification> {
-    // Find the window displaying this buffer
-    let window = state
-        .driver_session
-        .windows
-        .windows
-        .iter()
-        .find(|w| w.buffer_id == Some(buffer_id))?;
+    // Phase 8 (#465): Read selection from WINDOW, not buffer.
+    // Find focused window first (if it displays this buffer), then fallback to any window
+    let window = {
+        let focused = state.driver_session.windows.active();
+        if focused.is_some_and(|f| f.buffer_id == Some(buffer_id)) {
+            focused
+        } else {
+            state
+                .driver_session
+                .windows
+                .windows
+                .iter()
+                .find(|w| w.buffer_id == Some(buffer_id))
+        }
+    }?;
 
-    // Get selection state from buffer - extract data while holding lock
+    // Phase 8 (#465): Selection now lives in Window with explicit start/end.
+    // Read directly from window.selection - no cursor computation needed.
     let (has_selection, selection, visual_mode) =
-        state
-            .app
-            .kernel
-            .buffers
-            .get(buffer_id)
-            .map_or((false, None, None), |buf_arc| {
-                let buf = buf_arc.read();
-                let sel = buf.selection();
-                if sel.is_active() {
-                    let cursor = buf.position();
-                    let (start, end) = if sel.anchor <= cursor {
-                        (sel.anchor, cursor)
-                    } else {
-                        (cursor, sel.anchor)
-                    };
+        window
+            .selection
+            .as_ref()
+            .map_or((false, None, None), |sel| {
+                use reovim_driver_session::SelectionMode;
 
-                    let mode_str = match sel.mode() {
-                        reovim_kernel::api::v1::SelectionMode::Character => "char",
-                        reovim_kernel::api::v1::SelectionMode::Line => "line",
-                        reovim_kernel::api::v1::SelectionMode::Block => "block",
-                    };
+                let mode_str = match sel.mode {
+                    SelectionMode::Character => "char",
+                    SelectionMode::Line => "line",
+                    SelectionMode::Block => "block",
+                };
 
-                    (
-                        true,
-                        Some(reovim_protocol::v2::Selection {
-                            start: Some(Position {
-                                line: start.line as u64,
-                                column: start.column as u64,
-                            }),
-                            end: Some(Position {
-                                line: end.line as u64,
-                                column: end.column as u64,
-                            }),
+                (
+                    true,
+                    Some(reovim_protocol::v2::Selection {
+                        start: Some(Position {
+                            line: sel.start.line as u64,
+                            column: sel.start.column as u64,
                         }),
-                        Some(mode_str.to_string()),
-                    )
-                } else {
-                    (false, None, None)
-                }
+                        end: Some(Position {
+                            line: sel.end.line as u64,
+                            column: sel.end.column as u64,
+                        }),
+                    }),
+                    Some(mode_str.to_string()),
+                )
             });
 
     Some(Notification {
