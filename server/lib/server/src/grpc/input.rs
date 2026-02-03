@@ -212,7 +212,7 @@ impl InputService for InputServiceImpl {
 
         // Emit notifications for accumulated state changes
         if accumulated_changes.has_changes() {
-            Self::emit_notifications(&session, &accumulated_changes).await;
+            Self::emit_notifications(&session, &accumulated_changes, client_id).await;
         }
 
         // Return result
@@ -228,7 +228,11 @@ impl InputServiceImpl {
     ///
     /// Converts accumulated `StateChanges` to gRPC notifications and emits them
     /// to all subscribed clients.
-    async fn emit_notifications(session: &Session, changes: &StateChanges) {
+    ///
+    /// Phase 18 (#474): When selection changes, also updates the client's presence
+    /// in the `PresenceMap` and emits a `presence_updated` notification so that
+    /// other clients can render the remote selection.
+    async fn emit_notifications(session: &Session, changes: &StateChanges, client_id: ClientId) {
         let notifications = session
             .with_state(|state| notification_builder::build_notifications(changes, state))
             .await;
@@ -236,6 +240,12 @@ impl InputServiceImpl {
         let notification_count = notifications.len();
         for notification in notifications {
             session.emit_notification(notification);
+        }
+
+        // Phase 18 (#474): Update presence when selection changes.
+        // This allows other clients to see this client's visual selection.
+        if changes.selection_changed {
+            Self::update_presence_selection(session, client_id).await;
         }
 
         if notification_count > 0 {
@@ -246,6 +256,55 @@ impl InputServiceImpl {
                 buffer_modified = changes.buffer_modified,
                 selection_changed = changes.selection_changed,
                 "Emitted notifications"
+            );
+        }
+    }
+
+    /// Update client's presence with current selection state (Phase 18 #474).
+    ///
+    /// Reads selection from the active window and updates the presence map.
+    /// Emits a `presence_updated` notification so other clients can render
+    /// the remote selection.
+    async fn update_presence_selection(session: &Session, client_id: ClientId) {
+        use crate::grpc::presence::build_presence_updated_notification;
+
+        // Extract selection from active window
+        let selection = session
+            .with_state(|state| {
+                state
+                    .driver_session
+                    .windows
+                    .active()
+                    .and_then(|w| w.selection.clone())
+            })
+            .await;
+
+        // Convert internal selection to presence format
+        let presence_selection = selection.map(|sel| {
+            let mode_str = match sel.mode {
+                reovim_driver_session::SelectionMode::Character => "char",
+                reovim_driver_session::SelectionMode::Line => "line",
+                reovim_driver_session::SelectionMode::Block => "block",
+            };
+            (
+                (sel.start.line, sel.start.column),
+                (sel.end.line, sel.end.column),
+                mode_str.to_string(),
+            )
+        });
+
+        // Update presence map
+        let updated = session.presence().update(client_id, |presence| {
+            presence.selection = presence_selection;
+        });
+
+        // Emit presence_updated notification if client exists in presence map
+        if let Some(presence) = updated {
+            session.emit_notification(build_presence_updated_notification(&presence));
+            tracing::trace!(
+                client_id = client_id.as_usize(),
+                has_selection = presence.selection.is_some(),
+                "Updated presence with selection"
             );
         }
     }

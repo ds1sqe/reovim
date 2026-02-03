@@ -217,3 +217,74 @@
 .window.focused::before {
   background: var(--theme-accent);
 }
+
+/* ============ Remote Presence (Phase 18 #474) ============ */
+
+/* Remote cursor - thin bar indicating other client's position */
+.remote-cursor {
+  position: absolute;
+  width: 2px;
+  height: 21px; /* Match line height */
+  pointer-events: none;
+  z-index: 5; /* Below local cursor (z-index: 10) */
+  opacity: 0.8;
+  transition: left 0.1s, top 0.1s;
+}
+
+/* Deterministic colors by client ID mod 8 */
+.remote-cursor[data-color="0"] { background: #e06c75; } /* Red */
+.remote-cursor[data-color="1"] { background: #98c379; } /* Green */
+.remote-cursor[data-color="2"] { background: #e5c07b; } /* Yellow */
+.remote-cursor[data-color="3"] { background: #61afef; } /* Blue */
+.remote-cursor[data-color="4"] { background: #c678dd; } /* Magenta */
+.remote-cursor[data-color="5"] { background: #56b6c2; } /* Cyan */
+.remote-cursor[data-color="6"] { background: #abb2bf; } /* White/Gray */
+.remote-cursor[data-color="7"] { background: #be5046; } /* Dark Red */
+
+/* Name label - shows on hover */
+.remote-cursor::after {
+  content: attr(data-name);
+  position: absolute;
+  top: -18px;
+  left: 0;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+/* Color-matched labels */
+.remote-cursor[data-color="0"]::after { background: #e06c75; color: #1e2127; }
+.remote-cursor[data-color="1"]::after { background: #98c379; color: #1e2127; }
+.remote-cursor[data-color="2"]::after { background: #e5c07b; color: #1e2127; }
+.remote-cursor[data-color="3"]::after { background: #61afef; color: #1e2127; }
+.remote-cursor[data-color="4"]::after { background: #c678dd; color: #1e2127; }
+.remote-cursor[data-color="5"]::after { background: #56b6c2; color: #1e2127; }
+.remote-cursor[data-color="6"]::after { background: #abb2bf; color: #1e2127; }
+.remote-cursor[data-color="7"]::after { background: #be5046; color: #1e2127; }
+
+.remote-cursor:hover::after,
+.remote-cursor[data-show-label]::after {
+  opacity: 1;
+}
+
+/* Remote selection - translucent background for other client's selection */
+.remote-selection {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1; /* Below text, cursors */
+  opacity: 0.25;
+}
+
+/* Selection colors match cursor colors */
+.remote-selection[data-color="0"] { background: #e06c75; }
+.remote-selection[data-color="1"] { background: #98c379; }
+.remote-selection[data-color="2"] { background: #e5c07b; }
+.remote-selection[data-color="3"] { background: #61afef; }
+.remote-selection[data-color="4"] { background: #c678dd; }
+.remote-selection[data-color="5"] { background: #56b6c2; }
+.remote-selection[data-color="6"] { background: #abb2bf; }
+.remote-selection[data-color="7"] { background: #be5046; }

@@ -39,6 +39,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   TUI simplified: removed deprecated v1 args (`--tcp`, `--socket-path`, `--instance`),
   now uses only `--grpc` for gRPC v2 connections. Part of Epic #465. (#465)
 
+### Added
+
+- **Remote client cursor and selection rendering (Phase 18)**: Implemented
+  client-side rendering of other connected clients' cursors and selections.
+  Server PresenceService (Phase 14) provides the mechanism; this adds client
+  policy. Protocol extended with `selection` and `visual_mode` fields in
+  `ClientPresence` and `UpdatePresenceRequest`. TUI: Added 8-color deterministic
+  palette for remote clients (`REMOTE_CLIENT_COLORS`), extended `RemoteClient`
+  with selection state, `render_remote_cursors()` uses client-specific colors,
+  new `render_remote_selections()` method. Web: Added `remoteClients` Map to
+  EditorState, presence notification handlers, CSS for `.remote-cursor` and
+  `.remote-selection` with 8-color scheme, rendering in BufferRenderer. Server:
+  Input handler now auto-updates presence when selection changes via new
+  `update_presence_selection()` function. Includes 10+ unit tests for color
+  palette and selection handling. Part of Epic #465. (#474)
+
 ### Fixed
 
 - **Visual selection not visible in TUI (Phase 17)**: Fixed bug where entering

@@ -31,7 +31,7 @@ use {
     reovim_protocol::v2::{
         ClientPresence as ProtoClientPresence, ClientRole as ProtoRole, JoinRequest, JoinResponse,
         LeaveRequest, LeaveResponse, LineRange, ListClientsRequest, ListClientsResponse,
-        Notification, Position, PresenceUpdate, SetRoleRequest, SetRoleResponse,
+        Notification, Position, PresenceUpdate, Selection, SetRoleRequest, SetRoleResponse,
         SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         UpdatePresenceRequest, UpdatePresenceResponse, notification::Payload,
         presence_service_server::PresenceService, presence_update::Update,
@@ -59,6 +59,27 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         SyncMode::Present => (ProtoSyncMode::Present as i32, None),
     };
 
+    // Phase 18 (#474): Convert selection to proto format
+    let (selection, visual_mode) =
+        presence
+            .selection
+            .as_ref()
+            .map_or((None, None), |(start, end, mode)| {
+                (
+                    Some(Selection {
+                        start: Some(Position {
+                            line: start.0 as u64,
+                            column: start.1 as u64,
+                        }),
+                        end: Some(Position {
+                            line: end.0 as u64,
+                            column: end.1 as u64,
+                        }),
+                    }),
+                    Some(mode.clone()),
+                )
+            });
+
     ProtoClientPresence {
         client_id: presence.client_id.as_usize() as u64,
         client_type: presence.client_type.clone(),
@@ -76,6 +97,9 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         sync_mode,
         follow_target,
         joined_at_ms: presence.joined_at_ms(),
+        // Phase 18 (#474): Selection state
+        selection,
+        visual_mode,
     }
 }
 
@@ -107,7 +131,9 @@ fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> 
 }
 
 /// Build `presence_updated` notification.
-fn build_presence_updated_notification(presence: &ClientPresence) -> Notification {
+///
+/// Public for use by input handler's selection-to-presence update (Phase 18 #474).
+pub fn build_presence_updated_notification(presence: &ClientPresence) -> Notification {
     use reovim_protocol::v2::PresenceUpdatedPayload;
 
     Notification {
@@ -559,6 +585,8 @@ mod tests {
             }),
             visible_lines: Some(LineRange { start: 5, end: 30 }),
             mode: Some("INSERT".to_string()),
+            selection: None,
+            visual_mode: None,
         });
         let response = service.update_presence(update_req).await;
 
@@ -577,6 +605,8 @@ mod tests {
             cursor: None,
             visible_lines: None,
             mode: None,
+            selection: None,
+            visual_mode: None,
         });
         let response = service.update_presence(request).await;
 
@@ -762,5 +792,145 @@ mod tests {
 
         // Should successfully return a stream
         assert!(response.is_ok());
+    }
+
+    // ============ Phase 18 (#474): Selection Tests ============
+
+    #[tokio::test]
+    async fn test_update_presence_with_selection() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+
+        // Join first
+        let join_req = Request::new(JoinRequest {
+            client_type: "tui".to_string(),
+            display_name: "laptop".to_string(),
+        });
+        let join_resp = service.join(join_req).await.unwrap().into_inner();
+        let client_id = join_resp.client_id;
+
+        // Update presence with selection
+        let update_req = Request::new(UpdatePresenceRequest {
+            client_id,
+            buffer_id: Some(1),
+            cursor: Some(Position {
+                line: 5,
+                column: 10,
+            }),
+            visible_lines: None,
+            mode: Some("VISUAL".to_string()),
+            selection: Some(Selection {
+                start: Some(Position { line: 5, column: 0 }),
+                end: Some(Position {
+                    line: 5,
+                    column: 10,
+                }),
+            }),
+            visual_mode: Some("char".to_string()),
+        });
+        let response = service.update_presence(update_req).await;
+
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_update_presence_clear_selection() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+
+        // Join first
+        let join_req = Request::new(JoinRequest {
+            client_type: "tui".to_string(),
+            display_name: "laptop".to_string(),
+        });
+        let join_resp = service.join(join_req).await.unwrap().into_inner();
+        let client_id = join_resp.client_id;
+
+        // Set selection
+        let update_req = Request::new(UpdatePresenceRequest {
+            client_id,
+            buffer_id: None,
+            cursor: None,
+            visible_lines: None,
+            mode: None,
+            selection: Some(Selection {
+                start: Some(Position { line: 5, column: 0 }),
+                end: Some(Position {
+                    line: 5,
+                    column: 10,
+                }),
+            }),
+            visual_mode: Some("char".to_string()),
+        });
+        service.update_presence(update_req).await.unwrap();
+
+        // Clear selection (by not providing selection in update)
+        let clear_req = Request::new(UpdatePresenceRequest {
+            client_id,
+            buffer_id: None,
+            cursor: None,
+            visible_lines: None,
+            mode: Some("NORMAL".to_string()),
+            selection: None,
+            visual_mode: None,
+        });
+        let response = service.update_presence(clear_req).await;
+
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[test]
+    fn test_to_proto_presence_with_selection() {
+        use super::ClientPresence;
+
+        let presence = ClientPresence {
+            client_id: ClientId::new(1),
+            client_type: "tui".to_string(),
+            display_name: "laptop".to_string(),
+            buffer_id: Some(1),
+            cursor: (5, 10),
+            visible_lines: (0, 24),
+            mode: "VISUAL".to_string(),
+            sync_mode: SyncMode::Independent,
+            joined_at: std::time::SystemTime::now(),
+            selection: Some(((5, 0), (5, 10), "char".to_string())),
+        };
+
+        let proto = to_proto_presence(&presence);
+
+        assert!(proto.selection.is_some());
+        let sel = proto.selection.unwrap();
+        assert_eq!(sel.start.as_ref().unwrap().line, 5);
+        assert_eq!(sel.start.as_ref().unwrap().column, 0);
+        assert_eq!(sel.end.as_ref().unwrap().line, 5);
+        assert_eq!(sel.end.as_ref().unwrap().column, 10);
+
+        assert!(proto.visual_mode.is_some());
+        assert_eq!(proto.visual_mode.unwrap(), "char");
+    }
+
+    #[test]
+    fn test_to_proto_presence_without_selection() {
+        use super::ClientPresence;
+
+        let presence = ClientPresence {
+            client_id: ClientId::new(1),
+            client_type: "tui".to_string(),
+            display_name: "laptop".to_string(),
+            buffer_id: Some(1),
+            cursor: (0, 0),
+            visible_lines: (0, 24),
+            mode: "NORMAL".to_string(),
+            sync_mode: SyncMode::Independent,
+            joined_at: std::time::SystemTime::now(),
+            selection: None,
+        };
+
+        let proto = to_proto_presence(&presence);
+
+        assert!(proto.selection.is_none());
+        assert!(proto.visual_mode.is_none());
     }
 }

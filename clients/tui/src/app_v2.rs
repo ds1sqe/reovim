@@ -134,9 +134,42 @@ impl ClientRole {
     }
 }
 
-/// Presence information for a remote client (Phase 11.2).
+// ─────────────────────────────────────────────────────────────────────────────
+// Remote Client Colors (Phase 18 #474)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Deterministic color palette for remote clients.
 ///
-/// Tracks other clients' cursor positions for awareness rendering.
+/// 8 distinct colors that work on both dark and light backgrounds.
+/// Each client gets a consistent color based on `client_id % 8`.
+const REMOTE_CLIENT_COLORS: [(Color, Color); 8] = [
+    (Color::Red, Color::DarkRed),         // Client 0
+    (Color::Green, Color::DarkGreen),     // Client 1
+    (Color::Yellow, Color::DarkYellow),   // Client 2
+    (Color::Blue, Color::DarkBlue),       // Client 3
+    (Color::Magenta, Color::DarkMagenta), // Client 4
+    (Color::Cyan, Color::DarkCyan),       // Client 5
+    (Color::White, Color::Grey),          // Client 6
+    (Color::DarkGrey, Color::Black),      // Client 7
+];
+
+/// Get deterministic colors for a remote client.
+///
+/// Returns `(foreground, background)` colors based on client ID.
+/// The same `client_id` always returns the same color pair.
+#[inline]
+#[allow(clippy::cast_possible_truncation)]
+const fn get_client_color(client_id: u64) -> (Color, Color) {
+    REMOTE_CLIENT_COLORS[(client_id as usize) % REMOTE_CLIENT_COLORS.len()]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Remote Client State
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Presence information for a remote client (Phase 11.2, enhanced Phase 18 #474).
+///
+/// Tracks other clients' cursor positions and selections for awareness rendering.
 #[derive(Debug, Clone)]
 struct RemoteClient {
     /// Client's unique ID.
@@ -157,6 +190,9 @@ struct RemoteClient {
     /// Reserved for future use (showing mode indicator next to cursor).
     #[allow(dead_code)]
     mode: String,
+    /// Selection state (Phase 18 #474).
+    /// Present when client is in visual mode with an active selection.
+    selection: Option<SelectionState>,
 }
 
 /// Cursor position for per-window tracking (Phase 8 #465).
@@ -896,6 +932,8 @@ impl TuiAppV2 {
                         // Skip self
                         if Some(client.client_id) != self.state.my_client_id {
                             let cursor = client.cursor.as_ref();
+                            // Phase 18 (#474): Parse selection from presence
+                            let selection = Self::parse_presence_selection(&client);
                             self.state.other_clients.insert(
                                 client.client_id,
                                 RemoteClient {
@@ -905,6 +943,7 @@ impl TuiAppV2 {
                                     cursor_col: cursor.map_or(0, |c| c.column),
                                     buffer_id: client.buffer_id,
                                     mode: client.mode,
+                                    selection,
                                 },
                             );
                             self.state.needs_redraw = true;
@@ -913,10 +952,12 @@ impl TuiAppV2 {
                 }
                 Payload::PresenceUpdated(p) => {
                     // Phase 11.2: Update remote client's position
+                    // Phase 18 (#474): Also update selection
                     if let Some(client) = p.client
                         && Some(client.client_id) != self.state.my_client_id
                     {
                         let cursor = client.cursor.as_ref();
+                        let selection = Self::parse_presence_selection(&client);
                         self.state.other_clients.insert(
                             client.client_id,
                             RemoteClient {
@@ -926,6 +967,7 @@ impl TuiAppV2 {
                                 cursor_col: cursor.map_or(0, |c| c.column),
                                 buffer_id: client.buffer_id,
                                 mode: client.mode,
+                                selection,
                             },
                         );
                         self.state.needs_redraw = true;
@@ -1096,6 +1138,30 @@ impl TuiAppV2 {
         }
 
         tui_style
+    }
+
+    /// Parse selection state from `ClientPresence` (Phase 18 #474).
+    ///
+    /// Returns `Some(SelectionState)` if the client has an active selection,
+    /// `None` otherwise.
+    fn parse_presence_selection(
+        client: &reovim_protocol::v2::ClientPresence,
+    ) -> Option<SelectionState> {
+        let sel = client.selection.as_ref()?;
+        let start = sel.start.as_ref()?;
+        let end = sel.end.as_ref()?;
+
+        Some(SelectionState {
+            start: CursorPosition {
+                line: start.line,
+                column: start.column,
+            },
+            end: CursorPosition {
+                line: end.line,
+                column: end.column,
+            },
+            mode: client.visual_mode.clone().unwrap_or_default(),
+        })
     }
 
     /// Check if a character at (line, col) is within the selection.
@@ -1309,12 +1375,18 @@ impl TuiAppV2 {
 
             // Phase 11.2: Render other clients' cursors for awareness
             self.render_remote_cursors(placement, gutter_width);
+
+            // Phase 18 (#474): Render other clients' selections
+            if let Some(lines) = buffer_cache.get(&placement.buffer_id) {
+                self.render_remote_selections(placement, gutter_width, lines);
+            }
         }
     }
 
-    /// Render other clients' cursors within a window (Phase 11.2).
+    /// Render other clients' cursors within a window (Phase 11.2, enhanced Phase 18 #474).
     ///
-    /// Shows each remote client's cursor as a colored marker with their name.
+    /// Shows each remote client's cursor as a colored marker. Each client gets a
+    /// deterministic color based on their `client_id` for consistent identification.
     fn render_remote_cursors(
         &mut self,
         placement: &crate::layout_mirror::WindowPlacement,
@@ -1324,17 +1396,16 @@ impl TuiAppV2 {
         let remotes: Vec<_> = self
             .state
             .other_clients
-            .values()
-            .filter(|r| r.buffer_id == placement.buffer_id)
-            .cloned()
+            .iter()
+            .filter(|(_, r)| r.buffer_id == placement.buffer_id)
+            .map(|(id, r)| (*id, r.clone()))
             .collect();
 
-        // Style for remote cursors (distinct color)
-        let cursor_style = Style::default()
-            .with_fg(Color::Cyan)
-            .with_bg(Color::DarkCyan);
+        for (client_id, remote) in remotes {
+            // Phase 18 (#474): Get deterministic color for this client
+            let (fg, bg) = get_client_color(client_id);
+            let cursor_style = Style::default().with_fg(fg).with_bg(bg);
 
-        for remote in remotes {
             // Check if cursor is within the visible window area
             #[allow(clippy::cast_possible_truncation)]
             let cursor_row = remote.cursor_line as u16;
@@ -1351,6 +1422,87 @@ impl TuiAppV2 {
                 {
                     // Use a thin vertical bar to indicate remote cursor
                     self.screen.put_char(screen_x, screen_y, '▎', &cursor_style);
+                }
+            }
+        }
+    }
+
+    /// Render other clients' selections within a window (Phase 18 #474).
+    ///
+    /// Shows each remote client's visual selection with their color as background.
+    /// Renders AFTER line content so selection indicators appear on top.
+    #[allow(clippy::cast_possible_truncation)]
+    fn render_remote_selections(
+        &mut self,
+        placement: &crate::layout_mirror::WindowPlacement,
+        gutter_width: u16,
+        buffer_content: &[String],
+    ) {
+        // Collect remote clients with selections viewing this buffer
+        let remotes: Vec<_> = self
+            .state
+            .other_clients
+            .iter()
+            .filter(|(_, r)| r.buffer_id == placement.buffer_id && r.selection.is_some())
+            .map(|(id, r)| (*id, r.clone()))
+            .collect();
+
+        for (client_id, remote) in remotes {
+            let Some(selection) = &remote.selection else {
+                continue;
+            };
+
+            // Get deterministic color for this client (use darker bg for selection)
+            let (_, bg) = get_client_color(client_id);
+            let selection_style = Style::default().with_fg(Color::Black).with_bg(bg);
+
+            // Render selection markers for each affected line
+            let start_line = selection.start.line;
+            let end_line = selection.end.line;
+
+            for line_num in start_line..end_line {
+                #[allow(clippy::cast_possible_truncation)]
+                let screen_row = line_num as u16;
+
+                // Skip if line is outside visible area
+                if screen_row >= placement.height {
+                    continue;
+                }
+
+                let screen_y = placement.y + screen_row;
+
+                // Get line content length
+                let line_len = buffer_content
+                    .get(line_num as usize)
+                    .map_or(0, |l| l.chars().count());
+
+                // Calculate selection bounds for this line
+                let (start_col, end_col) = match selection.mode.as_str() {
+                    "line" => (0_u64, line_len as u64),
+                    "block" => (selection.start.column, selection.end.column),
+                    _ => {
+                        // Character mode
+                        if line_num == start_line {
+                            (selection.start.column, line_len as u64)
+                        } else if line_num == end_line.saturating_sub(1) {
+                            (0, selection.end.column)
+                        } else {
+                            (0, line_len as u64)
+                        }
+                    }
+                };
+
+                // Render selection indicator at the start of the selected region
+                // Using a thin left border character to indicate selection
+                #[allow(clippy::cast_possible_truncation)]
+                let screen_x = placement.x + gutter_width + start_col as u16;
+                if screen_x < placement.x + placement.width
+                    && end_col > start_col
+                    && screen_y < placement.y + placement.height
+                {
+                    // Mark the selection start with a colored indicator
+                    self.screen
+                        .put_char(screen_x, screen_y, '┃', &selection_style);
                 }
             }
         }
@@ -1508,5 +1660,83 @@ mod tests {
         let _ = LineNumberMode::Absolute;
         let _ = LineNumberMode::Relative;
         let _ = LineNumberMode::Hybrid;
+    }
+
+    // ============ Phase 18 (#474): Remote Presence Tests ============
+
+    #[test]
+    fn test_get_client_color_deterministic() {
+        // Same client_id always returns the same color
+        let (fg1, bg1) = get_client_color(42);
+        let (fg2, bg2) = get_client_color(42);
+        assert_eq!(fg1, fg2);
+        assert_eq!(bg1, bg2);
+
+        // Different calls with same ID
+        let (fg3, bg3) = get_client_color(42);
+        assert_eq!(fg1, fg3);
+        assert_eq!(bg1, bg3);
+    }
+
+    #[test]
+    fn test_get_client_color_distribution() {
+        // First 8 clients get different colors
+        use std::collections::HashSet;
+
+        let colors: HashSet<_> = (0..8).map(get_client_color).collect();
+
+        // All 8 colors should be distinct
+        assert_eq!(colors.len(), 8);
+    }
+
+    #[test]
+    fn test_get_client_color_wraps_at_8() {
+        // Client ID 8 should get same color as client ID 0
+        let color_0 = get_client_color(0);
+        let color_8 = get_client_color(8);
+        let color_16 = get_client_color(16);
+
+        assert_eq!(color_0, color_8);
+        assert_eq!(color_0, color_16);
+    }
+
+    #[test]
+    fn test_remote_client_default() {
+        let remote = RemoteClient {
+            client_id: 1,
+            display_name: "test".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: 0,
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+        assert_eq!(remote.client_id, 1);
+        assert!(remote.selection.is_none());
+    }
+
+    #[test]
+    fn test_remote_client_with_selection() {
+        let remote = RemoteClient {
+            client_id: 1,
+            display_name: "test".to_string(),
+            cursor_line: 5,
+            cursor_col: 10,
+            buffer_id: 1,
+            mode: "VISUAL".to_string(),
+            selection: Some(SelectionState {
+                start: CursorPosition { line: 5, column: 0 },
+                end: CursorPosition {
+                    line: 5,
+                    column: 10,
+                },
+                mode: "char".to_string(),
+            }),
+        };
+        assert!(remote.selection.is_some());
+        let sel = remote.selection.unwrap();
+        assert_eq!(sel.start.line, 5);
+        assert_eq!(sel.end.column, 10);
+        assert_eq!(sel.mode, "char");
     }
 }

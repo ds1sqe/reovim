@@ -78,6 +78,14 @@ message ClientPresence {
 
   // Timestamp when client joined (Unix ms).
   uint64 joined_at_ms = 10;
+
+  // Phase 18 (#474): Selection state for visual mode rendering.
+  // Present only when client is in visual mode with an active selection.
+  optional Selection selection = 11;
+
+  // Visual mode type ("char", "line", "block").
+  // Present only when selection is set.
+  optional string visual_mode = 12;
 }
 
 // Visible line range for viewport tracking.
@@ -182,6 +190,12 @@ message UpdatePresenceRequest {
 
   // New mode name (optional, only if changed).
   optional string mode = 5;
+
+  // Phase 18 (#474): Selection state for visual mode.
+  optional Selection selection = 6;
+
+  // Visual mode type ("char", "line", "block").
+  optional string visual_mode = 7;
 }
 
 // Update presence response.

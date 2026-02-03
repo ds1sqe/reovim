@@ -357,6 +357,9 @@ impl GrpcClient {
             cursor,
             visible_lines: None,
             mode,
+            // Phase 18 (#474): Selection fields (optional)
+            selection: None,
+            visual_mode: None,
         };
         let response = self.presence.update_presence(request).await?;
         Ok(response.into_inner())

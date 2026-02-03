@@ -20,6 +20,19 @@ export interface SelectionRange {
   mode: "char" | "line" | "block";
 }
 
+// ============ Phase 18 (#474): Remote Client Types ============
+
+/**
+ * Remote client presence data for rendering.
+ */
+export interface RemoteClientRenderData {
+  clientId: bigint;
+  displayName: string;
+  cursorLine: number;
+  cursorCol: number;
+  selection: SelectionRange | null;
+}
+
 /**
  * Options for the buffer renderer.
  */
@@ -82,13 +95,15 @@ export class BufferRenderer {
    * @param selection - Current selection, if any
    * @param cursor - Current cursor position
    * @param topLine - First visible line index (for scrolling)
+   * @param remoteClients - Remote clients to render (Phase 18 #474)
    */
   render(
     lines: string[],
     windowEl: HTMLElement,
     selection: SelectionRange | null,
     cursor: ScreenPosition,
-    topLine: number = 0
+    topLine: number = 0,
+    remoteClients: RemoteClientRenderData[] = []
   ): void {
     const bufferEl = windowEl.querySelector(".window-buffer");
     if (!bufferEl) return;
@@ -114,6 +129,10 @@ export class BufferRenderer {
 
     // Update cursor position
     this.updateCursor(windowEl, cursor, topLine);
+
+    // Render remote clients (Phase 18 #474)
+    this.renderRemoteCursors(windowEl, remoteClients, topLine);
+    this.renderRemoteSelections(windowEl, remoteClients, topLine, lines.length);
   }
 
   private createLineElement(
@@ -366,6 +385,132 @@ export class BufferRenderer {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  // ============ Phase 18 (#474): Remote Client Rendering ============
+
+  /**
+   * Render remote client cursors.
+   */
+  private renderRemoteCursors(
+    windowEl: HTMLElement,
+    remoteClients: RemoteClientRenderData[],
+    topLine: number
+  ): void {
+    // Remove existing remote cursors
+    windowEl.querySelectorAll('.remote-cursor').forEach(el => el.remove());
+
+    if (remoteClients.length === 0) return;
+
+    const lineNumberOffset = this.options.showLineNumbers
+      ? this.options.lineNumberWidth + 1
+      : 0;
+    const charWidth = 8.4;
+    const lineHeight = 21;
+
+    for (const client of remoteClients) {
+      const screenY = client.cursorLine - topLine;
+      if (screenY < 0) continue; // Cursor above viewport
+
+      const el = document.createElement('div');
+      el.className = 'remote-cursor';
+      el.dataset.color = String(Number(client.clientId % 8n));
+      el.dataset.name = client.displayName;
+
+      el.style.left = `${(client.cursorCol + lineNumberOffset) * charWidth}px`;
+      el.style.top = `${screenY * lineHeight}px`;
+
+      windowEl.appendChild(el);
+    }
+  }
+
+  /**
+   * Render remote client selections.
+   */
+  private renderRemoteSelections(
+    windowEl: HTMLElement,
+    remoteClients: RemoteClientRenderData[],
+    topLine: number,
+    totalLines: number
+  ): void {
+    // Remove existing remote selections
+    windowEl.querySelectorAll('.remote-selection').forEach(el => el.remove());
+
+    if (remoteClients.length === 0) return;
+
+    const lineNumberOffset = this.options.showLineNumbers
+      ? this.options.lineNumberWidth + 1
+      : 0;
+    const charWidth = 8.4;
+    const lineHeight = 21;
+
+    // Calculate visible range
+    const windowHeight = parseInt(windowEl.style.height) || 0;
+    const visibleLines = Math.ceil(windowHeight / lineHeight);
+    const endLine = Math.min(topLine + visibleLines, totalLines);
+
+    for (const client of remoteClients) {
+      if (!client.selection) continue;
+
+      const { anchor, cursor, mode } = client.selection;
+      const startLine = Math.min(anchor.y, cursor.y);
+      const endSelLine = Math.max(anchor.y, cursor.y);
+      const colorIdx = String(Number(client.clientId % 8n));
+
+      // Only render visible portion
+      const renderStart = Math.max(startLine, topLine);
+      const renderEnd = Math.min(endSelLine, endLine - 1);
+
+      for (let line = renderStart; line <= renderEnd; line++) {
+        const screenY = line - topLine;
+        if (screenY < 0) continue;
+
+        const el = document.createElement('div');
+        el.className = 'remote-selection';
+        el.dataset.color = colorIdx;
+
+        // Calculate selection span for this line
+        let startCol = 0;
+        let endCol = 80; // Default to wide selection for line mode
+
+        switch (mode) {
+          case "line":
+            // Full line - use default wide selection
+            break;
+
+          case "char": {
+            if (startLine === endSelLine) {
+              // Single line selection
+              startCol = Math.min(anchor.x, cursor.x);
+              endCol = Math.max(anchor.x, cursor.x) + 1;
+            } else if (line === startLine) {
+              // First line
+              startCol = anchor.y <= cursor.y ? anchor.x : cursor.x;
+              endCol = 200; // To end of line
+            } else if (line === endSelLine) {
+              // Last line
+              startCol = 0;
+              endCol = (anchor.y <= cursor.y ? cursor.x : anchor.x) + 1;
+            }
+            // Middle lines use default full width
+            break;
+          }
+
+          case "block": {
+            startCol = Math.min(anchor.x, cursor.x);
+            endCol = Math.max(anchor.x, cursor.x) + 1;
+            break;
+          }
+        }
+
+        el.style.left = `${(startCol + lineNumberOffset) * charWidth}px`;
+        el.style.top = `${screenY * lineHeight}px`;
+        el.style.width = `${(endCol - startCol) * charWidth}px`;
+        el.style.height = `${lineHeight}px`;
+
+        windowEl.appendChild(el);
+      }
+    }
   }
 }
 

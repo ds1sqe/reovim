@@ -23,7 +23,7 @@ import {
 
 // Rendering layer
 import { LayoutRenderer } from "./render/layout.js";
-import { BufferRenderer, type SelectionRange } from "./render/buffer.js";
+import { BufferRenderer, type SelectionRange, type RemoteClientRenderData } from "./render/buffer.js";
 
 // Caching layer (Phase 11.1)
 import { ViewportCache, BufferCache } from "./cache/index.js";
@@ -52,6 +52,49 @@ interface WindowState {
   selection: SelectionRange | null;
 }
 
+// ============ Phase 18 (#474): Remote Client Presence ============
+
+/**
+ * Remote client presence state.
+ *
+ * Tracks cursor, selection, and buffer for other connected clients.
+ */
+interface RemoteClient {
+  clientId: bigint;
+  displayName: string;
+  cursorLine: number;
+  cursorCol: number;
+  bufferId: number;
+  mode: string;
+  /** Selection state (Phase 18 #474). */
+  selection: SelectionRange | null;
+}
+
+/**
+ * Deterministic color palette for remote clients.
+ *
+ * 8 distinct colors that work on both dark and light backgrounds.
+ * Client color is determined by `clientId % 8`.
+ */
+const REMOTE_CLIENT_COLORS = [
+  "#e06c75", // 0: Red
+  "#98c379", // 1: Green
+  "#e5c07b", // 2: Yellow
+  "#61afef", // 3: Blue
+  "#c678dd", // 4: Magenta
+  "#56b6c2", // 5: Cyan
+  "#abb2bf", // 6: White/Gray
+  "#be5046", // 7: Dark Red
+] as const;
+
+/**
+ * Get deterministic color for a remote client.
+ */
+function getClientColor(clientId: bigint): string {
+  // Index is guaranteed to be 0-7 due to modulo 8
+  return REMOTE_CLIENT_COLORS[Number(clientId % 8n)] as string;
+}
+
 interface EditorState {
   mode: string;
   modeDisplay: string;
@@ -72,6 +115,9 @@ interface EditorState {
 
   // Flag to enable multi-window rendering
   useMultiWindow: boolean;
+
+  // Remote client presence (Phase 18 #474)
+  remoteClients: Map<bigint, RemoteClient>;
 }
 
 /**
@@ -132,6 +178,8 @@ export class Editor {
       focusedWindowId: 0,
       windowStates: new Map(),
       useMultiWindow: false,
+      // Remote client presence (Phase 18 #474)
+      remoteClients: new Map(),
     };
 
     // Initialize renderers
@@ -529,6 +577,49 @@ export class Editor {
         break;
       }
 
+      // ============ Phase 18 (#474): Presence Notifications ============
+
+      case "presenceJoined": {
+        const { client } = payload.value;
+        if (client && BigInt(client.clientId) !== this.myClientId) {
+          this.state.remoteClients.set(BigInt(client.clientId), {
+            clientId: BigInt(client.clientId),
+            displayName: client.displayName,
+            cursorLine: Number(client.cursor?.line ?? 0n),
+            cursorCol: Number(client.cursor?.column ?? 0n),
+            bufferId: Number(client.bufferId ?? 0n),
+            mode: client.mode ?? "NORMAL",
+            selection: this.parsePresenceSelection(client),
+          });
+          this.scheduleRender();
+        }
+        break;
+      }
+
+      case "presenceUpdated": {
+        const { client } = payload.value;
+        if (client && BigInt(client.clientId) !== this.myClientId) {
+          this.state.remoteClients.set(BigInt(client.clientId), {
+            clientId: BigInt(client.clientId),
+            displayName: client.displayName,
+            cursorLine: Number(client.cursor?.line ?? 0n),
+            cursorCol: Number(client.cursor?.column ?? 0n),
+            bufferId: Number(client.bufferId ?? 0n),
+            mode: client.mode ?? "NORMAL",
+            selection: this.parsePresenceSelection(client),
+          });
+          this.scheduleRender();
+        }
+        break;
+      }
+
+      case "presenceLeft": {
+        const { clientId } = payload.value;
+        this.state.remoteClients.delete(BigInt(clientId));
+        this.scheduleRender();
+        break;
+      }
+
       default:
         break;
     }
@@ -727,12 +818,16 @@ export class Editor {
         y: windowState.cursorLine,
       };
 
+      // Get remote clients for this buffer (Phase 18 #474)
+      const remoteClients = this.getRemoteClientsForRender(window.buffer_id);
+
       this.bufferRenderer.render(
         windowState.lines,
         windowEl,
         windowState.selection,
         cursor,
-        windowState.topLine
+        windowState.topLine,
+        remoteClients
       );
     }
 
@@ -1042,5 +1137,92 @@ export class Editor {
       cmdline.textContent = "";
       cmdline.classList.remove("leader-pending");
     }
+  // ============ Phase 18 (#474): Remote Presence Helpers ============
+
+  /** Pending render frame ID for debouncing. */
+  private pendingRenderFrame: number | null = null;
+
+  /**
+   * Schedule a render on next animation frame (debounced).
+   */
+  private scheduleRender(): void {
+    if (this.pendingRenderFrame !== null) return;
+    this.pendingRenderFrame = requestAnimationFrame(() => {
+      this.pendingRenderFrame = null;
+      if (this.state.useMultiWindow && this.state.layout) {
+        this.renderMultiWindow();
+      } else {
+        this.renderSingleWindow();
+      }
+    });
+  }
+
+  /**
+   * Parse selection from presence client data.
+   */
+  private parsePresenceSelection(client: {
+    selection?: { start?: { line?: bigint; column?: bigint }; end?: { line?: bigint; column?: bigint } };
+    visualMode?: string;
+  }): SelectionRange | null {
+    if (!client.selection) return null;
+
+    const start = client.selection.start;
+    const end = client.selection.end;
+    if (!start || !end) return null;
+
+    const mode = (client.visualMode ?? "char") as "char" | "line" | "block";
+
+    return {
+      anchor: {
+        x: Number(start.column ?? 0n),
+        y: Number(start.line ?? 0n),
+      },
+      cursor: {
+        x: Number(end.column ?? 0n),
+        y: Number(end.line ?? 0n),
+      },
+      mode,
+    };
+  }
+
+  /**
+   * Get remote clients for a specific buffer.
+   */
+  getRemoteClientsForBuffer(bufferId: number): RemoteClient[] {
+    const result: RemoteClient[] = [];
+    for (const client of this.state.remoteClients.values()) {
+      if (client.bufferId === bufferId) {
+        result.push(client);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get remote clients for rendering in a specific buffer.
+   *
+   * Converts RemoteClient to RemoteClientRenderData.
+   */
+  private getRemoteClientsForRender(bufferId: number): RemoteClientRenderData[] {
+    const result: RemoteClientRenderData[] = [];
+    for (const client of this.state.remoteClients.values()) {
+      if (client.bufferId === bufferId) {
+        result.push({
+          clientId: client.clientId,
+          displayName: client.displayName,
+          cursorLine: client.cursorLine,
+          cursorCol: client.cursorCol,
+          selection: client.selection,
+        });
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get color for a remote client.
+   */
+  getRemoteClientColor(clientId: bigint): string {
+    return getClientColor(clientId);
   }
 }

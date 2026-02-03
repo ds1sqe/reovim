@@ -86,6 +86,12 @@ pub struct ClientPresence {
 
     /// When the client joined.
     pub joined_at: SystemTime,
+
+    /// Selection state (Phase 18 #474).
+    /// Format: `((start_line, start_col), (end_line, end_col), visual_mode)`
+    /// Present only when client is in visual mode with an active selection.
+    #[allow(clippy::type_complexity)]
+    pub selection: Option<((usize, usize), (usize, usize), String)>,
 }
 
 impl ClientPresence {
@@ -106,6 +112,7 @@ impl ClientPresence {
             mode: "NORMAL".to_string(),
             sync_mode: SyncMode::default(),
             joined_at: SystemTime::now(),
+            selection: None,
         }
     }
 
@@ -480,5 +487,86 @@ mod tests {
 
         // All clients should have left
         assert!(map.is_empty());
+    }
+
+    // ============ Phase 18 (#474): Selection Tests ============
+
+    #[test]
+    fn test_client_presence_selection_default_none() {
+        let presence = make_presence(1, "laptop");
+        assert!(presence.selection.is_none());
+    }
+
+    #[test]
+    fn test_update_with_selection() {
+        let map = PresenceMap::new();
+        let client_id = ClientId::new(1);
+
+        map.join(make_presence(1, "laptop"));
+
+        // Update with selection
+        let updated = map.update(client_id, |p| {
+            p.selection = Some(((0, 5), (0, 10), "char".to_string()));
+        });
+
+        assert!(updated.is_some());
+        let presence = updated.unwrap();
+        assert!(presence.selection.is_some());
+
+        let sel = presence.selection.unwrap();
+        assert_eq!(sel.0, (0, 5)); // start
+        assert_eq!(sel.1, (0, 10)); // end
+        assert_eq!(sel.2, "char"); // mode
+    }
+
+    #[test]
+    fn test_clear_selection() {
+        let map = PresenceMap::new();
+        let client_id = ClientId::new(1);
+
+        map.join(make_presence(1, "laptop"));
+
+        // Set selection
+        map.update(client_id, |p| {
+            p.selection = Some(((0, 5), (0, 10), "char".to_string()));
+        });
+
+        // Clear selection
+        let updated = map.update(client_id, |p| {
+            p.selection = None;
+        });
+
+        assert!(updated.is_some());
+        let presence = updated.unwrap();
+        assert!(presence.selection.is_none());
+    }
+
+    #[test]
+    fn test_selection_modes() {
+        let map = PresenceMap::new();
+        let client_id = ClientId::new(1);
+
+        map.join(make_presence(1, "laptop"));
+
+        // Test character mode
+        map.update(client_id, |p| {
+            p.selection = Some(((0, 0), (0, 5), "char".to_string()));
+        });
+        let presence = map.get(client_id).unwrap();
+        assert_eq!(presence.selection.as_ref().unwrap().2, "char");
+
+        // Test line mode
+        map.update(client_id, |p| {
+            p.selection = Some(((0, 0), (2, 0), "line".to_string()));
+        });
+        let presence = map.get(client_id).unwrap();
+        assert_eq!(presence.selection.as_ref().unwrap().2, "line");
+
+        // Test block mode
+        map.update(client_id, |p| {
+            p.selection = Some(((0, 5), (2, 10), "block".to_string()));
+        });
+        let presence = map.get(client_id).unwrap();
+        assert_eq!(presence.selection.as_ref().unwrap().2, "block");
     }
 }
