@@ -11,7 +11,7 @@
 //! - **Follow**: Read-only spectator, sees target's state
 //! - **Share**: Bidirectional co-edit with owner
 //!
-//! See [`client`] module for details.
+//! See the [`Client`] enum for details.
 
 mod capture;
 mod client;

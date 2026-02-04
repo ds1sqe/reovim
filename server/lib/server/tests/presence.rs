@@ -196,19 +196,22 @@ async fn test_set_sync_mode_follow_invalid_target() {
 // Presence Update Tests
 // ============================================================================
 
-/// Test updating cursor position.
+/// Test updating cursor position (now a no-op).
+///
+/// Phase 14 (#471): Cursor tracking moved from `PresenceUpdated` to `CursorMoved` notifications.
+/// The `update_cursor` method is preserved for API compatibility but does nothing.
 #[tokio::test]
 async fn test_update_cursor() {
     MultiClientPresenceTest::with_clients(1)
         .await
         .run(|mut clients| async move {
-            // Update cursor
+            // Update cursor (no-op since Phase 14 #471)
             clients[0]
                 .update_cursor(10, 5)
                 .await
-                .expect("Failed to update cursor");
+                .expect("update_cursor should not fail");
 
-            // Verify via list
+            // Verify client is still in list (cursor no longer in presence)
             let all = clients[0]
                 .all_clients()
                 .await
@@ -217,9 +220,8 @@ async fn test_update_cursor() {
                 .iter()
                 .find(|c| c.display_name == "client_0")
                 .expect("Self not found");
-            let cursor = me.cursor.as_ref().expect("Cursor should be set");
-            assert_eq!(cursor.line, 10, "Cursor line should be 10");
-            assert_eq!(cursor.column, 5, "Cursor column should be 5");
+            // Cursor field no longer exists in presence - just verify client exists
+            assert_eq!(me.display_name, "client_0");
         })
         .await;
 }
@@ -294,6 +296,9 @@ async fn test_concurrent_join_leave() {
 }
 
 /// Test high-frequency update operations.
+///
+/// Phase 14 (#471): Cursor updates are now no-ops.
+/// This test verifies that rapid mode updates work correctly.
 #[tokio::test]
 #[allow(clippy::significant_drop_tightening)]
 async fn test_high_frequency_updates() {
@@ -304,12 +309,12 @@ async fn test_high_frequency_updates() {
 
     let mut client = connect_presence(&addr, "rapid").await;
 
-    // Send 50 rapid cursor updates
+    // Send 50 rapid mode updates (cursor updates are no-ops since Phase 14 #471)
     for i in 0..50 {
         client
-            .update_cursor(i, i % 80)
+            .update_mode(&format!("MODE_{i}"))
             .await
-            .expect("Failed to update cursor");
+            .expect("Failed to update mode");
     }
 
     // Verify final state
@@ -318,8 +323,7 @@ async fn test_high_frequency_updates() {
         .iter()
         .find(|c| c.display_name == "rapid")
         .expect("Self not found");
-    let cursor = me.cursor.as_ref().expect("Cursor should be set");
-    assert_eq!(cursor.line, 49, "Final cursor line should be 49");
+    assert_eq!(me.mode, "MODE_49", "Final mode should be MODE_49");
 
     client.leave().await.ok();
 }
@@ -359,9 +363,8 @@ async fn test_update_unknown_client() {
     let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
 
     // Update with non-existent client ID
-    let result = client
-        .presence_update(9999, None, Some(10), Some(5), None)
-        .await;
+    // Note: cursor args removed (Phase 14, #471)
+    let result = client.presence_update(9999, None, None).await;
 
     // Should fail with NotFound
     assert!(result.is_err(), "Update unknown client should fail");

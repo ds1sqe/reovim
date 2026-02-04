@@ -157,6 +157,9 @@ struct RemoteClient {
     /// Reserved for future use (showing mode indicator next to cursor).
     #[allow(dead_code)]
     mode: String,
+    /// Selection state for visual mode (Phase 14, #471).
+    /// Used to render remote clients' selections.
+    selection: Option<SelectionState>,
 }
 
 /// Cursor position for per-window tracking (Phase 8 #465).
@@ -228,7 +231,8 @@ struct TuiState {
     ///
     /// Assigned by `presence_join()` on connect. CRITICAL: All `SendKeys`
     /// requests must include this ID, otherwise all clients share state.
-    my_client_id: Option<u64>,
+    /// Type is `u64` (not `Option`) because clients ALWAYS have an ID after join.
+    my_client_id: u64,
     /// This client's role in the session (Phase 11.2).
     my_role: ClientRole,
     /// Other connected clients for awareness rendering (Phase 11.2).
@@ -369,7 +373,7 @@ impl TuiAppV2 {
 
         // Build state with client ID
         let state = TuiState {
-            my_client_id: Some(my_client_id),
+            my_client_id,
             ..TuiState::default()
         };
 
@@ -725,15 +729,12 @@ impl TuiAppV2 {
                 }
 
                 // Send vim notation to server with client ID (Phase 11.2)
+                // Note: my_client_id is always valid after presence_join()
                 if !key_event.vim_notation.is_empty() {
-                    let result = if let Some(client_id) = self.state.my_client_id {
-                        self.client
-                            .send_keys_with_client(&key_event.vim_notation, client_id)
-                            .await
-                    } else {
-                        // Fallback for backwards compatibility
-                        self.client.send_keys(&key_event.vim_notation).await
-                    };
+                    let result = self
+                        .client
+                        .send_keys_with_client(&key_event.vim_notation, self.state.my_client_id)
+                        .await;
                     if let Err(e) = result {
                         self.state.last_error = Some(format!("Send keys failed: {e}"));
                     }
@@ -761,11 +762,10 @@ impl TuiAppV2 {
             }
             InputEvent::Paste(text) => {
                 // Handle paste by sending as keys with client ID (Phase 11.2)
-                let result = if let Some(client_id) = self.state.my_client_id {
-                    self.client.send_keys_with_client(&text, client_id).await
-                } else {
-                    self.client.send_keys(&text).await
-                };
+                let result = self
+                    .client
+                    .send_keys_with_client(&text, self.state.my_client_id)
+                    .await;
                 if let Err(e) = result {
                     self.state.last_error = Some(format!("Paste failed: {e}"));
                 }
@@ -780,26 +780,51 @@ impl TuiAppV2 {
         if let Some(payload) = notif.payload {
             match payload {
                 Payload::ModeChanged(mode) => {
-                    self.state.mode_name = mode.name;
-                    self.state.mode_display = mode.display;
-                    self.state.is_insert_mode = mode.is_insert;
+                    // Phase 14 (#471): Filter by client_id for multi-client mode isolation
+                    let is_local_mode = mode.client_id == self.state.my_client_id;
+
+                    if is_local_mode {
+                        // Local mode update
+                        self.state.mode_name = mode.name;
+                        self.state.mode_display = mode.display;
+                        self.state.is_insert_mode = mode.is_insert;
+                    } else {
+                        // Remote mode update - update other_clients map
+                        if let Some(remote) = self.state.other_clients.get_mut(&mode.client_id) {
+                            remote.mode.clone_from(&mode.display);
+                        }
+                    }
                     self.state.needs_redraw = true;
                 }
                 Payload::CursorMoved(cursor) => {
-                    if let Some(pos) = cursor.position {
-                        // Store per-window cursor position (Phase 8 #465)
-                        self.state.window_cursors.insert(
-                            cursor.window_id,
-                            CursorPosition {
-                                line: pos.line,
-                                column: pos.column,
-                            },
-                        );
+                    // Phase 14 (#471): Filter by client_id for multi-client cursor isolation
+                    let is_local_cursor = cursor.client_id == self.state.my_client_id;
 
-                        // Update legacy globals for focused window (statusline compatibility)
-                        if cursor.window_id == self.state.focused_window_id {
-                            self.state.cursor_line = pos.line;
-                            self.state.cursor_col = pos.column;
+                    if let Some(pos) = cursor.position {
+                        if is_local_cursor {
+                            // Local cursor update
+                            // Store per-window cursor position (Phase 8 #465)
+                            self.state.window_cursors.insert(
+                                cursor.window_id,
+                                CursorPosition {
+                                    line: pos.line,
+                                    column: pos.column,
+                                },
+                            );
+
+                            // Update legacy globals for focused window (statusline compatibility)
+                            if cursor.window_id == self.state.focused_window_id {
+                                self.state.cursor_line = pos.line;
+                                self.state.cursor_col = pos.column;
+                            }
+                        } else {
+                            // Remote cursor update - update other_clients map
+                            if let Some(remote) =
+                                self.state.other_clients.get_mut(&cursor.client_id)
+                            {
+                                remote.cursor_line = pos.line;
+                                remote.cursor_col = pos.column;
+                            }
                         }
                     }
                     self.state.needs_redraw = true;
@@ -892,19 +917,20 @@ impl TuiAppV2 {
                 }
                 Payload::PresenceJoined(p) => {
                     // Phase 11.2: Track other clients for awareness rendering
+                    // Phase 14 (#471): cursor no longer in presence - uses CursorMoved with client_id
                     if let Some(client) = p.client {
                         // Skip self
-                        if Some(client.client_id) != self.state.my_client_id {
-                            let cursor = client.cursor.as_ref();
+                        if client.client_id != self.state.my_client_id {
                             self.state.other_clients.insert(
                                 client.client_id,
                                 RemoteClient {
                                     client_id: client.client_id,
                                     display_name: client.display_name,
-                                    cursor_line: cursor.map_or(0, |c| c.line),
-                                    cursor_col: cursor.map_or(0, |c| c.column),
+                                    cursor_line: 0, // Updated via CursorMoved notification
+                                    cursor_col: 0,
                                     buffer_id: client.buffer_id,
                                     mode: client.mode,
+                                    selection: None, // Updated via SelectionChanged notification
                                 },
                             );
                             self.state.needs_redraw = true;
@@ -912,20 +938,27 @@ impl TuiAppV2 {
                     }
                 }
                 Payload::PresenceUpdated(p) => {
-                    // Phase 11.2: Update remote client's position
+                    // Phase 11.2: Update remote client's state (viewport, mode)
+                    // Phase 14 (#471): cursor no longer in presence - uses CursorMoved with client_id
                     if let Some(client) = p.client
-                        && Some(client.client_id) != self.state.my_client_id
+                        && client.client_id != self.state.my_client_id
                     {
-                        let cursor = client.cursor.as_ref();
+                        // Preserve existing cursor position and selection (updated via CursorMoved/SelectionChanged)
+                        let old = self.state.other_clients.get(&client.client_id);
+                        let cursor_line = old.map_or(0, |c| c.cursor_line);
+                        let cursor_col = old.map_or(0, |c| c.cursor_col);
+                        let selection = old.and_then(|c| c.selection.clone());
+
                         self.state.other_clients.insert(
                             client.client_id,
                             RemoteClient {
                                 client_id: client.client_id,
                                 display_name: client.display_name,
-                                cursor_line: cursor.map_or(0, |c| c.line),
-                                cursor_col: cursor.map_or(0, |c| c.column),
+                                cursor_line,
+                                cursor_col,
                                 buffer_id: client.buffer_id,
                                 mode: client.mode,
+                                selection,
                             },
                         );
                         self.state.needs_redraw = true;
@@ -937,29 +970,62 @@ impl TuiAppV2 {
                     self.state.needs_redraw = true;
                 }
                 Payload::SelectionChanged(sel) => {
-                    // Phase 8 (#465): Track selection for visual mode highlighting
-                    if sel.has_selection {
-                        if let Some(selection) = sel.selection {
-                            let start = selection.start.map_or_else(CursorPosition::default, |p| {
-                                CursorPosition {
-                                    line: p.line,
-                                    column: p.column,
-                                }
-                            });
-                            let end = selection.end.map_or_else(CursorPosition::default, |p| {
-                                CursorPosition {
-                                    line: p.line,
-                                    column: p.column,
-                                }
-                            });
-                            let mode = sel.visual_mode.unwrap_or_default();
-                            self.state
-                                .window_selections
-                                .insert(sel.window_id, SelectionState { start, end, mode });
+                    // Phase 14 (#471): Filter by client_id for multi-client selection isolation
+                    let is_local_selection = sel.client_id == self.state.my_client_id;
+
+                    if is_local_selection {
+                        // Local selection update
+                        // Phase 8 (#465): Track selection for visual mode highlighting
+                        if sel.has_selection {
+                            if let Some(selection) = sel.selection {
+                                let start =
+                                    selection.start.map_or_else(CursorPosition::default, |p| {
+                                        CursorPosition {
+                                            line: p.line,
+                                            column: p.column,
+                                        }
+                                    });
+                                let end = selection.end.map_or_else(CursorPosition::default, |p| {
+                                    CursorPosition {
+                                        line: p.line,
+                                        column: p.column,
+                                    }
+                                });
+                                let mode = sel.visual_mode.unwrap_or_default();
+                                self.state
+                                    .window_selections
+                                    .insert(sel.window_id, SelectionState { start, end, mode });
+                            }
+                        } else {
+                            // Clear selection for this window
+                            self.state.window_selections.remove(&sel.window_id);
                         }
                     } else {
-                        // Clear selection for this window
-                        self.state.window_selections.remove(&sel.window_id);
+                        // Remote selection update - update other_clients map
+                        if let Some(remote) = self.state.other_clients.get_mut(&sel.client_id) {
+                            if sel.has_selection {
+                                if let Some(selection) = sel.selection {
+                                    let start =
+                                        selection.start.map_or_else(CursorPosition::default, |p| {
+                                            CursorPosition {
+                                                line: p.line,
+                                                column: p.column,
+                                            }
+                                        });
+                                    let end =
+                                        selection.end.map_or_else(CursorPosition::default, |p| {
+                                            CursorPosition {
+                                                line: p.line,
+                                                column: p.column,
+                                            }
+                                        });
+                                    let mode = sel.visual_mode.unwrap_or_default();
+                                    remote.selection = Some(SelectionState { start, end, mode });
+                                }
+                            } else {
+                                remote.selection = None;
+                            }
+                        }
                     }
                     self.state.needs_redraw = true;
                 }
@@ -1334,8 +1400,11 @@ impl TuiAppV2 {
             .with_fg(Color::Cyan)
             .with_bg(Color::DarkCyan);
 
-        for remote in remotes {
-            // Check if cursor is within the visible window area
+        // TODO: Render remote selections (requires Screen::set_style or get_cell method)
+        // For now, selections are tracked but not rendered.
+
+        for remote in &remotes {
+            // Render remote cursor
             #[allow(clippy::cast_possible_truncation)]
             let cursor_row = remote.cursor_line as u16;
             #[allow(clippy::cast_possible_truncation)]
@@ -1390,11 +1459,15 @@ impl TuiAppV2 {
         let server = self.server_address.clone();
         let role = self.state.my_role.as_str();
 
+        // Phase 14 (#471): Include client_id in statusline for multi-client awareness
+        // my_client_id is always valid after presence_join()
+        let client_id_str = format!("#{}", self.state.my_client_id);
+
         // Get mode-specific style
         let mode_style = self.mode_statusline_style();
 
-        // Build statusline with role indicator (Phase 11.2)
-        let left = format!(" {mode_display} [{role}] ");
+        // Build statusline with role and client_id indicator (Phase 14, #471)
+        let left = format!(" {mode_display} [{role}{client_id_str}] ");
         let cursor_str = format!("{}:{}", cursor_line + 1, cursor_col + 1);
         let right = format!(" {cursor_str} | {server} ");
 

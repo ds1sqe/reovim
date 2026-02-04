@@ -50,7 +50,9 @@
 use std::collections::HashMap;
 
 use {
-    reovim_driver_session::{CursorPosition, KeySequence, Selection, SelectionMode, Viewport},
+    reovim_driver_session::{
+        CursorPosition, KeySequence, Selection, SelectionMode, Viewport, Window, WindowLayout,
+    },
     reovim_kernel::api::v1::ModeStack,
 };
 
@@ -216,6 +218,12 @@ impl Client {
 /// Contains all per-client state needed for editing operations.
 /// This is the "source of truth" for Owner clients; Follow/Share
 /// clients reference their target's state.
+///
+/// # Multi-Client Isolation (#471)
+///
+/// Each client owns their own `WindowLayout` with independent cursors.
+/// This ensures Client A's cursor/mode doesn't affect Client B.
+/// Buffers are still shared (all clients see same text content).
 #[derive(Debug, Clone)]
 pub struct EditingState {
     /// Mode stack (current mode on top).
@@ -224,8 +232,11 @@ pub struct EditingState {
     /// Keys accumulated but not yet processed.
     pub pending_keys: KeySequence,
 
-    /// Cursor position in the active buffer.
-    pub cursor: CursorPosition,
+    /// Per-client window layout with independent cursors (#471).
+    ///
+    /// Each window contains its own cursor position. This replaces
+    /// the old shared `session.windows` that caused multi-client bugs.
+    pub windows: WindowLayout,
 
     /// Viewport (visible area).
     pub viewport: Viewport,
@@ -244,7 +255,7 @@ impl Default for EditingState {
         Self {
             mode_stack: ModeStack::new(placeholder_mode),
             pending_keys: KeySequence::new(),
-            cursor: CursorPosition::origin(),
+            windows: WindowLayout::empty(), // Per-client windows (#471)
             viewport: Viewport::default(),
             selection: None,
         }
@@ -257,7 +268,26 @@ impl EditingState {
     pub fn with_mode_stack(mode_stack: ModeStack) -> Self {
         Self {
             mode_stack,
-            ..Default::default()
+            pending_keys: KeySequence::new(),
+            windows: WindowLayout::empty(),
+            viewport: Viewport::default(),
+            selection: None,
+        }
+    }
+
+    /// Create editing state with mode stack and initial window.
+    ///
+    /// Used when a client joins a session that already has buffers.
+    #[must_use]
+    pub fn with_mode_stack_and_window(mode_stack: ModeStack, window: Window) -> Self {
+        let mut windows = WindowLayout::empty();
+        windows.add(window);
+        Self {
+            mode_stack,
+            pending_keys: KeySequence::new(),
+            windows,
+            viewport: Viewport::default(),
+            selection: None,
         }
     }
 
@@ -455,7 +485,7 @@ mod tests {
         let state = EditingState::default();
 
         assert!(state.pending_keys.is_empty());
-        assert_eq!(state.cursor, CursorPosition::origin());
+        assert!(state.windows.is_empty()); // Per-client windows (#471)
         assert!(state.selection.is_none());
     }
 

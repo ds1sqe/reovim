@@ -1,11 +1,12 @@
 // Phase 14: Multi-client presence awareness (Epic #465)
 //
-// PresenceService enables clients to see each other's cursors, follow each
-// other's viewports, and support collaborative editing scenarios.
+// PresenceService enables clients to follow each other's viewports
+// and support collaborative editing scenarios.
+// Note: Cursor/selection tracking moved to CursorMoved/SelectionChanged notifications.
 //
 // Philosophy:
 // - Server provides WHAT (presence data, sync mode)
-// - Client decides HOW (follow behavior, cursor rendering)
+// - Client decides HOW (follow behavior, rendering)
 
 syntax = "proto3";
 package reovim.v2;
@@ -29,7 +30,7 @@ service PresenceService {
   // presence_updated, and presence_left events.
   rpc StreamPresence(StreamPresenceRequest) returns (stream PresenceUpdate);
 
-  // Update this client's presence state (cursor, viewport, mode).
+  // Update this client's presence state (viewport, mode).
   rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
 
   // Set sync mode (independent, follow another client, or present).
@@ -61,8 +62,9 @@ message ClientPresence {
   // Current buffer being viewed.
   uint64 buffer_id = 4;
 
-  // Cursor position in buffer.
-  Position cursor = 5;
+  // Field 5 removed: cursor now tracked via CursorMovedPayload with client_id
+  reserved 5;
+  reserved "cursor";
 
   // Visible line range (for viewport sync).
   LineRange visible_lines = 6;
@@ -119,7 +121,7 @@ message PresenceUpdate {
     // New client joined the session.
     ClientPresence joined = 1;
 
-    // Existing client's presence changed (cursor, viewport, mode, sync_mode).
+    // Existing client's presence changed (viewport, mode, sync_mode).
     ClientPresence updated = 2;
 
     // Client left the session (value is client_id).
@@ -174,8 +176,9 @@ message UpdatePresenceRequest {
   // New buffer ID (optional, only if changed).
   optional uint64 buffer_id = 2;
 
-  // New cursor position (optional, only if changed).
-  optional Position cursor = 3;
+  // Field 3 removed: cursor now tracked via CursorMovedPayload with client_id
+  reserved 3;
+  reserved "cursor";
 
   // New visible line range (optional, only if changed).
   optional LineRange visible_lines = 4;

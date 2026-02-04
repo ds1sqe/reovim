@@ -171,10 +171,53 @@ impl Session {
     /// Add a client to the session as an Owner.
     ///
     /// New clients default to Owner role with their own editing state.
+    /// The client's mode stack is initialized with the session's home mode.
+    /// The client's windows are initialized with the session's active buffer.
     /// Call `set_client_role()` to change to Follow/Share.
+    ///
+    /// # Per-Client Windows (#471)
+    ///
+    /// Each client gets their own `WindowLayout` with independent cursors.
+    /// If the session has an active buffer, a window is created for it.
     pub fn add_client(&self, client_id: ClientId) {
+        use {reovim_driver_session::Window, reovim_kernel::api::v1::ModeStack};
+
+        // Per-client state (#471): This is the ONE valid use of shared current_mode() -
+        // to initialize new clients with the session's home mode (e.g., "vim/normal").
+        // After this, the client's per-client mode stack is used for all operations.
+        let state = self.state.read();
+        #[allow(deprecated)]
+        let home_mode = state.current_mode().clone();
+        let active_buffer = state.active_buffer();
+        drop(state); // Release lock before acquiring clients lock
+
+        tracing::debug!(
+            %client_id,
+            mode_module = %home_mode.module(),
+            mode_name = %home_mode.name(),
+            ?active_buffer,
+            "Initializing client with home mode and per-client windows"
+        );
+
+        let mode_stack = ModeStack::new(home_mode);
+
+        // Phase #471: Create per-client editing state with initial window
+        let editing_state = if let Some(buffer_id) = active_buffer {
+            // Session has an active buffer - create window for it
+            let window = Window::with_buffer(buffer_id);
+            super::EditingState::with_mode_stack_and_window(mode_stack, window)
+        } else {
+            // No buffer yet - empty windows
+            super::EditingState::with_mode_stack(mode_stack)
+        };
+
         let mut clients = self.clients.write();
-        clients.insert(client_id, Client::new_owner());
+        clients.insert(
+            client_id,
+            Client::Owner {
+                state: editing_state,
+            },
+        );
     }
 
     /// Add a client with a specific initial role.
@@ -331,6 +374,178 @@ impl Session {
     {
         let mut state = self.state.write();
         f(&mut state)
+    }
+
+    // =========================================================================
+    // Per-Client Key Resolution (#471)
+    // =========================================================================
+
+    /// Resolve a key with per-client mode stack (#471).
+    ///
+    /// This method provides access to both session state AND per-client mode stack,
+    /// enabling multi-client mode isolation. The key is resolved using the client's
+    /// mode stack instead of the shared session mode stack.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - Client ID to resolve for
+    /// * `key` - Key event to resolve
+    ///
+    /// # Returns
+    ///
+    /// - `Some((ResolveResult, StateChanges))` - if key was resolved
+    /// - `None` - if client not found, client is Follow, or no resolver
+    ///
+    /// # Role Behavior
+    ///
+    /// - **Owner**: Uses own mode stack and windows
+    /// - **Follow**: Returns `None` (input ignored for followers)
+    /// - **Share**: Uses owner's mode stack and windows
+    #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
+    pub async fn resolve_key_for_client(
+        &self,
+        client_id: ClientId,
+        key: &reovim_driver_input::KeyEvent,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        // Acquire both locks in consistent order to avoid deadlocks
+        let mut clients = self.clients.write();
+        let mut state = self.state.write();
+
+        // Find the target client ID based on role
+        let target_id = match clients.get(&client_id) {
+            Some(Client::Owner { .. }) => client_id,
+            Some(Client::Share { owner }) => *owner,
+            Some(Client::Follow { .. }) | None => return None, // Input ignored for followers
+        };
+
+        // Phase #471: Get mutable references to per-client mode stack AND windows
+        let (mode_stack, windows) = if let Some(Client::Owner {
+            state: editing_state,
+        }) = clients.get_mut(&target_id)
+        {
+            (&mut editing_state.mode_stack, &mut editing_state.windows)
+        } else {
+            return None;
+        };
+
+        // Resolve key with per-client state
+        state.resolve_key_for_client(mode_stack, windows, key)
+    }
+
+    /// Try `on_command_complete` with per-client state (Phase #471).
+    ///
+    /// Like `resolve_key_for_client`, but for post-command mode transitions.
+    #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
+    pub async fn try_on_command_complete_for_client(
+        &self,
+        client_id: ClientId,
+    ) -> Option<reovim_driver_input::ModeTransition> {
+        // Acquire both locks in consistent order
+        let mut clients = self.clients.write();
+        let mut state = self.state.write();
+
+        // Find the target client ID based on role
+        let target_id = match clients.get(&client_id) {
+            Some(Client::Owner { .. }) => client_id,
+            Some(Client::Share { owner }) => *owner,
+            Some(Client::Follow { .. }) | None => return None,
+        };
+
+        // Phase #471: Get mutable references to per-client mode stack AND windows
+        let (mode_stack, windows) = if let Some(Client::Owner {
+            state: editing_state,
+        }) = clients.get_mut(&target_id)
+        {
+            (&mut editing_state.mode_stack, &mut editing_state.windows)
+        } else {
+            return None;
+        };
+
+        state.try_on_command_complete_for_client(mode_stack, windows)
+    }
+
+    /// Execute a command with per-client state (Phase #471).
+    ///
+    /// This enables multi-client mode isolation by operating on per-client
+    /// mode and cursor state instead of shared session state.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - Client ID to execute for
+    /// * `cmd_id` - Command ID to execute
+    /// * `args` - Command arguments (count, register, etc.)
+    ///
+    /// # Returns
+    ///
+    /// - `Some((CommandResult, StateChanges))` - if command executed
+    /// - `None` - if client not found, client is Follow, or command not registered
+    ///
+    /// # Role Behavior
+    ///
+    /// - **Owner**: Uses own mode stack and windows
+    /// - **Follow**: Returns `None` (input ignored for followers)
+    /// - **Share**: Uses owner's mode stack and windows
+    #[allow(clippy::significant_drop_tightening)]
+    pub fn execute_command_for_client(
+        &self,
+        client_id: ClientId,
+        cmd_id: &reovim_kernel::api::v1::CommandId,
+        args: &reovim_driver_command_types::CommandContext,
+    ) -> Option<(reovim_driver_command::CommandResult, reovim_driver_session::api::StateChanges)>
+    {
+        // Acquire both locks in consistent order to avoid deadlocks
+        let mut clients = self.clients.write();
+        let mut state = self.state.write();
+
+        // Find the target client ID based on role
+        let target_id = match clients.get(&client_id) {
+            Some(Client::Owner { .. }) => client_id,
+            Some(Client::Share { owner }) => *owner,
+            Some(Client::Follow { .. }) | None => return None, // Input ignored for followers
+        };
+
+        // Phase #471: Get mutable references to per-client mode stack AND windows
+        let (mode_stack, windows) = if let Some(Client::Owner {
+            state: editing_state,
+        }) = clients.get_mut(&target_id)
+        {
+            (&mut editing_state.mode_stack, &mut editing_state.windows)
+        } else {
+            return None;
+        };
+
+        // Execute command with per-client state
+        state.execute_command_for_client(mode_stack, windows, cmd_id, args)
+    }
+
+    /// Get the current mode for a specific client (#471).
+    ///
+    /// Returns the mode from the client's per-client mode stack (if Owner/Share)
+    /// or `None` for Follow clients.
+    #[must_use]
+    pub fn client_current_mode(
+        &self,
+        client_id: ClientId,
+    ) -> Option<reovim_kernel::api::v1::ModeId> {
+        let clients = self.clients.read();
+
+        // Find the target client ID based on role
+        let target_id = match clients.get(&client_id) {
+            Some(Client::Owner { .. }) => client_id,
+            Some(Client::Share { owner }) => *owner,
+            Some(Client::Follow { .. }) | None => return None,
+        };
+
+        // Get mode from target's mode stack
+        if let Some(Client::Owner {
+            state: editing_state,
+        }) = clients.get(&target_id)
+        {
+            Some(editing_state.mode_stack.current().clone())
+        } else {
+            None
+        }
     }
 }
 

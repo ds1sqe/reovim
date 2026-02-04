@@ -14,8 +14,8 @@ message SendKeysRequest {
 
   // Client ID sending the keys (Phase 11.2, Epic #465).
   // Used for per-client input routing based on client role (Owner/Follow/Share).
-  // If not specified, uses the default client.
-  optional uint64 client_id = 2;
+  // Required: clients must identify themselves (Phase 14, #471).
+  uint64 client_id = 2;
 }
 
 message SendKeysResponse {

@@ -113,7 +113,7 @@ impl CommandRegistry {
         self.entries.contains_key(id)
     }
 
-    /// Execute a command by ID.
+    /// Execute a command by ID (uses SHARED session state).
     ///
     /// Returns `None` if the command isn't registered.
     /// Returns `(CommandResult, StateChanges)` with the result and any state
@@ -122,6 +122,12 @@ impl CommandRegistry {
     /// The active buffer ID from `driver_session` is automatically populated
     /// into the `CommandContext` before execution, allowing commands to
     /// know which buffer they should operate on.
+    ///
+    /// # Deprecation Note (#471)
+    ///
+    /// This method uses SHARED session state. For multi-client scenarios,
+    /// use [`Self::execute_for_client`] instead which operates on per-client
+    /// mode and cursor state.
     ///
     /// # Arguments
     ///
@@ -158,6 +164,63 @@ impl CommandRegistry {
             let result = entry.handler.execute(&mut runtime, &ctx);
 
             // Phase 8 (#465): Take accumulated changes (selection, buffer mods, etc.)
+            let changes = runtime.take_changes();
+
+            (result, changes)
+        })
+    }
+
+    /// Execute a command with per-client state (Phase #471).
+    ///
+    /// This uses [`SessionRuntime::new_for_client`] to ensure commands operate
+    /// on per-client mode and cursor state, enabling multi-client isolation.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The command ID to execute
+    /// * `driver_session` - Driver session (for shared state like buffers, extensions)
+    /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
+    /// * `client_windows` - Per-client window layout (source of truth for cursor)
+    /// * `app` - Application state (contains `KernelContext`)
+    /// * `vfs` - VFS driver for file operations
+    /// * `args` - Command arguments (count, register, etc.)
+    #[must_use]
+    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
+    pub fn execute_for_client(
+        &self,
+        id: &CommandId,
+        driver_session: &mut DriverSession,
+        client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
+        client_windows: &mut reovim_driver_session::WindowLayout,
+        app: &AppState,
+        vfs: &Arc<dyn VfsDriver>,
+        args: &CommandContext,
+    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
+        use reovim_driver_session::api::ChangeTracker;
+        profile_scope!("command_execute_for_client", "server::command");
+
+        self.entries.get(id).map(|entry| {
+            // Single clone point for context enrichment (Epic #415)
+            let mut ctx = args.clone();
+            if let Some(buffer_id) = driver_session.active_buffer() {
+                ctx.set_buffer_id(buffer_id);
+            }
+            ctx.set_vfs(Arc::clone(vfs));
+
+            // Create SessionRuntime with per-client state (Phase #471)
+            let stub_executor = StubCommandExecutor;
+            let mut runtime = SessionRuntime::new_for_client(
+                driver_session,
+                client_mode_stack,
+                client_windows,
+                &app.kernel,
+                &stub_executor,
+            );
+
+            // Execute command
+            let result = entry.handler.execute(&mut runtime, &ctx);
+
+            // Take accumulated changes (selection, buffer mods, mode changes, etc.)
             let changes = runtime.take_changes();
 
             (result, changes)

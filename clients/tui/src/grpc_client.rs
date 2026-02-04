@@ -131,7 +131,7 @@ impl TuiGrpcClient {
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, TuiGrpcError> {
         let request = SendKeysRequest {
             keys: keys.to_string(),
-            client_id: None, // Use default client (Phase 11.2)
+            client_id: 0, // Default client ID for backwards compatibility
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
@@ -147,7 +147,26 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, TuiGrpcError> {
-        let request = GetModeRequest {};
+        // Per-client state (#471): client_id = 0 means use shared mode (backward compat)
+        let request = GetModeRequest { client_id: 0 };
+        let response = self.state.get_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the mode for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client mode isolation
+    ///
+    /// Returns the mode from the specified client's per-client mode stack.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_mode_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetModeResponse, TuiGrpcError> {
+        let request = GetModeRequest { client_id };
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -165,7 +184,33 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetCursorResponse, TuiGrpcError> {
-        let request = GetCursorRequest { window_id };
+        // Per-client state (#471): client_id = 0 means use shared cursor (backward compat)
+        let request = GetCursorRequest {
+            window_id,
+            client_id: 0,
+        };
+        let response = self.state.get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the cursor position for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client cursor isolation
+    ///
+    /// Returns the cursor from the specified client's per-client editing state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_cursor_for_client(
+        &mut self,
+        window_id: Option<u64>,
+        client_id: u64,
+    ) -> Result<GetCursorResponse, TuiGrpcError> {
+        let request = GetCursorRequest {
+            window_id,
+            client_id,
+        };
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -365,7 +410,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_layout(&mut self) -> Result<GetLayoutResponse, TuiGrpcError> {
-        let request = GetLayoutRequest {};
+        let request = GetLayoutRequest { client_id: 0 };
         let response = self.state.get_layout(request).await?;
         Ok(response.into_inner())
     }
@@ -401,7 +446,10 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetSelectionResponse, TuiGrpcError> {
-        let request = GetSelectionRequest { window_id };
+        let request = GetSelectionRequest {
+            window_id,
+            client_id: 0,
+        };
         let response = self.state.get_selection(request).await?;
         Ok(response.into_inner())
     }
@@ -419,7 +467,10 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetVisibleLinesResponse, TuiGrpcError> {
-        let request = GetVisibleLinesRequest { window_id };
+        let request = GetVisibleLinesRequest {
+            window_id,
+            client_id: 0,
+        };
         let response = self.state.get_visible_lines(request).await?;
         Ok(response.into_inner())
     }
@@ -649,7 +700,7 @@ impl TuiGrpcClient {
     ) -> Result<SendKeysResponse, TuiGrpcError> {
         let request = SendKeysRequest {
             keys: keys.to_string(),
-            client_id: Some(client_id),
+            client_id,
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())

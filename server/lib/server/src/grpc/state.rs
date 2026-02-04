@@ -21,7 +21,9 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{CaptureResult, Session, SessionId, SessionRegistry, wait_for_capture};
+use crate::session::{
+    CaptureResult, ClientId, Session, SessionId, SessionRegistry, wait_for_capture,
+};
 
 /// Convert a driver-layer `Window` to a proto `WindowLeaf`.
 ///
@@ -74,13 +76,46 @@ impl StateServiceImpl {
 impl StateService for StateServiceImpl {
     /// Get the current editor mode.
     ///
-    /// Returns the current mode from the `driver_session`'s mode stack.
+    /// Returns the current mode from the `driver_session`'s mode stack, or
+    /// from a specific client's mode stack if `client_id` is provided.
+    ///
+    /// # Per-client state (#471): Per-client mode isolation
+    ///
+    /// When `client_id > 0`, returns the mode from that client's per-client
+    /// mode stack (stored in `Client::Owner { state: EditingState }`).
+    /// When `client_id == 0` (default), returns the shared session mode
+    /// for backward compatibility.
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_mode(
         &self,
-        _request: Request<GetModeRequest>,
+        request: Request<GetModeRequest>,
     ) -> Result<Response<GetModeResponse>, Status> {
+        let req = request.into_inner();
         let session = self.get_session()?;
 
+        // Per-client state (#471): Check for per-client mode first
+        if req.client_id > 0 {
+            let client_id = ClientId::new(req.client_id as usize);
+
+            // Try to get per-client mode
+            if let Some(mode) = session.client_current_mode(client_id) {
+                let name = mode.name().to_string();
+                let display = name.to_uppercase();
+                let is_insert = name.contains("insert") || name.contains("cmdline");
+
+                return Ok(Response::new(GetModeResponse {
+                    name,
+                    display,
+                    is_insert,
+                }));
+            }
+            // Client not found - fall through to shared mode
+            tracing::debug!(%client_id, "Client not found, returning shared mode");
+        }
+
+        // Fallback: Return shared session mode (backward compatibility)
+        // Per-client state (#471): This is a valid fallback for clients without client_id.
+        #[allow(deprecated)]
         let (name, display, is_insert) = session
             .with_state(|state| {
                 let mode = state.current_mode();
@@ -101,14 +136,43 @@ impl StateService for StateServiceImpl {
     }
 
     /// Get cursor position in the active window/buffer.
+    ///
+    /// # Phase #471: Per-client cursor isolation
+    ///
+    /// When `client_id > 0`, returns the cursor from that client's per-client
+    /// window layout (stored in `EditingState.windows`).
+    /// When `client_id == 0` (default), falls back to shared session state
+    /// for backward compatibility.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_cursor(
         &self,
-        _request: Request<GetCursorRequest>,
+        request: Request<GetCursorRequest>,
     ) -> Result<Response<GetCursorResponse>, Status> {
+        let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Get cursor from active buffer
+        // Phase #471: Try per-client cursor first when client_id > 0
+        if req.client_id > 0 {
+            let client_id = ClientId::new(req.client_id as usize);
+
+            // Get cursor from per-client window layout
+            if let Some(state) = session.client_state(client_id)
+                && let Some(window) = state.windows.active()
+            {
+                let cursor = &window.cursor;
+                return Ok(Response::new(GetCursorResponse {
+                    window_id: window.id.as_usize() as u64,
+                    position: Some(Position {
+                        line: cursor.line as u64,
+                        column: cursor.column as u64,
+                    }),
+                }));
+            }
+            // Client not found - fall through to shared state
+            tracing::debug!(%client_id, "Client not found, returning shared cursor");
+        }
+
+        // Fallback: Get cursor from shared buffer state (backward compatibility)
         let (window_id, position) = session
             .with_state(|state| {
                 // Collapse nested if-let and merge read() with position() to avoid drop timing lint
@@ -161,13 +225,63 @@ impl StateService for StateServiceImpl {
     /// - N windows: `WindowSplit` with N leaf children (vertical split)
     ///
     /// Phase 12 (`LayoutService`) will add proper nested split support.
+    ///
+    /// # Phase #471: Per-client layout isolation
+    ///
+    /// When `client_id > 0`, returns the layout from that client's per-client
+    /// window layout (stored in `EditingState.windows`).
+    /// When `client_id == 0` (default), falls back to shared session layout
+    /// for backward compatibility.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_layout(
         &self,
-        _request: Request<GetLayoutRequest>,
+        request: Request<GetLayoutRequest>,
     ) -> Result<Response<GetLayoutResponse>, Status> {
+        let req = request.into_inner();
         let session = self.get_session()?;
 
+        // Phase #471: Try per-client layout first when client_id > 0
+        if req.client_id > 0 {
+            let client_id = ClientId::new(req.client_id as usize);
+
+            // Get layout from per-client editing state
+            if let Some(state) = session.client_state(client_id) {
+                let layout = &state.windows;
+                let focused_id = layout.active_id().map_or(0, |id| id.as_usize() as u64);
+
+                let root = match layout.len() {
+                    0 => None,
+                    1 => layout.active().map(|w| WindowNode {
+                        node: Some(Node::Leaf(window_to_leaf(w))),
+                    }),
+                    _ => {
+                        let children: Vec<WindowNode> = layout
+                            .windows
+                            .iter()
+                            .map(|w| WindowNode {
+                                node: Some(Node::Leaf(window_to_leaf(w))),
+                            })
+                            .collect();
+
+                        Some(WindowNode {
+                            node: Some(Node::Split(WindowSplit {
+                                direction: SplitDirection::Vertical.into(),
+                                children,
+                            })),
+                        })
+                    }
+                };
+
+                return Ok(Response::new(GetLayoutResponse {
+                    root,
+                    focused_window_id: focused_id,
+                }));
+            }
+            // Client not found - fall through to shared state
+            tracing::debug!(%client_id, "Client not found, returning shared layout");
+        }
+
+        // Fallback: Get layout from shared session state (backward compatibility)
         let (root, focused_window_id) = session
             .with_state(|state| {
                 let driver_session = state.driver_session();
@@ -222,21 +336,55 @@ impl StateService for StateServiceImpl {
     /// # Arguments
     ///
     /// - `window_id`: Optional window ID. If not specified, uses the focused window.
+    /// - `client_id`: Optional client ID for per-client viewport (Phase #471)
     ///
     /// # Returns
     ///
     /// - `first_line`: First visible line (0-indexed, based on `scroll_top`)
     /// - `last_line`: Last visible line (0-indexed, `scroll_top` + height - 1)
     /// - `viewport_height`: Number of visible lines
+    ///
+    /// # Phase #471: Per-client viewport isolation
+    ///
+    /// When `client_id > 0`, returns visible lines from that client's per-client
+    /// window layout. When `client_id == 0` (default), falls back to shared
+    /// session layout for backward compatibility.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_visible_lines(
         &self,
         request: Request<GetVisibleLinesRequest>,
     ) -> Result<Response<GetVisibleLinesResponse>, Status> {
-        let requested_window_id = request.into_inner().window_id;
-
+        let req = request.into_inner();
+        let requested_window_id = req.window_id;
         let session = self.get_session()?;
 
+        // Phase #471: Try per-client viewport first when client_id > 0
+        if req.client_id > 0 {
+            let client_id = ClientId::new(req.client_id as usize);
+
+            if let Some(state) = session.client_state(client_id) {
+                let layout = &state.windows;
+
+                let window = requested_window_id.map_or_else(
+                    || layout.active(),
+                    |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
+                );
+
+                if let Some(w) = window {
+                    let viewport = &w.viewport;
+                    return Ok(Response::new(GetVisibleLinesResponse {
+                        window_id: w.id.as_usize() as u64,
+                        first_line: viewport.scroll_top as u64,
+                        last_line: viewport.last_visible_line() as u64,
+                        viewport_height: u64::from(viewport.height),
+                    }));
+                }
+            }
+            // Client not found - fall through to shared state
+            tracing::debug!(%client_id, "Client not found, returning shared visible lines");
+        }
+
+        // Fallback: Get visible lines from shared session state (backward compatibility)
         let result = session
             .with_state(|state| {
                 let driver_session = state.driver_session();
@@ -275,15 +423,69 @@ impl StateService for StateServiceImpl {
     ///
     /// Returns the current visual selection bounds and mode if active.
     /// Selection is active when in visual mode (character, line, or block).
+    ///
+    /// # Phase #471: Per-client selection isolation
+    ///
+    /// When `client_id > 0`, returns the selection from that client's per-client
+    /// window layout. When `client_id == 0` (default), falls back to shared
+    /// session layout for backward compatibility.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_selection(
         &self,
-        _request: Request<GetSelectionRequest>,
+        request: Request<GetSelectionRequest>,
     ) -> Result<Response<GetSelectionResponse>, Status> {
         use reovim_protocol::v2::Selection;
 
+        let req = request.into_inner();
         let session = self.get_session()?;
 
+        // Phase #471: Try per-client selection first when client_id > 0
+        if req.client_id > 0 {
+            let client_id = ClientId::new(req.client_id as usize);
+
+            if let Some(state) = session.client_state(client_id) {
+                // Get selection from per-client windows
+                let layout = &state.windows;
+
+                // Get active window from per-client layout
+                if let Some(window) = layout.active() {
+                    if let Some(ref sel) = window.selection {
+                        use reovim_driver_session::SelectionMode;
+
+                        let mode_str = match sel.mode {
+                            SelectionMode::Character => "char",
+                            SelectionMode::Line => "line",
+                            SelectionMode::Block => "block",
+                        };
+
+                        return Ok(Response::new(GetSelectionResponse {
+                            has_selection: true,
+                            selection: Some(Selection {
+                                start: Some(Position {
+                                    line: sel.start.line as u64,
+                                    column: sel.start.column as u64,
+                                }),
+                                end: Some(Position {
+                                    line: sel.end.line as u64,
+                                    column: sel.end.column as u64,
+                                }),
+                            }),
+                            visual_mode: Some(mode_str.to_string()),
+                        }));
+                    }
+                    // Window exists but no selection
+                    return Ok(Response::new(GetSelectionResponse {
+                        has_selection: false,
+                        selection: None,
+                        visual_mode: None,
+                    }));
+                }
+            }
+            // Client not found - fall through to shared state
+            tracing::debug!(%client_id, "Client not found, returning shared selection");
+        }
+
+        // Fallback: Get selection from shared session state (backward compatibility)
         let (has_selection, selection, visual_mode) = session
             .with_state(|state| {
                 // Phase 8 (#465): Read selection from WINDOW, not buffer.
@@ -567,7 +769,7 @@ mod tests {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetModeRequest {});
+        let request = Request::new(GetModeRequest { client_id: 0 });
         let response = service.get_mode(request).await;
 
         assert!(response.is_ok());
@@ -583,7 +785,10 @@ mod tests {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetCursorRequest { window_id: None });
+        let request = Request::new(GetCursorRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_cursor(request).await;
 
         // No buffer = NotFound
@@ -604,7 +809,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetCursorRequest { window_id: None });
+        let request = Request::new(GetCursorRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_cursor(request).await;
 
         assert!(response.is_ok());
@@ -633,7 +841,7 @@ mod tests {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetLayoutRequest {});
+        let request = Request::new(GetLayoutRequest { client_id: 0 });
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
@@ -663,7 +871,7 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetLayoutRequest {});
+        let request = Request::new(GetLayoutRequest { client_id: 0 });
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
@@ -689,7 +897,10 @@ mod tests {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let request = Request::new(GetVisibleLinesRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_visible_lines(request).await;
 
         // No window = NotFound
@@ -717,7 +928,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let request = Request::new(GetVisibleLinesRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_visible_lines(request).await;
 
         assert!(response.is_ok());
@@ -749,7 +963,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetVisibleLinesRequest { window_id: None });
+        let request = Request::new(GetVisibleLinesRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_visible_lines(request).await;
 
         assert!(response.is_ok());
@@ -765,7 +982,7 @@ mod tests {
         let registry = Arc::new(SessionRegistry::new());
         let service = StateServiceImpl::new(registry, SessionId::new("nonexistent"));
 
-        let request = Request::new(GetModeRequest {});
+        let request = Request::new(GetModeRequest { client_id: 0 });
         let response = service.get_mode(request).await;
 
         assert!(response.is_err());
@@ -864,7 +1081,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -880,7 +1100,10 @@ mod tests {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         // Should return no selection (graceful handling), not an error
@@ -918,7 +1141,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -961,7 +1187,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -997,7 +1226,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1034,7 +1266,10 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest { window_id: None });
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1046,5 +1281,266 @@ mod tests {
         assert!(sel.start.as_ref().unwrap().column < sel.end.as_ref().unwrap().column);
         assert_eq!(sel.start.as_ref().unwrap().column, 2);
         assert_eq!(sel.end.as_ref().unwrap().column, 5);
+    }
+
+    // Per-client state (#471): Per-client mode isolation tests
+
+    #[tokio::test]
+    async fn test_get_mode_per_client_returns_client_mode() {
+        use reovim_kernel::api::v1::{ModeId, ModuleId};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Add a client with custom mode stack
+        let client_id = crate::session::ClientId::new(42);
+        session.add_client(client_id);
+
+        // Modify the client's per-client mode stack to INSERT mode
+        let module = ModuleId::new("editor");
+        session.update_client_state(client_id, |editing_state| {
+            editing_state
+                .mode_stack
+                .push(ModeId::new(module.clone(), "insert"));
+        });
+
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Query with client_id = 42 should return INSERT mode
+        let request = Request::new(GetModeRequest { client_id: 42 });
+        let response = service.get_mode(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.name, "insert");
+        assert_eq!(resp.display, "INSERT");
+        assert!(resp.is_insert);
+
+        // Query with client_id = 0 should return shared mode (NORMAL)
+        let request = Request::new(GetModeRequest { client_id: 0 });
+        let response = service.get_mode(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.name, "normal");
+        assert_eq!(resp.display, "NORMAL");
+        assert!(!resp.is_insert);
+    }
+
+    #[tokio::test]
+    async fn test_get_mode_unknown_client_falls_back_to_shared() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Query with non-existent client_id should fall back to shared mode
+        let request = Request::new(GetModeRequest { client_id: 999 });
+        let response = service.get_mode(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        // Should return shared mode (normal by default)
+        assert_eq!(resp.name, "normal");
+    }
+
+    // =========================================================================
+    // Phase #471: Multi-Client Isolation Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_cursor_isolation_between_clients() {
+        use reovim_driver_session::CursorPosition;
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create buffer first
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("line1\nline2\nline3\nline4\nline5");
+            })
+            .await;
+
+        // Create two clients
+        let client_a = crate::session::ClientId::new(1);
+        let client_b = crate::session::ClientId::new(2);
+        session.add_client(client_a);
+        session.add_client(client_b);
+
+        // Client A moves cursor to (3, 5)
+        session.update_client_state(client_a, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.cursor = CursorPosition { line: 3, column: 5 };
+            }
+        });
+
+        // Client B's cursor should still be at default (0, 0)
+        let state_b = session.client_state(client_b).unwrap();
+        let cursor_b = state_b.windows.active().unwrap().cursor;
+        assert_eq!(cursor_b.line, 0, "Client B cursor line should be 0");
+        assert_eq!(cursor_b.column, 0, "Client B cursor column should be 0");
+
+        // Verify via gRPC service
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Query Client A's cursor
+        let request = Request::new(GetCursorRequest {
+            window_id: None,
+            client_id: 1,
+        });
+        let response = service.get_cursor(request).await.unwrap().into_inner();
+        let pos = response.position.unwrap();
+        assert_eq!(pos.line, 3, "Client A gRPC cursor line");
+        assert_eq!(pos.column, 5, "Client A gRPC cursor column");
+
+        // Query Client B's cursor - should be independent
+        let request = Request::new(GetCursorRequest {
+            window_id: None,
+            client_id: 2,
+        });
+        let response = service.get_cursor(request).await.unwrap().into_inner();
+        let pos = response.position.unwrap();
+        assert_eq!(pos.line, 0, "Client B gRPC cursor line");
+        assert_eq!(pos.column, 0, "Client B gRPC cursor column");
+    }
+
+    #[tokio::test]
+    async fn test_mode_isolation_between_clients() {
+        use reovim_kernel::api::v1::{ModeId, ModuleId};
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create two clients
+        let client_a = crate::session::ClientId::new(10);
+        let client_b = crate::session::ClientId::new(20);
+        session.add_client(client_a);
+        session.add_client(client_b);
+
+        // Client A enters INSERT mode
+        let module = ModuleId::new("editor");
+        session.update_client_state(client_a, |state| {
+            state.mode_stack.push(ModeId::new(module.clone(), "insert"));
+        });
+
+        // Client B should still be in NORMAL mode (not affected by A)
+        let mode_b = session.client_current_mode(client_b).unwrap();
+        assert_eq!(mode_b.name(), "normal", "Client B should remain in normal mode");
+
+        // Verify via gRPC service
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Query Client A's mode - should be INSERT
+        let request = Request::new(GetModeRequest { client_id: 10 });
+        let response = service.get_mode(request).await.unwrap().into_inner();
+        assert_eq!(response.name, "insert", "Client A gRPC mode");
+        assert!(response.is_insert, "Client A should be in insert mode");
+
+        // Query Client B's mode - should still be NORMAL
+        let request = Request::new(GetModeRequest { client_id: 20 });
+        let response = service.get_mode(request).await.unwrap().into_inner();
+        assert_eq!(response.name, "normal", "Client B gRPC mode");
+        assert!(!response.is_insert, "Client B should NOT be in insert mode");
+    }
+
+    #[tokio::test]
+    async fn test_layout_isolation_per_client() {
+        use reovim_driver_session::Viewport;
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create buffer first
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("test content");
+            })
+            .await;
+
+        // Create a client
+        let client_a = crate::session::ClientId::new(100);
+        session.add_client(client_a);
+
+        // Modify client's window viewport
+        session.update_client_state(client_a, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(120, 40);
+            }
+        });
+
+        // Verify via gRPC with client_id
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetLayoutRequest { client_id: 100 });
+        let response = service.get_layout(request).await.unwrap().into_inner();
+
+        // Should get per-client layout with the modified viewport
+        assert!(response.root.is_some(), "Should have a root node");
+        if let Some(node) = response.root
+            && let Some(Node::Leaf(leaf)) = node.node
+            && let Some(rect) = leaf.rect
+        {
+            assert_eq!(rect.width, 120, "Per-client window width");
+            assert_eq!(rect.height, 40, "Per-client window height");
+        } else {
+            panic!("Expected a leaf node with rect");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_selection_isolation_per_client() {
+        use {
+            reovim_driver_session::{Viewport, api::Selection},
+            reovim_kernel::api::v1::Position as KernelPosition,
+        };
+
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create buffer first
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("hello world");
+            })
+            .await;
+
+        // Create two clients
+        let client_a = crate::session::ClientId::new(50);
+        let client_b = crate::session::ClientId::new(60);
+        session.add_client(client_a);
+        session.add_client(client_b);
+
+        // Client A has a selection
+        session.update_client_state(client_a, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                window.selection = Some(Selection::character(
+                    KernelPosition::new(0, 0),
+                    KernelPosition::new(0, 5),
+                ));
+            }
+        });
+
+        // Client B has no selection (just viewport)
+        session.update_client_state(client_b, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                window.selection = None;
+            }
+        });
+
+        // Verify via gRPC service
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Query Client A's selection - should have selection
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 50,
+        });
+        let response = service.get_selection(request).await.unwrap().into_inner();
+        assert!(response.has_selection, "Client A should have selection");
+        assert_eq!(response.visual_mode, Some("char".to_string()), "Client A selection mode");
+
+        // Query Client B's selection - should have NO selection
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 60,
+        });
+        let response = service.get_selection(request).await.unwrap().into_inner();
+        assert!(!response.has_selection, "Client B should NOT have selection");
     }
 }

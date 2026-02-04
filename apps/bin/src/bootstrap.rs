@@ -420,6 +420,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[allow(deprecated)] // Testing that session initializes with correct home mode
     fn test_create_session_state() {
         // This test verifies that module bootstrap doesn't panic
         let state = create_session_state();

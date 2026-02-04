@@ -74,6 +74,16 @@ interface EditorState {
   useMultiWindow: boolean;
 }
 
+/** Remote client state for multi-client awareness (Phase 14, #471) */
+interface RemoteClient {
+  clientId: bigint;
+  displayName: string;
+  cursorLine: number;
+  cursorCol: number;
+  bufferId: number;
+  selection: { anchor: Position; cursor: Position; mode: VisualMode } | null;
+}
+
 /**
  * Editor class manages state and DOM rendering.
  *
@@ -98,6 +108,9 @@ export class Editor {
 
   // Capture handler (Phase 16)
   private captureHandler: CaptureHandler;
+
+  // Remote clients for multi-client awareness (Phase 14, #471)
+  private remoteClients: Map<bigint, RemoteClient> = new Map();
 
   // DOM elements (legacy single-window)
   private modeElement: HTMLElement | null;
@@ -366,36 +379,75 @@ export class Editor {
 
     switch (payload.case) {
       case "modeChanged": {
-        const { name, display } = payload.value;
-        console.log("[modeChanged] mode:", name, "display:", display);
-        this.state.mode = (name || "normal").toLowerCase();
-        this.state.modeDisplay = display || "NORMAL";
-        this.renderMode();
+        const { name, display, clientId } = payload.value;
+        const notifClientId = clientId ?? 0n;
+
+        // Phase 14 (#471): Filter by client_id for multi-client mode isolation
+        const isLocalMode = notifClientId === this.myClientId;
+
+        console.log(
+          "[modeChanged] mode:",
+          name,
+          "display:",
+          display,
+          "client:",
+          notifClientId,
+          "local:",
+          isLocalMode
+        );
+
+        if (isLocalMode) {
+          // Local mode update
+          this.state.mode = (name || "normal").toLowerCase();
+          this.state.modeDisplay = display || "NORMAL";
+          this.renderMode();
+        } else {
+          // Remote mode update - update tracking map
+          const remote = this.remoteClients.get(notifClientId);
+          if (remote) {
+            remote.mode = display || "NORMAL";
+          }
+        }
         break;
       }
 
       case "cursorMoved": {
-        const { position, windowId } = payload.value;
+        const { position, windowId, clientId } = payload.value;
         const line = Number(position?.line ?? 0n);
         const col = Number(position?.column ?? 0n);
         const winId = Number(windowId ?? 0n);
+        const notifClientId = clientId ?? 0n;
 
-        // Update legacy state
-        this.state.cursorLine = line;
-        this.state.cursorCol = col;
+        // Phase 14 (#471): Filter by client_id for multi-client cursor isolation
+        const isLocalCursor = notifClientId === this.myClientId;
 
-        // Update per-window state (only if we have a layout)
-        if (this.state.useMultiWindow && this.state.layout) {
-          const windowState = this.state.windowStates.get(winId);
-          if (windowState) {
-            windowState.cursorLine = line;
-            windowState.cursorCol = col;
+        if (isLocalCursor) {
+          // Local cursor update
+          // Update legacy state
+          this.state.cursorLine = line;
+          this.state.cursorCol = col;
+
+          // Update per-window state (only if we have a layout)
+          if (this.state.useMultiWindow && this.state.layout) {
+            const windowState = this.state.windowStates.get(winId);
+            if (windowState) {
+              windowState.cursorLine = line;
+              windowState.cursorCol = col;
+            }
+            this.renderMultiWindow();
+          } else {
+            // Single-window fallback
+            this.renderCursor();
+            this.renderPosition();
           }
-          this.renderMultiWindow();
         } else {
-          // Single-window fallback
-          this.renderCursor();
-          this.renderPosition();
+          // Remote cursor update - update tracking map and re-render
+          const remote = this.remoteClients.get(notifClientId);
+          if (remote) {
+            remote.cursorLine = line;
+            remote.cursorCol = col;
+          }
+          this.renderRemoteCursors();
         }
         break;
       }
@@ -420,59 +472,88 @@ export class Editor {
       }
 
       case "selectionChanged": {
-        const { hasSelection, selection, visualMode, windowId } = payload.value;
+        const { hasSelection, selection, visualMode, windowId, clientId } =
+          payload.value;
         const winId = Number(windowId ?? 0n);
+        const notifClientId = clientId ?? 0n;
 
-        // Update legacy state
-        this.state.hasSelection = hasSelection ?? false;
+        // Phase 14 (#471): Filter by client_id for multi-client selection isolation
+        const isLocalSelection = notifClientId === this.myClientId;
 
-        if (hasSelection && selection) {
-          this.state.selectionAnchor = {
-            line: Number(selection.start?.line ?? 0n),
-            col: Number(selection.start?.column ?? 0n),
-          };
-          this.state.selectionCursor = {
-            line: Number(selection.end?.line ?? 0n),
-            col: Number(selection.end?.column ?? 0n),
-          };
-          this.state.visualMode = (visualMode as VisualMode) ?? null;
+        if (isLocalSelection) {
+          // Local selection update
+          // Update legacy state
+          this.state.hasSelection = hasSelection ?? false;
 
-          // Update per-window state (only if we have a layout)
+          if (hasSelection && selection) {
+            this.state.selectionAnchor = {
+              line: Number(selection.start?.line ?? 0n),
+              col: Number(selection.start?.column ?? 0n),
+            };
+            this.state.selectionCursor = {
+              line: Number(selection.end?.line ?? 0n),
+              col: Number(selection.end?.column ?? 0n),
+            };
+            this.state.visualMode = (visualMode as VisualMode) ?? null;
+
+            // Update per-window state (only if we have a layout)
+            if (this.state.useMultiWindow && this.state.layout) {
+              const windowState = this.state.windowStates.get(winId);
+              if (windowState) {
+                windowState.selection = {
+                  anchor: {
+                    x: Number(selection.start?.column ?? 0n),
+                    y: Number(selection.start?.line ?? 0n),
+                  },
+                  cursor: {
+                    x: Number(selection.end?.column ?? 0n),
+                    y: Number(selection.end?.line ?? 0n),
+                  },
+                  mode: (visualMode as "char" | "line" | "block") ?? "char",
+                };
+              }
+            }
+          } else {
+            this.state.selectionAnchor = null;
+            this.state.selectionCursor = null;
+            this.state.visualMode = null;
+
+            // Clear per-window selection (only if we have a layout)
+            if (this.state.useMultiWindow && this.state.layout) {
+              const windowState = this.state.windowStates.get(winId);
+              if (windowState) {
+                windowState.selection = null;
+              }
+            }
+          }
+
+          // Render with fallback to single-window if no layout
           if (this.state.useMultiWindow && this.state.layout) {
-            const windowState = this.state.windowStates.get(winId);
-            if (windowState) {
-              windowState.selection = {
+            this.renderMultiWindow();
+          } else {
+            this.renderBuffer();
+          }
+        } else {
+          // Remote selection update - track in remoteClients map
+          const remote = this.remoteClients.get(notifClientId);
+          if (remote) {
+            if (hasSelection && selection) {
+              remote.selection = {
                 anchor: {
-                  x: Number(selection.start?.column ?? 0n),
-                  y: Number(selection.start?.line ?? 0n),
+                  line: Number(selection.start?.line ?? 0n),
+                  col: Number(selection.start?.column ?? 0n),
                 },
                 cursor: {
-                  x: Number(selection.end?.column ?? 0n),
-                  y: Number(selection.end?.line ?? 0n),
+                  line: Number(selection.end?.line ?? 0n),
+                  col: Number(selection.end?.column ?? 0n),
                 },
-                mode: (visualMode as "char" | "line" | "block") ?? "char",
+                mode: (visualMode as VisualMode) ?? "char",
               };
+            } else {
+              remote.selection = null;
             }
           }
-        } else {
-          this.state.selectionAnchor = null;
-          this.state.selectionCursor = null;
-          this.state.visualMode = null;
-
-          // Clear per-window selection (only if we have a layout)
-          if (this.state.useMultiWindow && this.state.layout) {
-            const windowState = this.state.windowStates.get(winId);
-            if (windowState) {
-              windowState.selection = null;
-            }
-          }
-        }
-
-        // Render with fallback to single-window if no layout
-        if (this.state.useMultiWindow && this.state.layout) {
-          this.renderMultiWindow();
-        } else {
-          this.renderBuffer();
+          // TODO: Render remote selections (future enhancement)
         }
         break;
       }
@@ -526,6 +607,46 @@ export class Editor {
       case "captureRequest": {
         // Phase 16: Handle capture request from server (e.g., from CLI)
         this.captureHandler.handleCaptureRequest(payload.value);
+        break;
+      }
+
+      case "presenceJoined": {
+        // Phase 14 (#471): Track new remote client
+        const { client } = payload.value;
+        if (client && BigInt(client.clientId) !== this.myClientId) {
+          this.remoteClients.set(BigInt(client.clientId), {
+            clientId: BigInt(client.clientId),
+            displayName: client.displayName ?? "unknown",
+            cursorLine: 0,
+            cursorCol: 0,
+            bufferId: Number(client.bufferId ?? 0n),
+            selection: null,
+          });
+          this.renderRemoteCursors();
+        }
+        break;
+      }
+
+      case "presenceUpdated": {
+        // Phase 14 (#471): Update remote client state
+        const { client } = payload.value;
+        if (client && BigInt(client.clientId) !== this.myClientId) {
+          const remote = this.remoteClients.get(BigInt(client.clientId));
+          if (remote) {
+            remote.bufferId = Number(client.bufferId ?? remote.bufferId);
+          }
+          this.renderRemoteCursors();
+        }
+        break;
+      }
+
+      case "presenceLeft": {
+        // Phase 14 (#471): Remove departed client
+        const { clientId } = payload.value;
+        if (clientId !== undefined) {
+          this.remoteClients.delete(BigInt(clientId));
+          this.renderRemoteCursors();
+        }
         break;
       }
 
@@ -753,11 +874,20 @@ export class Editor {
 
   /**
    * Render mode indicator.
+   *
+   * Phase 14 (#471): Show role and client_id in mode indicator.
+   * Format: "MODE [Role#ClientId]" e.g., "NORMAL [Owner#1]"
    */
   private renderMode(): void {
     if (!this.modeElement) return;
 
-    this.modeElement.textContent = this.state.modeDisplay;
+    // Phase 14 (#471): Include role and client_id in statusline
+    // Web client is always Owner (Follow/Share not implemented yet)
+    const role = "Owner";
+    const clientIdStr = `#${this.myClientId}`;
+    const modeText = `${this.state.modeDisplay} [${role}${clientIdStr}]`;
+
+    this.modeElement.textContent = modeText;
     this.modeElement.className = this.state.mode;
   }
 
@@ -875,6 +1005,55 @@ export class Editor {
     }
 
     this.positionElement.textContent = `${this.state.cursorLine + 1}:${this.state.cursorCol + 1}`;
+  }
+
+  /**
+   * Render remote clients' cursors (Phase 14, #471).
+   *
+   * Displays thin colored bars at each remote client's cursor position
+   * so local user can see where collaborators are working.
+   */
+  private renderRemoteCursors(): void {
+    // Clear existing remote cursor elements
+    document.querySelectorAll(".remote-cursor").forEach((el) => el.remove());
+
+    const container = this.editorElement ?? this.bufferElement;
+    if (!container) return;
+
+    const charWidth = 8.4;
+    const lineHeight = 21;
+    const lineNumberWidth = 48;
+    const padding = 8;
+
+    // Determine current buffer ID
+    const currentBufferId = this.state.focusedWindowId
+      ? this.state.windowStates.get(this.state.focusedWindowId)
+        ? 0 // TODO: Track buffer ID per window
+        : 0
+      : 0;
+
+    for (const [, remote] of this.remoteClients) {
+      // Only show cursors for clients viewing the same buffer
+      // TODO: Proper buffer ID tracking for multi-buffer comparison
+      if (remote.bufferId !== currentBufferId && currentBufferId !== 0) continue;
+
+      const el = document.createElement("div");
+      el.className = "remote-cursor";
+      el.style.cssText = `
+        position: absolute;
+        left: ${padding + lineNumberWidth + remote.cursorCol * charWidth}px;
+        top: ${padding + remote.cursorLine * lineHeight}px;
+        width: 2px;
+        height: ${lineHeight}px;
+        background: cyan;
+        opacity: 0.7;
+        pointer-events: none;
+        z-index: 10;
+      `;
+      // Add tooltip with client name
+      el.title = remote.displayName;
+      container.appendChild(el);
+    }
   }
 
   /**

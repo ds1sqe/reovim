@@ -49,7 +49,12 @@ service StateService {
 
 // Mode
 
-message GetModeRequest {}
+message GetModeRequest {
+  // Per-client state (#471): Per-client mode isolation.
+  // If client_id > 0, returns the mode for that specific client's mode stack.
+  // If client_id == 0 (default), returns the shared session mode (backward compat).
+  uint64 client_id = 1;
+}
 
 message GetModeResponse {
   string name = 1;        // Internal name (e.g., "normal", "insert")
@@ -61,6 +66,10 @@ message GetModeResponse {
 
 message GetCursorRequest {
   optional uint64 window_id = 1;  // Default: focused window
+  // Per-client state (#471): Per-client cursor isolation.
+  // If client_id > 0, returns the cursor for that specific client's editing state.
+  // If client_id == 0 (default), returns the cursor from the active buffer (backward compat).
+  uint64 client_id = 2;
 }
 
 message GetCursorResponse {
@@ -88,7 +97,12 @@ message OptionValue {
 
 // Layout
 
-message GetLayoutRequest {}
+message GetLayoutRequest {
+  // Phase #471: Per-client window layout.
+  // If client_id > 0, returns the layout for that client's editing state.
+  // If client_id == 0 (default), returns the shared session layout (backward compat).
+  uint64 client_id = 1;
+}
 
 message GetLayoutResponse {
   WindowNode root = 1;
@@ -125,6 +139,10 @@ enum SplitDirection {
 
 message GetVisibleLinesRequest {
   optional uint64 window_id = 1;  // Default: focused window
+  // Phase #471: Per-client visible lines.
+  // If client_id > 0, returns visible lines from that client's window layout.
+  // If client_id == 0 (default), returns from shared session layout (backward compat).
+  uint64 client_id = 2;
 }
 
 message GetVisibleLinesResponse {
@@ -138,6 +156,10 @@ message GetVisibleLinesResponse {
 
 message GetSelectionRequest {
   optional uint64 window_id = 1;
+  // Phase #471: Per-client selection state.
+  // If client_id > 0, returns selection from that client's window layout.
+  // If client_id == 0 (default), returns from shared session layout (backward compat).
+  uint64 client_id = 2;
 }
 
 message GetSelectionResponse {

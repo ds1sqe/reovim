@@ -31,8 +31,8 @@ use {
     reovim_protocol::v2::{
         ClientPresence as ProtoClientPresence, ClientRole as ProtoRole, JoinRequest, JoinResponse,
         LeaveRequest, LeaveResponse, LineRange, ListClientsRequest, ListClientsResponse,
-        Notification, Position, PresenceUpdate, SetRoleRequest, SetRoleResponse,
-        SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
+        Notification, PresenceUpdate, SetRoleRequest, SetRoleResponse, SetSyncModeRequest,
+        SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
         UpdatePresenceRequest, UpdatePresenceResponse, notification::Payload,
         presence_service_server::PresenceService, presence_update::Update,
     },
@@ -50,6 +50,9 @@ fn current_timestamp_ms() -> u64 {
 }
 
 /// Convert internal `ClientPresence` to protobuf format.
+///
+/// Note: cursor is no longer included in proto (Phase 14, #471).
+/// Cursor tracking moved to `CursorMoved` notifications with `client_id`.
 fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
     let (sync_mode, follow_target) = match presence.sync_mode {
         SyncMode::Independent => (ProtoSyncMode::Independent as i32, None),
@@ -64,10 +67,7 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         client_type: presence.client_type.clone(),
         display_name: presence.display_name.clone(),
         buffer_id: presence.buffer_id.unwrap_or(0) as u64,
-        cursor: Some(Position {
-            line: presence.cursor.0 as u64,
-            column: presence.cursor.1 as u64,
-        }),
+        // cursor field removed - now tracked via CursorMoved with client_id
         visible_lines: Some(LineRange {
             start: presence.visible_lines.0 as u64,
             end: presence.visible_lines.1 as u64,
@@ -294,13 +294,12 @@ impl PresenceService for PresenceServiceImpl {
         let client_id = ClientId::new(req.client_id as usize);
 
         // Update presence via closure
+        // Note: cursor field removed from request (Phase 14, #471) - now tracked via CursorMoved
         let updated = session.presence().update(client_id, |presence| {
             if let Some(buffer_id) = req.buffer_id {
                 presence.buffer_id = Some(buffer_id as usize);
             }
-            if let Some(cursor) = &req.cursor {
-                presence.cursor = (cursor.line as usize, cursor.column as usize);
-            }
+            // cursor field removed - tracked via CursorMoved with client_id
             if let Some(visible_lines) = &req.visible_lines {
                 presence.visible_lines = (visible_lines.start as usize, visible_lines.end as usize);
             }
@@ -550,13 +549,10 @@ mod tests {
         let client_id = join_resp.client_id;
 
         // Update presence
+        // Note: cursor field removed (Phase 14, #471) - now tracked via CursorMoved
         let update_req = Request::new(UpdatePresenceRequest {
             client_id,
             buffer_id: Some(42),
-            cursor: Some(Position {
-                line: 10,
-                column: 5,
-            }),
             visible_lines: Some(LineRange { start: 5, end: 30 }),
             mode: Some("INSERT".to_string()),
         });
@@ -574,7 +570,6 @@ mod tests {
         let request = Request::new(UpdatePresenceRequest {
             client_id: 999,
             buffer_id: Some(42),
-            cursor: None,
             visible_lines: None,
             mode: None,
         });

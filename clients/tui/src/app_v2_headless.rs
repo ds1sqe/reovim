@@ -151,6 +151,11 @@ pub struct FrameMetadata {
 /// Headless TUI state (mirrors interactive TUI state).
 #[derive(Debug, Default)]
 struct HeadlessState {
+    /// This client's unique ID (#471).
+    ///
+    /// Used for per-client state isolation. All `send_keys` requests must
+    /// include this ID for proper mode/cursor isolation.
+    my_client_id: u64,
     /// Current mode name (internal).
     mode_name: String,
     /// Current mode display string.
@@ -225,6 +230,15 @@ impl TuiAppV2Headless {
         // Connect gRPC client
         let mut client = TuiGrpcClient::connect(addr).await?;
 
+        // Per-client state (#471): Join presence to get unique client_id for per-client state isolation.
+        // The client_id is required for proper mode/cursor isolation in multi-client scenarios.
+        let join_response = client
+            .presence_join("headless", "Headless TUI")
+            .await
+            .map_err(|e| HeadlessError::CaptureError(format!("Failed to join presence: {e}")))?;
+        let my_client_id = join_response.client_id;
+        tracing::debug!(client_id = my_client_id, "Headless TUI joined presence");
+
         // Subscribe to all notifications
         let notification_stream = client.subscribe_all().await?;
 
@@ -235,8 +249,9 @@ impl TuiAppV2Headless {
         // Create request channel
         let (request_tx, request_rx) = mpsc::channel(32);
 
-        // Create initial state
+        // Create initial state with client_id
         let state = HeadlessState {
+            my_client_id,
             width,
             height,
             ..Default::default()
@@ -652,7 +667,12 @@ impl HeadlessEventLoop {
 
     /// Send keys to the server.
     async fn do_send_keys(&mut self, keys: &str) -> Result<bool, HeadlessError> {
-        let response = self.client.send_keys(keys).await?;
+        // Per-client state (#471): Use client_id for per-client state isolation.
+        // Without this, all headless TUIs would share mode/cursor state.
+        let response = self
+            .client
+            .send_keys_with_client(keys, self.state.my_client_id)
+            .await?;
         Ok(response.ok)
     }
 

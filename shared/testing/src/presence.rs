@@ -106,12 +106,13 @@ impl PresenceTestClient {
     }
 
     /// Update cursor position.
-    pub async fn update_cursor(&mut self, line: u64, col: u64) -> Result<(), String> {
-        let id = self.client_id();
-        self.client
-            .presence_update(id, None, Some(line), Some(col), None)
-            .await
-            .map_err(|e| format!("Update cursor failed: {e}"))?;
+    ///
+    /// Note: This is now a no-op (Phase 14, #471).
+    /// Cursor tracking moved to `CursorMoved` notifications with `client_id`.
+    /// This method is preserved for test compatibility but does nothing.
+    #[allow(clippy::unused_async)] // API compatibility - async signature preserved
+    pub async fn update_cursor(&mut self, _line: u64, _col: u64) -> Result<(), String> {
+        // Cursor is no longer tracked via presence - it's tracked via CursorMoved notifications
         Ok(())
     }
 
@@ -119,7 +120,7 @@ impl PresenceTestClient {
     pub async fn update_buffer(&mut self, buffer_id: u64) -> Result<(), String> {
         let id = self.client_id();
         self.client
-            .presence_update(id, Some(buffer_id), None, None, None)
+            .presence_update(id, Some(buffer_id), None)
             .await
             .map_err(|e| format!("Update buffer failed: {e}"))?;
         Ok(())
@@ -129,7 +130,7 @@ impl PresenceTestClient {
     pub async fn update_mode(&mut self, mode: &str) -> Result<(), String> {
         let id = self.client_id();
         self.client
-            .presence_update(id, None, None, None, Some(mode.to_string()))
+            .presence_update(id, None, Some(mode.to_string()))
             .await
             .map_err(|e| format!("Update mode failed: {e}"))?;
         Ok(())
@@ -194,6 +195,54 @@ impl PresenceTestClient {
     #[allow(clippy::missing_const_for_fn)] // mutable reference prevents const
     pub fn grpc(&mut self) -> &mut GrpcClient {
         &mut self.client
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Per-client state (#471): Per-client state isolation helpers
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Send keys using this client's ID for per-client mode routing.
+    ///
+    /// # Per-client state (#471): Per-client input routing
+    ///
+    /// Keys are processed using this client's per-client mode stack,
+    /// enabling multi-client mode isolation.
+    pub async fn send_keys(&mut self, keys: &str) -> Result<(), String> {
+        let id = self.client_id();
+        self.client
+            .send_keys_with_client(keys, id)
+            .await
+            .map_err(|e| format!("Send keys failed: {e}"))?;
+        Ok(())
+    }
+
+    /// Get the current mode for this client.
+    ///
+    /// # Per-client state (#471): Per-client mode isolation
+    ///
+    /// Returns the mode from this client's per-client mode stack.
+    pub async fn get_mode(&mut self) -> Result<reovim_protocol::v2::GetModeResponse, String> {
+        let id = self.client_id();
+        self.client
+            .get_mode_for_client(id)
+            .await
+            .map_err(|e| format!("Get mode failed: {e}"))
+    }
+
+    /// Get cursor position for this client.
+    ///
+    /// # Per-client state (#471): Per-client cursor isolation
+    ///
+    /// Returns the cursor from this client's per-client editing state.
+    pub async fn get_cursor(&mut self) -> Result<(u64, u64), String> {
+        let id = self.client_id();
+        let response = self
+            .client
+            .get_cursor_for_client(id)
+            .await
+            .map_err(|e| format!("Get cursor failed: {e}"))?;
+        let pos = response.position.ok_or("No position in response")?;
+        Ok((pos.line, pos.column))
     }
 }
 

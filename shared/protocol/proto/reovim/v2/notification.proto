@@ -57,6 +57,8 @@ message ModeChangedPayload {
   string name = 1;      // Internal name
   string display = 2;   // Display name
   bool is_insert = 3;
+  // Phase 14 (#471): Client ID that changed mode (for multi-client filtering)
+  uint64 client_id = 4;
 }
 
 // Cursor moved
@@ -64,6 +66,8 @@ message ModeChangedPayload {
 message CursorMovedPayload {
   uint64 window_id = 1;
   Position position = 2;
+  // Client ID that owns this cursor (for multi-client filtering)
+  uint64 client_id = 3;
 }
 
 // Buffer modified
@@ -114,6 +118,8 @@ message SelectionChangedPayload {
   bool has_selection = 2;
   optional Selection selection = 3;
   optional string visual_mode = 4;
+  // Client ID that owns this selection (for multi-client filtering)
+  uint64 client_id = 5;
 }
 
 // Buffer list changed

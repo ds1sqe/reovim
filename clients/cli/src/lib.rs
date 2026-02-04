@@ -151,7 +151,10 @@ pub enum PresenceAction {
     /// List all connected clients.
     List,
 
-    /// Update presence state (cursor, buffer, mode).
+    /// Update presence state (buffer, mode).
+    ///
+    /// Note: cursor line/column removed (Phase 14, #471).
+    /// Cursor is now tracked via `CursorMoved` notifications.
     Update {
         /// Client ID making the update.
         client_id: u64,
@@ -159,14 +162,6 @@ pub enum PresenceAction {
         /// Buffer ID to switch to.
         #[arg(long)]
         buffer: Option<u64>,
-
-        /// Cursor line position.
-        #[arg(long)]
-        line: Option<u64>,
-
-        /// Cursor column position.
-        #[arg(long)]
-        column: Option<u64>,
 
         /// Mode name.
         #[arg(long)]
@@ -229,16 +224,12 @@ impl CliArgs {
                 PresenceAction::Update {
                     client_id,
                     buffer,
-                    line,
-                    column,
                     mode,
                 } => {
                     commands::presence_update(
                         &mut client,
                         *client_id,
                         *buffer,
-                        *line,
-                        *column,
                         mode.clone(),
                         self.format,
                     )

@@ -129,7 +129,30 @@ impl GrpcClient {
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
         let request = SendKeysRequest {
             keys: keys.to_string(),
-            client_id: None, // Use default client (Phase 11.2)
+            client_id: 0, // Default client ID for stateless CLI commands
+        };
+        let response = self.input.send_keys(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Send keys to the editor with a specific client ID.
+    ///
+    /// # Per-client state (#471): Per-client input routing
+    ///
+    /// Keys are processed using the specified client's per-client mode stack,
+    /// enabling multi-client mode isolation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn send_keys_with_client(
+        &mut self,
+        keys: &str,
+        client_id: u64,
+    ) -> Result<SendKeysResponse, GrpcClientError> {
+        let request = SendKeysRequest {
+            keys: keys.to_string(),
+            client_id,
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
@@ -141,7 +164,26 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
-        let request = GetModeRequest {};
+        // Per-client state (#471): client_id = 0 means use shared mode (backward compat)
+        let request = GetModeRequest { client_id: 0 };
+        let response = self.state.get_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the mode for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client mode isolation
+    ///
+    /// Returns the mode from the specified client's per-client mode stack.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_mode_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetModeResponse, GrpcClientError> {
+        let request = GetModeRequest { client_id };
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -152,7 +194,32 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
-        let request = GetCursorRequest { window_id: None };
+        // Per-client state (#471): client_id = 0 means use shared cursor (backward compat)
+        let request = GetCursorRequest {
+            window_id: None,
+            client_id: 0,
+        };
+        let response = self.state.get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the cursor position for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client cursor isolation
+    ///
+    /// Returns the cursor from the specified client's per-client editing state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_cursor_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetCursorResponse, GrpcClientError> {
+        let request = GetCursorRequest {
+            window_id: None,
+            client_id,
+        };
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -329,9 +396,10 @@ impl GrpcClient {
     ///
     /// * `client_id` - The client ID making the update.
     /// * `buffer_id` - Optional new buffer ID.
-    /// * `cursor_line` - Optional cursor line.
-    /// * `cursor_column` - Optional cursor column.
     /// * `mode` - Optional mode name.
+    ///
+    /// Note: `cursor_line`/`cursor_column` removed (Phase 14, #471).
+    /// Cursor is now tracked via `CursorMoved` notifications with `client_id`.
     ///
     /// # Errors
     ///
@@ -340,21 +408,11 @@ impl GrpcClient {
         &mut self,
         client_id: u64,
         buffer_id: Option<u64>,
-        cursor_line: Option<u64>,
-        cursor_column: Option<u64>,
         mode: Option<String>,
     ) -> Result<UpdatePresenceResponse, GrpcClientError> {
-        use reovim_protocol::v2::Position;
-
-        let cursor = match (cursor_line, cursor_column) {
-            (Some(line), Some(column)) => Some(Position { line, column }),
-            _ => None,
-        };
-
         let request = UpdatePresenceRequest {
             client_id,
             buffer_id,
-            cursor,
             visible_lines: None,
             mode,
         };

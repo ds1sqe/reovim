@@ -53,24 +53,32 @@ fn current_timestamp_ms() -> u64 {
 ///
 /// * `changes` - The state changes to convert
 /// * `state` - Current session state for reading values
+/// * `client_id` - Client ID that originated these changes (for multi-client filtering)
 ///
 /// # Returns
 ///
 /// A vector of notifications to emit. May be empty if no relevant changes.
 #[must_use]
-pub fn build_notifications(changes: &StateChanges, state: &SessionState) -> Vec<Notification> {
+pub fn build_notifications(
+    changes: &StateChanges,
+    state: &SessionState,
+    client_id: u64,
+) -> Vec<Notification> {
     let mut notifications = Vec::new();
     let timestamp = current_timestamp_ms();
 
     // Mode changed notification
+    // Phase 14 (#471): Include client_id for multi-client mode filtering
     if changes.mode_changed {
-        notifications.push(build_mode_notification(state, timestamp));
+        notifications.push(build_mode_notification(state, timestamp, client_id));
     }
 
     // Cursor moved notification (per affected buffer)
     if changes.cursor_moved {
         for buffer_id in &changes.affected_buffers {
-            if let Some(notification) = build_cursor_notification(state, *buffer_id, timestamp) {
+            if let Some(notification) =
+                build_cursor_notification(state, *buffer_id, timestamp, client_id)
+            {
                 notifications.push(notification);
             }
         }
@@ -99,7 +107,9 @@ pub fn build_notifications(changes: &StateChanges, state: &SessionState) -> Vec<
     // Selection changed notifications
     if changes.selection_changed {
         for buffer_id in &changes.affected_buffers {
-            if let Some(notification) = build_selection_notification(state, *buffer_id, timestamp) {
+            if let Some(notification) =
+                build_selection_notification(state, *buffer_id, timestamp, client_id)
+            {
                 notifications.push(notification);
             }
         }
@@ -123,7 +133,13 @@ pub fn build_notifications(changes: &StateChanges, state: &SessionState) -> Vec<
 }
 
 /// Build a mode changed notification.
-fn build_mode_notification(state: &SessionState, timestamp: u64) -> Notification {
+///
+/// # Arguments
+///
+/// * `state` - Session state for reading mode info
+/// * `timestamp` - Notification timestamp
+/// * `client_id` - Client that changed mode (Phase 14 #471: multi-client filtering)
+fn build_mode_notification(state: &SessionState, timestamp: u64, client_id: u64) -> Notification {
     let mode = state.driver_session.mode_stack.current();
     let mode_name = mode.name();
 
@@ -140,6 +156,7 @@ fn build_mode_notification(state: &SessionState, timestamp: u64) -> Notification
             name: mode_name.to_string(),
             display: display_name,
             is_insert,
+            client_id,
         })),
     }
 }
@@ -149,6 +166,7 @@ fn build_cursor_notification(
     state: &SessionState,
     buffer_id: reovim_kernel::api::v1::BufferId,
     timestamp: u64,
+    client_id: u64,
 ) -> Option<Notification> {
     // Find the window displaying this buffer
     let window = state
@@ -167,6 +185,7 @@ fn build_cursor_notification(
                 line: window.cursor.line as u64,
                 column: window.cursor.column as u64,
             }),
+            client_id,
         })),
     })
 }
@@ -281,6 +300,7 @@ fn build_selection_notification(
     state: &SessionState,
     buffer_id: reovim_kernel::api::v1::BufferId,
     timestamp: u64,
+    client_id: u64,
 ) -> Option<Notification> {
     // Phase 8 (#465): Read selection from WINDOW, not buffer.
     // Find focused window first (if it displays this buffer), then fallback to any window
@@ -337,6 +357,7 @@ fn build_selection_notification(
             has_selection,
             selection,
             visual_mode,
+            client_id,
         })),
     })
 }
@@ -406,7 +427,7 @@ mod tests {
     fn test_build_notifications_empty_changes() {
         let changes = StateChanges::new();
         let state = SessionState::default();
-        let notifications = build_notifications(&changes, &state);
+        let notifications = build_notifications(&changes, &state, 1);
         assert!(notifications.is_empty());
     }
 
@@ -416,7 +437,7 @@ mod tests {
         changes.record_mode_change();
 
         let state = SessionState::default();
-        let notifications = build_notifications(&changes, &state);
+        let notifications = build_notifications(&changes, &state, 1);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "mode_changed");

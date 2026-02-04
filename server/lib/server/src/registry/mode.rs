@@ -10,11 +10,10 @@
 //! - `ModeId`: Runtime identity stored in `ModeStack`, used as registry keys
 //! - `ModeEntry`: Cached behavior properties (cursor style, input acceptance)
 //!
-//! # Module Ownership
+//! # Registration
 //!
-//! Modes can be registered with optional module ownership via
-//! [`ModeRegistry::register_for_module`]. When a module is unloaded, all its
-//! registered modes can be removed via [`ModeRegistry::unregister_for_module`].
+//! Modes are registered via [`ModeRegistry::register`] or convenience methods
+//! like [`ModeRegistry::register_mode`] and [`ModeRegistry::register_all`].
 
 use std::collections::HashMap;
 

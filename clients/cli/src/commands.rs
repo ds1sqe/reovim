@@ -406,29 +406,23 @@ pub async fn presence_list(
                     2 => "present",
                     _ => "unknown",
                 };
-                let cursor_str = c
-                    .cursor
-                    .as_ref()
-                    .map_or_else(|| "?:?".to_string(), |p| format!("{}:{}", p.line, p.column));
+                // Phase 14 (#471): cursor removed from presence, shown via separate mechanism
                 let _ = writeln!(
                     output,
-                    "  {} ({}) - {} @ {} [{}]",
-                    c.client_id, c.display_name, c.client_type, cursor_str, sync_mode_str
+                    "  {} ({}) - {} [{}]",
+                    c.client_id, c.display_name, c.client_type, sync_mode_str
                 );
             }
             Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
+            // Phase 14 (#471): cursor removed from presence
             let json = serde_json::json!({
                 "clients": response.clients.iter().map(|c| serde_json::json!({
                     "client_id": c.client_id,
                     "client_type": c.client_type,
                     "display_name": c.display_name,
                     "buffer_id": c.buffer_id,
-                    "cursor": c.cursor.as_ref().map(|p| serde_json::json!({
-                        "line": p.line,
-                        "column": p.column,
-                    })),
                     "mode": c.mode,
                     "sync_mode": c.sync_mode,
                     "follow_target": c.follow_target,
@@ -442,6 +436,9 @@ pub async fn presence_list(
 
 /// Update presence state.
 ///
+/// Note: `cursor_line`/`cursor_column` removed (Phase 14, #471).
+/// Cursor is now tracked via `CursorMoved` notifications with `client_id`.
+///
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
@@ -449,14 +446,10 @@ pub async fn presence_update(
     client: &mut GrpcClient,
     client_id: u64,
     buffer_id: Option<u64>,
-    cursor_line: Option<u64>,
-    cursor_column: Option<u64>,
     mode: Option<String>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client
-        .presence_update(client_id, buffer_id, cursor_line, cursor_column, mode)
-        .await?;
+    let response = client.presence_update(client_id, buffer_id, mode).await?;
 
     match format {
         OutputFormat::Plain => {

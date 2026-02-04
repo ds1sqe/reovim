@@ -188,18 +188,15 @@ enum PresenceAction {
     /// List all connected clients.
     List,
     /// Update presence state.
+    ///
+    /// Note: cursor line/column removed (Phase 14, #471).
+    /// Cursor is now tracked via `CursorMoved` notifications.
     Update {
         /// Client ID making the update.
         client_id: u64,
         /// Buffer ID to switch to.
         #[arg(long)]
         buffer: Option<u64>,
-        /// Cursor line position.
-        #[arg(long)]
-        line: Option<u64>,
-        /// Cursor column position.
-        #[arg(long)]
-        column: Option<u64>,
         /// Mode name.
         #[arg(long)]
         mode: Option<String>,
@@ -341,20 +338,9 @@ async fn run_cli(
             PresenceAction::Update {
                 client_id,
                 buffer,
-                line,
-                column,
                 mode,
             } => {
-                commands::presence_update(
-                    &mut client,
-                    client_id,
-                    buffer,
-                    line,
-                    column,
-                    mode,
-                    output_format,
-                )
-                .await
+                commands::presence_update(&mut client, client_id, buffer, mode, output_format).await
             }
             PresenceAction::Follow { client_id, target } => {
                 commands::presence_set_sync_mode(

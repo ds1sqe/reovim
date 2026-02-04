@@ -298,7 +298,7 @@ impl Default for Window {
 /// Window layout for a session.
 ///
 /// Manages the windows in a session, including which window is active.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct WindowLayout {
     /// All windows in this session.
     pub windows: Vec<Window>,
@@ -476,10 +476,28 @@ impl KeySequence {
 /// `terminal_size` here is the session-level default. Per-client dimensions
 /// may differ and are stored in `ClientViewport` at the runner layer.
 /// The precedence rule is: `ClientViewport` (if exists) > Session default.
+///
+/// # Deprecation Note (#471)
+///
+/// The `windows` and `mode_stack` fields are for **BOOTSTRAP ONLY**. At runtime,
+/// per-client state should be used via `EditingState` in the server layer:
+///
+/// - **Cursor position** - Use `EditingState.windows` (per-client)
+/// - **Mode stack** - Use `EditingState.mode_stack` (per-client)
+/// - **Selection** - Use `EditingState.windows[].selection` (per-client)
+///
+/// Commands should use `SessionRuntime::new_for_client()` to operate on per-client
+/// state, NOT `SessionRuntime::new()` which uses this shared state.
 pub struct Session {
     /// Unique client identifier.
     pub id: ClientId,
     /// Window layout (per-session windows).
+    ///
+    /// # Deprecation Note (#471)
+    ///
+    /// **BOOTSTRAP ONLY** - This field exists for session initialization.
+    /// At runtime, use `EditingState.windows` for per-client cursor/selection state.
+    /// Commands should use `SessionRuntime::new_for_client()`.
     pub windows: WindowLayout,
     /// Window compositor for layout management.
     ///
@@ -487,6 +505,12 @@ pub struct Session {
     /// This is set by the layout module during session initialization.
     pub compositor: Option<Box<dyn RootCompositor>>,
     /// Mode stack (current mode on top).
+    ///
+    /// # Deprecation Note (#471)
+    ///
+    /// **BOOTSTRAP ONLY** - This field exists for session initialization.
+    /// At runtime, use `EditingState.mode_stack` for per-client mode state.
+    /// Commands should use `SessionRuntime::new_for_client()`.
     pub mode_stack: ModeStack,
     /// Keys accumulated but not yet processed.
     pub pending_keys: KeySequence,

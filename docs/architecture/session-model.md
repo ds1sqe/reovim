@@ -6,15 +6,15 @@ reovim follows a tmux-inspired session model for multi-client editing.
 
 ### Session
 - Named editing context (e.g., "default", "project-a")
-- Contains shared state: buffers, mode_stack, windows, extensions
+- Contains shared state: buffers, extensions
 - Multiple clients can attach to the same session
-- Terminal size follows most recent resize
+- Each client has independent editing state (mode, cursor, selection)
 
 ### Client
 - Individual connection to the server
 - Identified by `ClientId` (numeric, auto-generated)
 - Can attach/detach from sessions
-- Has own viewport (cursor position, scroll offset)
+- Has own `EditingState` (mode, cursor, viewport, selection)
 
 ## Session/Client Diagram
 
@@ -23,33 +23,41 @@ reovim follows a tmux-inspired session model for multi-client editing.
 │  reovim server                                  │
 │                                                 │
 │  Session: "default" (SessionId)                 │
-│  ├── Shared State (driver::Session):            │
-│  │   ├── mode_stack                             │
-│  │   ├── pending_keys                           │
-│  │   ├── active_buffer                          │
-│  │   └── extensions                             │
+│  ├── Shared State:                              │
+│  │   ├── buffers (content shared by all)        │
+│  │   ├── extensions (module state)              │
+│  │   └── active_buffer                          │
 │  │                                              │
 │  └── Attached Clients:                          │
-│      ├── ClientId(1) - /dev/pts/0, 120x40       │
-│      └── ClientId(2) - /dev/pts/1, 80x24        │
+│      ├── ClientId(1) - EditingState             │
+│      │   ├── mode_stack (NORMAL)                │
+│      │   ├── cursor (10, 5)                     │
+│      │   ├── viewport (120x40)                  │
+│      │   └── selection (none)                   │
+│      └── ClientId(2) - EditingState             │
+│          ├── mode_stack (INSERT)                │
+│          ├── cursor (20, 3)                     │
+│          ├── viewport (80x24)                   │
+│          └── selection (none)                   │
 └─────────────────────────────────────────────────┘
 ```
 
-## Type Mapping (Clarified)
+## Type Mapping
 
 | Concept | Type | Layer | Description |
 |---------|------|-------|-------------|
-| Session Name | `SessionId(Arc<str>)` | runner | Named editing context (e.g., "default") |
-| Session State | `SessionState` | runner | Contains `driver::Session` (SSOT) |
-| Client ID | `ClientId(usize)` | driver | Connection identifier (auto-generated) |
-| Client State | `ClientViewport` | runner | Per-client viewport, cursor, scroll |
+| Session Name | `SessionId(Arc<str>)` | server | Named editing context (e.g., "default") |
+| Session State | `SessionState` | server | Contains driver::Session + registries |
+| Client ID | `ClientId(usize)` | server | Connection identifier (auto-generated) |
+| Client State | `EditingState` | server | Per-client mode, cursor, viewport, selection |
 | Window | `WindowId(usize)` | kernel | Window identifier |
 | Buffer | `BufferId(usize)` | kernel | Buffer identifier |
 
 **Important distinction:**
 - `SessionId` is a **name** (string) - identifies which session
-- `driver::Session` holds the **state** - mode, pending keys, extensions
+- `driver::Session` holds **shared state** - buffers, extensions (bootstrap-only for mode/windows)
 - `ClientId` is a **numeric ID** - identifies which connection
+- `EditingState` holds **per-client state** - mode, cursor, selection, viewport
 
 ## Multi-Client Example
 
@@ -57,22 +65,33 @@ Two terminals attach to the same session:
 
 1. Client A connects → `ClientId(1)`, attaches to `SessionId("default")`
 2. Client B connects → `ClientId(2)`, attaches to `SessionId("default")`
-3. Both see the same buffers and mode
-4. Each has independent cursor position and viewport
-5. When A types `ihello<Esc>`, B sees the text appear
+3. Both see the same buffer content (shared)
+4. Each has independent mode, cursor, and selection (per-client)
+5. When A types `ihello<Esc>`:
+   - A enters INSERT, types "hello", returns to NORMAL
+   - B stays in NORMAL mode (independent)
+   - B sees the text "hello" appear (shared buffer)
 
-## State Ownership
+## State Ownership (#471)
 
-### Shared (driver::Session)
-- Mode stack (all clients in same mode)
-- Pending keys (keymap accumulator)
-- Extensions (module state)
+### Shared (driver::Session + kernel)
+- **Buffer content** - All clients see same text
+- **Extensions** - Module state (e.g., LSP connections)
+- **Active buffer** - Which buffer is being edited
 
-### Per-Client (ClientViewport)
-- Terminal dimensions
-- Active buffer (can differ)
-- Cursor position per buffer
-- Scroll offset
+### Per-Client (EditingState)
+- **Mode stack** - Each client has independent mode (NORMAL/INSERT/VISUAL)
+- **Cursor position** - Independent cursor per client
+- **Selection** - Visual mode selection is per-client
+- **Viewport** - Terminal dimensions, scroll offset
+- **Pending keys** - Key sequence accumulator
+
+### Deprecated for Runtime (driver::Session)
+The following fields in `driver::Session` are **bootstrap-only** (#471):
+- `mode_stack` - Use `EditingState.mode_stack` at runtime
+- `windows` - Use `EditingState.windows` at runtime
+
+Commands should use `SessionRuntime::new_for_client()` to operate on per-client state.
 
 ## Related Documents
 
