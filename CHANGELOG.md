@@ -21,6 +21,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Modified: panic handler with `DebugContext`, crash report with `server_logs`
   and `client_dump_paths` fields. 55 tests across 5 modules.
 
+- **Complete debug infrastructure (#481)**: Wired remaining debug features from
+  #478. Client disconnect handler: `Session::remove_client()` now dumps client
+  ring buffer to `~/.local/share/reovim/crash/client-{id}-{timestamp}.log` and
+  logs `CLIENT_DISCONNECT` entry to server ring buffer before removal. CLI
+  log-tail command: `reovim cli log-tail` queries server ring buffer via gRPC
+  DebugService. Supports filters: `--count` (entries), `--level` (trace/debug/
+  info/warn/error), `--target` (module filter), `--grep` (message search).
+  Color-coded terminal output (red=ERROR, yellow=WARN, green=INFO, cyan=DEBUG,
+  gray=TRACE). JSON output with `--format json`. New proto: `debug.proto` with
+  `DebugService` (LogTail, LogLevel RPCs). New gRPC handler: `DebugServiceImpl`
+  in `server/lib/server/src/grpc/debug.rs`. 3 new session tests, 6 new gRPC tests.
+
 ### Changed
 
 - **Directory restructure**: Major codebase restructure to clarify

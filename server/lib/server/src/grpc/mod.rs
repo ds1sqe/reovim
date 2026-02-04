@@ -15,6 +15,7 @@
 //! See `docs/architecture/server-client-split.md` for details.
 
 mod buffer;
+mod debug;
 mod editor;
 mod input;
 mod module;
@@ -26,8 +27,8 @@ mod state;
 mod syntax;
 
 pub use {
-    buffer::BufferServiceImpl, editor::EditorServiceImpl, input::InputServiceImpl,
-    module::ModuleServiceImpl, notification::NotificationServiceImpl,
+    buffer::BufferServiceImpl, debug::DebugServiceImpl, editor::EditorServiceImpl,
+    input::InputServiceImpl, module::ModuleServiceImpl, notification::NotificationServiceImpl,
     presence::PresenceServiceImpl, server_service::ServerServiceImpl, state::StateServiceImpl,
     syntax::SyntaxServiceImpl,
 };

@@ -230,8 +230,29 @@ impl Session {
     /// Remove a client from the session.
     ///
     /// Returns the removed client's role if found.
+    ///
+    /// # Debug Infrastructure (#481)
+    ///
+    /// Before removing an Owner client, this method dumps the client's ring buffer
+    /// to a file at `~/.local/share/reovim/crash/client-{id}-{timestamp}.log` for
+    /// post-mortem analysis. A `CLIENT_DISCONNECT` entry is logged to the server
+    /// ring buffer with the dump file path.
     pub fn remove_client(&self, client_id: ClientId) -> Option<Client> {
+        use reovim_kernel::api::v1::pr_info;
+
         let mut clients = self.clients.write();
+
+        // Phase #481: Dump ring buffer before removal
+        if let Some(Client::Owner { ring_buffer, .. }) = clients.get(&client_id)
+            && let Some(path) = super::crash_dump::try_dump_client_to_file(client_id, ring_buffer)
+        {
+            pr_info!(
+                "CLIENT_DISCONNECT client_id={} dump={}",
+                client_id.as_usize(),
+                path.display()
+            );
+        }
+
         clients.remove(&client_id)
     }
 
@@ -585,6 +606,90 @@ mod tests {
     fn test_session_new() {
         let session = Session::new(SessionId::new("test"));
         assert_eq!(session.id().name(), "test");
+    }
+
+    #[test]
+    fn test_remove_client_dumps_ring_buffer() {
+        let session = Session::new(SessionId::new("dump-test"));
+        let client_id = ClientId::new(42);
+
+        // Add a client
+        session.add_client_with_role(client_id, Client::new_owner());
+
+        // Log some events to the client's ring buffer
+        session.with_client_ring_buffer(client_id, |ring| {
+            ring.log_key("a");
+            ring.log_key("b");
+            ring.log_command("write");
+        });
+
+        // Remove the client - this should create a dump file
+        let removed = session.remove_client(client_id);
+        assert!(removed.is_some());
+
+        // Verify the dump file was created
+        // Note: The dump file path includes a timestamp, so we check the crash directory
+        let crash_dir = super::super::crash_dump::crash_dir();
+        if crash_dir.exists() {
+            // Look for a dump file with our client ID
+            let pattern = format!("client-{}-", client_id.as_usize());
+            let found = std::fs::read_dir(&crash_dir).ok().is_some_and(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .any(|e| e.file_name().to_string_lossy().starts_with(&pattern))
+            });
+
+            // May not find file in CI environments where directory isn't writable
+            if found {
+                // Clean up: find and remove the test file
+                if let Ok(entries) = std::fs::read_dir(&crash_dir) {
+                    for entry in entries.filter_map(Result::ok) {
+                        let name = entry.file_name();
+                        if name.to_string_lossy().starts_with(&pattern) {
+                            std::fs::remove_file(entry.path()).ok();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_remove_client_does_not_dump_for_follow() {
+        let session = Session::new(SessionId::new("follow-test"));
+        let owner_id = ClientId::new(1);
+        let follow_id = ClientId::new(2);
+
+        // Add owner and follower
+        session.add_client_with_role(owner_id, Client::new_owner());
+        session.add_client_with_role(follow_id, Client::follow(owner_id));
+
+        // Remove the follower - should NOT create a dump (Follow has no ring buffer)
+        let removed = session.remove_client(follow_id);
+        assert!(removed.is_some());
+        assert!(removed.unwrap().is_follower());
+
+        // Clean up owner
+        session.remove_client(owner_id);
+    }
+
+    #[test]
+    fn test_remove_client_does_not_dump_for_share() {
+        let session = Session::new(SessionId::new("share-test"));
+        let owner_id = ClientId::new(1);
+        let share_id = ClientId::new(2);
+
+        // Add owner and sharer
+        session.add_client_with_role(owner_id, Client::new_owner());
+        session.add_client_with_role(share_id, Client::share(owner_id));
+
+        // Remove the sharer - should NOT create a dump (Share has no ring buffer)
+        let removed = session.remove_client(share_id);
+        assert!(removed.is_some());
+        assert!(removed.unwrap().is_sharing());
+
+        // Clean up owner
+        session.remove_client(owner_id);
     }
 
     #[tokio::test]

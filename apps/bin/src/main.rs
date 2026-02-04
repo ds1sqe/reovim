@@ -162,6 +162,21 @@ enum CliSubcommand {
     Ping,
     /// Get server version and info.
     Version,
+    /// Get recent log entries from server ring buffer.
+    LogTail {
+        /// Number of entries (default: 50).
+        #[arg(long, short = 'n', default_value = "50")]
+        count: u32,
+        /// Filter by level (trace, debug, info, warn, error).
+        #[arg(long)]
+        level: Option<String>,
+        /// Filter by target module.
+        #[arg(long)]
+        target: Option<String>,
+        /// Search in messages (case-insensitive).
+        #[arg(long)]
+        grep: Option<String>,
+    },
     /// Presence operations for multi-client awareness.
     Presence {
         #[command(subcommand)]
@@ -245,11 +260,11 @@ fn main() -> std::io::Result<()> {
 /// 3. Debug context callback for panic handler
 /// 4. Custom panic handler
 fn init_debug_infrastructure() {
-    use reovim_kernel::api::v1::{
-        DebugContext, install_panic_handler, set_debug_context_callback,
-    };
-    use reovim_server::debug::{
-        COMPOSITE_LOGGER, DebugRingBuffer, init_debug_ring, try_debug_ring,
+    use {
+        reovim_kernel::api::v1::{DebugContext, install_panic_handler, set_debug_context_callback},
+        reovim_server::debug::{
+            COMPOSITE_LOGGER, DebugRingBuffer, init_debug_ring, try_debug_ring,
+        },
     };
 
     // 1. Initialize global debug ring buffer
@@ -370,6 +385,12 @@ async fn run_cli(
         }
         CliSubcommand::Ping => commands::ping(&mut client, output_format).await,
         CliSubcommand::Version => commands::version(&mut client, output_format).await,
+        CliSubcommand::LogTail {
+            count,
+            level,
+            target,
+            grep,
+        } => commands::log_tail(&mut client, count, level, target, grep, output_format).await,
         CliSubcommand::Presence { action } => match action {
             PresenceAction::Join { name, client_type } => {
                 commands::presence_join(&mut client, &client_type, &name, output_format).await

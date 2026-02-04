@@ -56,7 +56,7 @@ use {
     reovim_kernel::api::v1::ModeStack,
 };
 
-use super::{ring_buffer::ClientRingBuffer, ClientId};
+use super::{ClientId, ring_buffer::ClientRingBuffer};
 
 /// Per-client role within a session.
 ///

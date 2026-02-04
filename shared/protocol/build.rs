@@ -25,6 +25,7 @@ fn compile_protos() {
                 "proto/reovim/v2/notification.proto",
                 "proto/reovim/v2/syntax.proto",
                 "proto/reovim/v2/presence.proto",
+                "proto/reovim/v2/debug.proto",
             ],
             &["proto"],
         )
