@@ -207,8 +207,9 @@ impl InputService for InputServiceImpl {
 
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
+        // Phase #486: emit_notifications is now sync (uses sync per-client state access)
         if accumulated_changes.has_changes() {
-            Self::emit_notifications(&session, &accumulated_changes, req.client_id).await;
+            Self::emit_notifications(&session, &accumulated_changes, req.client_id);
         }
 
         // Return result
@@ -230,12 +231,11 @@ impl InputServiceImpl {
     /// * `session` - The session to emit to
     /// * `changes` - State changes to convert to notifications
     /// * `client_id` - Client ID that originated these changes (for multi-client filtering)
-    async fn emit_notifications(session: &Session, changes: &StateChanges, client_id: u64) {
-        let notifications = session
-            .with_state(|state| {
-                notification_builder::build_notifications(changes, state, client_id)
-            })
-            .await;
+    ///
+    /// Phase #486: Now passes `&Session` directly to `build_notifications()` for per-client state.
+    fn emit_notifications(session: &Session, changes: &StateChanges, client_id: u64) {
+        // Phase #486: Pass session directly for per-client state access
+        let notifications = notification_builder::build_notifications(changes, session, client_id);
 
         let notification_count = notifications.len();
         for notification in notifications {
