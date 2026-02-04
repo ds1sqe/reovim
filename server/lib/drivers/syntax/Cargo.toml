@@ -1,0 +1,21 @@
+[package]
+name = "reovim-driver-syntax"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Syntax highlighting driver for reovim (trait definitions only)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on kernel layer
+# NOTE: NO tree-sitter! That's an implementation detail of language modules.
+reovim-kernel = { workspace = true }
+
+# Sync primitives for SyntaxFactoryStore
+parking_lot = { workspace = true }

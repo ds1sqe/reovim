@@ -1,0 +1,219 @@
+/* Multi-window layout styles (Phase 10.2C)
+ *
+ * Uses theme variables from ThemeManager.applyToCSSVariables().
+ * See main.css for the complete variable list.
+ */
+
+/* ============ Layout Container ============ */
+
+.layout-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ============ Split Containers ============ */
+
+.split {
+  position: absolute;
+}
+
+.split-horizontal {
+  /* Horizontal splits stack windows vertically */
+  display: flex;
+  flex-direction: column;
+}
+
+.split-vertical {
+  /* Vertical splits place windows side by side */
+  display: flex;
+  flex-direction: row;
+}
+
+/* ============ Window Styles ============ */
+
+.window {
+  position: absolute;
+  border: 1px solid var(--theme-border);
+  overflow: hidden;
+  background: var(--theme-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.window.focused {
+  border-color: var(--theme-accent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--theme-accent) 30%, transparent);
+  z-index: 1;
+}
+
+.window-buffer {
+  flex: 1;
+  overflow: hidden;
+  white-space: pre;
+  font-family: inherit;
+}
+
+.window-cursor {
+  position: absolute;
+  width: 0.6em;
+  height: 21px; /* Match line height */
+  background: var(--theme-cursor-bg);
+  animation: cursor-blink 1s step-end infinite;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.window.focused .window-cursor {
+  opacity: 1;
+}
+
+.window:not(.focused) .window-cursor {
+  opacity: 0.5;
+  animation: none;
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.window-status {
+  height: 0; /* Status line inside window - not used in current design */
+}
+
+/* ============ Cursor Line Highlight ============ */
+
+.cursor-line {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* ============ Separators ============ */
+
+.separator {
+  position: absolute;
+  background: var(--theme-border);
+  z-index: 2;
+}
+
+.separator-horizontal {
+  width: 100%;
+  height: 1px;
+  cursor: ns-resize;
+}
+
+.separator-vertical {
+  width: 1px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.separator:hover {
+  background: var(--theme-accent);
+}
+
+/* ============ Tab Styles ============ */
+
+.tabs {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-bar {
+  display: flex;
+  background: var(--theme-statusline-bg);
+  border-bottom: 1px solid var(--theme-border);
+  min-height: 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 2px;
+}
+
+.tab-bar::-webkit-scrollbar-track {
+  background: var(--theme-statusline-bg);
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+  background: var(--theme-border);
+}
+
+.tab {
+  padding: 4px 16px;
+  cursor: pointer;
+  border-right: 1px solid var(--theme-border);
+  background: var(--theme-statusline-bg);
+  color: var(--theme-line-number);
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+  user-select: none;
+}
+
+.tab:hover {
+  background: var(--theme-popup-bg);
+  color: var(--theme-fg);
+}
+
+.tab.active {
+  background: var(--theme-bg);
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-bg);
+  margin-bottom: -1px;
+}
+
+.tab-content {
+  position: relative;
+  flex: 1;
+}
+
+/* ============ Line Rendering ============ */
+
+.line {
+  display: flex;
+  height: 21px; /* Match line height */
+  line-height: 21px;
+}
+
+.line-number {
+  color: var(--theme-line-number);
+  text-align: right;
+  padding-right: 1em;
+  min-width: 4em;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============ Selection ============ */
+
+.selected {
+  background-color: var(--theme-selection-bg);
+  border-radius: 2px;
+}
+
+/* ============ Focus Indicator (for multi-window) ============ */
+
+.window::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 100;
+}
+
+.window.focused::before {
+  background: var(--theme-accent);
+}

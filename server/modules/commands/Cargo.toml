@@ -1,0 +1,26 @@
+[package]
+name = "reovim-module-commands"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ex-commands (:w, :q, :set) for reovim - POLICY module"
+readme = "README.md"
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-arch = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-display = { workspace = true }
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

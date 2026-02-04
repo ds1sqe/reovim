@@ -1,0 +1,40 @@
+[package]
+name = "reovim-module-vim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Vim policy module for reovim - keybindings and behavior"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-module-macros = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-command-types = { workspace = true }
+reovim-driver-input = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-module-editor = { workspace = true }
+reovim-module-motions = { workspace = true }
+# Note: operators module merged into vim (Epic #385)
+reovim-module-textobjects = { workspace = true }
+reovim-driver-clipboard = { workspace = true }
+reovim-driver-undo = { workspace = true }
+reovim-driver-search = { workspace = true }
+# Window-ops module for window command IDs (Epic #465 - layout archived)
+reovim-module-window-ops = { workspace = true }
+# Display driver for annotation types (#455)
+reovim-driver-display = { workspace = true }
+tracing = { workspace = true }
+
+# [dev-dependencies] removed - tests to be rewritten with new infrastructure
+
+[lints]
+workspace = true

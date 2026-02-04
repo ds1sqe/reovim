@@ -1,132 +1,162 @@
-# Sessions and Viewports
+# Sessions and Per-Client State
 
-Sessions manage shared editor state while viewports provide per-client independence.
+Sessions manage shared editor state while `EditingState` provides per-client isolation.
 
 ## Source Location
 
-- Sessions: `runner/src/server/session/`
-- Viewports: `runner/src/server/client/viewport.rs`
-- Driver Session: `lib/drivers/session/` (SSOT for per-session state)
+- Sessions: `server/lib/server/src/session/` (moved from `runner/` in Phase 8)
+- Per-client state: `server/lib/server/src/session/client.rs` (`EditingState`)
+- Driver Session: `server/lib/drivers/session/` (shared state + bootstrap)
 
-## Session Architecture
+## Session Architecture (#471)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Session "default"                                           │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ SessionState (shared)                                   │ │
-│  │ ├── driver_session: DriverSession (SSOT)               │ │
-│  │ │   ├── mode_stack (current mode)                      │ │
-│  │ │   ├── pending_keys                                   │ │
-│  │ │   ├── extensions                                     │ │
+│  │ ├── driver_session: DriverSession                      │ │
+│  │ │   ├── extensions (module state)                      │ │
 │  │ │   ├── active_buffer                                  │ │
-│  │ │   └── terminal_size                                  │ │
+│  │ │   ├── terminal_size                                  │ │
+│  │ │   ├── mode_stack (BOOTSTRAP ONLY - deprecated)       │ │
+│  │ │   └── windows (BOOTSTRAP ONLY - deprecated)          │ │
 │  │ ├── app: AppState                                      │ │
 │  │ │   ├── kernel (buffers, event_bus)                    │ │
 │  │ │   ├── undo_registry                                  │ │
-│  │ │   ├── windows                                        │ │
 │  │ │   └── cmdline                                        │ │
 │  │ └── CommandRegistry, KeymapRegistry, ModeRegistry      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │ ClientRegistry                                          │ │
-│  │ ├── Client 1 → ClientViewport (80x24, buf1, cursor@10:5)│ │
-│  │ ├── Client 2 → ClientViewport (200x50, buf1, cursor@20:3)│
-│  │ └── Client 3 → ClientViewport (120x40, buf2, cursor@1:0)│ │
+│  │ ClientRegistry (per-client isolation)                   │ │
+│  │ ├── Client 1 → EditingState                            │ │
+│  │ │   ├── mode_stack (NORMAL)                            │ │
+│  │ │   ├── windows (cursor@10:5)                          │ │
+│  │ │   ├── viewport (80x24)                               │ │
+│  │ │   └── selection (none)                               │ │
+│  │ ├── Client 2 → EditingState                            │ │
+│  │ │   ├── mode_stack (INSERT)                            │ │
+│  │ │   ├── windows (cursor@20:3)                          │ │
+│  │ │   ├── viewport (200x50)                              │ │
+│  │ │   └── selection (char: 0,0-0,5)                      │ │
+│  │ └── Client 3 → EditingState                            │ │
+│  │     ├── mode_stack (VISUAL)                            │ │
+│  │     ├── windows (cursor@1:0)                           │ │
+│  │     ├── viewport (120x40)                              │ │
+│  │     └── selection (line: 1-5)                          │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## SSOT Architecture
+## State Ownership (#471)
 
-`driver_session` is the Single Source of Truth (SSOT) for per-session editing state:
+### Shared State (driver_session + kernel)
 
 | Field | Location | Description |
 |-------|----------|-------------|
-| `mode_stack` | `driver_session` | Current editing mode |
-| `pending_keys` | `driver_session` | Accumulated key sequence |
 | `extensions` | `driver_session` | Module-provided policy state |
 | `active_buffer` | `driver_session` | Currently active buffer ID |
 | `terminal_size` | `driver_session` | Session-level terminal dimensions |
+| `kernel` | `app` | Core kernel services (buffers, events) |
+| `undo_registry` | `app` | Per-buffer undo trees |
+| `cmdline` | `app` | Command-line mode state |
 
-`AppState` provides runner-specific state that doesn't belong in the driver layer:
+### Per-Client State (EditingState)
 
 | Field | Location | Description |
 |-------|----------|-------------|
-| `kernel` | `app` | Core kernel services (buffers, events) |
-| `undo_registry` | `app` | Per-buffer undo trees |
-| `windows` | `app` | Window layout and state |
-| `cmdline` | `app` | Command-line mode state |
+| `mode_stack` | `EditingState` | Per-client editing mode (NORMAL/INSERT/VISUAL) |
+| `windows` | `EditingState` | Per-client window layout and cursor positions |
+| `viewport` | `EditingState` | Per-client terminal dimensions, scroll offset |
+| `selection` | `EditingState` | Per-client visual selection |
+| `pending_keys` | `EditingState` | Per-client key sequence accumulator |
 
-### Accessing Session State
+### Deprecated (Bootstrap Only)
 
-Use `SessionState` delegation methods for consistent access:
+| Field | Location | Note |
+|-------|----------|------|
+| `mode_stack` | `driver_session` | Use `EditingState.mode_stack` at runtime |
+| `windows` | `driver_session` | Use `EditingState.windows` at runtime |
+
+Commands should use `SessionRuntime::new_for_client()` to operate on per-client state.
+
+### Accessing Per-Client State
 
 ```rust
-// Read current mode (delegates to driver_session)
-let mode = state.current_mode();
+// Get per-client state (read-only)
+let state = session.client_state(client_id);
 
-// Modify mode stack
-state.mode_stack_mut().push(new_mode);
+// Update per-client state
+session.update_client_state(client_id, |editing_state| {
+    editing_state.mode_stack.push(insert_mode);
+    editing_state.windows.active_mut().map(|w| {
+        w.cursor = CursorPosition { line: 10, column: 5 };
+    });
+});
 
-// Access active buffer
-let buf_id = state.session_active_buffer();
-state.set_session_active_buffer(Some(buffer_id));
-
-// Terminal size (session default)
-let (width, height) = state.session_terminal_size();
+// Get per-client mode
+let mode = session.client_current_mode(client_id);
 ```
 
-## Per-Client Viewport
+## Per-Client Editing State
 
-Each client maintains independent viewport state:
+Each client maintains independent editing state:
 
 ```rust
-pub struct ClientViewport {
-    /// Terminal width in columns
-    pub terminal_width: u16,
+pub struct EditingState {
+    /// Per-client mode stack (NORMAL, INSERT, VISUAL, etc.)
+    pub mode_stack: ModeStack,
 
-    /// Terminal height in rows
-    pub terminal_height: u16,
+    /// Per-client pending key sequence
+    pub pending_keys: KeySequence,
 
-    /// Active buffer for this client
-    pub active_buffer: Option<BufferId>,
+    /// Per-client window layout and cursors
+    pub windows: WindowLayout,
 
-    /// Cursor positions per buffer (restored on buffer switch)
-    pub buffer_cursors: HashMap<BufferId, Position>,
+    /// Per-client viewport (terminal size, scroll)
+    pub viewport: Viewport,
 
-    /// Scroll top line
-    pub scroll_top: usize,
+    /// Per-client visual selection
+    pub selection: Option<ClientSelection>,
 }
 ```
 
-### Independent Cursors
+### Independent Modes and Cursors
 
-Multiple clients can edit the same buffer with independent cursor positions:
+Multiple clients can edit the same buffer with independent modes and cursors:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Buffer 1 (file.rs)                       │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ Line 20: fn main() {                                │ ← Client 2 cursor (20:32)
+│  │ Line 20: fn main() {                                │ ← Client 2 cursor (INSERT mode)
 │  │ ...                                                 │
-│  │ Line 30:     println!("hello");                     │ ← Client 1 cursor (30:23)
+│  │ Line 30:     println!("hello");                     │ ← Client 1 cursor (NORMAL mode)
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-This enables multi-terminal editing like running vim in separate tmux panes.
+- Client 1 is in NORMAL mode, cursor at line 30
+- Client 2 is in INSERT mode, cursor at line 20
+- Both see the same buffer content (shared)
+- When Client 2 types, Client 1 sees the text appear
 
-### Cursor Restoration
+### Command Execution with Per-Client State
 
-When switching buffers, cursor positions are preserved:
+Commands execute on per-client state using `execute_for_client()`:
 
 ```rust
-// Client switches from buffer A to B
-viewport.set_cursor_for_buffer(buf_a, current_cursor);
-viewport.active_buffer = Some(buf_b);
-let restored = viewport.cursor_for_buffer(buf_b);  // Restored!
+// Execute command with per-client mode and cursor
+let (result, changes) = registry.execute_for_client(
+    &command_id,
+    driver_session,           // Shared state (buffers, extensions)
+    &mut editing_state.mode_stack,  // Per-client mode
+    &mut editing_state.windows,     // Per-client cursor
+    app,
+    vfs,
+    args,
+)?;
 ```
 
 ## Lock Hierarchy
@@ -138,51 +168,62 @@ Level 0 (Lock-Free):  ArcSwap<SessionRegistry>
        ↓
 Level 1 (Per-Session): RwLock<SessionState>
        ↓
-Level 2 (Per-Client):  RwLock<ClientViewport>
+Level 2 (Per-Client):  RwLock<HashMap<ClientId, Client>>
 ```
 
 **Rule**: Always drop higher-level locks before acquiring lower-level locks.
 
 ```rust
-// SAFE: viewport (L2) → session (L1)
-let buffer_id = {
-    let vp = client.viewport().read().await;
-    vp.active_buffer
+// SAFE: client state (L2) → session (L1)
+let mode = {
+    let clients = session.clients().read();
+    clients.get(&client_id)
+        .and_then(|c| c.editing_state())
+        .map(|s| s.mode_stack.current().clone())
 }; // Lock dropped
 
-session.with_state(|state| { ... }).await;  // Now safe to acquire
+session.with_state(|state| { ... });  // Now safe to acquire
 ```
 
-## RPC Context
+## gRPC Handler Pattern (#471)
 
-Handlers receive `RpcContext` with session, client, and viewport access:
+gRPC handlers query per-client state when `client_id > 0`:
 
 ```rust
-pub struct RpcContext {
-    pub session: Arc<Session>,
-    pub client_id: ClientId,
-    pub client: Arc<Client>,  // Direct viewport access
-}
+async fn get_mode(&self, request: Request<GetModeRequest>) -> Result<Response<GetModeResponse>, Status> {
+    let req = request.into_inner();
+    let session = self.get_session()?;
 
-// In a handler:
-async fn handle(ctx: &RpcContext) {
-    let viewport = ctx.client.viewport().read().await;
-    let size = (viewport.terminal_width, viewport.terminal_height);
+    // Per-client state (#471): Query per-client mode when client_id provided
+    if req.client_id > 0 {
+        let client_id = ClientId::new(req.client_id as usize);
+        if let Some(mode) = session.client_current_mode(client_id) {
+            return Ok(Response::new(GetModeResponse {
+                name: mode.name().to_string(),
+                display: mode.name().to_uppercase(),
+                is_insert: mode.name().contains("insert"),
+            }));
+        }
+    }
+
+    // Fallback to shared mode (backward compatibility)
+    // ...
 }
 ```
 
 ## Buffer Close Cleanup
 
-When a buffer is closed, clients viewing it have their `active_buffer` cleared:
+When a buffer is closed, clients viewing it have their state updated:
 
 ```rust
-clear_viewports_for_closed_buffer(&session, closed_buffer_id).await;
+clear_client_state_for_closed_buffer(&session, closed_buffer_id);
 ```
 
-Cursor positions are preserved for potential undo/reload.
+Per-client cursor positions in windows are preserved for potential undo/reload.
 
 ## Related Documents
 
 - [Server Overview](./overview.md) - Server architecture
 - [Notifications](./notifications.md) - Buffer-scoped notifications
 - [Concurrency Reference](../../contributing/internals/concurrency.md) - Lock patterns
+- [Session Model](../../session-model.md) - High-level session architecture

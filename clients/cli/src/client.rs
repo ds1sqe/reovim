@@ -1,0 +1,611 @@
+//! gRPC v2 client wrapper.
+//!
+//! Provides a unified client interface to all gRPC v2 services.
+
+use {
+    reovim_protocol::v2::{
+        GetCursorRequest,
+        GetCursorResponse,
+        GetModeRequest,
+        GetModeResponse,
+        GetRawContentRequest,
+        GetRawContentResponse,
+        GetRegistersRequest,
+        GetRegistersResponse,
+        GetScreenContentRequest,
+        GetScreenContentResponse,
+        InfoRequest,
+        InfoResponse,
+        // Phase 15: Presence types
+        JoinRequest,
+        JoinResponse,
+        LeaveRequest,
+        LeaveResponse,
+        ListBuffersRequest,
+        ListBuffersResponse,
+        ListClientsRequest,
+        ListClientsResponse,
+        // Phase 17 (#481): Debug types
+        LogTailRequest,
+        LogTailResponse,
+        PingRequest,
+        PingResponse,
+        SendKeysRequest,
+        SendKeysResponse,
+        SetSyncModeRequest,
+        SetSyncModeResponse,
+        UpdatePresenceRequest,
+        UpdatePresenceResponse,
+        buffer_service_client::BufferServiceClient,
+        debug_service_client::DebugServiceClient,
+        input_service_client::InputServiceClient,
+        presence_service_client::PresenceServiceClient,
+        server_service_client::ServerServiceClient,
+        state_service_client::StateServiceClient,
+    },
+    tonic::transport::Channel,
+};
+
+/// Error type for gRPC client operations.
+#[derive(Debug)]
+pub enum GrpcClientError {
+    /// Failed to connect to the server.
+    ConnectionFailed(String),
+    /// gRPC call failed.
+    GrpcError(tonic::Status),
+}
+
+impl std::fmt::Display for GrpcClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
+            Self::GrpcError(status) => write!(f, "gRPC error: {status}"),
+        }
+    }
+}
+
+impl std::error::Error for GrpcClientError {}
+
+impl From<tonic::Status> for GrpcClientError {
+    fn from(status: tonic::Status) -> Self {
+        Self::GrpcError(status)
+    }
+}
+
+impl From<tonic::transport::Error> for GrpcClientError {
+    fn from(err: tonic::transport::Error) -> Self {
+        Self::ConnectionFailed(err.to_string())
+    }
+}
+
+/// gRPC v2 client for interacting with the reovim server.
+///
+/// Wraps all service clients (Input, State, Buffer, Server, Presence, Debug) and provides
+/// a unified interface.
+///
+/// # Phase #479: Client ID Management
+///
+/// The client auto-joins the presence session on first use and stores the assigned
+/// `client_id`. All subsequent calls use this ID for per-client state isolation.
+pub struct GrpcClient {
+    input: InputServiceClient<Channel>,
+    state: StateServiceClient<Channel>,
+    buffer: BufferServiceClient<Channel>,
+    server: ServerServiceClient<Channel>,
+    presence: PresenceServiceClient<Channel>,
+    debug: DebugServiceClient<Channel>,
+    /// Server address for error messages.
+    address: String,
+    /// Client ID assigned by server (None until joined).
+    client_id: Option<u64>,
+}
+
+impl GrpcClient {
+    /// Connect to a gRPC server at the given address.
+    ///
+    /// # Arguments
+    ///
+    /// * `addr` - Server address in `host:port` format (e.g., "127.0.0.1:12540").
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the connection fails.
+    pub async fn connect(addr: &str) -> Result<Self, GrpcClientError> {
+        // Build the endpoint URL
+        let url = format!("http://{addr}");
+        let channel = Channel::from_shared(url)
+            .map_err(|e| GrpcClientError::ConnectionFailed(e.to_string()))?
+            .connect()
+            .await?;
+
+        Ok(Self {
+            input: InputServiceClient::new(channel.clone()),
+            state: StateServiceClient::new(channel.clone()),
+            buffer: BufferServiceClient::new(channel.clone()),
+            server: ServerServiceClient::new(channel.clone()),
+            presence: PresenceServiceClient::new(channel.clone()),
+            debug: DebugServiceClient::new(channel),
+            address: addr.to_string(),
+            client_id: None,
+        })
+    }
+
+    /// Ensure the client has joined the presence session.
+    ///
+    /// If not already joined, calls `presence_join()` to get a client ID.
+    /// Panics if joining fails - CLI cannot operate without a valid client ID.
+    ///
+    /// # Phase #479: Auto-join for per-client state
+    async fn ensure_joined(&mut self) -> u64 {
+        if let Some(id) = self.client_id {
+            return id;
+        }
+
+        match self.presence_join("cli", "CLI").await {
+            Ok(resp) => {
+                self.client_id = Some(resp.client_id);
+                resp.client_id
+            }
+            Err(e) => panic!(
+                "FATAL: Failed to join presence session.\n\
+                 Server: {}\n\
+                 Error: {e}\n\
+                 Ensure server is running and accepts connections.",
+                self.address
+            ),
+        }
+    }
+
+    /// Handle gRPC errors with panic vs retry policy.
+    ///
+    /// # Phase #479: Panic on client bugs, panic on transient (for now)
+    ///
+    /// This function can be used by command handlers that want to panic on
+    /// errors rather than propagating them to the caller.
+    #[allow(dead_code)]
+    fn handle_grpc_error(e: &tonic::Status, operation: &str) -> ! {
+        use tonic::Code;
+
+        match e.code() {
+            // PANIC - Client bug or misconfiguration
+            Code::NotFound
+            | Code::InvalidArgument
+            | Code::PermissionDenied
+            | Code::FailedPrecondition
+            | Code::Internal
+            | Code::Unimplemented => {
+                panic!(
+                    "FATAL: {operation} failed\n\
+                     Code: {:?}\n\
+                     Message: {}\n\
+                     This indicates a client bug or misconfiguration.",
+                    e.code(),
+                    e.message()
+                );
+            }
+            // RETRY - Transient issues (for now, panic - retry logic can be added later)
+            Code::Unavailable
+            | Code::ResourceExhausted
+            | Code::DeadlineExceeded
+            | Code::Aborted => {
+                panic!(
+                    "FATAL: {operation} failed (transient)\n\
+                     Code: {:?}\n\
+                     Message: {}\n\
+                     Server may be temporarily unavailable.",
+                    e.code(),
+                    e.message()
+                );
+            }
+            // Unknown - log and panic
+            _ => {
+                panic!(
+                    "FATAL: {operation} failed (unknown)\n\
+                     Code: {:?}\n\
+                     Message: {}",
+                    e.code(),
+                    e.message()
+                );
+            }
+        }
+    }
+
+    /// Send keys to the editor.
+    ///
+    /// # Arguments
+    ///
+    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    ///
+    /// # Returns
+    ///
+    /// The response containing success status and key status.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    ///
+    /// # Phase #479: Auto-join and panic on error
+    ///
+    /// The client auto-joins the presence session on first call.
+    /// Panics if joining fails or if the server returns a fatal error.
+    pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
+        let client_id = self.ensure_joined().await;
+        let request = SendKeysRequest {
+            keys: keys.to_string(),
+            client_id,
+        };
+        let response = self.input.send_keys(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Send keys to the editor with a specific client ID.
+    ///
+    /// # Per-client state (#471): Per-client input routing
+    ///
+    /// Keys are processed using the specified client's per-client mode stack,
+    /// enabling multi-client mode isolation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn send_keys_with_client(
+        &mut self,
+        keys: &str,
+        client_id: u64,
+    ) -> Result<SendKeysResponse, GrpcClientError> {
+        let request = SendKeysRequest {
+            keys: keys.to_string(),
+            client_id,
+        };
+        let response = self.input.send_keys(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the current editor mode.
+    ///
+    /// # Phase #479: Auto-join and per-client state
+    ///
+    /// The client auto-joins on first call and queries its per-client mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
+        let client_id = self.ensure_joined().await;
+        let request = GetModeRequest { client_id };
+        let response = self.state.get_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the mode for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client mode isolation
+    ///
+    /// Returns the mode from the specified client's per-client mode stack.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_mode_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetModeResponse, GrpcClientError> {
+        let request = GetModeRequest { client_id };
+        let response = self.state.get_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the cursor position.
+    ///
+    /// # Phase #479: Auto-join and per-client state
+    ///
+    /// The client auto-joins on first call and queries its per-client cursor.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
+        let client_id = self.ensure_joined().await;
+        let request = GetCursorRequest {
+            window_id: None,
+            client_id,
+        };
+        let response = self.state.get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get the cursor position for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client cursor isolation
+    ///
+    /// Returns the cursor from the specified client's per-client editing state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_cursor_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetCursorResponse, GrpcClientError> {
+        let request = GetCursorRequest {
+            window_id: None,
+            client_id,
+        };
+        let response = self.state.get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List all open buffers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn list_buffers(&mut self) -> Result<ListBuffersResponse, GrpcClientError> {
+        let request = ListBuffersRequest {};
+        let response = self.buffer.list(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get raw buffer content.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - Optional buffer ID. Uses active buffer if None.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_buffer_content(
+        &mut self,
+        buffer_id: Option<u64>,
+    ) -> Result<GetRawContentResponse, GrpcClientError> {
+        let request = GetRawContentRequest {
+            buffer_id,
+            start_line: None,
+            end_line: None,
+        };
+        let response = self.buffer.get_raw_content(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Ping the server (health check).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn ping(&mut self) -> Result<PingResponse, GrpcClientError> {
+        let request = PingRequest {};
+        let response = self.server.ping(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get server info.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn info(&mut self) -> Result<InfoResponse, GrpcClientError> {
+        let request = InfoRequest {};
+        let response = self.server.info(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get register contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `names` - Optional register names to query. If empty, returns all non-empty registers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_registers(
+        &mut self,
+        names: Vec<String>,
+    ) -> Result<GetRegistersResponse, GrpcClientError> {
+        let request = GetRegistersRequest { names };
+        let response = self.state.get_registers(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get screen content via TUI capture relay.
+    ///
+    /// Requests a screen capture from the connected TUI client via the server.
+    /// Requires a headless TUI to be connected.
+    ///
+    /// # Arguments
+    ///
+    /// * `format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+    pub async fn get_screen_content(
+        &mut self,
+        format: &str,
+    ) -> Result<GetScreenContentResponse, GrpcClientError> {
+        let request = GetScreenContentRequest {
+            format: format.to_string(),
+        };
+        let response = self.state.get_screen_content(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // =========================================================================
+    // Presence Service Methods (Phase 15)
+    // =========================================================================
+
+    /// Join the presence session.
+    ///
+    /// Registers this client with the session and receives an assigned client ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_type` - Client type identifier ("cli", "tui", "web", "test").
+    /// * `display_name` - User-friendly display name.
+    ///
+    /// # Returns
+    ///
+    /// The response containing assigned client ID and list of connected peers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_join(
+        &mut self,
+        client_type: &str,
+        display_name: &str,
+    ) -> Result<JoinResponse, GrpcClientError> {
+        let request = JoinRequest {
+            client_type: client_type.to_string(),
+            display_name: display_name.to_string(),
+        };
+        let response = self.presence.join(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Leave the presence session.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID to remove.
+    ///
+    /// # Returns
+    ///
+    /// The response indicating success or failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_leave(
+        &mut self,
+        client_id: u64,
+    ) -> Result<LeaveResponse, GrpcClientError> {
+        let request = LeaveRequest { client_id };
+        let response = self.presence.leave(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List all connected clients.
+    ///
+    /// # Returns
+    ///
+    /// The response containing all connected clients.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_list(&mut self) -> Result<ListClientsResponse, GrpcClientError> {
+        let request = ListClientsRequest {};
+        let response = self.presence.list_clients(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Update this client's presence state.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID making the update.
+    /// * `buffer_id` - Optional new buffer ID.
+    /// * `mode` - Optional mode name.
+    ///
+    /// Note: `cursor_line`/`cursor_column` removed (Phase 14, #471).
+    /// Cursor is now tracked via `CursorMoved` notifications with `client_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_update(
+        &mut self,
+        client_id: u64,
+        buffer_id: Option<u64>,
+        mode: Option<String>,
+    ) -> Result<UpdatePresenceResponse, GrpcClientError> {
+        let request = UpdatePresenceRequest {
+            client_id,
+            buffer_id,
+            visible_lines: None,
+            mode,
+        };
+        let response = self.presence.update_presence(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Set sync mode for this client.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - The client ID setting the mode.
+    /// * `sync_mode` - The sync mode (0 = Independent, 1 = Follow, 2 = Present).
+    /// * `follow_target` - Target client ID when mode is Follow.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn presence_set_sync_mode(
+        &mut self,
+        client_id: u64,
+        sync_mode: i32,
+        follow_target: Option<u64>,
+    ) -> Result<SetSyncModeResponse, GrpcClientError> {
+        let request = SetSyncModeRequest {
+            client_id,
+            mode: sync_mode,
+            follow_target,
+        };
+        let response = self.presence.set_sync_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // =========================================================================
+    // Debug Service Methods (Phase 17, #481)
+    // =========================================================================
+
+    /// Get recent log entries from the server ring buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Number of entries to retrieve (default: 50).
+    /// * `level` - Optional level filter (trace, debug, info, warn, error).
+    /// * `target` - Optional target module filter (contains match).
+    /// * `grep` - Optional message filter (case-insensitive contains).
+    ///
+    /// # Returns
+    ///
+    /// The response containing log entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn log_tail(
+        &mut self,
+        count: u32,
+        level: Option<String>,
+        target: Option<String>,
+        grep: Option<String>,
+    ) -> Result<LogTailResponse, GrpcClientError> {
+        let request = LogTailRequest {
+            count,
+            level,
+            target,
+            grep,
+        };
+        let response = self.debug.log_tail(request).await?;
+        Ok(response.into_inner())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_display() {
+        let err = GrpcClientError::ConnectionFailed("test".to_string());
+        assert!(err.to_string().contains("Connection failed"));
+
+        let status = tonic::Status::not_found("test");
+        let err = GrpcClientError::GrpcError(status);
+        assert!(err.to_string().contains("gRPC error"));
+    }
+}

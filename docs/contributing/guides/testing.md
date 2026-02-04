@@ -9,7 +9,8 @@ This guide covers running and writing tests for reovim.
 cargo test
 
 # Run tests for a specific crate
-cargo test -p reovim-core
+cargo test -p reovim-kernel
+cargo test -p reovim-server
 
 # Run tests with output
 cargo test -- --nocapture
@@ -26,16 +27,19 @@ cargo test buffer
 Tests are organized as inline module tests within source files:
 
 ```
-lib/core/src/
-├── buffer/
-│   └── tests.rs           # Buffer operations tests
-├── event/handler/command/
-│   ├── count_parser.rs    # Count parsing tests
-│   └── key_parser.rs      # Key parsing tests
-├── highlight/
-│   ├── store.rs           # Highlight store tests
-│   └── span.rs            # Highlight span tests
-└── types.rs               # Core type tests
+server/lib/kernel/src/
+├── mm/                    # Memory management tests
+├── ipc/                   # IPC tests
+├── core/                  # Core type tests
+└── api/                   # API tests
+
+server/lib/drivers/input/src/
+├── resolver.rs            # Key resolution tests
+└── parser.rs              # Key parsing tests
+
+server/modules/vim/src/
+├── resolvers/             # Mode-specific resolver tests
+└── session_state.rs       # Session state tests
 ```
 
 ## Integration Testing
@@ -66,14 +70,14 @@ Test Flow:
 ### Running Integration Tests
 
 ```bash
-# All integration tests
-cargo test -p reovim-core --test basic_editing --test mode_switching
+# All integration tests (using shared testing infrastructure)
+cargo test -p reovim-testing
 
-# Specific test file
-cargo test -p reovim-core --test basic_editing
+# Run specific module tests
+cargo test -p reovim-module-vim
 
 # Single test
-cargo test -p reovim-core --test mode_switching test_visual_mode
+cargo test -p reovim-module-vim test_visual_mode
 ```
 
 **Note:** Integration tests require the release binary. Run `cargo build --release` before running integration tests.
@@ -155,25 +159,27 @@ println!("Cursor: {:?}", result.cursor);
 ### Integration Test Organization
 
 ```
-lib/core/tests/
-├── common/
-│   └── mod.rs              # Re-exports ServerTest
-├── basic_editing.rs        # Insert, delete, cursor movement
-├── mode_switching.rs       # Mode transitions (i, a, v, :, Esc)
-├── resize.rs               # Layout and explorer resize tests
-├── visual_snapshot.rs      # Visual debugging and assertions
-└── which_key.rs            # Which-key popup tests
+shared/testing/src/
+├── lib.rs                  # Test harness exports
+├── harness.rs              # TestServerHarness (subprocess management)
+├── integration.rs          # IntegrationTest builder + TestResult
+└── assertions.rs           # Assertion utilities
+
+server/modules/vim/tests/   # Vim module-specific tests
+├── operators.rs            # dd, yy, p, P, cw, etc.
+├── motions.rs              # hjkl, w/b/e, gg/G
+└── text_objects.rs         # iw, aw, i(, a{, etc.
 ```
 
 ### Test Harness Components
 
-#### ServerTestHarness (`lib/core/src/testing/server.rs`)
+#### TestServerHarness (`shared/testing/src/harness.rs`)
 
 Spawns and manages a reovim server process:
 
 ```rust
 // Automatically spawns server on OS-assigned port
-let harness = ServerTestHarness::spawn().await?;
+let harness = TestServerHarness::spawn().await?;
 
 // Get a connected client
 let client = harness.client().await?;
@@ -181,9 +187,9 @@ let client = harness.client().await?;
 // Server is killed when harness is dropped (kill_on_drop)
 ```
 
-#### TestClient (`lib/core/src/testing/client.rs`)
+#### TestClient (`shared/testing/src/`)
 
-JSON-RPC client for testing:
+gRPC client for testing:
 
 ```rust
 let mut client = TestClient::connect("127.0.0.1", port).await?;
@@ -197,17 +203,17 @@ client.resize(100, 40).await?;        // Resize editor
 client.kill().await?;                 // Kill server
 ```
 
-#### ServerTest (`lib/core/src/testing/assertions.rs`)
+#### IntegrationTest (`shared/testing/src/integration.rs`)
 
 Fluent builder for tests:
 
 ```rust
-ServerTest::new()
+IntegrationTest::new()
     .await
-    .with_content("initial text")  // Optional: set initial buffer
+    .with_buffer("initial text")   // Optional: set initial buffer
     .with_size(80, 24)             // Optional: set screen dimensions
-    .with_keys("dd")               // Optional: inject keys (can chain)
-    .with_keys("p")
+    .send_keys("dd")               // Optional: inject keys (can chain)
+    .send_keys("p")
     .run()
     .await
 ```
@@ -433,9 +439,9 @@ lib/core/tests/
 4. **Use `with_content()` for cursor tests** - Need text to move through
 5. **Tests run in parallel** - Each spawns its own server on an OS-assigned port
 
-## Phase 7 Integration Tests (runner/tests/)
+## Phase 7+ Integration Tests
 
-Phase 7 introduces a comprehensive integration test framework in `runner/tests/` that tests the complete editor through RPC, using subprocess-based test isolation.
+Phase 7+ uses a comprehensive integration test framework in `shared/testing/` that tests the complete editor through gRPC, using subprocess-based test isolation.
 
 ### Architecture
 
@@ -527,42 +533,41 @@ async fn test_two_clients_see_changes() {
 ### Test File Organization
 
 ```
-runner/tests/
-├── common/
-│   ├── mod.rs              # Re-exports + demo module helpers
-│   ├── harness.rs          # TestServerHarness (subprocess management)
-│   ├── integration.rs      # IntegrationTest builder + TestResult
-│   ├── multi_client.rs     # MultiClientTest + TestClient
-│   └── assertions.rs       # Assertion macros
-├── operators.rs            # dd, yy, p, P, cw, cc, x, etc. (28 tests)
-├── registers.rs            # Register operations (5 tests)
-├── undo_redo.rs            # u, Ctrl-R (8 tests)
-├── cursor_movement.rs      # hjkl, 0$, gg/G, w/b/e (17 tests)
-├── edge_cases.rs           # Empty buffer, Unicode, boundaries (10 tests)
-├── multi_client_tests.rs   # Concurrent client tests (3 tests)
-└── module_loading.rs       # Hot reload module tests
+shared/testing/src/
+├── lib.rs                  # Test harness exports
+├── harness.rs              # TestServerHarness (subprocess management)
+├── integration.rs          # IntegrationTest builder + TestResult
+├── multi_client.rs         # MultiClientTest + TestClient
+└── assertions.rs           # Assertion macros
+
+server/modules/vim/tests/   # Vim module tests
+├── operators.rs            # dd, yy, p, P, cw, cc, x, etc.
+├── registers.rs            # Register operations
+├── undo_redo.rs            # u, Ctrl-R
+├── cursor_movement.rs      # hjkl, 0$, gg/G, w/b/e
+└── edge_cases.rs           # Empty buffer, Unicode, boundaries
 ```
 
-### Running Phase 7 Tests
+### Running Phase 7+ Tests
 
 ```bash
-# Run all runner integration tests
-cargo test -p reovim
+# Run all integration tests
+cargo test -p reovim-testing
 
-# Run specific test file
-cargo test -p reovim --test operators
-cargo test -p reovim --test cursor_movement
+# Run specific module tests
+cargo test -p reovim-module-vim --test operators
+cargo test -p reovim-module-vim --test cursor_movement
 
 # Run single test
-cargo test -p reovim --test operators test_dd_deletes_line
+cargo test -p reovim-module-vim --test operators test_dd_deletes_line
 
 # Run with output
-cargo test -p reovim -- --nocapture
+cargo test -- --nocapture
 ```
 
 ### Writing New Tests
 
-1. **Create test file** in `runner/tests/` (flat structure)
+1. **Create test file** in module's `tests/` directory
 2. **Import common utilities**:
    ```rust
    mod common;
@@ -583,15 +588,14 @@ cargo test -p reovim -- --nocapture
    }
    ```
 
-### Key Differences from lib/core Tests
+### Test Infrastructure Overview
 
-| Aspect | lib/core Tests | runner/tests |
-|--------|----------------|--------------|
-| Location | `lib/core/tests/` | `runner/tests/` |
-| Builder | `ServerTest` | `IntegrationTest` |
-| Binary | Release build required | Debug or release |
-| Port | Atomic counter | OS-assigned (port 0) |
-| Cleanup | `kill()` call | `kill_on_drop(true)` |
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| Test harness | `shared/testing/` | Subprocess management, client utilities |
+| Integration builder | `shared/testing/src/integration.rs` | Fluent test API |
+| Module tests | `server/modules/*/tests/` | Per-module integration tests |
+| Protocol | `shared/protocol/` | gRPC v2 definitions |
 
 ### Port Allocation
 
@@ -639,18 +643,16 @@ This approach ensures:
 **Unit Tests: 213**
 **Integration Tests: 40** (basic_editing: 10, mode_switching: 8, resize: 5, visual_snapshot: 17)
 
-### Phase 7 Integration Tests (runner/tests/)
+### Phase 7+ Integration Tests
 
-| Test File | Coverage Area | Tests |
-|-----------|--------------|-------|
-| `operators.rs` | dd, yy, p, P, cw, cc, x, dw, yw, counts | 28 |
-| `cursor_movement.rs` | hjkl, 0$^, gg/G, w/b/e, boundaries | 17 |
-| `edge_cases.rs` | Empty buffer, Unicode, special chars | 10 |
-| `undo_redo.rs` | u, Ctrl-R, multiple undo/redo | 8 |
-| `registers.rs` | Named registers, unnamed, append | 5 |
-| `multi_client_tests.rs` | Concurrent clients, shared state | 3 |
-
-**Phase 7 Integration Tests: 71**
+| Test File | Coverage Area |
+|-----------|--------------|
+| `operators.rs` | dd, yy, p, P, cw, cc, x, dw, yw, counts |
+| `cursor_movement.rs` | hjkl, 0$^, gg/G, w/b/e, boundaries |
+| `edge_cases.rs` | Empty buffer, Unicode, special chars |
+| `undo_redo.rs` | u, Ctrl-R, multiple undo/redo |
+| `registers.rs` | Named registers, unnamed, append |
+| `multi_client_tests.rs` | Concurrent clients, shared state |
 
 ## Writing Tests
 
@@ -659,11 +661,11 @@ This approach ensures:
 Tests are placed in a `tests` submodule within the source file:
 
 ```rust
-// In lib/core/src/buffer/mod.rs
+// In server/lib/kernel/src/core/buffer.rs
 #[cfg(test)]
 mod tests;
 
-// In lib/core/src/buffer/tests.rs
+// In server/lib/kernel/src/core/tests.rs
 use super::*;
 
 #[test]
@@ -721,12 +723,12 @@ Reovim uses Criterion for performance benchmarking.
 
 ```bash
 # Run all benchmarks
-cargo bench -p reovim-core
+cargo bench -p reovim-bench
 
 # Run specific benchmark group
-cargo bench -p reovim-core -- window_render
-cargo bench -p reovim-core -- stress
-cargo bench -p reovim-core -- buffer_clone
+cargo bench -p reovim-bench -- window_render
+cargo bench -p reovim-bench -- stress
+cargo bench -p reovim-bench -- buffer_clone
 
 # List available benchmarks
 cargo run -p perf-report -- list
@@ -794,15 +796,18 @@ See `perf/PERF-0.4.2.md` for detailed results.
 ### Benchmark Location
 
 ```
-lib/core/benches/
-├── render.rs              # Main entry point
-└── bench_modules/
-    ├── common.rs          # Shared utilities
-    ├── window.rs          # Window render benchmarks
-    ├── screen.rs          # Screen I/O benchmarks
-    ├── input.rs           # Input simulation
-    ├── rtt.rs             # Round-trip time
-    └── stress.rs          # Stress tests
+tools/bench/
+├── src/
+│   └── lib.rs             # Benchmark utilities
+└── benches/
+    ├── render.rs          # Main entry point
+    └── bench_modules/
+        ├── common.rs      # Shared utilities
+        ├── window.rs      # Window render benchmarks
+        ├── screen.rs      # Screen I/O benchmarks
+        ├── input.rs       # Input simulation
+        ├── rtt.rs         # Round-trip time
+        └── stress.rs      # Stress tests
 ```
 
 ## Continuous Integration

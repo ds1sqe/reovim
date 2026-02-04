@@ -1,0 +1,197 @@
+/* Overlay Styles (Phase 11.1)
+ *
+ * Styles for floating UI elements: completion menus, command-line,
+ * hover info, signature help.
+ */
+
+/* Base overlay styles */
+.overlay {
+  position: absolute;
+  background: var(--theme-popup-bg);
+  border: 1px solid var(--theme-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size, 14px);
+  max-width: 80%;
+  max-height: 60%;
+  overflow: hidden;
+  z-index: 100;
+}
+
+.overlay[aria-hidden="true"] {
+  display: none;
+}
+
+/* ============ Completion Menu ============ */
+
+.overlay-completion {
+  min-width: 200px;
+  max-width: 400px;
+  max-height: 300px;
+}
+
+.completion-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.completion-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.completion-item:hover {
+  background: var(--theme-statusline-bg);
+}
+
+.completion-item.selected {
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
+}
+
+.completion-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion-kind {
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--theme-border);
+  color: var(--theme-fg);
+  text-transform: lowercase;
+}
+
+/* Kind-specific colors */
+.completion-kind-function { background: #89b4fa; color: #1e1e2e; }
+.completion-kind-variable { background: #f5c2e7; color: #1e1e2e; }
+.completion-kind-class { background: #f9e2af; color: #1e1e2e; }
+.completion-kind-keyword { background: #cba6f7; color: #1e1e2e; }
+.completion-kind-snippet { background: #94e2d5; color: #1e1e2e; }
+.completion-kind-field { background: #fab387; color: #1e1e2e; }
+.completion-kind-method { background: #89b4fa; color: #1e1e2e; }
+
+.completion-detail {
+  font-size: 0.85em;
+  color: var(--theme-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+.completion-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--theme-text-muted);
+  font-style: italic;
+}
+
+/* ============ Command Line ============ */
+
+.overlay-cmdline {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  max-width: 100%;
+  padding: 8px 12px;
+  z-index: 200;
+}
+
+.cmdline-container {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.cmdline-prefix {
+  color: var(--theme-text-accent);
+  font-weight: bold;
+  user-select: none;
+}
+
+.cmdline-content {
+  flex: 1;
+  white-space: pre;
+}
+
+.cmdline-cursor {
+  background: var(--theme-cursor-bg);
+  color: var(--theme-cursor-fg);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* ============ Hover Info ============ */
+
+.overlay-hover {
+  max-width: 500px;
+  padding: 8px 12px;
+}
+
+.hover-content {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* ============ Signature Help ============ */
+
+.overlay-signature {
+  max-width: 600px;
+  padding: 8px 12px;
+}
+
+.signature-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.signature-label {
+  font-family: var(--font-mono, monospace);
+  white-space: pre-wrap;
+}
+
+.signature-documentation {
+  font-size: 0.9em;
+  color: var(--theme-text-muted);
+  border-top: 1px solid var(--theme-border);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+
+/* ============ Fallback ============ */
+
+.overlay-fallback {
+  padding: 8px;
+  margin: 0;
+  font-size: 0.85em;
+  overflow: auto;
+  max-height: 200px;
+}
+
+/* Theme variables are now managed by ThemeManager.
+ * The 'light' theme can be activated via:
+ *   themeManager.setTheme('light');
+ * See main.css for fallback variable definitions.
+ */

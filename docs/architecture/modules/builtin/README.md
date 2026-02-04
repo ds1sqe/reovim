@@ -12,10 +12,10 @@ This directory contains documentation for reovim's built-in policy modules.
 | buffer-ops | `reovim-module-buffer-ops` | Buffer operations | TODO |
 | commands | `reovim-module-commands` | Ex commands (:w, :q) | TODO |
 | defaults | `reovim-module-defaults` | Default keybindings | TODO |
-| layout | `reovim-module-layout` | Window layout policy | TODO |
+| layout | — | Window layout policy | Archived (client-side in Phase 10) |
 | mode-manager | `reovim-module-mode-manager` | Mode state management | TODO |
 | options | `reovim-module-options` | Editor options (:set) | TODO |
-| window-ops | `reovim-module-window-ops` | Window operations | TODO |
+| window-ops | `reovim-module-window-ops` | Window operations (`<C-w>` commands) | ✅ Implemented (Phase 11) |
 
 ## Example Modules
 

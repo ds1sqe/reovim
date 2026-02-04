@@ -1,0 +1,24 @@
+[package]
+name = "reovim-driver-lsp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LSP driver for reovim (Language Server Protocol client)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (provides KernelContext, EventBus, ArcSwap, channels, etc.)
+reovim-kernel = { workspace = true }
+
+# LSP protocol types (matches lib/lsp version)
+lsp-types = "0.97"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -1,0 +1,59 @@
+// Module service for dynamic module management.
+
+syntax = "proto3";
+package reovim.v2;
+
+service ModuleService {
+  // List loaded modules.
+  rpc List(ListModulesRequest) returns (ListModulesResponse);
+
+  // Load a module.
+  rpc Load(LoadModuleRequest) returns (LoadModuleResponse);
+
+  // Unload a module.
+  rpc Unload(UnloadModuleRequest) returns (UnloadModuleResponse);
+
+  // Reload a module.
+  rpc Reload(ReloadModuleRequest) returns (ReloadModuleResponse);
+}
+
+message ListModulesRequest {}
+
+message ListModulesResponse {
+  repeated ModuleInfo modules = 1;
+}
+
+message ModuleInfo {
+  string name = 1;
+  string version = 2;
+  string path = 3;
+  bool loaded = 4;
+}
+
+message LoadModuleRequest {
+  string name = 1;
+  optional string path = 2;  // Custom path (default: search paths)
+}
+
+message LoadModuleResponse {
+  bool ok = 1;
+  optional string error = 2;
+}
+
+message UnloadModuleRequest {
+  string name = 1;
+}
+
+message UnloadModuleResponse {
+  bool ok = 1;
+  optional string error = 2;
+}
+
+message ReloadModuleRequest {
+  string name = 1;
+}
+
+message ReloadModuleResponse {
+  bool ok = 1;
+  optional string error = 2;
+}

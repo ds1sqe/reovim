@@ -1,6 +1,6 @@
 # Driver Layer
 
-Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is a separate crate.
+Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each driver is a separate crate.
 
 ## Driver Overview
 
@@ -20,44 +20,50 @@ Drivers (`lib/drivers/*`) implement traits defined by the kernel. Each driver is
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Runner (application orchestration)                         │
+│  Clients (clients/tui/, clients/cli/)                       │
 ├─────────────────────────────────────────────────────────────┤
-│  Modules (policy)                                           │
+│  Server (server/lib/server/)                                │
 ├─────────────────────────────────────────────────────────────┤
-│  Drivers (mechanism services)  ← YOU ARE HERE               │
-│  ├── command/  - Command execution                          │
-│  ├── syntax/   - Syntax highlighting                        │
-│  ├── input/    - Key/mouse input                            │
-│  ├── display/  - Frame buffer                               │
-│  ├── lsp/      - Language server                            │
-│  ├── net/      - Network/RPC                                │
-│  ├── vfs/      - Filesystem                                 │
-│  ├── session/  - Session management                         │
-│  └── log/      - Logging                                    │
+│  Modules (server/modules/) - policy                         │
 ├─────────────────────────────────────────────────────────────┤
-│  Kernel (core primitives)                                   │
+│  Drivers (server/lib/drivers/)  ← YOU ARE HERE              │
+│  ├── command/      - Command execution                      │
+│  ├── input/        - Key/mouse input                        │
+│  ├── syntax/       - Syntax highlighting                    │
+│  ├── lsp/          - Language server                        │
+│  ├── vfs/          - Filesystem                             │
+│  ├── session/      - Session management                     │
+│  ├── buffer/       - Buffer operations                      │
+│  ├── undo/         - Undo/redo system                       │
+│  ├── search/       - Search and replace                     │
+│  ├── clipboard/    - Clipboard operations                   │
+│  └── ffi/          - Foreign function interface             │
+├─────────────────────────────────────────────────────────────┤
+│  Kernel (server/lib/kernel/)                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+**Note:** Display and TUI drivers are in `clients/tui/lib/drivers/` since they are client-specific.
+
 ## Driver Registration
 
-Drivers are registered at startup in the runner:
+Drivers are registered at startup in the server:
 
 ```rust
-// runner/src/main.rs
+// server/lib/server/src/server.rs
 
-let display = CrosstermDisplay::new();
-let input = CrosstermInput::new();
 let vfs = StandardVfs::new();
-let logger = TracingLogger::new();
+let syntax = TreesitterSyntax::new();
+let session = SessionManager::new();
 
-let ctx = KernelContext::builder()
-    .display(display)
-    .input(input)
+let server = ServerBuilder::new()
     .vfs(vfs)
-    .logger(logger)
+    .syntax(syntax)
+    .session(session)
     .build();
 ```
+
+**Note:** Display drivers are TUI-specific and registered in `clients/tui/`.
 
 ## Related Documents
 

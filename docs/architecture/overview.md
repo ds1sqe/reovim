@@ -2,13 +2,31 @@
 
 Reovim follows a **Linux kernel-inspired architecture** with clear separation between kernel mechanisms, drivers, and loadable modules.
 
-## Layer Diagram
+## Layer Diagram (Phase 8)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         MODULES                                 │
+│                         CLIENTS                                 │
+│  ┌─────────────────────┐    ┌─────────────────────┐             │
+│  │  TUI (clients/tui/) │    │  CLI (clients/cli/) │             │
+│  └──────────┬──────────┘    └──────────┬──────────┘             │
+│             │                          │                        │
+│             └───────────┬──────────────┘                        │
+│                         │ gRPC v2 (shared/protocol/)            │
+└─────────────────────────┼───────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────┐
+│                    SERVER (server/lib/server/)                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  gRPC Services: Input, State, Notification, Server      │    │
+│  │  Session Management, Module Registry                    │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────┼───────────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────────┐
+│                    MODULES (server/modules/)                    │
 │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐    │
-│  │ keymap  │ │ motions │ │operators│ │ layout  │ │ options │    │
+│  │   vim   │ │ motions │ │textobj  │ │ keymap  │ │ editor  │    │
 │  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘    │
 │       │           │           │           │           │         │
 │       └───────────┴───────────┼───────────┴───────────┘         │
@@ -17,46 +35,32 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│                         KERNEL API                              │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  pub mod api { KernelContext, traits, types, module }   │    │
-│  └─────────────────────────────────────────────────────────┘    │
-└───────────────────────────────┼─────────────────────────────────┘
-                                │
-┌───────────────────────────────┼─────────────────────────────────┐
-│                      KERNEL (lib/kernel)                        │
+│                    KERNEL (server/lib/kernel/)                  │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
 │  │  mm/   │ │  ipc/  │ │ core/  │ │ block/ │ │ sched/ │         │
 │  │ Buffer │ │EventBus│ │ Motion │ │UndoTree│ │Runtime │         │
 │  │Position│ │ Scope  │ │TextObj │ │  Txn   │ │WorkQue │         │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
-│                                                                 │
-│  ┌────────┐ ┌────────┐                                          │
-│  │printk/ │ │ debug/ │                                          │
-│  │ Logger │ │ Panic  │                                          │
-│  └────────┘ └────────┘                                          │
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│                      DRIVERS (lib/drivers)                      │
+│                    DRIVERS (server/lib/drivers/)                │
 │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
-│  │syntax/ │ │ input/ │ │display/│ │  lsp/  │ │  net/  │         │
-│  │Syntax  │ │Keyboard│ │ Frame  │ │  LSP   │ │  RPC   │         │
-│  │Driver  │ │ Mouse  │ │Composit│ │ Client │ │ Server │         │
+│  │ input/ │ │syntax/ │ │  lsp/  │ │  vfs/  │ │session/│         │
+│  │Keyboard│ │Syntax  │ │  LSP   │ │ Files  │ │Session │         │
+│  │ Resolve│ │Driver  │ │ Client │ │  Ops   │ │ State  │         │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
 │                                                                 │
-│  ┌────────┐ ┌────────┐                                          │
-│  │  vfs/  │ │  log/  │                                          │
-│  │  VFS   │ │Tracing │                                          │
-│  └────────┘ └────────┘                                          │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                    │
+│  │buffer/ │ │  undo/ │ │search/ │ │  ffi/  │                    │
+│  │ Ops    │ │ Redo   │ │Replace │ │ Python │                    │
+│  └────────┘ └────────┘ └────────┘ └────────┘                    │
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
-│                        ARCH (lib/arch)                          │
+│                        SHARED (shared/)                         │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Platform Traits: Terminal, FileSystem, Process, Time   │    │
-│  ├─────────────────────────────────────────────────────────┤    │
-│  │  unix/    │  windows/   │  (future: wasm/, embedded/)   │    │
+│  │  protocol/ (gRPC) │ arch/ │ net/ │ log/ │ module-macros │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -83,11 +87,11 @@ See: [Session Model](./session-model.md)
 
 | Linux | Reovim | Purpose |
 |-------|--------|---------|
-| `arch/` | `lib/arch/` | Platform abstraction (Unix, Windows) |
-| `kernel/` | `lib/kernel/` | Core mechanisms (no policy) |
-| `drivers/` | `lib/drivers/*` | Hardware/service adapters |
-| `fs/` | `lib/drivers/vfs/` | Virtual filesystem |
-| Loadable Modules | `modules/`, `plugins/` | Dynamic policy modules |
+| `arch/` | `shared/arch/` | Platform abstraction (Unix, Windows) |
+| `kernel/` | `server/lib/kernel/` | Core mechanisms (no policy) |
+| `drivers/` | `server/lib/drivers/*` | Hardware/service adapters |
+| `fs/` | `server/lib/drivers/vfs/` | Virtual filesystem |
+| Loadable Modules | `server/modules/` | Dynamic policy modules |
 
 ## Design Principles
 
@@ -119,83 +123,94 @@ See: [Mechanism vs Policy](./mechanism-vs-policy.md)
 ## Crate Dependency Graph
 
 ```
-lib/arch          ← Platform traits (no deps)
+shared/arch                ← Platform traits (no deps)
     │
     ▼
-lib/kernel        ← Core mechanisms (depends on arch)
+server/lib/kernel          ← Core mechanisms (depends on arch)
     │
-    ├──▶ lib/drivers/*   ← Service adapters
+    ├──▶ server/lib/drivers/*   ← Service adapters
     │
-    └──▶ lib/module-macros  ← declare_module! proc-macro
+    └──▶ shared/module-macros   ← declare_module! proc-macro
             │
             ▼
-        runner/src/module/  ← Module loader, registry
+        server/lib/server/registry/  ← Module loader, registry
             │
             ▼
-        modules/            ← Policy modules (keymap, motions, etc.)
-        plugins/            ← Feature plugins (treesitter, lsp, etc.)
+        server/modules/              ← Policy modules (vim, motions, etc.)
+
+shared/protocol            ← gRPC v2 definitions
+    │
+    ├──▶ server/lib/server  ← Server runtime
+    │
+    └──▶ clients/*          ← TUI, CLI clients
 ```
 
 ## Source Layout
 
 ```
-lib/
+server/
+├── lib/
+│   ├── kernel/              # Core kernel
+│   │   └── src/
+│   │       ├── api/         # PUBLIC interface
+│   │       │   ├── v1.rs    # Stable API re-exports
+│   │       │   ├── module.rs # Module trait, registrations
+│   │       │   └── context.rs # KernelContext, ModuleContext
+│   │       │
+│   │       ├── mm/          # Memory management
+│   │       │   ├── buffer.rs # Buffer storage
+│   │       │   └── position.rs # Position types
+│   │       │
+│   │       ├── ipc/         # Inter-process communication
+│   │       │   └── event_bus.rs # Pub/sub event system
+│   │       │
+│   │       ├── core/        # Core primitives
+│   │       │   ├── motion.rs # Motion types
+│   │       │   └── register.rs # Register types
+│   │       │
+│   │       └── block/       # Block operations
+│   │           └── undo.rs  # UndoTree
+│   │
+│   ├── server/              # Server runtime
+│   │   └── src/
+│   │       ├── grpc/        # gRPC service handlers
+│   │       │   ├── input.rs # InputService
+│   │       │   └── state.rs # StateService
+│   │       ├── session/     # Session management
+│   │       └── registry/    # Module loader, registry
+│   │
+│   └── drivers/             # Driver implementations (13 crates)
+│       ├── input/           # Key event parsing
+│       ├── syntax/          # Tree-sitter integration
+│       ├── lsp/             # LSP client
+│       ├── vfs/             # Virtual filesystem
+│       ├── session/         # Session state traits
+│       ├── buffer/          # Buffer operations
+│       ├── undo/            # Undo/redo
+│       └── ...              # (search, clipboard, ffi, etc.)
+│
+└── modules/                 # Policy modules (17 crates)
+    ├── vim/                 # Core Vim behavior
+    ├── motions/             # Movement commands
+    ├── textobjects/         # Text object definitions
+    ├── keymap/              # Keymap definitions
+    └── ...                  # (editor, options, etc.)
+
+clients/
+├── tui/                     # TUI client
+│   └── lib/drivers/         # TUI-specific drivers (display, tui)
+└── cli/                     # CLI client
+
+shared/
+├── protocol/                # gRPC v2 definitions
+│   └── proto/               # .proto files
 ├── arch/                    # Platform abstraction
-│   ├── src/traits.rs        # Terminal, FileSystem, Process traits
 │   ├── src/unix/            # Unix implementation
 │   └── src/windows/         # Windows implementation
-│
-├── kernel/                  # Core kernel
-│   └── src/
-│       ├── api/             # PUBLIC interface
-│       │   ├── v1.rs        # Stable API re-exports
-│       │   ├── module.rs    # Module trait, registrations
-│       │   ├── context.rs   # KernelContext, ModuleContext
-│       │   └── version.rs   # Version types
-│       │
-│       ├── mm/              # Memory management
-│       │   ├── buffer.rs    # Buffer storage
-│       │   ├── position.rs  # Position types
-│       │   └── edit.rs      # Edit operations
-│       │
-│       ├── ipc/             # Inter-process communication
-│       │   ├── event_bus.rs # Pub/sub event system
-│       │   └── scope.rs     # EventScope for sync
-│       │
-│       ├── core/            # Core primitives
-│       │   ├── motion.rs    # Motion types
-│       │   └── textobject.rs# TextObject types
-│       │
-│       ├── block/           # Block operations
-│       │   ├── undo.rs      # UndoTree
-│       │   └── transaction.rs
-│       │
-│       ├── sched/           # Scheduler
-│       │   ├── runtime.rs   # Event loop
-│       │   └── workqueue.rs # Async tasks
-│       │
-│       └── printk/          # Kernel logging
-│           └── logger.rs    # Logger trait
-│
-├── drivers/                 # Driver implementations
-│   ├── syntax/              # SyntaxDriver trait
-│   ├── input/               # InputDriver trait
-│   ├── display/             # DisplayDriver trait
-│   ├── lsp/                 # LSP client types
-│   ├── net/                 # RPC server
-│   ├── vfs/                 # Virtual filesystem
-│   └── log/                 # Tracing logger
-│
-└── module-macros/           # Proc-macro crate
-    └── src/lib.rs           # declare_module!
-
-runner/
-└── src/
-    └── module/              # Module system (runner layer)
-        ├── loader.rs        # Static + dynamic loading
-        ├── registry.rs      # Dependency resolution
-        ├── handle.rs        # FFI trampolines
-        └── hot_reload.rs    # File watching
+├── net/                     # Network transport
+├── log/                     # Logging infrastructure
+├── module-macros/           # declare_module! proc-macro
+└── testing/                 # Integration test utilities
 ```
 
 ## Related Documents

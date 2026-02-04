@@ -185,15 +185,15 @@ let x = ((nested));
 
 ### Delimiter Text Objects
 
-Implemented in `lib/core/src/textobject.rs`:
+Implemented in `server/modules/textobjects/src/`:
 - `DelimiterTextObject` handles paired delimiters
 - Supports: `()`, `[]`, `{}`, `<>`, `""`, `''`, ``` `` ```
 
 ### Semantic Text Objects
 
-Implemented via treesitter in `plugins/features/treesitter/src/text_objects.rs`:
+Implemented via treesitter in `server/lib/drivers/syntax/`:
 - Language-specific queries define what constitutes functions, classes, etc.
-- Query files located at `plugins/languages/*/src/queries/textobjects.scm`
+- Query files are bundled with the syntax driver
 - Falls back gracefully when treesitter is unavailable
 
 ### Adding Custom Text Objects

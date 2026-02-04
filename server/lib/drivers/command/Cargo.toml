@@ -1,0 +1,23 @@
+[package]
+name = "reovim-driver-command"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command driver for reovim (command execution framework)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer (for CommandId)
+reovim-kernel = { workspace = true }
+
+# Driver layer
+reovim-driver-command-types = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-driver-display = { workspace = true }
+reovim-driver-session = { workspace = true }

@@ -1,0 +1,39 @@
+// Debug service for server debugging and log access.
+
+syntax = "proto3";
+package reovim.v2;
+
+service DebugService {
+  // Get recent log entries from the server ring buffer.
+  rpc LogTail(LogTailRequest) returns (LogTailResponse);
+
+  // Get or set the current log level.
+  rpc LogLevel(LogLevelRequest) returns (LogLevelResponse);
+}
+
+message LogTailRequest {
+  uint32 count = 1;           // Number of entries (default: 50)
+  optional string level = 2;  // Filter by level (trace, debug, info, warn, error)
+  optional string target = 3; // Filter by target module
+  optional string grep = 4;   // Filter by message content (case-insensitive)
+}
+
+message LogTailResponse {
+  repeated LogEntry entries = 1;
+}
+
+message LogEntry {
+  uint64 seq = 1;             // Sequence number
+  uint64 timestamp_us = 2;    // Microseconds since process start
+  string level = 3;           // Level name (ERROR, WARN, INFO, DEBUG, TRACE)
+  string target = 4;          // Target module path
+  string message = 5;         // Log message
+}
+
+message LogLevelRequest {
+  optional string level = 1;  // New level to set (empty = just query)
+}
+
+message LogLevelResponse {
+  string level = 1;           // Current log level
+}

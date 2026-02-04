@@ -1,0 +1,359 @@
+// Phase 14: Multi-client presence awareness (Epic #465)
+//
+// PresenceService enables clients to follow each other's viewports
+// and support collaborative editing scenarios.
+// Note: Cursor/selection tracking moved to CursorMoved/SelectionChanged notifications.
+//
+// Philosophy:
+// - Server provides WHAT (presence data, sync mode)
+// - Client decides HOW (follow behavior, rendering)
+
+syntax = "proto3";
+package reovim.v2;
+
+import "reovim/v2/common.proto";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────────────────────────────────────
+
+service PresenceService {
+  // Announce this client to the session. Returns assigned client_id and list
+  // of currently connected peers.
+  rpc Join(JoinRequest) returns (JoinResponse);
+
+  // Leave the session (client disconnecting). Called for clean disconnect;
+  // stream drop also triggers cleanup.
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+
+  // Stream presence updates from other clients. Receives presence_joined,
+  // presence_updated, and presence_left events.
+  rpc StreamPresence(StreamPresenceRequest) returns (stream PresenceUpdate);
+
+  // Update this client's presence state (viewport, mode).
+  rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+
+  // Set sync mode (independent, follow another client, or present).
+  rpc SetSyncMode(SetSyncModeRequest) returns (SetSyncModeResponse);
+
+  // List all connected clients in the session.
+  rpc ListClients(ListClientsRequest) returns (ListClientsResponse);
+
+  // Set client's editing role (Phase 11.2, Epic #465).
+  // Controls input routing: Owner→self, Follow→ignored, Share→owner.
+  // DEPRECATED: Use SetRelation instead.
+  rpc SetRole(SetRoleRequest) returns (SetRoleResponse);
+
+  // Set client's relation (#480 Client Architecture Unification).
+  // Unified API for managing client relationships.
+  rpc SetRelation(SetRelationRequest) returns (SetRelationResponse);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Presence state for a single client.
+message ClientPresence {
+  // Unique client ID (assigned by server on Join).
+  uint64 client_id = 1;
+
+  // Client type identifier ("tui", "android", "web", "cli").
+  string client_type = 2;
+
+  // User-friendly display name ("laptop", "phone", "tablet").
+  string display_name = 3;
+
+  // Current buffer being viewed.
+  // Phase #479: Made optional to eliminate ID ambiguity (0 vs "no buffer").
+  optional uint64 buffer_id = 4;
+
+  // Field 5 removed: cursor now tracked via CursorMovedPayload with client_id
+  reserved 5;
+  reserved "cursor";
+
+  // Visible line range (for viewport sync).
+  LineRange visible_lines = 6;
+
+  // Current mode name ("NORMAL", "INSERT", etc.).
+  string mode = 7;
+
+  // Sync mode.
+  SyncMode sync_mode = 8;
+
+  // Client ID being followed (when sync_mode == FOLLOW).
+  optional uint64 follow_target = 9;
+
+  // Timestamp when client joined (Unix ms).
+  uint64 joined_at_ms = 10;
+}
+
+// Visible line range for viewport tracking.
+message LineRange {
+  uint64 start = 1;  // First visible line (0-indexed)
+  uint64 end = 2;    // Last visible line (exclusive)
+}
+
+// Synchronization mode for a client (display-level).
+// Controls what cursor position/viewport a client sees.
+enum SyncMode {
+  // Own cursor, own scroll. Receives updates but ignores them.
+  INDEPENDENT = 0;
+
+  // Follow another client's cursor and scroll position.
+  // Requires follow_target to be set.
+  FOLLOW = 1;
+
+  // Presenting mode. Normal editing, tagged so others can follow.
+  PRESENT = 2;
+}
+
+// Client role for editing state ownership (Phase 11.2, Epic #465).
+// Controls input routing and editing state.
+// DEPRECATED: Use ClientRelationType and ClientRelation instead.
+enum ClientRole {
+  // Owns editing state. Input goes to own mode stack, cursor, etc.
+  CLIENT_ROLE_OWNER = 0;
+
+  // Read-only spectator. Input is ignored, sees target's state.
+  CLIENT_ROLE_FOLLOW = 1;
+
+  // Bidirectional co-edit with owner. Input goes to owner's state.
+  CLIENT_ROLE_SHARE = 2;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified Client Types (#480 Client Architecture Unification)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Relation type for a client.
+enum ClientRelationType {
+  // Read-only spectator. Input is ignored, sees target's state.
+  RELATION_TYPE_FOLLOWING = 0;
+
+  // Bidirectional collaboration. Input goes to target's state.
+  RELATION_TYPE_SHARING = 1;
+}
+
+// Relation to another client.
+// Used as optional - absent means independent.
+message ClientRelation {
+  // Type of relation.
+  ClientRelationType type = 1;
+
+  // Target client ID.
+  uint64 target_id = 2;
+}
+
+// Minimal view state for rendering peer presence.
+message ClientViewState {
+  // Current mode name ("NORMAL", "INSERT", etc.).
+  string mode = 1;
+
+  // Cursor position.
+  Position cursor = 2;
+
+  // Which buffer this client is viewing.
+  optional uint64 buffer_id = 3;
+
+  // Selection range for visual mode.
+  optional Selection selection = 4;
+}
+
+// Client metadata.
+message ClientMetadata {
+  // Client type ("tui", "web", "android", "cli").
+  string client_type = 1;
+
+  // Display name ("laptop", "phone").
+  string display_name = 2;
+
+  // When client joined (Unix ms).
+  uint64 joined_at_ms = 3;
+}
+
+// A client in a session (new unified message).
+message ClientInfo {
+  // Unique client ID.
+  uint64 id = 1;
+
+  // Relation to another client. Absent = independent.
+  optional ClientRelation relation = 2;
+
+  // View state for rendering.
+  ClientViewState view = 3;
+
+  // Metadata.
+  ClientMetadata metadata = 4;
+}
+
+// Transition error codes.
+enum TransitionError {
+  TRANSITION_ERROR_UNSPECIFIED = 0;
+
+  // Target client not found.
+  TRANSITION_ERROR_TARGET_NOT_FOUND = 1;
+
+  // Would create a cycle.
+  TRANSITION_ERROR_WOULD_CREATE_CYCLE = 2;
+
+  // Cannot share with self.
+  TRANSITION_ERROR_CANNOT_TARGET_SELF = 3;
+
+  // Requires cursor sync first (Following -> Sharing).
+  TRANSITION_ERROR_REQUIRES_CURSOR_SYNC = 4;
+}
+
+// Presence update event (streamed to clients).
+message PresenceUpdate {
+  oneof update {
+    // New client joined the session.
+    ClientPresence joined = 1;
+
+    // Existing client's presence changed (viewport, mode, sync_mode).
+    ClientPresence updated = 2;
+
+    // Client left the session (value is client_id).
+    uint64 left = 3;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Request/Response Messages
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Join request - client announces itself to the session.
+message JoinRequest {
+  // Client type identifier ("tui", "android", "web", "cli").
+  string client_type = 1;
+
+  // User-friendly display name.
+  string display_name = 2;
+}
+
+// Join response - returns assigned client ID and peer list.
+message JoinResponse {
+  // Server-assigned unique client ID.
+  uint64 client_id = 1;
+
+  // Currently connected peers (excluding self).
+  // DEPRECATED: Use peers_v2 instead.
+  repeated ClientPresence peers = 2;
+
+  // Currently connected peers with unified ClientInfo (#480).
+  repeated ClientInfo peers_v2 = 3;
+}
+
+// Leave request - client announces departure.
+message LeaveRequest {
+  // Client ID to remove.
+  uint64 client_id = 1;
+}
+
+// Leave response.
+message LeaveResponse {
+  // True if client was found and removed.
+  bool ok = 1;
+}
+
+// Stream presence request - starts streaming presence updates.
+message StreamPresenceRequest {
+  // Empty - streams all presence updates for the session.
+}
+
+// Update presence request - client updates its state.
+message UpdatePresenceRequest {
+  // Client ID making the update.
+  uint64 client_id = 1;
+
+  // New buffer ID (optional, only if changed).
+  optional uint64 buffer_id = 2;
+
+  // Field 3 removed: cursor now tracked via CursorMovedPayload with client_id
+  reserved 3;
+  reserved "cursor";
+
+  // New visible line range (optional, only if changed).
+  optional LineRange visible_lines = 4;
+
+  // New mode name (optional, only if changed).
+  optional string mode = 5;
+}
+
+// Update presence response.
+message UpdatePresenceResponse {
+  // True if update was applied.
+  bool ok = 1;
+}
+
+// Set sync mode request.
+message SetSyncModeRequest {
+  // Client ID setting the mode.
+  uint64 client_id = 1;
+
+  // New sync mode.
+  SyncMode mode = 2;
+
+  // Client ID to follow (required when mode == FOLLOW).
+  optional uint64 follow_target = 3;
+}
+
+// Set sync mode response.
+message SetSyncModeResponse {
+  // True if mode was set.
+  bool ok = 1;
+}
+
+// List clients request.
+message ListClientsRequest {
+  // Empty - returns all connected clients.
+}
+
+// List clients response.
+message ListClientsResponse {
+  // All currently connected clients.
+  // DEPRECATED: Use clients_v2 instead.
+  repeated ClientPresence clients = 1;
+
+  // All connected clients with unified ClientInfo (#480).
+  repeated ClientInfo clients_v2 = 2;
+}
+
+// Set role request (Phase 11.2, Epic #465).
+message SetRoleRequest {
+  // Client ID to set role for.
+  uint64 client_id = 1;
+
+  // New role.
+  ClientRole role = 2;
+
+  // Target client ID (required for FOLLOW and SHARE roles).
+  optional uint64 target_id = 3;
+}
+
+// Set role response.
+message SetRoleResponse {
+  // True if role was set.
+  bool ok = 1;
+
+  // Error message if not ok.
+  optional string error = 2;
+}
+
+// Set relation request (#480 Client Architecture Unification).
+message SetRelationRequest {
+  // Client ID to set relation for.
+  uint64 client_id = 1;
+
+  // New relation. Absent = independent.
+  optional ClientRelation relation = 2;
+}
+
+// Set relation response.
+message SetRelationResponse {
+  // True if relation was set.
+  bool ok = 1;
+
+  // Error code if not ok.
+  optional TransitionError error = 2;
+}
