@@ -35,6 +35,31 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Remove Silent Fallbacks - Fail Loud Policy (#479, #484, #485, #486)**: Eliminated
+  all silent fallback patterns in gRPC handlers. Server now returns explicit errors for
+  invalid `client_id` instead of silently falling back to shared state. Clients panic
+  on failure (misconfigured clients crash rather than silently using wrong state).
+
+  **Phase 1-5 (#479)**: Removed `if req.client_id > 0` guards from all state handlers
+  (`get_mode`, `get_cursor`, `get_layout`, `get_visible_lines`, `get_selection`). Replaced
+  `unwrap_or_else()` fallbacks in input.rs with `.expect()` for invariant violations.
+  Added `*_or_panic()` methods to TUI client. CLI now auto-joins via `ensure_joined()`.
+
+  **Phase 6 (#484)**: Replaced `let _ = execute_command` patterns with proper error
+  handling. Command failures now log to per-client ring buffer and emit warnings.
+
+  **Phase 7-8 (#485)**: Eliminated ID sentinel value ambiguity (`map_or(0, ...)`). Made
+  proto fields optional: `LayoutChangedPayload.focused_window_id`, `WindowInfo.buffer_id`,
+  `WindowLeaf.buffer_id`, `ClientPresence.buffer_id`. Updated all handlers to use
+  `Option<u64>` instead of 0 as "no value" sentinel. Timestamps now use `.expect()`
+  instead of `map_or(0, ...)`.
+
+  **Phase 9 (#486)**: Fixed notification_builder.rs to use optional types for buffer_id.
+  All timestamp patterns use `.expect("system time before UNIX_EPOCH")`.
+
+  Files: `server/lib/server/src/grpc/*.rs`, `shared/protocol/proto/reovim/v2/*.proto`,
+  `clients/tui/src/*.rs`, `clients/cli/src/*.rs`.
+
 - **Generic Input Target System (#482)**: Refactored character input routing to eliminate
   string-based mode detection (`mode_name.contains("command")`). New `InputTarget` enum
   specifies where characters go: `Buffer` (default) or `Extension(TypeId)`. Resolvers now

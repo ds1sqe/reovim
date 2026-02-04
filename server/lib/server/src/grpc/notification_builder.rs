@@ -41,7 +41,8 @@ use crate::session::SessionState;
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
+        .expect("system time before UNIX_EPOCH")
+        .as_millis() as u64
 }
 
 /// Build gRPC notifications from state changes.
@@ -243,12 +244,13 @@ fn build_layout_notification(state: &SessionState, timestamp: u64) -> Notificati
             .placements
             .iter()
             .map(|p| {
+                // Phase #479: buffer_id is Option to eliminate ID ambiguity
                 let buffer_id = state
                     .driver_session
                     .windows
                     .get(p.window_id)
                     .and_then(|w| w.buffer_id)
-                    .map_or(0, |id| id.as_usize() as u64);
+                    .map(|id| id.as_usize() as u64);
 
                 WindowInfo {
                     window_id: p.window_id.as_usize() as u64,
@@ -272,7 +274,8 @@ fn build_layout_notification(state: &SessionState, timestamp: u64) -> Notificati
             .iter()
             .map(|w| WindowInfo {
                 window_id: w.id.as_usize() as u64,
-                buffer_id: w.buffer_id.map_or(0, |id| id.as_usize() as u64),
+                // Phase #479: buffer_id is now Option<u64>
+                buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
                 rect: Some(WindowRect {
                     x: 0,
                     y: 0,
@@ -288,7 +291,8 @@ fn build_layout_notification(state: &SessionState, timestamp: u64) -> Notificati
         event_type: "layout_changed".to_string(),
         timestamp_ms: timestamp,
         payload: Some(notification::Payload::LayoutChanged(LayoutChangedPayload {
-            focused_window_id: focused_id.map_or(0, |id| id.as_usize() as u64),
+            // Phase #479: focused_window_id is now Option<u64>
+            focused_window_id: focused_id.map(|id| id.as_usize() as u64),
             windows,
         })),
     }

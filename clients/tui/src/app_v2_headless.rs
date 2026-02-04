@@ -475,18 +475,27 @@ impl HeadlessEventLoop {
 
     /// Fetch initial state from server.
     ///
-    /// Uses fail-open strategy: mode and cursor are required, but layout
+    /// Uses fail-open strategy: mode is required (panic if fails), but layout
     /// and buffer content are optional. This ensures the event loop starts
     /// even when some RPCs (like `GetLayout`) are not yet implemented.
+    ///
+    /// # Phase #479: Fail-Loud Policy
+    ///
+    /// Mode is required for statusline and uses `get_mode_or_panic()`.
+    /// After `presence_join()` succeeds (which assigns `my_client_id`),
+    /// mode lookup should always work - failure indicates a bug.
     async fn fetch_initial_state(&mut self) -> Result<(), HeadlessError> {
-        // Mode is required for statusline
-        let mode_resp = self.client.get_mode().await?;
+        // Phase #479: Use my_client_id (assigned by presence_join in connect())
+        let client_id = self.state.my_client_id;
+
+        // Mode is required for statusline - panic if fails (should never happen after join)
+        let mode_resp = self.client.get_mode_or_panic(client_id).await;
         self.state.mode_name = mode_resp.name;
         self.state.mode_display = mode_resp.display;
         self.state.is_insert_mode = mode_resp.is_insert;
 
         // Cursor is optional (may fail if no buffer exists)
-        match self.client.get_cursor(None).await {
+        match self.client.get_cursor_for_client(None, client_id).await {
             Ok(cursor_resp) => {
                 if let Some(pos) = cursor_resp.position {
                     self.state.cursor_line = pos.line;
@@ -497,7 +506,7 @@ impl HeadlessEventLoop {
         }
 
         // Layout is optional (not yet implemented in gRPC server)
-        match self.client.get_layout().await {
+        match self.client.get_layout_for_client(client_id).await {
             Ok(layout_resp) => self.apply_layout(&layout_resp),
             Err(e) => tracing::warn!("Layout not available during init: {e}"),
         }
@@ -523,7 +532,8 @@ impl HeadlessEventLoop {
 
     /// Apply layout response to state.
     fn apply_layout(&mut self, layout: &GetLayoutResponse) {
-        self.state.focused_window_id = layout.focused_window_id;
+        // Phase #479: focused_window_id is now Option<u64> to eliminate ID ambiguity
+        self.state.focused_window_id = layout.focused_window_id.unwrap_or(0);
 
         // Flatten window tree to list
         self.state.windows.clear();
@@ -541,7 +551,8 @@ impl HeadlessEventLoop {
 
         let window = WindowInfo {
             window_id: 1,
-            buffer_id,
+            // Phase #479: buffer_id is now Option<u64>
+            buffer_id: Some(buffer_id),
             rect: Some(WindowRect {
                 x: 0,
                 y: 0,
@@ -581,7 +592,13 @@ impl HeadlessEventLoop {
 
     /// Fetch buffer content for all visible windows.
     async fn fetch_buffer_contents(&mut self) -> Result<(), HeadlessError> {
-        let buffer_ids: Vec<u64> = self.state.windows.iter().map(|w| w.buffer_id).collect();
+        // Phase #479: buffer_id is now Option<u64>, filter out None values
+        let buffer_ids: Vec<u64> = self
+            .state
+            .windows
+            .iter()
+            .filter_map(|w| w.buffer_id)
+            .collect();
 
         for buffer_id in buffer_ids {
             if !self.state.buffer_cache.contains_key(&buffer_id) {
@@ -703,7 +720,8 @@ impl HeadlessEventLoop {
                     }
                 }
                 Payload::LayoutChanged(layout) => {
-                    self.state.focused_window_id = layout.focused_window_id;
+                    // Phase #479: focused_window_id is now Option<u64>
+                    self.state.focused_window_id = layout.focused_window_id.unwrap_or(0);
                     self.state.windows = layout.windows;
                 }
                 Payload::Detach(detach) => {
@@ -808,8 +826,11 @@ impl HeadlessEventLoop {
             #[allow(clippy::cast_possible_truncation)]
             let h = rect.height as u16;
 
-            // Get buffer content
-            if let Some(lines) = self.state.buffer_cache.get(&window.buffer_id) {
+            // Get buffer content (Phase #479: buffer_id is Option<u64>)
+            let lines = window
+                .buffer_id
+                .and_then(|bid| self.state.buffer_cache.get(&bid));
+            if let Some(lines) = lines {
                 for (row, line) in lines.iter().enumerate().take(h as usize) {
                     #[allow(clippy::cast_possible_truncation)]
                     let screen_y = y + row as u16;

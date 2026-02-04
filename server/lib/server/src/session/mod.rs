@@ -35,7 +35,7 @@ pub use {
     // Use Client struct with relation field instead.
     presence::{ClientPresence, PresenceMap, SyncMode},
     registry::SessionRegistry,
-    ring_buffer::ClientRingBuffer,
+    ring_buffer::{ClientEventType, ClientRingBuffer},
     session::Session,
     state::SessionState,
     syntax_state::SyntaxSessionState,

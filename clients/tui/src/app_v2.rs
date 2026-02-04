@@ -151,8 +151,9 @@ struct RemoteClient {
     cursor_line: u64,
     /// Cursor column (0-indexed).
     cursor_col: u64,
-    /// Buffer ID the client is viewing.
-    buffer_id: u64,
+    /// Buffer ID the client is viewing (None if no buffer assigned).
+    /// Phase #479: Changed to Option to eliminate ID ambiguity.
+    buffer_id: Option<u64>,
     /// Current mode name.
     /// Reserved for future use (showing mode indicator next to cursor).
     #[allow(dead_code)]
@@ -413,22 +414,31 @@ impl TuiAppV2 {
     }
 
     /// Fetch initial state from server.
+    ///
+    /// # Phase #479: Fail-Loud Policy
+    ///
+    /// Uses `*_or_panic()` methods for critical state lookups. After
+    /// `presence_join()` succeeds (which assigns `my_client_id`), these
+    /// lookups should always work - failure indicates a bug or misconfiguration.
     async fn fetch_initial_state(&mut self) -> Result<(), TuiAppV2Error> {
-        // Get mode
-        let mode_resp = self.client.get_mode().await?;
+        // Phase #479: Use my_client_id (assigned by presence_join in connect())
+        let client_id = self.state.my_client_id;
+
+        // Get mode - panic if fails (should never happen after join)
+        let mode_resp = self.client.get_mode_or_panic(client_id).await;
         self.state.mode_name = mode_resp.name;
         self.state.mode_display = mode_resp.display;
         self.state.is_insert_mode = mode_resp.is_insert;
 
-        // Get cursor
-        let cursor_resp = self.client.get_cursor(None).await?;
+        // Get cursor - panic if fails
+        let cursor_resp = self.client.get_cursor_or_panic(None, client_id).await;
         if let Some(pos) = cursor_resp.position {
             self.state.cursor_line = pos.line;
             self.state.cursor_col = pos.column;
         }
 
-        // Get layout
-        let layout_resp = self.client.get_layout().await?;
+        // Get layout - panic if fails
+        let layout_resp = self.client.get_layout_or_panic(client_id).await;
         self.apply_layout(&layout_resp);
 
         // Handle empty layout - create default local window
@@ -509,7 +519,9 @@ impl TuiAppV2 {
     /// local view using the active buffer. This follows the principle that
     /// clients own window/layout decisions.
     fn apply_layout(&mut self, layout: &GetLayoutResponse) {
-        self.state.focused_window_id = layout.focused_window_id;
+        // Phase #479: focused_window_id is now Option<u64> to eliminate ID ambiguity
+        // None means "no windows" or "no focus", which we treat as window 0 for compatibility
+        self.state.focused_window_id = layout.focused_window_id.unwrap_or(0);
 
         // Flatten window tree to list
         self.state.windows.clear();
@@ -523,7 +535,7 @@ impl TuiAppV2 {
 
         // Update layout mirror (Phase 11.2)
         self.layout_mirror
-            .apply_layout_changed(layout.focused_window_id, &self.state.windows);
+            .apply_layout_changed(self.state.focused_window_id, &self.state.windows);
     }
 
     /// Create a default window view for empty layout.
@@ -536,7 +548,8 @@ impl TuiAppV2 {
 
         let window = WindowInfo {
             window_id: 1, // Local ID
-            buffer_id,
+            // Phase #479: buffer_id is now Option<u64>
+            buffer_id: Some(buffer_id),
             rect: Some(WindowRect {
                 x: 0,
                 y: 0,
@@ -562,12 +575,21 @@ impl TuiAppV2 {
         if let Some(n) = &node.node {
             match n {
                 reovim_protocol::v2::window_node::Node::Leaf(leaf) => {
-                    self.state.windows.push(WindowInfo {
-                        window_id: leaf.window_id,
-                        buffer_id: leaf.buffer_id,
-                        rect: leaf.rect,
-                        focused: leaf.window_id == self.state.focused_window_id,
-                    });
+                    // Phase #479: buffer_id is now Optional to eliminate ID ambiguity
+                    // Skip windows with no buffer (they can't be displayed anyway)
+                    if leaf.buffer_id.is_some() {
+                        self.state.windows.push(WindowInfo {
+                            window_id: leaf.window_id,
+                            buffer_id: leaf.buffer_id,
+                            rect: leaf.rect,
+                            focused: leaf.window_id == self.state.focused_window_id,
+                        });
+                    } else {
+                        tracing::debug!(
+                            window_id = leaf.window_id,
+                            "Skipping window with no buffer"
+                        );
+                    }
                 }
                 reovim_protocol::v2::window_node::Node::Split(split) => {
                     for child in &split.children {
@@ -580,7 +602,13 @@ impl TuiAppV2 {
 
     /// Fetch buffer content for all visible windows.
     async fn fetch_buffer_contents(&mut self) -> Result<(), TuiAppV2Error> {
-        let buffer_ids: Vec<u64> = self.state.windows.iter().map(|w| w.buffer_id).collect();
+        // Phase #479: buffer_id is now Option<u64>, filter out None values
+        let buffer_ids: Vec<u64> = self
+            .state
+            .windows
+            .iter()
+            .filter_map(|w| w.buffer_id)
+            .collect();
 
         for buffer_id in buffer_ids {
             if !self.state.buffer_cache.contains_key(&buffer_id) {
@@ -846,19 +874,19 @@ impl TuiAppV2 {
                     self.state.needs_redraw = true;
                 }
                 Payload::LayoutChanged(layout) => {
-                    // Phase 8 Fix (#465): Defensive fallback for focused_window_id = 0
-                    // WindowId starts at 1, so 0 means server couldn't determine focus.
-                    // Fall back to first window when this happens.
-                    let effective_focused_id =
-                        if layout.focused_window_id == 0 && !layout.windows.is_empty() {
-                            tracing::warn!(
-                                "Server sent focused_window_id=0 with {} windows, using first",
+                    // Phase #479: focused_window_id is now Option<u64> to eliminate ID ambiguity
+                    // None means "no focus", which we handle by using first window or 0
+                    let effective_focused_id = match layout.focused_window_id {
+                        Some(id) => id,
+                        None if !layout.windows.is_empty() => {
+                            tracing::debug!(
+                                "Server sent no focused_window_id with {} windows, using first",
                                 layout.windows.len()
                             );
                             layout.windows.first().map_or(0, |w| w.window_id)
-                        } else {
-                            layout.focused_window_id
-                        };
+                        }
+                        None => 0,
+                    };
 
                     // Update layout mirror (Phase 11.2)
                     self.layout_mirror
@@ -1308,8 +1336,8 @@ impl TuiAppV2 {
             let w = placement.width;
             let h = placement.height;
 
-            // Get buffer content
-            let lines = buffer_cache.get(&placement.buffer_id);
+            // Get buffer content (Phase #479: buffer_id is now Option<u64>)
+            let lines = placement.buffer_id.and_then(|bid| buffer_cache.get(&bid));
             let total_lines = lines.map_or(0, Vec::len);
 
             // Get selection for this window (Phase 8 #465)
@@ -1334,15 +1362,18 @@ impl TuiAppV2 {
                     // Render line with syntax highlighting + selection (Phase 8 #465)
                     #[allow(clippy::cast_possible_truncation)]
                     let line_num = row as u32;
-                    self.render_line_with_syntax(
-                        content_x,
-                        screen_y,
-                        content_width,
-                        line,
-                        line_num,
-                        placement.buffer_id,
-                        selection,
-                    );
+                    // Phase #479: buffer_id is Option - unwrap is safe here since we have lines
+                    if let Some(buffer_id) = placement.buffer_id {
+                        self.render_line_with_syntax(
+                            content_x,
+                            screen_y,
+                            content_width,
+                            line,
+                            line_num,
+                            buffer_id,
+                            selection,
+                        );
+                    }
                 }
 
                 // Render empty lines past EOF with tilde (~)
@@ -1386,12 +1417,16 @@ impl TuiAppV2 {
         placement: &crate::layout_mirror::WindowPlacement,
         gutter_width: u16,
     ) {
-        // Collect remote clients viewing this buffer
+        // Collect remote clients viewing this buffer (Phase #479: buffer_id is Option)
         let remotes: Vec<_> = self
             .state
             .other_clients
             .values()
-            .filter(|r| r.buffer_id == placement.buffer_id)
+            .filter(|r| {
+                placement
+                    .buffer_id
+                    .is_some_and(|bid| r.buffer_id == Some(bid))
+            })
             .cloned()
             .collect();
 
@@ -1515,10 +1550,10 @@ impl TuiAppV2 {
                         column: self.state.cursor_col,
                     });
 
-                let total_lines = self
-                    .state
-                    .buffer_cache
-                    .get(&w.buffer_id)
+                // Phase #479: buffer_id is now Option<u64>
+                let total_lines = w
+                    .buffer_id
+                    .and_then(|bid| self.state.buffer_cache.get(&bid))
                     .map_or(0, Vec::len);
                 (*rect, total_lines, cursor_pos)
             })

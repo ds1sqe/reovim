@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_command_types::{ArgValue, CommandContext},
+    reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{
         InputTarget, KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult,
     },
@@ -37,7 +37,10 @@ use {
 
 use crate::{
     grpc::notification_builder,
-    session::{ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry, SessionState},
+    session::{
+        ClientEventType, ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry,
+        SessionState,
+    },
 };
 
 /// gRPC `InputService` implementation.
@@ -93,6 +96,11 @@ impl InputService for InputServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
+        }
+
         // Phase 11.2: Per-client input routing
         // Extract client_id from request (required field - clients must identify themselves)
         #[allow(clippy::cast_possible_truncation)]
@@ -136,12 +144,11 @@ impl InputService for InputServiceImpl {
             });
 
             // Debug: Log current mode before resolution
-            // Per-client state (#471): Use per-client mode if available, fallback to shared
-            // The fallback to shared mode is needed for edge cases (e.g., client not yet added).
-            #[allow(deprecated)]
+            // Per-client state (#471): Use per-client mode - client was created above
+            // Phase #479: KERNEL PANIC if client not found (invariant violation)
             let current_mode = session
                 .client_current_mode(client_id)
-                .unwrap_or_else(|| session.with_state_sync(|s| s.current_mode().clone()));
+                .expect("BUG: client just created but not found - state corruption");
             tracing::debug!(
                 ?current_mode,
                 %client_id,
@@ -299,9 +306,10 @@ impl InputServiceImpl {
                     let cmd_ctx = Self::resolve_to_command_context(&ctx);
 
                     // Track per-client mode before execution
-                    let mode_before = session.client_current_mode(client_id).unwrap_or_else(|| {
-                        session.with_state_sync(|s| s.driver_session.mode_stack.current().clone())
-                    });
+                    // Phase #479: KERNEL PANIC if client not found (invariant violation)
+                    let mode_before = session
+                        .client_current_mode(client_id)
+                        .expect("BUG: client just created but not found - state corruption");
 
                     // Phase #471: Execute command with per-client state directly.
                     // No sync bandaids needed - command operates on per-client mode/cursor.
@@ -322,9 +330,10 @@ impl InputServiceImpl {
                     }
 
                     // Check if per-client mode changed
-                    let mode_after = session.client_current_mode(client_id).unwrap_or_else(|| {
-                        session.with_state_sync(|s| s.driver_session.mode_stack.current().clone())
-                    });
+                    // Phase #479: KERNEL PANIC if client not found (invariant violation)
+                    let mode_after = session
+                        .client_current_mode(client_id)
+                        .expect("BUG: client just created but not found - state corruption");
                     if mode_before != mode_after {
                         tracing::debug!(
                             ?mode_before,
@@ -506,8 +515,21 @@ impl InputServiceImpl {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
-                // Phase #471: Execute with per-client state
-                let _ = session.execute_command_for_client(client_id, &command, &cmd_ctx);
+                // Phase #471/#479: Execute with per-client state, log errors to ring buffer
+                if let Some((CommandResult::Error(ref e), _)) =
+                    session.execute_command_for_client(client_id, &command, &cmd_ctx)
+                {
+                    // Phase #479: Log command failure to ring buffer (visible, not silent)
+                    session.with_client_ring_buffer(client_id, |rb| {
+                        rb.log_event(
+                            ClientEventType::Error,
+                            format!("COMMAND_FAILED: cmd={command:?} error={e}"),
+                        );
+                    });
+                    tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                }
+                // Success/Quit/ForceQuit/Detach: handled elsewhere
+                // None (client not found or following): already logged in execute_command_for_client
             }
 
             PopResult::Cancelled => {
@@ -547,7 +569,8 @@ impl InputServiceImpl {
                 let buffer_id = state.active_buffer()?;
                 let buffer_arc = state.buffer(buffer_id)?;
                 tracing::debug!(?buffer_id, ?ch, "Inserting into buffer");
-                let _ = buffer_arc.write().insert(&ch.to_string());
+                // Phase #479: insert() returns Edit (for undo), infallible - no error to handle
+                buffer_arc.write().insert(&ch.to_string());
                 Some(buffer_id)
             }
             InputTarget::Extension(type_id) => {

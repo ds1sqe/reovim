@@ -82,6 +82,11 @@ impl From<tonic::transport::Error> for GrpcClientError {
 ///
 /// Wraps all service clients (Input, State, Buffer, Server, Presence, Debug) and provides
 /// a unified interface.
+///
+/// # Phase #479: Client ID Management
+///
+/// The client auto-joins the presence session on first use and stores the assigned
+/// `client_id`. All subsequent calls use this ID for per-client state isolation.
 pub struct GrpcClient {
     input: InputServiceClient<Channel>,
     state: StateServiceClient<Channel>,
@@ -89,6 +94,10 @@ pub struct GrpcClient {
     server: ServerServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
     debug: DebugServiceClient<Channel>,
+    /// Server address for error messages.
+    address: String,
+    /// Client ID assigned by server (None until joined).
+    client_id: Option<u64>,
 }
 
 impl GrpcClient {
@@ -116,7 +125,89 @@ impl GrpcClient {
             server: ServerServiceClient::new(channel.clone()),
             presence: PresenceServiceClient::new(channel.clone()),
             debug: DebugServiceClient::new(channel),
+            address: addr.to_string(),
+            client_id: None,
         })
+    }
+
+    /// Ensure the client has joined the presence session.
+    ///
+    /// If not already joined, calls `presence_join()` to get a client ID.
+    /// Panics if joining fails - CLI cannot operate without a valid client ID.
+    ///
+    /// # Phase #479: Auto-join for per-client state
+    async fn ensure_joined(&mut self) -> u64 {
+        if let Some(id) = self.client_id {
+            return id;
+        }
+
+        match self.presence_join("cli", "CLI").await {
+            Ok(resp) => {
+                self.client_id = Some(resp.client_id);
+                resp.client_id
+            }
+            Err(e) => panic!(
+                "FATAL: Failed to join presence session.\n\
+                 Server: {}\n\
+                 Error: {e}\n\
+                 Ensure server is running and accepts connections.",
+                self.address
+            ),
+        }
+    }
+
+    /// Handle gRPC errors with panic vs retry policy.
+    ///
+    /// # Phase #479: Panic on client bugs, panic on transient (for now)
+    ///
+    /// This function can be used by command handlers that want to panic on
+    /// errors rather than propagating them to the caller.
+    #[allow(dead_code)]
+    fn handle_grpc_error(e: &tonic::Status, operation: &str) -> ! {
+        use tonic::Code;
+
+        match e.code() {
+            // PANIC - Client bug or misconfiguration
+            Code::NotFound
+            | Code::InvalidArgument
+            | Code::PermissionDenied
+            | Code::FailedPrecondition
+            | Code::Internal
+            | Code::Unimplemented => {
+                panic!(
+                    "FATAL: {operation} failed\n\
+                     Code: {:?}\n\
+                     Message: {}\n\
+                     This indicates a client bug or misconfiguration.",
+                    e.code(),
+                    e.message()
+                );
+            }
+            // RETRY - Transient issues (for now, panic - retry logic can be added later)
+            Code::Unavailable
+            | Code::ResourceExhausted
+            | Code::DeadlineExceeded
+            | Code::Aborted => {
+                panic!(
+                    "FATAL: {operation} failed (transient)\n\
+                     Code: {:?}\n\
+                     Message: {}\n\
+                     Server may be temporarily unavailable.",
+                    e.code(),
+                    e.message()
+                );
+            }
+            // Unknown - log and panic
+            _ => {
+                panic!(
+                    "FATAL: {operation} failed (unknown)\n\
+                     Code: {:?}\n\
+                     Message: {}",
+                    e.code(),
+                    e.message()
+                );
+            }
+        }
     }
 
     /// Send keys to the editor.
@@ -132,10 +223,16 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    ///
+    /// # Phase #479: Auto-join and panic on error
+    ///
+    /// The client auto-joins the presence session on first call.
+    /// Panics if joining fails or if the server returns a fatal error.
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
+        let client_id = self.ensure_joined().await;
         let request = SendKeysRequest {
             keys: keys.to_string(),
-            client_id: 0, // Default client ID for stateless CLI commands
+            client_id,
         };
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
@@ -166,12 +263,16 @@ impl GrpcClient {
 
     /// Get the current editor mode.
     ///
+    /// # Phase #479: Auto-join and per-client state
+    ///
+    /// The client auto-joins on first call and queries its per-client mode.
+    ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
-        // Per-client state (#471): client_id = 0 means use shared mode (backward compat)
-        let request = GetModeRequest { client_id: 0 };
+        let client_id = self.ensure_joined().await;
+        let request = GetModeRequest { client_id };
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -196,14 +297,18 @@ impl GrpcClient {
 
     /// Get the cursor position.
     ///
+    /// # Phase #479: Auto-join and per-client state
+    ///
+    /// The client auto-joins on first call and queries its per-client cursor.
+    ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
-        // Per-client state (#471): client_id = 0 means use shared cursor (backward compat)
+        let client_id = self.ensure_joined().await;
         let request = GetCursorRequest {
             window_id: None,
-            client_id: 0,
+            client_id,
         };
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())

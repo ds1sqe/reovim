@@ -65,7 +65,8 @@ message ClientPresence {
   string display_name = 3;
 
   // Current buffer being viewed.
-  uint64 buffer_id = 4;
+  // Phase #479: Made optional to eliminate ID ambiguity (0 vs "no buffer").
+  optional uint64 buffer_id = 4;
 
   // Field 5 removed: cursor now tracked via CursorMovedPayload with client_id
   reserved 5;

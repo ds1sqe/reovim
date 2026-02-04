@@ -47,8 +47,9 @@ pub struct ServerLayoutMirror {
 pub struct WindowPlacement {
     /// Window ID.
     pub window_id: u64,
-    /// Buffer ID displayed in this window.
-    pub buffer_id: u64,
+    /// Buffer ID displayed in this window (None if window has no buffer).
+    /// Phase #479: Changed to Option to eliminate ID ambiguity.
+    pub buffer_id: Option<u64>,
     /// X position (column).
     pub x: u16,
     /// Y position (row).
@@ -189,7 +190,7 @@ mod tests {
     ) -> WindowInfo {
         WindowInfo {
             window_id: id,
-            buffer_id,
+            buffer_id: Some(buffer_id),
             rect: Some(WindowRect {
                 x,
                 y,
@@ -220,7 +221,7 @@ mod tests {
 
         let placement = mirror.placements().first().unwrap();
         assert_eq!(placement.window_id, 1);
-        assert_eq!(placement.buffer_id, 100);
+        assert_eq!(placement.buffer_id, Some(100));
         assert_eq!(placement.x, 0);
         assert_eq!(placement.y, 0);
         assert_eq!(placement.width, 80);
@@ -284,13 +285,13 @@ mod tests {
         let windows = vec![
             WindowInfo {
                 window_id: 1,
-                buffer_id: 100,
+                buffer_id: Some(100),
                 rect: None, // No rect - uses fallback vertical stacking
                 focused: true,
             },
             WindowInfo {
                 window_id: 2,
-                buffer_id: 101,
+                buffer_id: Some(101),
                 rect: None, // No rect - uses fallback vertical stacking
                 focused: false,
             },

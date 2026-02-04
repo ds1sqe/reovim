@@ -22,7 +22,7 @@ use {
 };
 
 use crate::session::{
-    CaptureResult, ClientId, Session, SessionId, SessionRegistry, wait_for_capture,
+    CaptureResult, ClientEventType, ClientId, Session, SessionId, SessionRegistry, wait_for_capture,
 };
 
 /// Convert a driver-layer `Window` to a proto `WindowLeaf`.
@@ -33,7 +33,8 @@ use crate::session::{
 fn window_to_leaf(window: &reovim_driver_session::Window) -> WindowLeaf {
     WindowLeaf {
         window_id: window.id.as_usize() as u64,
-        buffer_id: window.buffer_id.map_or(0, |id| id.as_usize() as u64),
+        // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer")
+        buffer_id: window.buffer_id.map(|id| id.as_usize() as u64),
         rect: Some(WindowRect {
             x: 0, // Position calculated by client based on layout
             y: 0,
@@ -76,15 +77,17 @@ impl StateServiceImpl {
 impl StateService for StateServiceImpl {
     /// Get the current editor mode.
     ///
-    /// Returns the current mode from the `driver_session`'s mode stack, or
-    /// from a specific client's mode stack if `client_id` is provided.
+    /// Returns the mode from the client's per-client mode stack.
     ///
     /// # Per-client state (#471): Per-client mode isolation
     ///
-    /// When `client_id > 0`, returns the mode from that client's per-client
-    /// mode stack (stored in `Client::Owner { state: EditingState }`).
-    /// When `client_id == 0` and no client with id 0 exists, returns the shared
-    /// session mode for backward compatibility.
+    /// Each client has its own mode stack. This method returns the mode
+    /// for the specified client only.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `NotFound`: Client with given ID not found in session
     #[allow(clippy::cast_possible_truncation)]
     async fn get_mode(
         &self,
@@ -93,40 +96,28 @@ impl StateService for StateServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Per-client state (#471): Check for per-client mode first
-        // Note: We also check client_id == 0 because send_keys creates a client
-        // with id 0 when called with client_id: 0 for stateless CLI commands.
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
+        }
+
         let client_id = ClientId::new(req.client_id as usize);
 
-        // Try to get per-client mode (works for any client_id, including 0)
-        if let Some(mode) = session.client_current_mode(client_id) {
-            let name = mode.name().to_string();
-            let display = name.to_uppercase();
-            let is_insert = name.contains("insert") || name.contains("cmdline");
+        // Per-client mode lookup - now required (no fallback to shared state)
+        let mode = session.client_current_mode(client_id).ok_or_else(|| {
+            // Log to ring buffer before returning error
+            session.with_client_ring_buffer(client_id, |rb| {
+                rb.log_event(
+                    ClientEventType::Error,
+                    format!("CLIENT_NOT_FOUND: get_mode client_id={}", req.client_id),
+                );
+            });
+            Status::not_found(format!("Client {} not found", req.client_id))
+        })?;
 
-            return Ok(Response::new(GetModeResponse {
-                name,
-                display,
-                is_insert,
-            }));
-        }
-        // Client not found - fall through to shared mode
-        tracing::debug!(%client_id, "Client not found, returning shared mode");
-
-        // Fallback: Return shared session mode (backward compatibility)
-        // Per-client state (#471): This is a valid fallback for clients without client_id.
-        #[allow(deprecated)]
-        let (name, display, is_insert) = session
-            .with_state(|state| {
-                let mode = state.current_mode();
-                let name = mode.name().to_string();
-                // Display name: uppercase the mode name
-                let display = name.to_uppercase();
-                // Check if this is an insert-like mode
-                let is_insert = name.contains("insert") || name.contains("cmdline");
-                (name, display, is_insert)
-            })
-            .await;
+        let name = mode.name().to_string();
+        let display = name.to_uppercase();
+        let is_insert = name.contains("insert") || name.contains("cmdline");
 
         Ok(Response::new(GetModeResponse {
             name,
@@ -139,10 +130,12 @@ impl StateService for StateServiceImpl {
     ///
     /// # Phase #471: Per-client cursor isolation
     ///
-    /// When `client_id > 0`, returns the cursor from that client's per-client
-    /// window layout (stored in `EditingState.windows`).
-    /// When `client_id == 0` (default), falls back to shared session state
-    /// for backward compatibility.
+    /// Returns the cursor from the client's per-client window layout.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `NotFound`: Client with given ID not found, or no active window
     #[allow(clippy::cast_possible_truncation)]
     async fn get_cursor(
         &self,
@@ -151,52 +144,36 @@ impl StateService for StateServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #471: Try per-client cursor first when client_id > 0
-        if req.client_id > 0 {
-            let client_id = ClientId::new(req.client_id as usize);
-
-            // Get cursor from per-client window layout
-            if let Some(state) = session.client_state(client_id)
-                && let Some(window) = state.windows.active()
-            {
-                let cursor = &window.cursor;
-                return Ok(Response::new(GetCursorResponse {
-                    window_id: window.id.as_usize() as u64,
-                    position: Some(Position {
-                        line: cursor.line as u64,
-                        column: cursor.column as u64,
-                    }),
-                }));
-            }
-            // Client not found - fall through to shared state
-            tracing::debug!(%client_id, "Client not found, returning shared cursor");
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
         }
 
-        // Fallback: Get cursor from shared buffer state (backward compatibility)
-        let (window_id, position) = session
-            .with_state(|state| {
-                // Collapse nested if-let and merge read() with position() to avoid drop timing lint
-                if let Some(buffer_id) = state.active_buffer()
-                    && let Some(buffer_arc) = state.buffer(buffer_id)
-                {
-                    let pos = buffer_arc.read().position();
-                    return Some((
-                        // No window management in lib/server yet, use buffer_id as window_id
-                        buffer_id.as_usize() as u64,
-                        Position {
-                            line: pos.line as u64,
-                            column: pos.column as u64,
-                        },
-                    ));
-                }
-                None
-            })
-            .await
-            .ok_or_else(|| Status::not_found("No active buffer"))?;
+        let client_id = ClientId::new(req.client_id as usize);
 
+        // Per-client state lookup - now required (no fallback to shared state)
+        let state = session.client_state(client_id).ok_or_else(|| {
+            session.with_client_ring_buffer(client_id, |rb| {
+                rb.log_event(
+                    ClientEventType::Error,
+                    format!("CLIENT_NOT_FOUND: get_cursor client_id={}", req.client_id),
+                );
+            });
+            Status::not_found(format!("Client {} not found", req.client_id))
+        })?;
+
+        let window = state
+            .windows
+            .active()
+            .ok_or_else(|| Status::not_found("No active window"))?;
+
+        let cursor = &window.cursor;
         Ok(Response::new(GetCursorResponse {
-            window_id,
-            position: Some(position),
+            window_id: window.id.as_usize() as u64,
+            position: Some(Position {
+                line: cursor.line as u64,
+                column: cursor.column as u64,
+            }),
         }))
     }
 
@@ -228,10 +205,12 @@ impl StateService for StateServiceImpl {
     ///
     /// # Phase #471: Per-client layout isolation
     ///
-    /// When `client_id > 0`, returns the layout from that client's per-client
-    /// window layout (stored in `EditingState.windows`).
-    /// When `client_id == 0` (default), falls back to shared session layout
-    /// for backward compatibility.
+    /// Returns the layout from the client's per-client window layout.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `NotFound`: Client with given ID not found in session
     #[allow(clippy::cast_possible_truncation)]
     async fn get_layout(
         &self,
@@ -240,91 +219,54 @@ impl StateService for StateServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #471: Try per-client layout first when client_id > 0
-        if req.client_id > 0 {
-            let client_id = ClientId::new(req.client_id as usize);
-
-            // Get layout from per-client editing state
-            if let Some(state) = session.client_state(client_id) {
-                let layout = &state.windows;
-                let focused_id = layout.active_id().map_or(0, |id| id.as_usize() as u64);
-
-                let root = match layout.len() {
-                    0 => None,
-                    1 => layout.active().map(|w| WindowNode {
-                        node: Some(Node::Leaf(window_to_leaf(w))),
-                    }),
-                    _ => {
-                        let children: Vec<WindowNode> = layout
-                            .windows
-                            .iter()
-                            .map(|w| WindowNode {
-                                node: Some(Node::Leaf(window_to_leaf(w))),
-                            })
-                            .collect();
-
-                        Some(WindowNode {
-                            node: Some(Node::Split(WindowSplit {
-                                direction: SplitDirection::Vertical.into(),
-                                children,
-                            })),
-                        })
-                    }
-                };
-
-                return Ok(Response::new(GetLayoutResponse {
-                    root,
-                    focused_window_id: focused_id,
-                }));
-            }
-            // Client not found - fall through to shared state
-            tracing::debug!(%client_id, "Client not found, returning shared layout");
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
         }
 
-        // Fallback: Get layout from shared session state (backward compatibility)
-        let (root, focused_window_id) = session
-            .with_state(|state| {
-                let driver_session = state.driver_session();
-                let layout = &driver_session.windows;
+        let client_id = ClientId::new(req.client_id as usize);
 
-                // Get focused window ID
-                let focused_id = layout.active_id().map_or(0, |id| id.as_usize() as u64);
+        // Per-client state lookup - now required (no fallback to shared state)
+        let state = session.client_state(client_id).ok_or_else(|| {
+            session.with_client_ring_buffer(client_id, |rb| {
+                rb.log_event(
+                    ClientEventType::Error,
+                    format!("CLIENT_NOT_FOUND: get_layout client_id={}", req.client_id),
+                );
+            });
+            Status::not_found(format!("Client {} not found", req.client_id))
+        })?;
 
-                // Build window tree
-                let root = match layout.len() {
-                    0 => None,
-                    1 => {
-                        // Single window: return as leaf
-                        layout.active().map(|w| WindowNode {
-                            node: Some(Node::Leaf(window_to_leaf(w))),
-                        })
-                    }
-                    _ => {
-                        // Multiple windows: wrap in vertical split
-                        let children: Vec<WindowNode> = layout
-                            .windows
-                            .iter()
-                            .map(|w| WindowNode {
-                                node: Some(Node::Leaf(window_to_leaf(w))),
-                            })
-                            .collect();
+        let layout = &state.windows;
+        // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus")
+        let focused_id = layout.active_id().map(|id| id.as_usize() as u64);
 
-                        Some(WindowNode {
-                            node: Some(Node::Split(WindowSplit {
-                                direction: SplitDirection::Vertical.into(),
-                                children,
-                            })),
-                        })
-                    }
-                };
+        let root = match layout.len() {
+            0 => None,
+            1 => layout.active().map(|w| WindowNode {
+                node: Some(Node::Leaf(window_to_leaf(w))),
+            }),
+            _ => {
+                let children: Vec<WindowNode> = layout
+                    .windows
+                    .iter()
+                    .map(|w| WindowNode {
+                        node: Some(Node::Leaf(window_to_leaf(w))),
+                    })
+                    .collect();
 
-                (root, focused_id)
-            })
-            .await;
+                Some(WindowNode {
+                    node: Some(Node::Split(WindowSplit {
+                        direction: SplitDirection::Vertical.into(),
+                        children,
+                    })),
+                })
+            }
+        };
 
         Ok(Response::new(GetLayoutResponse {
             root,
-            focused_window_id,
+            focused_window_id: focused_id,
         }))
     }
 
@@ -336,7 +278,7 @@ impl StateService for StateServiceImpl {
     /// # Arguments
     ///
     /// - `window_id`: Optional window ID. If not specified, uses the focused window.
-    /// - `client_id`: Optional client ID for per-client viewport (Phase #471)
+    /// - `client_id`: Required client ID for per-client viewport
     ///
     /// # Returns
     ///
@@ -346,9 +288,12 @@ impl StateService for StateServiceImpl {
     ///
     /// # Phase #471: Per-client viewport isolation
     ///
-    /// When `client_id > 0`, returns visible lines from that client's per-client
-    /// window layout. When `client_id == 0` (default), falls back to shared
-    /// session layout for backward compatibility.
+    /// Returns visible lines from the client's per-client window layout.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `NotFound`: Client with given ID not found, or window not found
     #[allow(clippy::cast_possible_truncation)]
     async fn get_visible_lines(
         &self,
@@ -358,64 +303,39 @@ impl StateService for StateServiceImpl {
         let requested_window_id = req.window_id;
         let session = self.get_session()?;
 
-        // Phase #471: Try per-client viewport first when client_id > 0
-        if req.client_id > 0 {
-            let client_id = ClientId::new(req.client_id as usize);
-
-            if let Some(state) = session.client_state(client_id) {
-                let layout = &state.windows;
-
-                let window = requested_window_id.map_or_else(
-                    || layout.active(),
-                    |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
-                );
-
-                if let Some(w) = window {
-                    let viewport = &w.viewport;
-                    return Ok(Response::new(GetVisibleLinesResponse {
-                        window_id: w.id.as_usize() as u64,
-                        first_line: viewport.scroll_top as u64,
-                        last_line: viewport.last_visible_line() as u64,
-                        viewport_height: u64::from(viewport.height),
-                    }));
-                }
-            }
-            // Client not found - fall through to shared state
-            tracing::debug!(%client_id, "Client not found, returning shared visible lines");
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
         }
 
-        // Fallback: Get visible lines from shared session state (backward compatibility)
-        let result = session
-            .with_state(|state| {
-                let driver_session = state.driver_session();
-                let layout = &driver_session.windows;
+        let client_id = ClientId::new(req.client_id as usize);
 
-                // Find the requested window or use active
-                let window = requested_window_id.map_or_else(
-                    || layout.active(),
-                    |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
+        // Per-client state lookup - now required (no fallback to shared state)
+        let state = session.client_state(client_id).ok_or_else(|| {
+            session.with_client_ring_buffer(client_id, |rb| {
+                rb.log_event(
+                    ClientEventType::Error,
+                    format!("CLIENT_NOT_FOUND: get_visible_lines client_id={}", req.client_id),
                 );
+            });
+            Status::not_found(format!("Client {} not found", req.client_id))
+        })?;
 
-                window.map(|w| {
-                    let viewport = &w.viewport;
-                    (
-                        w.id.as_usize() as u64,
-                        viewport.scroll_top as u64,
-                        viewport.last_visible_line() as u64,
-                        u64::from(viewport.height),
-                    )
-                })
-            })
-            .await;
+        let layout = &state.windows;
 
-        let (window_id, first_line, last_line, viewport_height) =
-            result.ok_or_else(|| Status::not_found("Window not found"))?;
+        let window = requested_window_id.map_or_else(
+            || layout.active(),
+            |id| layout.windows.iter().find(|w| w.id.as_usize() as u64 == id),
+        );
+
+        let w = window.ok_or_else(|| Status::not_found("Window not found"))?;
+        let viewport = &w.viewport;
 
         Ok(Response::new(GetVisibleLinesResponse {
-            window_id,
-            first_line,
-            last_line,
-            viewport_height,
+            window_id: w.id.as_usize() as u64,
+            first_line: viewport.scroll_top as u64,
+            last_line: viewport.last_visible_line() as u64,
+            viewport_height: u64::from(viewport.height),
         }))
     }
 
@@ -426,9 +346,12 @@ impl StateService for StateServiceImpl {
     ///
     /// # Phase #471: Per-client selection isolation
     ///
-    /// When `client_id > 0`, returns the selection from that client's per-client
-    /// window layout. When `client_id == 0` (default), falls back to shared
-    /// session layout for backward compatibility.
+    /// Returns the selection from the client's per-client window layout.
+    ///
+    /// # Errors
+    ///
+    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `NotFound`: Client with given ID not found, or no active window
     #[allow(clippy::cast_possible_truncation)]
     async fn get_selection(
         &self,
@@ -439,118 +362,62 @@ impl StateService for StateServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #471: Try per-client selection first when client_id > 0
-        if req.client_id > 0 {
-            let client_id = ClientId::new(req.client_id as usize);
-
-            if let Some(state) = session.client_state(client_id) {
-                // Get selection from per-client windows
-                let layout = &state.windows;
-
-                // Get active window from per-client layout
-                if let Some(window) = layout.active() {
-                    if let Some(ref sel) = window.selection {
-                        use reovim_driver_session::SelectionMode;
-
-                        let mode_str = match sel.mode {
-                            SelectionMode::Character => "char",
-                            SelectionMode::Line => "line",
-                            SelectionMode::Block => "block",
-                        };
-
-                        return Ok(Response::new(GetSelectionResponse {
-                            has_selection: true,
-                            selection: Some(Selection {
-                                start: Some(Position {
-                                    line: sel.start.line as u64,
-                                    column: sel.start.column as u64,
-                                }),
-                                end: Some(Position {
-                                    line: sel.end.line as u64,
-                                    column: sel.end.column as u64,
-                                }),
-                            }),
-                            visual_mode: Some(mode_str.to_string()),
-                        }));
-                    }
-                    // Window exists but no selection
-                    return Ok(Response::new(GetSelectionResponse {
-                        has_selection: false,
-                        selection: None,
-                        visual_mode: None,
-                    }));
-                }
-            }
-            // Client not found - fall through to shared state
-            tracing::debug!(%client_id, "Client not found, returning shared selection");
+        // Phase #479: Reject reserved client_id=0 (like PID 1)
+        if req.client_id == 0 {
+            return Err(Status::invalid_argument("client_id=0 is reserved"));
         }
 
-        // Fallback: Get selection from shared session state (backward compatibility)
-        let (has_selection, selection, visual_mode) = session
-            .with_state(|state| {
-                // Phase 8 (#465): Read selection from WINDOW, not buffer.
-                let driver_session = state.driver_session();
+        let client_id = ClientId::new(req.client_id as usize);
 
-                // Get buffer ID from active buffer
-                let Some(buffer_id) = state.active_buffer() else {
-                    return (false, None, None);
-                };
+        // Per-client state lookup - now required (no fallback to shared state)
+        let state = session.client_state(client_id).ok_or_else(|| {
+            session.with_client_ring_buffer(client_id, |rb| {
+                rb.log_event(
+                    ClientEventType::Error,
+                    format!("CLIENT_NOT_FOUND: get_selection client_id={}", req.client_id),
+                );
+            });
+            Status::not_found(format!("Client {} not found", req.client_id))
+        })?;
 
-                // Find focused window first, fallback to any window displaying buffer
-                let window = {
-                    let focused = driver_session.windows.active();
-                    if focused.is_some_and(|f| f.buffer_id == Some(buffer_id)) {
-                        focused
-                    } else {
-                        driver_session
-                            .windows
-                            .windows
-                            .iter()
-                            .find(|w| w.buffer_id == Some(buffer_id))
-                    }
-                };
+        // Get selection from per-client windows
+        let layout = &state.windows;
 
-                let Some(window) = window else {
-                    return (false, None, None);
-                };
+        // Get active window from per-client layout
+        let window = layout
+            .active()
+            .ok_or_else(|| Status::not_found("No active window"))?;
 
-                // Phase 8 (#465): Selection now lives in Window with explicit start/end.
-                // Read directly from window.selection.
-                if let Some(ref sel) = window.selection {
-                    use reovim_driver_session::SelectionMode;
+        if let Some(ref sel) = window.selection {
+            use reovim_driver_session::SelectionMode;
 
-                    // Map SelectionMode to protocol string
-                    let mode_str = match sel.mode {
-                        SelectionMode::Character => "char",
-                        SelectionMode::Line => "line",
-                        SelectionMode::Block => "block",
-                    };
+            let mode_str = match sel.mode {
+                SelectionMode::Character => "char",
+                SelectionMode::Line => "line",
+                SelectionMode::Block => "block",
+            };
 
-                    return (
-                        true,
-                        Some(Selection {
-                            start: Some(Position {
-                                line: sel.start.line as u64,
-                                column: sel.start.column as u64,
-                            }),
-                            end: Some(Position {
-                                line: sel.end.line as u64,
-                                column: sel.end.column as u64,
-                            }),
-                        }),
-                        Some(mode_str.to_string()),
-                    );
-                }
+            return Ok(Response::new(GetSelectionResponse {
+                has_selection: true,
+                selection: Some(Selection {
+                    start: Some(Position {
+                        line: sel.start.line as u64,
+                        column: sel.start.column as u64,
+                    }),
+                    end: Some(Position {
+                        line: sel.end.line as u64,
+                        column: sel.end.column as u64,
+                    }),
+                }),
+                visual_mode: Some(mode_str.to_string()),
+            }));
+        }
 
-                // No active selection
-                (false, None, None)
-            })
-            .await;
-
+        // Window exists but no selection
         Ok(Response::new(GetSelectionResponse {
-            has_selection,
-            selection,
-            visual_mode,
+            has_selection: false,
+            selection: None,
+            visual_mode: None,
         }))
     }
 
@@ -592,10 +459,12 @@ impl StateService for StateServiceImpl {
         // Build and emit capture_request notification
         let notification = Notification {
             event_type: "capture_request".to_string(),
+            // Phase #479: System time before UNIX_EPOCH is a serious system error
             #[allow(clippy::cast_possible_truncation)] // Timestamp won't overflow u64
             timestamp_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_millis() as u64),
+                .expect("system time before UNIX_EPOCH")
+                .as_millis() as u64,
             payload: Some(Payload::CaptureRequest(CaptureRequestPayload {
                 request_id,
                 format: format.clone(),
@@ -726,10 +595,17 @@ mod tests {
     use super::*;
 
     fn test_registry() -> Arc<SessionRegistry> {
+        let (registry, _) = test_registry_with_session();
+        registry
+    }
+
+    /// Create a registry with a session and return both.
+    /// This allows tests to add clients to the session.
+    fn test_registry_with_session() -> (Arc<SessionRegistry>, Arc<Session>) {
         let registry = Arc::new(SessionRegistry::new());
         let session = Arc::new(Session::new(SessionId::new("test")));
         registry.insert(&session);
-        registry
+        (registry, session)
     }
 
     /// Create a registry with a session that has a real buffer manager.
@@ -766,10 +642,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_mode_returns_current_mode() {
-        let registry = test_registry();
-        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
 
-        let request = Request::new(GetModeRequest { client_id: 0 });
+        // Create a client first (client_id=1)
+        session.add_client(ClientId::new(1));
+
+        let request = Request::new(GetModeRequest { client_id: 1 });
         let response = service.get_mode(request).await;
 
         assert!(response.is_ok());
@@ -781,17 +660,62 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_cursor_no_buffer() {
+    async fn test_get_mode_rejects_client_id_zero() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
+        // client_id=0 is reserved (like PID 1)
+        let request = Request::new(GetModeRequest { client_id: 0 });
+        let response = service.get_mode(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_mode_unknown_client_returns_not_found() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Non-existent client should return NotFound
+        let request = Request::new(GetModeRequest { client_id: 999 });
+        let response = service.get_mode(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_cursor_rejects_client_id_zero() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // client_id=0 is reserved (like PID 1)
         let request = Request::new(GetCursorRequest {
             window_id: None,
             client_id: 0,
         });
         let response = service.get_cursor(request).await;
 
-        // No buffer = NotFound
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_cursor_no_active_window() {
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        // Create a client but don't add any windows
+        session.add_client(ClientId::new(1));
+
+        let request = Request::new(GetCursorRequest {
+            window_id: None,
+            client_id: 1,
+        });
+        let response = service.get_cursor(request).await;
+
+        // Client exists but no active window = NotFound
         assert!(response.is_err());
         assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
     }
@@ -807,11 +731,14 @@ mod tests {
             })
             .await;
 
+        // Create a client - this initializes per-client state with initial window
+        session.add_client(ClientId::new(1));
+
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetCursorRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_cursor(request).await;
 
@@ -836,19 +763,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_layout_empty() {
-        // Session with no windows
+    async fn test_get_layout_rejects_client_id_zero() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
+        // client_id=0 is reserved (like PID 1)
         let request = Request::new(GetLayoutRequest { client_id: 0 });
+        let response = service.get_layout(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_layout_empty() {
+        // Session with a client but no windows
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        // Create a client
+        session.add_client(ClientId::new(1));
+
+        let request = Request::new(GetLayoutRequest { client_id: 1 });
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
         let resp = response.unwrap().into_inner();
         // Empty layout: no root node
         assert!(resp.root.is_none());
-        assert_eq!(resp.focused_window_id, 0);
+        assert_eq!(resp.focused_window_id, None);
     }
 
     #[tokio::test]
@@ -869,9 +812,12 @@ mod tests {
             })
             .await;
 
+        // Create a client to get per-client state with initial window
+        session.add_client(ClientId::new(1));
+
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetLayoutRequest { client_id: 0 });
+        let request = Request::new(GetLayoutRequest { client_id: 1 });
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
@@ -892,18 +838,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_visible_lines_no_window() {
-        // Session with no windows
+    async fn test_get_visible_lines_rejects_client_id_zero() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
+        // client_id=0 is reserved (like PID 1)
         let request = Request::new(GetVisibleLinesRequest {
             window_id: None,
             client_id: 0,
         });
         let response = service.get_visible_lines(request).await;
 
-        // No window = NotFound
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_get_visible_lines_no_window() {
+        // Session with a client but no windows
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        session.add_client(ClientId::new(1));
+
+        let request = Request::new(GetVisibleLinesRequest {
+            window_id: None,
+            client_id: 1,
+        });
+        let response = service.get_visible_lines(request).await;
+
+        // Client exists but no window = NotFound
         assert!(response.is_err());
         assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
     }
@@ -926,11 +890,14 @@ mod tests {
             })
             .await;
 
+        // Create a client
+        session.add_client(ClientId::new(1));
+
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetVisibleLinesRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_visible_lines(request).await;
 
@@ -948,24 +915,31 @@ mod tests {
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer (which also creates a window via Phase 8 change)
-        // Then modify the existing window's viewport with scroll
+        // Create buffer first
         session
             .with_state_mut(|state| {
-                let _buffer_id = state.create_buffer("content");
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    let mut viewport = Viewport::new(80, 24);
-                    viewport.scroll_top = 10; // Scrolled down 10 lines
-                    window.viewport = viewport;
-                }
+                state.create_buffer("content");
             })
             .await;
+
+        // Create a client
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Modify the CLIENT's per-client viewport with scroll
+        session.update_client_state(client_id, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                let mut viewport = Viewport::new(80, 24);
+                viewport.scroll_top = 10; // Scrolled down 10 lines
+                window.viewport = viewport;
+            }
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetVisibleLinesRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_visible_lines(request).await;
 
@@ -1069,6 +1043,22 @@ mod tests {
     // Phase 9.1: GetSelection RPC tests
 
     #[tokio::test]
+    async fn test_get_selection_rejects_client_id_zero() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // client_id=0 is reserved (like PID 1)
+        let request = Request::new(GetSelectionRequest {
+            window_id: None,
+            client_id: 0,
+        });
+        let response = service.get_selection(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
     async fn test_get_selection_no_selection() {
         let (registry, session) = test_registry_with_buffer_manager();
 
@@ -1079,11 +1069,14 @@ mod tests {
             })
             .await;
 
+        // Create a client
+        session.add_client(ClientId::new(1));
+
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
@@ -1095,21 +1088,22 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_selection_no_buffer() {
-        // Session with no buffer
-        let registry = test_registry();
-        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+    async fn test_get_selection_no_active_window() {
+        // Session with a client but no windows
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        session.add_client(ClientId::new(1));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
-        // Should return no selection (graceful handling), not an error
-        assert!(response.is_ok());
-        let resp = response.unwrap().into_inner();
-        assert!(!resp.has_selection);
+        // Client exists but no active window = NotFound
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
     }
 
     #[tokio::test]
@@ -1121,29 +1115,34 @@ mod tests {
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create buffer and set up window with selection
-        // Phase 8 (#465): Selection now lives in Window, not Buffer.
-        // create_buffer() already creates a Window, so modify it rather than adding a new one.
+        // Create buffer first
         session
             .with_state_mut(|state| {
-                let _buffer_id = state.create_buffer("hello world");
-                // Modify the existing window created by create_buffer
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                    // Set selection for "hello" (0,0 to 0,5 exclusive)
-                    window.selection = Some(Selection::character(
-                        KernelPosition::new(0, 0),
-                        KernelPosition::new(0, 5),
-                    ));
-                }
+                state.create_buffer("hello world");
             })
             .await;
+
+        // Create a client - this initializes per-client state
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Modify the CLIENT's per-client state (not shared state)
+        session.update_client_state(client_id, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                // Set selection for "hello" (0,0 to 0,5 exclusive)
+                window.selection = Some(Selection::character(
+                    KernelPosition::new(0, 0),
+                    KernelPosition::new(0, 5),
+                ));
+            }
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
@@ -1169,27 +1168,34 @@ mod tests {
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Phase 8 (#465): Selection now lives in Window.
-        // create_buffer() already creates a Window, so modify it rather than adding a new one.
+        // Create buffer first
         session
             .with_state_mut(|state| {
-                let _buffer_id = state.create_buffer("line1\nline2\nline3");
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                    // Line-wise selection for lines 0-1
-                    window.selection = Some(Selection::line(
-                        KernelPosition::new(0, 0),
-                        KernelPosition::new(2, 0), // exclusive end
-                    ));
-                }
+                state.create_buffer("line1\nline2\nline3");
             })
             .await;
+
+        // Create a client
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Modify the CLIENT's per-client state
+        session.update_client_state(client_id, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                // Line-wise selection for lines 0-1
+                window.selection = Some(Selection::line(
+                    KernelPosition::new(0, 0),
+                    KernelPosition::new(2, 0), // exclusive end
+                ));
+            }
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
@@ -1208,27 +1214,34 @@ mod tests {
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Phase 8 (#465): Selection now lives in Window.
-        // create_buffer() already creates a Window, so modify it rather than adding a new one.
+        // Create buffer first
         session
             .with_state_mut(|state| {
-                let _buffer_id = state.create_buffer("ABC\nDEF\nGHI");
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                    // Block selection from (0,0) to (1,2) - a 2x2 block
-                    window.selection = Some(Selection::block(
-                        KernelPosition::new(0, 0),
-                        KernelPosition::new(2, 2), // exclusive end
-                    ));
-                }
+                state.create_buffer("ABC\nDEF\nGHI");
             })
             .await;
+
+        // Create a client
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Modify the CLIENT's per-client state
+        session.update_client_state(client_id, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                // Block selection from (0,0) to (1,2) - a 2x2 block
+                window.selection = Some(Selection::block(
+                    KernelPosition::new(0, 0),
+                    KernelPosition::new(2, 2), // exclusive end
+                ));
+            }
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
@@ -1247,28 +1260,34 @@ mod tests {
 
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Phase 8 (#465): Selection now lives in Window.
-        // Selection stores start/end directly - normalized to start < end.
-        // create_buffer() already creates a Window, so modify it rather than adding a new one.
+        // Create buffer first
         session
             .with_state_mut(|state| {
-                let _buffer_id = state.create_buffer("hello world");
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                    // Selection from column 2 to column 5 (already normalized)
-                    window.selection = Some(Selection::character(
-                        KernelPosition::new(0, 2),
-                        KernelPosition::new(0, 5),
-                    ));
-                }
+                state.create_buffer("hello world");
             })
             .await;
+
+        // Create a client
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Modify the CLIENT's per-client state
+        session.update_client_state(client_id, |state| {
+            if let Some(window) = state.windows.active_mut() {
+                window.viewport = Viewport::new(80, 24);
+                // Selection from column 2 to column 5 (already normalized)
+                window.selection = Some(Selection::character(
+                    KernelPosition::new(0, 2),
+                    KernelPosition::new(0, 5),
+                ));
+            }
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetSelectionRequest {
             window_id: None,
-            client_id: 0,
+            client_id: 1,
         });
         let response = service.get_selection(request).await;
 
@@ -1314,32 +1333,11 @@ mod tests {
         assert_eq!(resp.name, "insert");
         assert_eq!(resp.display, "INSERT");
         assert!(resp.is_insert);
-
-        // Query with client_id = 0 should return shared mode (NORMAL)
-        let request = Request::new(GetModeRequest { client_id: 0 });
-        let response = service.get_mode(request).await;
-
-        assert!(response.is_ok());
-        let resp = response.unwrap().into_inner();
-        assert_eq!(resp.name, "normal");
-        assert_eq!(resp.display, "NORMAL");
-        assert!(!resp.is_insert);
     }
 
-    #[tokio::test]
-    async fn test_get_mode_unknown_client_falls_back_to_shared() {
-        let registry = test_registry();
-        let service = StateServiceImpl::new(registry, SessionId::new("test"));
-
-        // Query with non-existent client_id should fall back to shared mode
-        let request = Request::new(GetModeRequest { client_id: 999 });
-        let response = service.get_mode(request).await;
-
-        assert!(response.is_ok());
-        let resp = response.unwrap().into_inner();
-        // Should return shared mode (normal by default)
-        assert_eq!(resp.name, "normal");
-    }
+    // Note: test_get_mode_unknown_client_falls_back_to_shared was REMOVED in Phase #479.
+    // Unknown clients now return NotFound error (see test_get_mode_unknown_client_returns_not_found).
+    // client_id=0 now returns InvalidArgument (see test_get_mode_rejects_client_id_zero).
 
     // =========================================================================
     // Phase #471: Multi-Client Isolation Tests

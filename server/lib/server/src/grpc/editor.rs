@@ -84,7 +84,8 @@ impl EditorService for EditorServiceImpl {
             #[allow(clippy::cast_possible_truncation)] // Timestamp won't overflow u64
             timestamp_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_millis() as u64),
+                .expect("system time before UNIX_EPOCH")
+                .as_millis() as u64,
             payload: Some(Payload::ResizeRequest(ResizeRequestPayload {
                 width: req.width,
                 height: req.height,

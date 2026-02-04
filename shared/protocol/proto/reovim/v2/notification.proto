@@ -88,14 +88,16 @@ message BufferChange {
 // Layout changed
 
 message LayoutChangedPayload {
-  uint64 focused_window_id = 1;
+  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus")
+  optional uint64 focused_window_id = 1;
   // Window list with positions (simplified from full tree)
   repeated WindowInfo windows = 2;
 }
 
 message WindowInfo {
   uint64 window_id = 1;
-  uint64 buffer_id = 2;
+  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer")
+  optional uint64 buffer_id = 2;
   WindowRect rect = 3;  // WindowRect imported from common.proto
   bool focused = 4;
 }

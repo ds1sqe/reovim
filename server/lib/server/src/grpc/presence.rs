@@ -49,10 +49,12 @@ use crate::session::{
 };
 
 /// Get current Unix timestamp in milliseconds.
+#[allow(clippy::cast_possible_truncation)]
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
+        .expect("system time before UNIX_EPOCH")
+        .as_millis() as u64
 }
 
 /// Convert internal `Client` to new `ClientInfo` protobuf format (#480).
@@ -120,7 +122,8 @@ fn to_proto_presence(presence: &ClientPresence) -> ProtoClientPresence {
         client_id: presence.client_id.as_usize() as u64,
         client_type: presence.client_type.clone(),
         display_name: presence.display_name.clone(),
-        buffer_id: presence.buffer_id.unwrap_or(0) as u64,
+        // Phase #479: Use optional field to eliminate ID ambiguity
+        buffer_id: presence.buffer_id.map(|id| id as u64),
         // cursor field removed - now tracked via CursorMoved with client_id
         visible_lines: Some(LineRange {
             start: presence.visible_lines.0 as u64,
@@ -240,6 +243,12 @@ impl PresenceService for PresenceServiceImpl {
 
         // Generate unique client ID
         let client_id = self.sessions.next_client_id();
+
+        // Phase #479: Create per-client state (mode, cursor, windows)
+        // This MUST happen before any state queries (get_mode, get_cursor, etc.)
+        // The metadata carries client_type and display_name for diagnostics.
+        let metadata = crate::session::ClientMetadata::new(&req.client_type, &req.display_name);
+        session.add_client_with_metadata(client_id, metadata);
 
         // Create presence with default state
         let presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);

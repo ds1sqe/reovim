@@ -34,8 +34,64 @@ use {
         presence_service_client::PresenceServiceClient, server_service_client::ServerServiceClient,
         state_service_client::StateServiceClient, syntax_service_client::SyntaxServiceClient,
     },
-    tonic::{Streaming, transport::Channel},
+    tonic::{Code, Streaming, transport::Channel},
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Error Handling (#479: Fail Loud with Client Panic)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Handle gRPC errors with panic vs retry policy.
+///
+/// # Phase #479: Client Panic Policy
+///
+/// - **PANIC** (misconfiguration/bug): `NotFound`, `InvalidArgument`, `PermissionDenied`,
+///   `FailedPrecondition`, `Internal`, `Unimplemented`
+/// - **PANIC** (transient - retry logic can be added later): `Unavailable`,
+///   `ResourceExhausted`, `DeadlineExceeded`, `Aborted`
+///
+/// TUI should crash hard on server errors rather than continue with wrong state.
+fn handle_grpc_error(status: &tonic::Status, operation: &str, client_id: u64) -> ! {
+    match status.code() {
+        // PANIC - Client bug or misconfiguration
+        Code::NotFound
+        | Code::InvalidArgument
+        | Code::PermissionDenied
+        | Code::FailedPrecondition
+        | Code::Internal
+        | Code::Unimplemented => {
+            panic!(
+                "FATAL: {operation} failed for client_id={client_id}\n\
+                 Code: {:?}\n\
+                 Message: {}\n\
+                 Ensure presence_join() succeeded.",
+                status.code(),
+                status.message()
+            );
+        }
+        // RETRY - Transient issues (panic for now, retry logic can be added later)
+        Code::Unavailable | Code::ResourceExhausted | Code::DeadlineExceeded | Code::Aborted => {
+            panic!(
+                "FATAL: {operation} failed for client_id={client_id} (transient)\n\
+                 Code: {:?}\n\
+                 Message: {}\n\
+                 Server may be temporarily unavailable.",
+                status.code(),
+                status.message()
+            );
+        }
+        // Unknown - log and panic
+        _ => {
+            panic!(
+                "FATAL: {operation} failed for client_id={client_id} (unknown)\n\
+                 Code: {:?}\n\
+                 Message: {}",
+                status.code(),
+                status.message()
+            );
+        }
+    }
+}
 
 /// Error type for TUI gRPC client operations.
 #[derive(Debug)]
@@ -212,6 +268,105 @@ impl TuiGrpcClient {
             client_id,
         };
         let response = self.state.get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Panic Methods (#479: Fail Loud)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Get mode or panic - TUI should never continue with unknown mode.
+    ///
+    /// # Phase #479: Fail-Loud Policy
+    ///
+    /// TUI panics with traceback on server errors rather than continuing with
+    /// potentially wrong state. After `presence_join()` succeeds, mode lookups
+    /// should always work - failure indicates a bug or misconfiguration.
+    ///
+    /// # Panics
+    ///
+    /// Panics with detailed error message if the gRPC call fails.
+    pub async fn get_mode_or_panic(&mut self, client_id: u64) -> GetModeResponse {
+        match self.get_mode_for_client(client_id).await {
+            Ok(resp) => resp,
+            Err(TuiGrpcError::GrpcError(status)) => {
+                handle_grpc_error(&status, "get_mode", client_id)
+            }
+            Err(e) => panic!(
+                "FATAL: get_mode failed for client_id={client_id}\n\
+                 Error: {e}\n\
+                 Connection may have been lost."
+            ),
+        }
+    }
+
+    /// Get cursor or panic - TUI should never continue with unknown cursor.
+    ///
+    /// # Phase #479: Fail-Loud Policy
+    ///
+    /// TUI panics with traceback on server errors rather than continuing with
+    /// potentially wrong state.
+    ///
+    /// # Panics
+    ///
+    /// Panics with detailed error message if the gRPC call fails.
+    pub async fn get_cursor_or_panic(
+        &mut self,
+        window_id: Option<u64>,
+        client_id: u64,
+    ) -> GetCursorResponse {
+        match self.get_cursor_for_client(window_id, client_id).await {
+            Ok(resp) => resp,
+            Err(TuiGrpcError::GrpcError(status)) => {
+                handle_grpc_error(&status, "get_cursor", client_id)
+            }
+            Err(e) => panic!(
+                "FATAL: get_cursor failed for client_id={client_id}\n\
+                 Error: {e}\n\
+                 Connection may have been lost."
+            ),
+        }
+    }
+
+    /// Get layout or panic - TUI should never continue with unknown layout.
+    ///
+    /// # Phase #479: Fail-Loud Policy
+    ///
+    /// TUI panics with traceback on server errors rather than continuing with
+    /// potentially wrong state.
+    ///
+    /// # Panics
+    ///
+    /// Panics with detailed error message if the gRPC call fails.
+    pub async fn get_layout_or_panic(&mut self, client_id: u64) -> GetLayoutResponse {
+        match self.get_layout_for_client(client_id).await {
+            Ok(resp) => resp,
+            Err(TuiGrpcError::GrpcError(status)) => {
+                handle_grpc_error(&status, "get_layout", client_id)
+            }
+            Err(e) => panic!(
+                "FATAL: get_layout failed for client_id={client_id}\n\
+                 Error: {e}\n\
+                 Connection may have been lost."
+            ),
+        }
+    }
+
+    /// Get layout for a specific client.
+    ///
+    /// # Per-client state (#471): Per-client layout isolation
+    ///
+    /// Returns the layout from the specified client's per-client editing state.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn get_layout_for_client(
+        &mut self,
+        client_id: u64,
+    ) -> Result<GetLayoutResponse, TuiGrpcError> {
+        let request = GetLayoutRequest { client_id };
+        let response = self.state.get_layout(request).await?;
         Ok(response.into_inner())
     }
 

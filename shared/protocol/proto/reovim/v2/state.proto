@@ -106,7 +106,9 @@ message GetLayoutRequest {
 
 message GetLayoutResponse {
   WindowNode root = 1;
-  uint64 focused_window_id = 2;
+  // Optional: None when no windows exist, Some(id) when a window is focused.
+  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus").
+  optional uint64 focused_window_id = 2;
 }
 
 message WindowNode {
@@ -118,7 +120,9 @@ message WindowNode {
 
 message WindowLeaf {
   uint64 window_id = 1;
-  uint64 buffer_id = 2;
+  // Optional: None when window has no buffer, Some(id) when displaying a buffer.
+  // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no buffer").
+  optional uint64 buffer_id = 2;
   WindowRect rect = 3;
 }
 
