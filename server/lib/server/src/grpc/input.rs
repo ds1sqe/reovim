@@ -24,11 +24,8 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
-    reovim_driver_input::{
-        InputTarget, KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult,
-    },
+    reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
     reovim_driver_session::api::StateChanges,
-    reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
     },
@@ -37,10 +34,7 @@ use {
 
 use crate::{
     grpc::notification_builder,
-    session::{
-        ClientEventType, ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry,
-        SessionState,
-    },
+    session::{ClientEventType, ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry},
 };
 
 /// gRPC `InputService` implementation.
@@ -348,11 +342,10 @@ impl InputServiceImpl {
                 }
 
                 ResolveResult::InsertChar { char: ch, target } => {
-                    // Generic Input Target routing (#482)
+                    // Generic Input Target routing (#482, #477)
                     // Route character based on target specified by resolver
-                    let modified_buffer = session
-                        .with_state_mut(|state| Self::insert_char_by_target(state, ch, target))
-                        .await;
+                    // Phase #477: Use insert_char_for_client which checks per-client extensions first
+                    let modified_buffer = session.insert_char_for_client(client_id, ch, target);
 
                     // Record buffer modification for notification
                     if let Some(buffer_id) = modified_buffer {
@@ -543,57 +536,8 @@ impl InputServiceImpl {
         }
     }
 
-    /// Insert a character based on the target specified by the resolver.
-    ///
-    /// Generic Input Target routing (#482): The resolver specifies WHERE to insert the
-    /// character via `InputTarget`, eliminating string-based mode detection.
-    ///
-    /// # Arguments
-    ///
-    /// * `state` - The session state to modify
-    /// * `ch` - Character to insert
-    /// * `target` - Where to insert: `Buffer` or `Extension(TypeId)`
-    ///
-    /// # Returns
-    ///
-    /// * `Some(BufferId)` if a buffer was modified
-    /// * `None` if inserted into extension or no active buffer
-    fn insert_char_by_target(
-        state: &mut SessionState,
-        ch: char,
-        target: InputTarget,
-    ) -> Option<BufferId> {
-        match target {
-            InputTarget::Buffer => {
-                // Insert into active buffer at cursor position
-                let buffer_id = state.active_buffer()?;
-                let buffer_arc = state.buffer(buffer_id)?;
-                tracing::debug!(?buffer_id, ?ch, "Inserting into buffer");
-                // Phase #479: insert() returns Edit (for undo), infallible - no error to handle
-                buffer_arc.write().insert(&ch.to_string());
-                Some(buffer_id)
-            }
-            InputTarget::Extension(type_id) => {
-                // Route to session extension via TextInputSink (#482)
-                tracing::debug!(?type_id, ?ch, "Routing to extension via TextInputSink");
-                if let Some(sink) = state
-                    .driver_session
-                    .extensions
-                    .get_text_input_sink_by_id(type_id)
-                {
-                    sink.insert_char(ch);
-                } else {
-                    tracing::warn!(
-                        ?type_id,
-                        "Extension not found or doesn't implement TextInputSink"
-                    );
-                }
-                None // Extension modification doesn't emit BufferModified
-            }
-        }
-    }
-
     // NOTE (#471): `fallback_char_insert()` was REMOVED.
+    // NOTE (#477): `insert_char_by_target()` moved to Session::insert_char_for_client().
     //
     // The fallback was a design mistake that masked configuration bugs by silently
     // inserting characters when no resolver was found. This caused:

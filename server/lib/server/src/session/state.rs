@@ -321,15 +321,16 @@ impl SessionState {
             .execute(id, &mut self.driver_session, &mut self.app, &self.vfs, args)
     }
 
-    /// Execute a command with per-client state (Phase #471).
+    /// Execute a command with per-client state (#471, #477).
     ///
-    /// This enables multi-client mode isolation by operating on per-client
-    /// mode and cursor state instead of shared session state.
+    /// This enables multi-client isolation by operating on per-client
+    /// mode, cursor, and extension state instead of shared session state.
     ///
     /// # Arguments
     ///
     /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
     /// * `client_windows` - Per-client window layout (source of truth for cursor)
+    /// * `client_extensions` - Per-client module extensions (#477)
     /// * `id` - The command ID to execute
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
@@ -337,17 +338,19 @@ impl SessionState {
         &mut self,
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
+        client_extensions: &mut reovim_driver_session::ExtensionMap,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
         // Flush pending edits before command execution
         self.app.flush_pending_edits();
-        // Use per-client state for mode and cursor (Phase #471)
+        // Use per-client state (#471, #477)
         self.command_registry.execute_for_client(
             id,
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
+            client_extensions,
             &self.app,
             &self.vfs,
             args,
@@ -522,6 +525,7 @@ impl SessionState {
     /// let result = session_state.resolve_key_for_client(
     ///     &mut editing_state.mode_stack,
     ///     &mut editing_state.windows,
+    ///     &mut editing_state.extensions,
     ///     &key,
     /// );
     /// ```
@@ -529,6 +533,7 @@ impl SessionState {
         &mut self,
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
+        client_extensions: &mut reovim_driver_session::ExtensionMap,
         key: &reovim_driver_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
@@ -550,16 +555,17 @@ impl SessionState {
             }
         }
 
-        // Phase #471: Use per-client mode stack and windows for resolution
+        // Phase #471, #477: Use per-client state for resolution
         let mode = client_mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create SessionRuntime with per-client state
+        // Create SessionRuntime with per-client state (#471, #477)
         let stub_executor = StubExecutor;
         let mut runtime = SessionRuntime::new_for_client(
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
+            client_extensions,
             &self.app.kernel,
             &stub_executor,
         );
@@ -618,15 +624,16 @@ impl SessionState {
         resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
     }
 
-    /// Try to call `on_command_complete` with per-client state (Phase #471).
+    /// Try to call `on_command_complete` with per-client state (#471, #477).
     ///
-    /// Like `try_on_command_complete()`, but uses per-client mode stack and windows
-    /// instead of the shared session state.
+    /// Like `try_on_command_complete()`, but uses per-client mode stack, windows,
+    /// and extensions instead of the shared session state.
     ///
     /// # Arguments
     ///
     /// * `client_mode_stack` - Per-client mode stack (from server-level `EditingState`)
     /// * `client_windows` - Per-client window layout (from server-level `EditingState`)
+    /// * `client_extensions` - Per-client module extensions (#477)
     ///
     /// # Returns
     ///
@@ -635,6 +642,7 @@ impl SessionState {
         &mut self,
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
+        client_extensions: &mut reovim_driver_session::ExtensionMap,
     ) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
 
@@ -650,7 +658,7 @@ impl SessionState {
             }
         }
 
-        // Phase #471: Use per-client mode stack and windows
+        // Phase #471, #477: Use per-client state
         let mode = client_mode_stack.current().clone();
         let resolver = self.resolver_registry.get(&mode)?;
         let stub_executor = StubExecutor;
@@ -658,6 +666,7 @@ impl SessionState {
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
+            client_extensions,
             &self.app.kernel,
             &stub_executor,
         );
@@ -784,34 +793,38 @@ mod tests {
         assert_eq!(state.active_buffer(), Some(id));
     }
 
-    /// Test `resolve_key_for_client` uses per-client mode stack (#471).
+    /// Test `resolve_key_for_client` uses per-client state (#471, #477).
     ///
     /// Verifies that:
-    /// 1. Key resolution uses the provided client mode stack
-    /// 2. The shared session mode stack is NOT affected
+    /// 1. Key resolution uses the provided per-client state
+    /// 2. The shared session state is NOT affected
     #[test]
     #[allow(deprecated)] // Testing that shared current_mode() is NOT modified by per-client resolution
     fn test_resolve_key_for_client_mode_isolation() {
         let kernel = KernelContext::default();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        // Create a per-client mode stack
+        // Create per-client state (#471, #477)
         let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
         let mut client_mode_stack = ModeStack::new(insert_mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
+        let mut client_extensions = reovim_driver_session::ExtensionMap::new();
 
         // Verify initial states
         assert_eq!(state.current_mode().name(), "normal"); // shared
         assert_eq!(client_mode_stack.current().name(), "insert"); // per-client
 
-        // resolve_key_for_client should use client_mode_stack, not shared mode_stack
-        // Even though there's no resolver, the method should use the correct mode
+        // resolve_key_for_client should use per-client state, not shared
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
 
         // Call resolve_key_for_client - it will return None (no resolver)
-        // but the important thing is it uses client_mode_stack and client_windows
-        let _result =
-            state.resolve_key_for_client(&mut client_mode_stack, &mut client_windows, &key);
+        // but the important thing is it uses per-client state
+        let _result = state.resolve_key_for_client(
+            &mut client_mode_stack,
+            &mut client_windows,
+            &mut client_extensions,
+            &key,
+        );
 
         // Verify shared mode stack is NOT affected
         assert_eq!(state.current_mode().name(), "normal");

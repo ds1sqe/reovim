@@ -537,6 +537,33 @@ impl Session {
     // Per-Client Key Resolution (#471)
     // =========================================================================
 
+    /// Ensure a client's per-client windows are populated.
+    ///
+    /// When a client joins before any buffers exist, their windows are empty.
+    /// Later, when a buffer is created (e.g., via `:e`), only the shared session
+    /// windows are updated. This helper syncs per-client windows with the session's
+    /// active buffer when needed.
+    ///
+    /// # When this matters
+    ///
+    /// 1. Client connects (no buffers yet) → empty windows
+    /// 2. `:e filename` creates buffer → shared windows updated
+    /// 3. Client tries to move cursor → per-client windows still empty!
+    ///
+    /// This helper fixes step 3 by creating a window for the active buffer.
+    fn ensure_client_has_window(editing_state: &mut super::EditingState, state: &SessionState) {
+        use reovim_driver_session::Window;
+
+        // Only sync if per-client windows are empty AND session has an active buffer
+        if editing_state.windows.is_empty()
+            && let Some(buffer_id) = state.active_buffer()
+        {
+            let window = Window::with_buffer(buffer_id);
+            editing_state.windows.add(window);
+            tracing::debug!(?buffer_id, "Synced per-client windows with active buffer");
+        }
+    }
+
     /// Resolve a key with per-client mode stack (#471).
     ///
     /// This method provides access to both session state AND per-client mode stack,
@@ -572,16 +599,24 @@ impl Session {
         // Find the target client ID based on relation
         let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
         let editing_state = &mut target_client.state;
-        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
+
+        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
+        Self::ensure_client_has_window(editing_state, &state);
+
+        let (mode_stack, windows, extensions) = (
+            &mut editing_state.mode_stack,
+            &mut editing_state.windows,
+            &mut editing_state.extensions,
+        );
 
         // Resolve key with per-client state
-        state.resolve_key_for_client(mode_stack, windows, key)
+        state.resolve_key_for_client(mode_stack, windows, extensions, key)
     }
 
-    /// Try `on_command_complete` with per-client state (Phase #471).
+    /// Try `on_command_complete` with per-client state (#471, #477).
     ///
     /// Like `resolve_key_for_client`, but for post-command mode transitions.
     #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
@@ -596,12 +631,20 @@ impl Session {
         // Find the target client ID based on relation
         let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
         let editing_state = &mut target_client.state;
-        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
 
-        state.try_on_command_complete_for_client(mode_stack, windows)
+        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
+        Self::ensure_client_has_window(editing_state, &state);
+
+        let (mode_stack, windows, extensions) = (
+            &mut editing_state.mode_stack,
+            &mut editing_state.windows,
+            &mut editing_state.extensions,
+        );
+
+        state.try_on_command_complete_for_client(mode_stack, windows, extensions)
     }
 
     /// Execute a command with per-client state (Phase #471).
@@ -622,9 +665,9 @@ impl Session {
     ///
     /// # Relation Behavior
     ///
-    /// - **Independent**: Uses own mode stack and windows
+    /// - **Independent**: Uses own mode stack, windows, and extensions
     /// - **Following**: Returns `None` (input ignored)
-    /// - **Sharing**: Uses target's mode stack and windows
+    /// - **Sharing**: Uses target's state
     #[allow(clippy::significant_drop_tightening)]
     pub fn execute_command_for_client(
         &self,
@@ -640,13 +683,86 @@ impl Session {
         // Find the target client ID based on relation
         let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        // Phase #471/#477/#480: Get mutable references to per-client state
         let target_client = clients.get_mut(&target_id)?;
         let editing_state = &mut target_client.state;
-        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
+
+        // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
+        Self::ensure_client_has_window(editing_state, &state);
+
+        let (mode_stack, windows, extensions) = (
+            &mut editing_state.mode_stack,
+            &mut editing_state.windows,
+            &mut editing_state.extensions,
+        );
 
         // Execute command with per-client state
-        state.execute_command_for_client(mode_stack, windows, cmd_id, args)
+        state.execute_command_for_client(mode_stack, windows, extensions, cmd_id, args)
+    }
+
+    /// Insert a character for a client, checking per-client extensions first (#477).
+    ///
+    /// For `InputTarget::Buffer`, inserts into the active buffer.
+    /// For `InputTarget::Extension(type_id)`, looks in per-client extensions first,
+    /// then falls back to shared session extensions.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(BufferId)` if character was inserted into a buffer
+    /// - `None` if inserted into extension or failed
+    pub fn insert_char_for_client(
+        &self,
+        client_id: ClientId,
+        ch: char,
+        target: reovim_driver_input::InputTarget,
+    ) -> Option<reovim_kernel::api::v1::BufferId> {
+        use reovim_driver_input::InputTarget;
+
+        match target {
+            InputTarget::Buffer => {
+                // Insert into active buffer
+                let state = self.state.read();
+                let buffer_id = state.active_buffer()?;
+                let buffer_arc = state.buffer(buffer_id)?;
+                drop(state); // Release lock before mutating buffer
+                tracing::debug!(?buffer_id, ?ch, "Inserting into buffer");
+                buffer_arc.write().insert(&ch.to_string());
+                Some(buffer_id)
+            }
+            InputTarget::Extension(type_id) => {
+                // Phase #477: Check per-client extensions FIRST, then shared
+                tracing::debug!(?type_id, ?ch, %client_id, "Routing to extension via TextInputSink");
+
+                // Try per-client extensions first
+                let mut clients = self.clients.write();
+                if let Some(client) = clients.get_mut(&client_id)
+                    && let Some(sink) = client.state.extensions.get_text_input_sink_by_id(type_id)
+                {
+                    sink.insert_char(ch);
+                    tracing::debug!(?type_id, "Inserted char via per-client extension");
+                    return None;
+                }
+                drop(clients);
+
+                // Fallback to shared session extensions
+                let mut state = self.state.write();
+                if let Some(sink) = state
+                    .driver_session_mut()
+                    .extensions
+                    .get_text_input_sink_by_id(type_id)
+                {
+                    sink.insert_char(ch);
+                    tracing::debug!(?type_id, "Inserted char via shared extension");
+                } else {
+                    tracing::warn!(
+                        ?type_id,
+                        "Extension not found or doesn't implement TextInputSink"
+                    );
+                }
+                drop(state); // Release lock early
+                None
+            }
+        }
     }
 
     /// Get the current mode for a specific client (#471).

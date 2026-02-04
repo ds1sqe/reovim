@@ -72,11 +72,14 @@ use crate::{
 /// The compositor is accessed via `session.compositor`. When present,
 /// `CompositorApi` methods delegate to it. When absent, they return errors.
 ///
-/// # Per-Client Mode Support (#471)
+/// # Per-Client State Support (#471, #477)
 ///
-/// When `client_mode_stack` is set, mode operations use the per-client
-/// `ModeStack` instead of the shared session mode stack. This enables
-/// multi-client mode isolation where each client has independent mode state.
+/// When per-client fields are set, operations use per-client state instead
+/// of shared session state. This enables multi-client isolation:
+///
+/// - `client_mode_stack` (#471): Per-client mode (INSERT, NORMAL, etc.)
+/// - `client_windows` (#471): Per-client cursor positions
+/// - `client_extensions` (#477): Per-client module state (`VimSessionState`, etc.)
 ///
 /// [`take_changes`]: ChangeTracker::take_changes
 pub struct SessionRuntime<'a> {
@@ -87,11 +90,17 @@ pub struct SessionRuntime<'a> {
     /// When `Some`, mode operations use this instead of `session.mode_stack`.
     /// This enables multi-client mode isolation.
     client_mode_stack: Option<&'a mut reovim_kernel::api::v1::ModeStack>,
-    /// Per-client window layout override (Phase #471).
+    /// Per-client window layout override (#471).
     ///
     /// When `Some`, cursor operations use this instead of `session.windows`.
     /// This enables multi-client cursor isolation.
     client_windows: Option<&'a mut crate::WindowLayout>,
+    /// Per-client extensions override (#477).
+    ///
+    /// When `Some`, extension operations check this first before falling back
+    /// to `session.extensions`. This enables per-client module state isolation
+    /// (e.g., `VimSessionState.pending_count` doesn't leak between clients).
+    client_extensions: Option<&'a mut crate::ExtensionMap>,
     /// Kernel context (buffers, registers, marks).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
@@ -126,6 +135,7 @@ impl<'a> SessionRuntime<'a> {
             session,
             client_mode_stack: None,
             client_windows: None,
+            client_extensions: None, // No per-client extensions (#477)
             kernel,
             executor,
             screen,
@@ -133,20 +143,22 @@ impl<'a> SessionRuntime<'a> {
         }
     }
 
-    /// Create a runtime with per-client state (Phase #471).
+    /// Create a runtime with per-client state (#471, #477).
     ///
-    /// When `client_mode_stack` and `client_windows` are provided, all mode
-    /// and cursor operations use per-client state instead of shared session state.
+    /// When per-client fields are provided, all mode, cursor, and extension
+    /// operations use per-client state instead of shared session state.
     ///
     /// This enables multi-client isolation where each client has:
-    /// - Independent mode state (e.g., Client A in INSERT while Client B in NORMAL)
+    /// - Independent mode state (Client A in INSERT while Client B in NORMAL)
     /// - Independent cursor positions (Client A at line 5, Client B at line 10)
+    /// - Independent module state (Client A's `pending_count` doesn't affect Client B)
     ///
     /// # Arguments
     ///
-    /// * `session` - Shared session state (buffers, extensions)
+    /// * `session` - Shared session state (buffers, shared extensions)
     /// * `client_mode_stack` - Per-client mode stack to use for this client
     /// * `client_windows` - Per-client window layout with cursors
+    /// * `client_extensions` - Per-client module extensions (#477)
     /// * `kernel` - Kernel context (buffers, registers, marks)
     /// * `executor` - Command executor
     ///
@@ -161,18 +173,21 @@ impl<'a> SessionRuntime<'a> {
     ///     &mut driver_session,
     ///     &mut editing_state.mode_stack,
     ///     &mut editing_state.windows,
+    ///     &mut editing_state.extensions,  // Per-client extensions (#477)
     ///     &kernel,
     ///     &executor,
     /// );
     ///
-    /// // Mode and cursor operations now use per-client state
-    /// runtime.push_mode(insert_mode, ctx); // Only affects this client
-    /// runtime.move_cursor(buffer, pos);    // Only affects this client's cursor
+    /// // Mode, cursor, and extension operations now use per-client state
+    /// runtime.push_mode(insert_mode, ctx);     // Only affects this client
+    /// runtime.move_cursor(buffer, pos);        // Only affects this client's cursor
+    /// runtime.ext_mut::<VimSessionState>();    // Only affects this client's vim state
     /// ```
     pub fn new_for_client(
         session: &'a mut Session,
         client_mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
         client_windows: &'a mut crate::WindowLayout,
+        client_extensions: &'a mut crate::ExtensionMap,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -184,6 +199,7 @@ impl<'a> SessionRuntime<'a> {
             session,
             client_mode_stack: Some(client_mode_stack),
             client_windows: Some(client_windows),
+            client_extensions: Some(client_extensions),
             kernel,
             executor,
             screen,
@@ -201,7 +217,7 @@ impl<'a> SessionRuntime<'a> {
         self.client_mode_stack.is_some()
     }
 
-    /// Check if this runtime uses per-client windows (Phase #471).
+    /// Check if this runtime uses per-client windows (#471).
     ///
     /// Returns `true` if created with [`new_for_client`], `false` otherwise.
     ///
@@ -209,6 +225,16 @@ impl<'a> SessionRuntime<'a> {
     #[must_use]
     pub const fn has_client_windows(&self) -> bool {
         self.client_windows.is_some()
+    }
+
+    /// Check if this runtime uses per-client extensions (#477).
+    ///
+    /// Returns `true` if created with [`new_for_client`], `false` otherwise.
+    ///
+    /// [`new_for_client`]: Self::new_for_client
+    #[must_use]
+    pub const fn has_client_extensions(&self) -> bool {
+        self.client_extensions.is_some()
     }
 
     /// Check if compositor is available.
@@ -1054,12 +1080,30 @@ impl CommandApi for SessionRuntime<'_> {
 
 // === ExtensionApi ===
 
+/// Per-client extensions (#477): Extension operations now check per-client
+/// extensions first, falling back to shared session extensions.
+///
+/// This enables complete module state isolation between clients. For example,
+/// `VimSessionState.pending_count` is per-client, so Client A pressing `5`
+/// doesn't affect Client B's motions.
 impl ExtensionApi for SessionRuntime<'_> {
     fn ext<T: SessionExtension>(&self) -> Option<&T> {
+        // Phase #477: Try per-client extensions first
+        if let Some(ref client_ext) = self.client_extensions
+            && let Some(ext) = client_ext.get::<T>()
+        {
+            return Some(ext);
+        }
+        // Fallback to shared session extensions (e.g., SyntaxSessionState)
         self.session.extensions.get::<T>()
     }
 
     fn ext_mut<T: SessionExtension>(&mut self) -> &mut T {
+        // Phase #477: Use per-client extensions when available
+        if let Some(ref mut client_ext) = self.client_extensions {
+            return client_ext.get_or_insert::<T>();
+        }
+        // Fallback to shared session extensions
         self.session.extensions.get_or_insert::<T>()
     }
 }
@@ -1586,7 +1630,7 @@ mod tests {
         assert!(changes.mode_changed);
     }
 
-    /// Test per-client mode stack isolation (#471).
+    /// Test per-client mode stack isolation (#471, #477).
     ///
     /// Verifies that:
     /// 1. `new_for_client` uses the provided per-client mode stack
@@ -1600,9 +1644,10 @@ mod tests {
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        // Create per-client state
+        // Create per-client state (#471, #477)
         let mut client_mode_stack = ModeStack::new(test_mode());
         let mut client_windows = crate::WindowLayout::empty();
+        let mut client_extensions = crate::ExtensionMap::new();
 
         // Record session's initial mode for comparison
         let session_initial_mode = session.mode_stack.current().clone();
@@ -1614,12 +1659,14 @@ mod tests {
                 &mut session,
                 &mut client_mode_stack,
                 &mut client_windows,
+                &mut client_extensions,
                 &kernel,
                 &executor,
             );
 
             assert!(runtime.has_client_mode_stack());
             assert!(runtime.has_client_windows());
+            assert!(runtime.has_client_extensions());
             assert_eq!(runtime.current_mode(), &test_mode());
 
             // Push mode to per-client stack
@@ -1637,7 +1684,7 @@ mod tests {
         assert_eq!(client_mode_stack.depth(), 2);
     }
 
-    /// Test that two clients have independent mode stacks (#471).
+    /// Test that two clients have independent mode stacks (#471, #477).
     #[test]
     fn test_multi_client_mode_isolation() {
         use reovim_kernel::api::v1::ModeStack;
@@ -1646,11 +1693,13 @@ mod tests {
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        // Create two independent client mode stacks and windows
+        // Create two independent client state sets (#471, #477)
         let mut client1_stack = ModeStack::new(test_mode());
         let mut client1_windows = crate::WindowLayout::empty();
+        let mut client1_extensions = crate::ExtensionMap::new();
         let mut client2_stack = ModeStack::new(test_mode());
         let mut client2_windows = crate::WindowLayout::empty();
+        let mut client2_extensions = crate::ExtensionMap::new();
 
         // Client 1 enters insert mode
         {
@@ -1658,6 +1707,7 @@ mod tests {
                 &mut session,
                 &mut client1_stack,
                 &mut client1_windows,
+                &mut client1_extensions,
                 &kernel,
                 &executor,
             );
@@ -1670,6 +1720,7 @@ mod tests {
                 &mut session,
                 &mut client2_stack,
                 &mut client2_windows,
+                &mut client2_extensions,
                 &kernel,
                 &executor,
             );

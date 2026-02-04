@@ -239,8 +239,19 @@ fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     // Initialize tracing
-    let filter = if cli.verbose { "debug" } else { "info" };
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Priority: RUST_LOG env var > --verbose flag > default (info)
+    // Note: We use stderr so test harness can capture logs (stdout is piped to null)
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
+        if cli.verbose {
+            "debug".to_string()
+        } else {
+            "info".to_string()
+        }
+    });
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(&filter)
+        .init();
 
     // Initialize debug infrastructure (Phase #478)
     init_debug_infrastructure();

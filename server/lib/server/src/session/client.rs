@@ -43,7 +43,8 @@ use std::{collections::HashMap, time::SystemTime};
 
 use {
     reovim_driver_session::{
-        CursorPosition, KeySequence, Selection, SelectionMode, Viewport, Window, WindowLayout,
+        CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, Viewport, Window,
+        WindowLayout,
     },
     reovim_kernel::api::v1::ModeStack,
 };
@@ -546,16 +547,23 @@ impl Client {
 ///
 /// # Client Model Mapping (#480)
 ///
-/// This struct maps to [`ClientViewState`] in the common client model.
+/// This struct maps to `ClientViewState` in the common client model.
 /// Only a subset is transmitted:
 ///
-/// | EditingState field | ClientViewState field | Transform |
-/// |--------------------|----------------------|-----------|
+/// | `EditingState` field | `ClientViewState` field | Transform |
+/// |----------------------|-------------------------|-----------|
 /// | `mode_stack` | `mode` | `.current().name()` |
 /// | `windows` | `cursor: Position` | `.focused().cursor` |
 /// | `windows` | `buffer_id` | `.focused().buffer_id` |
 /// | `selection` | `selection` | `.to_driver_selection()` |
-#[derive(Debug, Clone)]
+///
+/// Per-client editing state (#471, #477).
+///
+/// Contains all client-specific state including mode, windows, viewport,
+/// selection, and module extensions. Each client has independent state
+/// to prevent cross-client interference (e.g., Client A's pending count
+/// affecting Client B's motions).
+#[derive(Debug)]
 pub struct EditingState {
     /// Mode stack (current mode on top).
     pub mode_stack: ModeStack,
@@ -574,6 +582,37 @@ pub struct EditingState {
 
     /// Active selection (for visual mode).
     pub selection: Option<ClientSelection>,
+
+    /// Per-client module extensions (#477).
+    ///
+    /// Type-erased storage for module state like `VimSessionState`,
+    /// `SearchState`, `CmdlineState`. Each client has independent
+    /// extensions to prevent state leakage between clients.
+    ///
+    /// # Why Per-Client
+    ///
+    /// Without isolation, Client A pressing `5` (`pending_count=5`) would
+    /// cause Client B's `j` to move 5 lines instead of 1. This field
+    /// ensures complete module state isolation.
+    pub extensions: ExtensionMap,
+}
+
+// Manual Clone implementation (#477).
+//
+// ExtensionMap doesn't implement Clone (contains Box<dyn SessionExtensionDyn>).
+// Cloning creates fresh extensions - intentional for relation following where
+// spectators should have their own independent module state.
+impl Clone for EditingState {
+    fn clone(&self) -> Self {
+        Self {
+            mode_stack: self.mode_stack.clone(),
+            pending_keys: self.pending_keys.clone(),
+            windows: self.windows.clone(),
+            viewport: self.viewport, // Copy type
+            selection: self.selection.clone(),
+            extensions: ExtensionMap::new(), // Fresh extensions for cloned state
+        }
+    }
 }
 
 impl Default for EditingState {
@@ -589,6 +628,7 @@ impl Default for EditingState {
             windows: WindowLayout::empty(), // Per-client windows (#471)
             viewport: Viewport::default(),
             selection: None,
+            extensions: ExtensionMap::new(), // Per-client extensions (#477)
         }
     }
 }
@@ -603,6 +643,7 @@ impl EditingState {
             windows: WindowLayout::empty(),
             viewport: Viewport::default(),
             selection: None,
+            extensions: ExtensionMap::new(), // Per-client extensions (#477)
         }
     }
 
@@ -619,6 +660,7 @@ impl EditingState {
             windows,
             viewport: Viewport::default(),
             selection: None,
+            extensions: ExtensionMap::new(), // Per-client extensions (#477)
         }
     }
 

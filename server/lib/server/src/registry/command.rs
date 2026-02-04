@@ -170,17 +170,18 @@ impl CommandRegistry {
         })
     }
 
-    /// Execute a command with per-client state (Phase #471).
+    /// Execute a command with per-client state (#471, #477).
     ///
     /// This uses [`SessionRuntime::new_for_client`] to ensure commands operate
-    /// on per-client mode and cursor state, enabling multi-client isolation.
+    /// on per-client mode, cursor, and extension state, enabling multi-client isolation.
     ///
     /// # Arguments
     ///
     /// * `id` - The command ID to execute
-    /// * `driver_session` - Driver session (for shared state like buffers, extensions)
+    /// * `driver_session` - Driver session (for shared state like buffers)
     /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
     /// * `client_windows` - Per-client window layout (source of truth for cursor)
+    /// * `client_extensions` - Per-client module extensions (#477)
     /// * `app` - Application state (contains `KernelContext`)
     /// * `vfs` - VFS driver for file operations
     /// * `args` - Command arguments (count, register, etc.)
@@ -192,6 +193,7 @@ impl CommandRegistry {
         driver_session: &mut DriverSession,
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
+        client_extensions: &mut reovim_driver_session::ExtensionMap,
         app: &AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
@@ -207,12 +209,13 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Create SessionRuntime with per-client state (Phase #471)
+            // Create SessionRuntime with per-client state (#471, #477)
             let stub_executor = StubCommandExecutor;
             let mut runtime = SessionRuntime::new_for_client(
                 driver_session,
                 client_mode_stack,
                 client_windows,
+                client_extensions,
                 &app.kernel,
                 &stub_executor,
             );

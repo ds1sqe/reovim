@@ -60,6 +60,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Files: `server/lib/server/src/grpc/*.rs`, `shared/protocol/proto/reovim/v2/*.proto`,
   `clients/tui/src/*.rs`, `clients/cli/src/*.rs`.
 
+- **Per-client module state (extensions) isolation (#477)**: Added per-client `ExtensionMap`
+  to `EditingState` for complete isolation of vim state between clients. Previously, ALL
+  module state lived in shared `Session.extensions`, causing bugs where Client A pressing
+  `5` (sets `pending_count=5`) would cause Client B's `j` motion to move 5 lines instead
+  of 1. Solution: Extended the per-client architecture from #471 (mode_stack/windows) to
+  include extensions. `SessionRuntime` now has `client_extensions: Option<&mut ExtensionMap>`
+  field. `ExtensionApi` implementation checks per-client extensions first via `ext()` and
+  `ext_mut()`, with automatic fallback to shared `session.extensions` for buffer-scoped
+  state like `SyntaxSessionState`. `EditingState` has manual `Clone` impl that creates
+  fresh `ExtensionMap` (intentional for follower clients). All 48 call sites using
+  `ext::<VimSessionState>()` automatically use per-client storage with zero changes.
+  Future modules (range-finder, popups, telescope) will automatically get per-client
+  isolation. Files: `server/lib/server/src/session/client.rs` (extensions field, manual
+  Clone), `server/lib/drivers/session/src/runtime.rs` (client_extensions, ExtensionApi),
+  `server/lib/server/src/session/state.rs` (2 call sites), `server/lib/server/src/registry/command.rs`
+  (1 call site). Part of Epic #465. (#477)
+
 - **Generic Input Target System (#482)**: Refactored character input routing to eliminate
   string-based mode detection (`mode_name.contains("command")`). New `InputTarget` enum
   specifies where characters go: `Buffer` (default) or `Extension(TypeId)`. Resolvers now

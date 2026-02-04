@@ -223,6 +223,9 @@ impl TestServerHarness {
         let _test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
 
         // Use debug level by default for test log capture
+        // Note: Both REOVIM_LOG (kernel) and RUST_LOG (tracing) must be set
+        // for full log capture. The composite logger forwards kernel logs to
+        // tracing, so RUST_LOG controls what gets written to stderr.
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "debug".to_string());
 
         // Use worktree modules instead of globally installed ones (#433)
@@ -230,7 +233,8 @@ impl TestServerHarness {
 
         let mut process = Command::new(binary_path())
             .args(["server", "--grpc", "0"])
-            .env("REOVIM_LOG", log_level)
+            .env("REOVIM_LOG", &log_level)
+            .env("RUST_LOG", &log_level) // Enable tracing output for log capture
             .env("REOVIM_MODULE_PATH", &module_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
