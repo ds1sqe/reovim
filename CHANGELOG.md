@@ -35,6 +35,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Generic Input Target System (#482)**: Refactored character input routing to eliminate
+  string-based mode detection (`mode_name.contains("command")`). New `InputTarget` enum
+  specifies where characters go: `Buffer` (default) or `Extension(TypeId)`. Resolvers now
+  use helper methods: `ResolveResult::insert_char(c)` for buffer insertion,
+  `ResolveResult::insert_char_to::<CmdlineState>(c)` for extension routing. Added
+  `TextInputSink` trait for extensions that accept text input, `SessionExtensionDyn` trait
+  for object-safe runtime access, `ExtensionMap::get_text_input_sink_by_id()` for TypeId-
+  based lookup. `CmdlineState` now implements `TextInputSink` with `as_text_input_sink()`
+  override. Runner routes via `insert_char_by_target()` matching on target instead of mode
+  name. Enables any module to define input targets without runner changes (e.g., hypothetical
+  chess/tetris/search modules). Files: `server/lib/drivers/input/src/resolver.rs`,
+  `server/lib/drivers/session/src/extension.rs`, `server/lib/drivers/session/src/api/cmdline.rs`,
+  `server/lib/server/src/grpc/input.rs`, `server/modules/vim/src/resolvers/*.rs`.
+
 - **Client Architecture Unification**: Unified three inconsistent client models
   into a single `ClientRelation`-based architecture. Server layer: All clients
   now have `EditingState` (not optional), `ClientRelation` enum with `Following`

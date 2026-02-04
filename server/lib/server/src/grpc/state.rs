@@ -83,8 +83,8 @@ impl StateService for StateServiceImpl {
     ///
     /// When `client_id > 0`, returns the mode from that client's per-client
     /// mode stack (stored in `Client::Owner { state: EditingState }`).
-    /// When `client_id == 0` (default), returns the shared session mode
-    /// for backward compatibility.
+    /// When `client_id == 0` and no client with id 0 exists, returns the shared
+    /// session mode for backward compatibility.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_mode(
         &self,
@@ -94,24 +94,24 @@ impl StateService for StateServiceImpl {
         let session = self.get_session()?;
 
         // Per-client state (#471): Check for per-client mode first
-        if req.client_id > 0 {
-            let client_id = ClientId::new(req.client_id as usize);
+        // Note: We also check client_id == 0 because send_keys creates a client
+        // with id 0 when called with client_id: 0 for stateless CLI commands.
+        let client_id = ClientId::new(req.client_id as usize);
 
-            // Try to get per-client mode
-            if let Some(mode) = session.client_current_mode(client_id) {
-                let name = mode.name().to_string();
-                let display = name.to_uppercase();
-                let is_insert = name.contains("insert") || name.contains("cmdline");
+        // Try to get per-client mode (works for any client_id, including 0)
+        if let Some(mode) = session.client_current_mode(client_id) {
+            let name = mode.name().to_string();
+            let display = name.to_uppercase();
+            let is_insert = name.contains("insert") || name.contains("cmdline");
 
-                return Ok(Response::new(GetModeResponse {
-                    name,
-                    display,
-                    is_insert,
-                }));
-            }
-            // Client not found - fall through to shared mode
-            tracing::debug!(%client_id, "Client not found, returning shared mode");
+            return Ok(Response::new(GetModeResponse {
+                name,
+                display,
+                is_insert,
+            }));
         }
+        // Client not found - fall through to shared mode
+        tracing::debug!(%client_id, "Client not found, returning shared mode");
 
         // Fallback: Return shared session mode (backward compatibility)
         // Per-client state (#471): This is a valid fallback for clients without client_id.

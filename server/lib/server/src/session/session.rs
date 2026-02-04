@@ -779,10 +779,8 @@ mod tests {
         session.add_client(follow_id);
 
         // Set follower relation
-        let _ = session.set_client_relation(
-            follow_id,
-            Some(ClientRelation::Following { target: owner_id }),
-        );
+        let _ = session
+            .set_client_relation(follow_id, Some(ClientRelation::Following { target: owner_id }));
 
         // Log event to follower's ring buffer
         session.with_client_ring_buffer(follow_id, |ring| {
@@ -812,10 +810,8 @@ mod tests {
         session.add_client(share_id);
 
         // Set sharing relation
-        let _ = session.set_client_relation(
-            share_id,
-            Some(ClientRelation::Sharing { with: owner_id }),
-        );
+        let _ =
+            session.set_client_relation(share_id, Some(ClientRelation::Sharing { with: owner_id }));
 
         // Log event to sharer's ring buffer
         session.with_client_ring_buffer(share_id, |ring| {

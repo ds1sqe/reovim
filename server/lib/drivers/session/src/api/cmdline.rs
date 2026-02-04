@@ -4,7 +4,7 @@
 //! This enables the runner to activate cmdline with the correct prompt type
 //! without depending on policy modules.
 
-use crate::SessionExtension;
+use crate::{SessionExtension, TextInputSink};
 
 /// Command-line prompt type for session extensions.
 ///
@@ -61,6 +61,24 @@ pub struct CmdlineState {
 impl SessionExtension for CmdlineState {
     fn create() -> Self {
         Self::default()
+    }
+
+    /// `CmdlineState` accepts text input, so it implements `TextInputSink`.
+    ///
+    /// This enables the runner to route characters from command-line mode
+    /// to this extension without string-based mode detection (#482).
+    fn as_text_input_sink(&mut self) -> Option<&mut dyn TextInputSink> {
+        Some(self)
+    }
+}
+
+/// `TextInputSink` implementation for `CmdlineState`.
+///
+/// Delegates to the existing `insert_char` method.
+impl TextInputSink for CmdlineState {
+    fn insert_char(&mut self, ch: char) {
+        // Delegate to the existing method
+        Self::insert_char(self, ch);
     }
 }
 

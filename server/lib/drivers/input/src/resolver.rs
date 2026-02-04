@@ -43,10 +43,10 @@
 //! 4. EventLoop returns to normal mode
 //! ```
 
-use std::collections::HashMap;
+use std::{any::TypeId, collections::HashMap};
 
 use {
-    reovim_driver_session::ExtensionMap,
+    reovim_driver_session::{ExtensionMap, SessionExtension, TextInputSink},
     reovim_kernel::api::v1::{BufferId, CommandId, ModeId, ModeStack, Position},
 };
 
@@ -580,6 +580,74 @@ pub trait ModeKeyResolver: Send + Sync {
 }
 
 // ============================================================================
+// InputTarget - Where to route character input (#482)
+// ============================================================================
+
+/// Target for character input routing.
+///
+/// When a resolver returns `InsertChar`, this enum specifies where the
+/// character should be inserted. This eliminates string-based mode detection
+/// (like `mode_name.contains("command")`) in favor of explicit, type-safe routing.
+///
+/// # Architecture (#482)
+///
+/// | Layer | Responsibility |
+/// |-------|----------------|
+/// | Resolver | Returns `ResolveResult::InsertChar { char, target }` |
+/// | Runner | Routes char to target (buffer or extension) |
+/// | Extension | Receives char via `TextInputSink::insert_char()` |
+///
+/// # Example
+///
+/// ```ignore
+/// use reovim_driver_input::{ResolveResult, InputTarget};
+/// use reovim_driver_session::api::CmdlineState;
+///
+/// // Insert into buffer (default for insert mode)
+/// ResolveResult::insert_char('x');
+///
+/// // Insert into command-line extension
+/// ResolveResult::insert_char_to::<CmdlineState>('x');
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum InputTarget {
+    /// Insert into the active buffer at cursor position.
+    ///
+    /// This is the default target, used by insert mode, replace mode, etc.
+    #[default]
+    Buffer,
+
+    /// Insert into a session extension that implements `TextInputSink`.
+    ///
+    /// The `TypeId` identifies the extension type. The runner looks up
+    /// the extension in `ExtensionMap` and calls `insert_char()` on it.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Command-line mode routes to CmdlineState
+    /// InputTarget::extension::<CmdlineState>()
+    /// ```
+    Extension(TypeId),
+}
+
+impl InputTarget {
+    /// Create an extension target for the given type.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_session::api::CmdlineState;
+    ///
+    /// let target = InputTarget::extension::<CmdlineState>();
+    /// ```
+    #[must_use]
+    pub const fn extension<T: SessionExtension + TextInputSink>() -> Self {
+        Self::Extension(TypeId::of::<T>())
+    }
+}
+
+// ============================================================================
 // ResolveResult
 // ============================================================================
 
@@ -612,11 +680,37 @@ pub enum ResolveResult {
     /// try that mode's resolver next.
     NotHandled,
 
-    /// Insert this character directly.
+    /// Insert this character into the specified target.
     ///
     /// For input-accepting modes (insert, command-line, search).
-    /// The character should be inserted at the cursor position.
-    InsertChar(char),
+    /// The `target` specifies where to insert:
+    /// - `InputTarget::Buffer` - Insert at cursor position in active buffer
+    /// - `InputTarget::Extension(type_id)` - Insert into session extension
+    ///
+    /// # Helpers
+    ///
+    /// Use the helper methods for ergonomic construction:
+    /// - `ResolveResult::insert_char(c)` - Insert into buffer (default)
+    /// - `ResolveResult::insert_char_to::<T>(c)` - Insert into extension
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_input::ResolveResult;
+    /// use reovim_driver_session::api::CmdlineState;
+    ///
+    /// // Insert mode → buffer
+    /// ResolveResult::insert_char('x');
+    ///
+    /// // Command-line mode → CmdlineState extension
+    /// ResolveResult::insert_char_to::<CmdlineState>(':');
+    /// ```
+    InsertChar {
+        /// The character to insert.
+        char: char,
+        /// Where to insert (buffer or extension).
+        target: InputTarget,
+    },
 
     /// Request a mode transition.
     ///
@@ -677,6 +771,53 @@ pub enum ResolveResult {
         /// Whether to call `exit_macro_playback()` after processing.
         exit_macro_playback: bool,
     },
+}
+
+impl ResolveResult {
+    /// Create an `InsertChar` result that inserts into the buffer (default).
+    ///
+    /// Use this for insert mode, replace mode, and other modes that edit
+    /// the active buffer.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_input::ResolveResult;
+    ///
+    /// // In insert mode resolver
+    /// ResolveResult::insert_char('x')
+    /// ```
+    #[must_use]
+    pub const fn insert_char(c: char) -> Self {
+        Self::InsertChar {
+            char: c,
+            target: InputTarget::Buffer,
+        }
+    }
+
+    /// Create an `InsertChar` result that inserts into a session extension.
+    ///
+    /// Use this for modes that input into extension state, such as command-line
+    /// mode (into `CmdlineState`) or search mode (into search state).
+    ///
+    /// The extension must implement both `SessionExtension` and `TextInputSink`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use reovim_driver_input::ResolveResult;
+    /// use reovim_driver_session::api::CmdlineState;
+    ///
+    /// // In command-line resolver
+    /// ResolveResult::insert_char_to::<CmdlineState>(':')
+    /// ```
+    #[must_use]
+    pub const fn insert_char_to<T: SessionExtension + TextInputSink>(c: char) -> Self {
+        Self::InsertChar {
+            char: c,
+            target: InputTarget::extension::<T>(),
+        }
+    }
 }
 
 // ============================================================================
@@ -1024,12 +1165,68 @@ mod tests {
 
     #[test]
     fn test_resolve_result_insert_char() {
-        let result = ResolveResult::InsertChar('x');
-        if let ResolveResult::InsertChar(c) = result {
+        // Test the helper method (buffer target)
+        let result = ResolveResult::insert_char('x');
+        if let ResolveResult::InsertChar { char: c, target } = result {
             assert_eq!(c, 'x');
+            assert_eq!(target, InputTarget::Buffer);
         } else {
             panic!("expected InsertChar variant");
         }
+    }
+
+    #[test]
+    fn test_input_target_default_is_buffer() {
+        let target = InputTarget::default();
+        assert_eq!(target, InputTarget::Buffer);
+    }
+
+    #[test]
+    fn test_input_target_extension_type_id() {
+        // Use TestExtension as a stand-in (it needs SessionExtension + TextInputSink)
+        // For now, just test that Extension variant works
+        let type_id = std::any::TypeId::of::<String>();
+        let target = InputTarget::Extension(type_id);
+        assert!(matches!(target, InputTarget::Extension(_)));
+    }
+
+    #[test]
+    fn test_insert_char_helper_creates_buffer_target() {
+        let result = ResolveResult::insert_char('a');
+        if let ResolveResult::InsertChar { char: c, target } = result {
+            assert_eq!(c, 'a');
+            assert_eq!(target, InputTarget::Buffer);
+        } else {
+            panic!("expected InsertChar with Buffer target");
+        }
+    }
+
+    #[test]
+    fn test_insert_char_to_creates_extension_target() {
+        // Test that insert_char_to creates an Extension target with correct TypeId
+        // We need a type that implements both SessionExtension and TextInputSink
+        // Use CmdlineState from the session driver
+        use reovim_driver_session::CmdlineState;
+
+        let result = ResolveResult::insert_char_to::<CmdlineState>('x');
+        if let ResolveResult::InsertChar { char: c, target } = result {
+            assert_eq!(c, 'x');
+            // Verify it's an Extension target with the correct TypeId
+            let expected_type_id = std::any::TypeId::of::<CmdlineState>();
+            assert_eq!(target, InputTarget::Extension(expected_type_id));
+        } else {
+            panic!("expected InsertChar with Extension target");
+        }
+    }
+
+    #[test]
+    fn test_input_target_extension_creates_correct_type_id() {
+        // Test that InputTarget::extension::<T>() creates correct TypeId
+        use reovim_driver_session::CmdlineState;
+
+        let target = InputTarget::extension::<CmdlineState>();
+        let expected_type_id = std::any::TypeId::of::<CmdlineState>();
+        assert_eq!(target, InputTarget::Extension(expected_type_id));
     }
 
     #[test]

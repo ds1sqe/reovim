@@ -8,6 +8,7 @@ use {
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult,
     },
+    reovim_driver_session::CmdlineState,
     reovim_kernel::api::v1::ModeId,
 };
 
@@ -68,8 +69,9 @@ impl ModeKeyResolver for VimCommandLineResolver {
         input: &ResolveInput<'_>,
     ) -> ResolveResult {
         // Check for insertable character first
+        // Route to CmdlineState extension (#482 - Generic Input Target)
         if let Some(c) = Self::is_insertable(key) {
-            return ResolveResult::InsertChar(c);
+            return ResolveResult::insert_char_to::<CmdlineState>(c);
         }
 
         // For non-insertable keys (Escape, Enter, Backspace, etc.), look up in keymap
@@ -153,14 +155,15 @@ mod tests {
         let keymap = NotFoundKeymap;
         let input = resolve_input(&keymap);
 
+        // Command-line mode routes to CmdlineState extension (InputTarget::Extension)
         let result = resolver.resolve_with_keymap(&key('w'), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('w')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: 'w', .. }));
 
         let result = resolver.resolve_with_keymap(&key('q'), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('q')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: 'q', .. }));
 
         let result = resolver.resolve_with_keymap(&key(' '), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar(' ')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: ' ', .. }));
     }
 
     #[test]

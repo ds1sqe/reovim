@@ -87,7 +87,7 @@ mod types;
 pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHandler};
 
 // Session extension system
-pub use extension::{ExtensionMap, SessionExtension};
+pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};
 
 // Operator-pending state for text object communication
 pub use operator_state::OperatorPendingState;

@@ -90,8 +90,8 @@ pub use fallback::{
 
 // Re-export resolver types (Phase 9 - Flexible mode system)
 pub use resolver::{
-    ArgValue, ModeKeyResolver, ModeState, ModeTransition, OperatorArgs, PopResult, ResolveContext,
-    ResolveInput, ResolveResult, SessionApi, SessionApiDyn, TransitionContext,
+    ArgValue, InputTarget, ModeKeyResolver, ModeState, ModeTransition, OperatorArgs, PopResult,
+    ResolveContext, ResolveInput, ResolveResult, SessionApi, SessionApiDyn, TransitionContext,
 };
 
 // Re-export lookup types (Epic #353 - Mechanism/Policy separation)

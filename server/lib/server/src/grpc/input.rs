@@ -24,7 +24,9 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command_types::{ArgValue, CommandContext},
-    reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
+    reovim_driver_input::{
+        InputTarget, KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult,
+    },
     reovim_driver_session::api::StateChanges,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
@@ -336,10 +338,11 @@ impl InputServiceImpl {
                     (true, changes)
                 }
 
-                ResolveResult::InsertChar(ch) => {
-                    // Insert character at cursor
+                ResolveResult::InsertChar { char: ch, target } => {
+                    // Generic Input Target routing (#482)
+                    // Route character based on target specified by resolver
                     let modified_buffer = session
-                        .with_state_mut(|state| Self::insert_char_into_state(state, ch))
+                        .with_state_mut(|state| Self::insert_char_by_target(state, ch, target))
                         .await;
 
                     // Record buffer modification for notification
@@ -518,37 +521,53 @@ impl InputServiceImpl {
         }
     }
 
-    /// Insert a character into the appropriate target (cmdline or buffer).
+    /// Insert a character based on the target specified by the resolver.
     ///
-    /// `InsertChar` only arrives from mode-specific resolvers (e.g., `VimInsertResolver`,
-    /// `VimCommandLineResolver`) that already validate the current mode accepts input.
-    /// No redundant mode capability check is needed here.
+    /// Generic Input Target routing (#482): The resolver specifies WHERE to insert the
+    /// character via `InputTarget`, eliminating string-based mode detection.
     ///
-    /// Returns `Some(BufferId)` if a buffer was modified, `None` otherwise
-    /// (e.g., cmdline input or no active buffer).
-    fn insert_char_into_state(state: &mut SessionState, ch: char) -> Option<BufferId> {
-        use reovim_driver_session::api::CmdlineState;
-
-        let mode_name = state.driver_session.mode_stack.current().name();
-        tracing::debug!(?ch, ?mode_name, "insert_char_into_state called");
-
-        // Command-line mode: insert into cmdline buffer
-        if mode_name.contains("command") {
-            tracing::debug!("Inserting into cmdline");
-            state
-                .driver_session
-                .extensions
-                .get_or_insert::<CmdlineState>()
-                .insert_char(ch);
-            return None; // Cmdline modification doesn't emit BufferModified
+    /// # Arguments
+    ///
+    /// * `state` - The session state to modify
+    /// * `ch` - Character to insert
+    /// * `target` - Where to insert: `Buffer` or `Extension(TypeId)`
+    ///
+    /// # Returns
+    ///
+    /// * `Some(BufferId)` if a buffer was modified
+    /// * `None` if inserted into extension or no active buffer
+    fn insert_char_by_target(
+        state: &mut SessionState,
+        ch: char,
+        target: InputTarget,
+    ) -> Option<BufferId> {
+        match target {
+            InputTarget::Buffer => {
+                // Insert into active buffer at cursor position
+                let buffer_id = state.active_buffer()?;
+                let buffer_arc = state.buffer(buffer_id)?;
+                tracing::debug!(?buffer_id, ?ch, "Inserting into buffer");
+                let _ = buffer_arc.write().insert(&ch.to_string());
+                Some(buffer_id)
+            }
+            InputTarget::Extension(type_id) => {
+                // Route to session extension via TextInputSink (#482)
+                tracing::debug!(?type_id, ?ch, "Routing to extension via TextInputSink");
+                if let Some(sink) = state
+                    .driver_session
+                    .extensions
+                    .get_text_input_sink_by_id(type_id)
+                {
+                    sink.insert_char(ch);
+                } else {
+                    tracing::warn!(
+                        ?type_id,
+                        "Extension not found or doesn't implement TextInputSink"
+                    );
+                }
+                None // Extension modification doesn't emit BufferModified
+            }
         }
-
-        // Insert/Replace mode: insert into active buffer
-        let buffer_id = state.active_buffer()?;
-        let buffer_arc = state.buffer(buffer_id)?;
-        tracing::debug!(?buffer_id, "Inserting into buffer");
-        let _ = buffer_arc.write().insert(&ch.to_string());
-        Some(buffer_id)
     }
 
     // NOTE (#471): `fallback_char_insert()` was REMOVED.

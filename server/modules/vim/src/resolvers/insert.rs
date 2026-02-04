@@ -94,7 +94,7 @@ impl ModeKeyResolver for VimInsertResolver {
     ) -> ResolveResult {
         // Check for insertable character first
         if let Some(c) = Self::is_insertable(key) {
-            return ResolveResult::InsertChar(c);
+            return ResolveResult::insert_char(c);
         }
 
         // Non-insertable key - query keymap for binding
@@ -135,7 +135,7 @@ impl ModeKeyResolver for VimInsertResolver {
             if let Some(vim) = extensions.get_mut::<VimSessionState>() {
                 vim.insert_buffer.push(c);
             }
-            return ResolveResult::InsertChar(c);
+            return ResolveResult::insert_char(c);
         }
 
         // Non-insertable key - delegate to keymap lookup
@@ -207,16 +207,16 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let result = resolver.resolve_with_keymap(&key('a'), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('a')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: 'a', .. }));
 
         let result = resolver.resolve_with_keymap(&key('Z'), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('Z')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: 'Z', .. }));
 
         let result = resolver.resolve_with_keymap(&key('5'), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('5')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: '5', .. }));
 
         let result = resolver.resolve_with_keymap(&key(' '), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar(' ')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: ' ', .. }));
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Tab), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('\t')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: '\t', .. }));
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod tests {
 
         let result =
             resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Enter), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('\n')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: '\n', .. }));
     }
 
     #[test]
@@ -345,6 +345,6 @@ mod tests {
         // Shift+a (uppercase A) should insert
         let result =
             resolver.resolve_with_keymap(&key_with_mod('A', Modifiers::SHIFT), &mut state, &input);
-        assert!(matches!(result, ResolveResult::InsertChar('A')));
+        assert!(matches!(result, ResolveResult::InsertChar { char: 'A', .. }));
     }
 }
