@@ -1,53 +1,45 @@
-//! Per-client role and editing state (Phase 11.2, Epic #465).
+//! Per-client role and editing state (#480 Client Architecture Unification).
 //!
-//! Defines the `Client` enum that captures the Owner/Follow/Share model
-//! for multi-client collaboration.
+//! Defines the unified `Client` struct that replaces the old enum model.
+//! All clients now have `EditingState` for local viewport, smooth transitions,
+//! and pending keys buffer. The `relation` field controls input routing.
 //!
 //! # Architecture
 //!
 //! ```text
 //! Session (room with shared buffers)
-//! └─ clients: HashMap<ClientId, Self>
-//!     ├─ Owner { state: EditingState }   ← Owns editing state
-//!     ├─ Follow { target: ClientId }     ← Read-only spectator
-//!     └─ Share { owner: ClientId }       ← Bidirectional co-edit
+//! └─ clients: HashMap<ClientId, Client>
+//!     └─ Client { id, relation, state, metadata }
+//!         ├─ relation: None              ← Independent (input → self)
+//!         ├─ relation: Following(X)      ← Spectator (input ignored)
+//!         └─ relation: Sharing(X)        ← Collaboration (input → X)
 //! ```
 //!
 //! # Behavior Matrix
 //!
-//! | Role   | My Input       | I See          | Use Case            |
-//! |--------|----------------|----------------|---------------------|
-//! | Owner  | → my state     | my state       | Solo editing        |
-//! | Follow | ignored        | target's state | Spectator/present   |
-//! | Share  | → owner state  | owner's state  | Pair programming    |
+//! | Relation     | My Input       | I See          | Use Case            |
+//! |--------------|----------------|----------------|---------------------|
+//! | None         | → my state     | my state       | Solo editing        |
+//! | Following(X) | ignored        | X's state      | Spectator/present   |
+//! | Sharing(X)   | → X's state    | X's state      | Pair programming    |
 //!
-//! # Design Philosophy
+//! # State Transitions
 //!
-//! - **Server owns buffers**: Shared content lives in session
-//! - **Client owns state**: Each Owner has independent mode/cursor
-//! - **Mechanism/Policy**: Server provides state, clients render
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reovim_server::session::{Client, ClientId, EditingState};
-//!
-//! // Create an owner client
-//! let client1 = Client::new_owner();
-//!
-//! // Create a follower
-//! let client2 = Client::follow(ClientId::new(1));
-//!
-//! // Create a share (pair programming)
-//! let client3 = Client::share(ClientId::new(1));
-//!
-//! // Get effective state for rendering
-//! let clients: HashMap<ClientId, Self> = ...;
-//! let state = client2.effective_state(&clients);
-//! // Returns client1's state (the target being followed)
+//! ```text
+//! Independent ←→ Following(B) ←→ Sharing(B) ←→ Independent
 //! ```
+//!
+//! Transitions are validated by [`Client::try_set_relation()`] which returns
+//! [`TransitionResult`] indicating success or the required precondition.
+//!
+//! # Validation Rules
+//!
+//! - Cannot follow/share with self
+//! - Cannot create cycles (A → B → A)
+//! - Target client must exist
+//! - Following → Sharing upgrade may require cursor sync
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::SystemTime};
 
 use {
     reovim_driver_session::{
@@ -58,138 +50,451 @@ use {
 
 use super::ClientId;
 
-/// Per-client role within a session.
-///
-/// Determines how a client's input is handled and whose state they see.
-#[derive(Debug, Clone)]
-pub enum Client {
-    /// Owns editing state. Input goes to own state.
-    Owner {
-        /// The editing state owned by this client.
-        state: EditingState,
-    },
+// ============================================================================
+// ClientRelation
+// ============================================================================
 
+/// Relation to another client for input routing.
+///
+/// Used as `Option<ClientRelation>` where `None` means independent.
+///
+/// # Invariants
+///
+/// - `Following { target }`: Input is ignored, sees target's state
+/// - `Sharing { with }`: Input routes to target's state, sees target's state
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientRelation {
     /// Read-only spectator. Input is ignored, sees target's state.
-    Follow {
+    Following {
         /// Client ID being followed.
         target: ClientId,
     },
-
-    /// Bidirectional co-editing with owner. Input goes to owner's state.
-    Share {
-        /// Owner client ID whose state is shared.
-        owner: ClientId,
+    /// Bidirectional co-editing. Input goes to target's state.
+    Sharing {
+        /// Client ID to share input with.
+        with: ClientId,
     },
 }
 
-impl Client {
-    /// Create a new owner client with default editing state.
+impl ClientRelation {
+    /// Get the target client ID.
     #[must_use]
-    pub fn new_owner() -> Self {
-        Self::Owner {
-            state: EditingState::default(),
+    pub const fn target_id(&self) -> ClientId {
+        match *self {
+            Self::Following { target } => target,
+            Self::Sharing { with } => with,
         }
     }
 
-    /// Create an owner client with specified mode stack.
+    /// Check if this is a Following relation.
     #[must_use]
-    pub fn owner_with_mode(mode_stack: ModeStack) -> Self {
-        Self::Owner {
-            state: EditingState::with_mode_stack(mode_stack),
-        }
+    pub const fn is_following(&self) -> bool {
+        matches!(self, Self::Following { .. })
     }
 
-    /// Create a follow client (read-only spectator).
-    #[must_use]
-    pub const fn follow(target: ClientId) -> Self {
-        Self::Follow { target }
-    }
-
-    /// Create a share client (bidirectional co-edit).
-    #[must_use]
-    pub const fn share(owner: ClientId) -> Self {
-        Self::Share { owner }
-    }
-
-    /// Check if this client is an owner.
-    #[must_use]
-    pub const fn is_owner(&self) -> bool {
-        matches!(self, Self::Owner { .. })
-    }
-
-    /// Check if this client is a follower.
-    #[must_use]
-    pub const fn is_follower(&self) -> bool {
-        matches!(self, Self::Follow { .. })
-    }
-
-    /// Check if this client is sharing.
+    /// Check if this is a Sharing relation.
     #[must_use]
     pub const fn is_sharing(&self) -> bool {
-        matches!(self, Self::Share { .. })
+        matches!(self, Self::Sharing { .. })
+    }
+}
+
+// ============================================================================
+// TransitionResult
+// ============================================================================
+
+/// Result of a relation transition attempt.
+///
+/// Returned by [`Client::try_set_relation()`] to indicate success or
+/// the precondition that must be met before the transition can proceed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TransitionResult {
+    /// Transition succeeded.
+    Ok,
+    /// Transition requires cursor sync first (for Following → Sharing upgrade).
+    ///
+    /// The caller should sync the cursor to the target position, then retry.
+    RequiresCursorSync {
+        /// Current cursor position.
+        current: CursorPosition,
+        /// Target cursor position to sync to.
+        target: CursorPosition,
+    },
+    /// Target client not found.
+    TargetNotFound(ClientId),
+    /// Cannot create cycle (A → B → A transitively).
+    WouldCreateCycle,
+    /// Cannot follow/share with self.
+    CannotTargetSelf,
+}
+
+impl TransitionResult {
+    /// Check if the transition succeeded.
+    #[must_use]
+    pub const fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok)
     }
 
-    /// Get the effective state for this client.
+    /// Check if the transition requires cursor sync.
+    #[must_use]
+    pub const fn requires_cursor_sync(&self) -> bool {
+        matches!(self, Self::RequiresCursorSync { .. })
+    }
+}
+
+// ============================================================================
+// Cycle Detection
+// ============================================================================
+
+/// Check if setting `start` to follow/share `target` would create a cycle.
+///
+/// A cycle occurs if traversing from `target` eventually leads back to `start`.
+fn would_create_cycle(
+    start: ClientId,
+    target: ClientId,
+    clients: &HashMap<ClientId, Client>,
+) -> bool {
+    would_create_cycle_impl(start, target, clients, 10)
+}
+
+fn would_create_cycle_impl(
+    start: ClientId,
+    target: ClientId,
+    clients: &HashMap<ClientId, Client>,
+    depth: usize,
+) -> bool {
+    if depth == 0 {
+        return false; // Safety limit
+    }
+    let Some(target_client) = clients.get(&target) else {
+        return false;
+    };
+    match target_client.relation {
+        Some(
+            ClientRelation::Following { target: next } | ClientRelation::Sharing { with: next },
+        ) => {
+            if next == start {
+                return true;
+            }
+            would_create_cycle_impl(start, next, clients, depth - 1)
+        }
+        None => false,
+    }
+}
+
+// ============================================================================
+// ClientMetadata
+// ============================================================================
+
+/// Metadata about a client connection.
+///
+/// Contains identity information for display and debugging.
+#[derive(Debug, Clone)]
+pub struct ClientMetadata {
+    /// Client type identifier ("tui", "android", "web", "cli").
+    pub client_type: String,
+    /// User-friendly display name ("laptop", "phone").
+    pub display_name: String,
+    /// When the client joined (Unix milliseconds).
+    pub joined_at_ms: u64,
+}
+
+impl ClientMetadata {
+    /// Create new metadata with current timestamp.
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)] // u128 millis to u64 - safe for next 500M years
+    pub fn new(client_type: impl Into<String>, display_name: impl Into<String>) -> Self {
+        Self {
+            client_type: client_type.into(),
+            display_name: display_name.into(),
+            joined_at_ms: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as u64),
+        }
+    }
+
+    /// Create metadata with a specific timestamp (for testing).
+    #[must_use]
+    pub fn with_timestamp(
+        client_type: impl Into<String>,
+        display_name: impl Into<String>,
+        joined_at_ms: u64,
+    ) -> Self {
+        Self {
+            client_type: client_type.into(),
+            display_name: display_name.into(),
+            joined_at_ms,
+        }
+    }
+}
+
+impl Default for ClientMetadata {
+    fn default() -> Self {
+        Self::new("unknown", "unknown")
+    }
+}
+
+// ============================================================================
+// Client
+// ============================================================================
+
+/// A client in a session.
+///
+/// All clients have `EditingState` for local viewport, smooth transitions,
+/// and pending keys buffer. The `relation` field controls input routing.
+///
+/// # Property Invariants
+///
+/// 1. `relation = None` implies client is independent (input → self)
+/// 2. `relation = Some(Following{target})` implies input is ignored
+/// 3. `relation = Some(Sharing{with})` implies input routes to `with`
+/// 4. All clients ALWAYS have `state: EditingState` (non-optional)
+/// 5. No cycles allowed: if A → B, then B cannot → A (directly or transitively)
+#[derive(Debug, Clone)]
+pub struct Client {
+    /// Unique client identifier.
+    pub id: ClientId,
+    /// Relation to another client. `None` = independent.
+    pub relation: Option<ClientRelation>,
+    /// Editing state (mode, cursor, windows, etc.). ALWAYS present.
+    pub state: EditingState,
+    /// Client metadata (type, display name, join time).
+    pub metadata: ClientMetadata,
+}
+
+impl Client {
+    /// Create a new independent client with default editing state.
+    #[must_use]
+    pub fn new(id: ClientId, metadata: ClientMetadata) -> Self {
+        Self {
+            id,
+            relation: None,
+            state: EditingState::default(),
+            metadata,
+        }
+    }
+
+    /// Create client with specific mode stack.
+    #[must_use]
+    pub fn with_mode_stack(id: ClientId, metadata: ClientMetadata, mode_stack: ModeStack) -> Self {
+        Self {
+            id,
+            relation: None,
+            state: EditingState::with_mode_stack(mode_stack),
+            metadata,
+        }
+    }
+
+    /// Create client with mode stack and initial window.
+    #[must_use]
+    pub fn with_mode_stack_and_window(
+        id: ClientId,
+        metadata: ClientMetadata,
+        mode_stack: ModeStack,
+        window: Window,
+    ) -> Self {
+        Self {
+            id,
+            relation: None,
+            state: EditingState::with_mode_stack_and_window(mode_stack, window),
+            metadata,
+        }
+    }
+
+    /// Check if client is independent (no relation).
+    #[must_use]
+    pub const fn is_independent(&self) -> bool {
+        self.relation.is_none()
+    }
+
+    /// Check if client is following another.
+    #[must_use]
+    pub const fn is_following(&self) -> bool {
+        matches!(self.relation, Some(ClientRelation::Following { .. }))
+    }
+
+    /// Check if client is sharing with another.
+    #[must_use]
+    pub const fn is_sharing(&self) -> bool {
+        matches!(self.relation, Some(ClientRelation::Sharing { .. }))
+    }
+
+    /// Get the target client ID (for Following/Sharing), or `None` if independent.
+    #[must_use]
+    pub const fn target_id(&self) -> Option<ClientId> {
+        match self.relation {
+            Some(ClientRelation::Following { target }) => Some(target),
+            Some(ClientRelation::Sharing { with }) => Some(with),
+            None => None,
+        }
+    }
+
+    // ========================================================================
+    // State Transitions (Phase 2)
+    // ========================================================================
+
+    /// Validate a relation change without applying it.
     ///
-    /// - Owner: Returns own state
-    /// - Follow: Returns target's state (recursively)
-    /// - Share: Returns owner's state (recursively)
+    /// This is a static method that checks if a relation change is valid
+    /// without mutating the client. Used by `Session::set_client_relation()`.
     ///
-    /// Returns `None` if the target/owner doesn't exist or if there's a cycle.
+    /// # Validation Rules
+    ///
+    /// 1. Cannot target self (returns `CannotTargetSelf`)
+    /// 2. Target must exist (returns `TargetNotFound`)
+    /// 3. Cannot create cycles (returns `WouldCreateCycle`)
+    /// 4. Following → Sharing with same target may require cursor sync
+    #[must_use]
+    pub fn validate_relation_change(
+        client: &Self,
+        new_relation: Option<ClientRelation>,
+        clients: &HashMap<ClientId, Self>,
+    ) -> TransitionResult {
+        // Check self-reference
+        if let Some(
+            ClientRelation::Following { target } | ClientRelation::Sharing { with: target },
+        ) = new_relation
+        {
+            if target == client.id {
+                return TransitionResult::CannotTargetSelf;
+            }
+            // Check target exists
+            let Some(target_client) = clients.get(&target) else {
+                return TransitionResult::TargetNotFound(target);
+            };
+            // Check for cycles
+            if would_create_cycle(client.id, target, clients) {
+                return TransitionResult::WouldCreateCycle;
+            }
+
+            // Edge case: Following → Sharing with same target requires cursor sync
+            if let (
+                Some(ClientRelation::Following { target: old_target }),
+                Some(ClientRelation::Sharing { with: new_target }),
+            ) = (&client.relation, &new_relation)
+            {
+                // Only check cursor sync when upgrading from Follow to Share with same target
+                if old_target == new_target {
+                    let target_cursor = target_client
+                        .state
+                        .windows
+                        .active()
+                        .map_or_else(CursorPosition::default, |w| w.cursor);
+                    let my_cursor = client
+                        .state
+                        .windows
+                        .active()
+                        .map_or_else(CursorPosition::default, |w| w.cursor);
+                    if my_cursor != target_cursor {
+                        return TransitionResult::RequiresCursorSync {
+                            current: my_cursor,
+                            target: target_cursor,
+                        };
+                    }
+                }
+            }
+        }
+
+        TransitionResult::Ok
+    }
+
+    /// Attempt to change relation with validation.
+    ///
+    /// Returns [`TransitionResult`] indicating success or required preconditions.
+    ///
+    /// # Validation Rules
+    ///
+    /// 1. Cannot target self (returns `CannotTargetSelf`)
+    /// 2. Target must exist (returns `TargetNotFound`)
+    /// 3. Cannot create cycles (returns `WouldCreateCycle`)
+    /// 4. Following → Sharing with same target may require cursor sync
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Independent to Following
+    /// let result = client.try_set_relation(
+    ///     Some(ClientRelation::Following { target: other_id }),
+    ///     &clients,
+    /// );
+    /// assert!(result.is_ok());
+    ///
+    /// // Back to independent
+    /// let result = client.try_set_relation(None, &clients);
+    /// assert!(result.is_ok());
+    /// ```
+    pub fn try_set_relation(
+        &mut self,
+        new_relation: Option<ClientRelation>,
+        clients: &HashMap<ClientId, Self>,
+    ) -> TransitionResult {
+        let result = Self::validate_relation_change(self, new_relation, clients);
+        if result.is_ok() {
+            self.relation = new_relation;
+        }
+        result
+    }
+
+    /// Sync cursor to target client's position.
+    ///
+    /// Used for Following → Sharing transitions that require cursor alignment.
+    pub fn sync_cursor_to(&mut self, target: &Self) {
+        if let (Some(target_window), Some(my_window)) =
+            (target.state.windows.active(), self.state.windows.active_mut())
+        {
+            my_window.cursor = target_window.cursor;
+        }
+    }
+
+    /// Force set relation without validation.
+    ///
+    /// **Use sparingly** - prefer `try_set_relation()` for safety.
+    /// This is useful for initialization or internal operations where
+    /// validation has already been performed.
+    pub const fn set_relation_unchecked(&mut self, relation: Option<ClientRelation>) {
+        self.relation = relation;
+    }
+
+    /// Get the effective state for display.
+    ///
+    /// - Independent: own state
+    /// - Following: target's state (with depth limit)
+    /// - Sharing: target's state (with depth limit)
+    ///
+    /// Returns `None` if the target/chain doesn't exist or if there's a cycle.
     #[must_use]
     pub fn effective_state<'a>(
         &'a self,
         clients: &'a HashMap<ClientId, Self>,
     ) -> Option<&'a EditingState> {
-        match self {
-            Self::Owner { state } => Some(state),
-            Self::Follow { target } | Self::Share { owner: target } => {
-                // Prevent infinite recursion by limiting depth
-                Self::resolve_state(*target, clients, 10)
-            }
+        match self.relation {
+            None => Some(&self.state),
+            Some(
+                ClientRelation::Following { target } | ClientRelation::Sharing { with: target },
+            ) => Self::resolve_state(target, clients, 10),
         }
     }
 
     /// Get mutable reference to the effective state for input routing.
     ///
-    /// - Owner: Returns own state
-    /// - Follow: Returns `None` (input is ignored)
-    /// - Share: Returns owner's state (recursively)
+    /// - Independent: Returns `None` (caller should use `self.state` directly)
+    /// - Following: Returns `None` (input is ignored)
+    /// - Sharing: Returns target's state (recursively)
+    ///
+    /// Note: For independent clients, the caller must handle `self.state` specially
+    /// due to Rust borrow rules (can't borrow self and return reference to self.state).
     pub fn effective_state_mut<'a>(
-        &'a mut self,
+        &'a self,
         clients: &'a mut HashMap<ClientId, Self>,
-        _self_id: ClientId,
     ) -> Option<&'a mut EditingState> {
-        match self {
-            Self::Owner { state } => Some(state),
-            Self::Follow { .. } => None, // Input ignored for followers
-            Self::Share { owner } => {
-                // Route to owner's state
-                let owner_id = *owner;
-                // Can't borrow self and clients simultaneously, so we need to get owner directly
-                clients
-                    .get_mut(&owner_id)
-                    .and_then(|c| c.effective_state_mut_inner())
+        match self.relation {
+            None => {
+                // Independent: caller should use self.state directly
+                // Can't return &mut self.state here due to borrow rules
+                None
             }
-        }
-    }
-
-    /// Internal helper for getting mutable state (used for Share routing).
-    #[allow(clippy::missing_const_for_fn)]
-    fn effective_state_mut_inner(&mut self) -> Option<&mut EditingState> {
-        match self {
-            Self::Owner { state } => Some(state),
-            Self::Follow { .. } | Self::Share { .. } => None,
-        }
-    }
-
-    /// Get the target client ID for Follow/Share, or `None` for Owner.
-    #[must_use]
-    pub const fn target_id(&self) -> Option<ClientId> {
-        match self {
-            Self::Owner { .. } => None,
-            Self::Follow { target } => Some(*target),
-            Self::Share { owner } => Some(*owner),
+            Some(ClientRelation::Following { .. }) => None, // Input ignored for followers
+            Some(ClientRelation::Sharing { with }) => clients.get_mut(&with).map(|c| &mut c.state),
         }
     }
 
@@ -204,26 +509,41 @@ impl Client {
         }
 
         let client = clients.get(&target)?;
-        match client {
-            Self::Owner { state } => Some(state),
-            Self::Follow { target: next } | Self::Share { owner: next } => {
-                Self::resolve_state(*next, clients, depth - 1)
-            }
+        match client.relation {
+            None => Some(&client.state),
+            Some(
+                ClientRelation::Following { target: next } | ClientRelation::Sharing { with: next },
+            ) => Self::resolve_state(next, clients, depth - 1),
         }
     }
 }
 
-/// Editing state for an Owner client.
+// ============================================================================
+// EditingState
+// ============================================================================
+
+/// Editing state for a client.
 ///
 /// Contains all per-client state needed for editing operations.
-/// This is the "source of truth" for Owner clients; Follow/Share
-/// clients reference their target's state.
+/// All clients have this state - it's not just for "owners" anymore.
 ///
 /// # Multi-Client Isolation (#471)
 ///
 /// Each client owns their own `WindowLayout` with independent cursors.
 /// This ensures Client A's cursor/mode doesn't affect Client B.
 /// Buffers are still shared (all clients see same text content).
+///
+/// # Client Model Mapping (#480)
+///
+/// This struct maps to [`ClientViewState`] in the common client model.
+/// Only a subset is transmitted:
+///
+/// | EditingState field | ClientViewState field | Transform |
+/// |--------------------|----------------------|-----------|
+/// | `mode_stack` | `mode` | `.current().name()` |
+/// | `windows` | `cursor: Position` | `.focused().cursor` |
+/// | `windows` | `buffer_id` | `.focused().buffer_id` |
+/// | `selection` | `selection` | `.to_driver_selection()` |
 #[derive(Debug, Clone)]
 pub struct EditingState {
     /// Mode stack (current mode on top).
@@ -303,6 +623,10 @@ impl EditingState {
     }
 }
 
+// ============================================================================
+// ClientSelection
+// ============================================================================
+
 /// Selection state for a client.
 ///
 /// Wraps the driver's Selection with additional client-specific info.
@@ -340,61 +664,159 @@ impl ClientSelection {
     }
 }
 
+// ============================================================================
+// Backward Compatibility - Old enum API
+// ============================================================================
+
+/// Old Client enum variants for backward compatibility during migration.
+///
+/// **DEPRECATED**: Use `Client` struct with `relation` field instead.
+///
+/// This module provides conversion from old `Client` enum patterns to new struct.
+#[deprecated(since = "0.10.0", note = "Use Client struct with relation field")]
+#[allow(dead_code)]
+pub mod compat {
+    use reovim_kernel::api::v1::ModeStack;
+
+    use super::{Client, ClientId, ClientMetadata, ClientRelation, EditingState};
+
+    /// Create an Owner-style client (independent with state).
+    ///
+    /// **DEPRECATED**: Use `Client::new()` or `Client::with_mode_stack()` instead.
+    #[must_use]
+    pub fn new_owner() -> Client {
+        Client::new(ClientId::new(0), ClientMetadata::default())
+    }
+
+    /// Create an Owner-style client with mode stack.
+    ///
+    /// **DEPRECATED**: Use `Client::with_mode_stack()` instead.
+    #[must_use]
+    pub fn owner_with_mode(mode_stack: ModeStack) -> Client {
+        Client::with_mode_stack(ClientId::new(0), ClientMetadata::default(), mode_stack)
+    }
+
+    /// Create a Follow-style client.
+    ///
+    /// **DEPRECATED**: Use `Client::new()` then set `relation = Some(ClientRelation::Following { target })`.
+    #[must_use]
+    pub fn follow(target: ClientId) -> Client {
+        Client {
+            id: ClientId::new(0),
+            relation: Some(ClientRelation::Following { target }),
+            state: EditingState::default(),
+            metadata: ClientMetadata::default(),
+        }
+    }
+
+    /// Create a Share-style client.
+    ///
+    /// **DEPRECATED**: Use `Client::new()` then set `relation = Some(ClientRelation::Sharing { with })`.
+    #[must_use]
+    pub fn share(owner: ClientId) -> Client {
+        Client {
+            id: ClientId::new(0),
+            relation: Some(ClientRelation::Sharing { with: owner }),
+            state: EditingState::default(),
+            metadata: ClientMetadata::default(),
+        }
+    }
+
+    /// Check if client is an "owner" (independent).
+    #[must_use]
+    pub const fn is_owner(client: &Client) -> bool {
+        client.is_independent()
+    }
+
+    /// Check if client is a "follower".
+    #[must_use]
+    pub const fn is_follower(client: &Client) -> bool {
+        client.is_following()
+    }
+
+    /// Check if client is "sharing".
+    #[must_use]
+    pub const fn is_sharing(client: &Client) -> bool {
+        client.is_sharing()
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
 #[cfg(test)]
+#[allow(clippy::similar_names)] // client1/client2/clients are clear in test context
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use std::collections::HashMap;
+
+    use {
+        reovim_driver_session::{CursorPosition, SelectionMode},
+        reovim_kernel::api::v1::{ModeStack, ModuleId},
+    };
+
+    use super::{
+        Client, ClientId, ClientMetadata, ClientRelation, ClientSelection, EditingState,
+        TransitionResult,
+    };
 
     fn test_mode_stack() -> ModeStack {
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         ModeStack::new(mode)
     }
 
+    fn test_metadata() -> ClientMetadata {
+        ClientMetadata::new("tui", "test-laptop")
+    }
+
     #[test]
-    fn test_client_new_owner() {
-        let client = Client::new_owner();
-        assert!(client.is_owner());
-        assert!(!client.is_follower());
+    fn test_client_new_independent() {
+        let client = Client::new(ClientId::new(1), test_metadata());
+        assert!(client.is_independent());
+        assert!(!client.is_following());
         assert!(!client.is_sharing());
         assert!(client.target_id().is_none());
+        assert_eq!(client.id, ClientId::new(1));
     }
 
     #[test]
-    fn test_client_owner_with_mode() {
+    fn test_client_with_mode_stack() {
         let mode_stack = test_mode_stack();
-        let client = Client::owner_with_mode(mode_stack.clone());
+        let client = Client::with_mode_stack(ClientId::new(1), test_metadata(), mode_stack.clone());
 
-        if let Client::Owner { state } = client {
-            assert_eq!(state.mode_stack.current(), mode_stack.current());
-        } else {
-            panic!("Expected Owner variant");
-        }
+        assert!(client.is_independent());
+        assert_eq!(client.state.mode_stack.current(), mode_stack.current());
     }
 
     #[test]
-    fn test_client_follow() {
-        let target = ClientId::new(42);
-        let client = Client::follow(target);
+    fn test_client_is_following() {
+        let mut client = Client::new(ClientId::new(1), test_metadata());
+        client.relation = Some(ClientRelation::Following {
+            target: ClientId::new(42),
+        });
 
-        assert!(client.is_follower());
-        assert!(!client.is_owner());
+        assert!(client.is_following());
+        assert!(!client.is_independent());
         assert!(!client.is_sharing());
-        assert_eq!(client.target_id(), Some(target));
+        assert_eq!(client.target_id(), Some(ClientId::new(42)));
     }
 
     #[test]
-    fn test_client_share() {
-        let owner = ClientId::new(1);
-        let client = Client::share(owner);
+    fn test_client_is_sharing() {
+        let mut client = Client::new(ClientId::new(1), test_metadata());
+        client.relation = Some(ClientRelation::Sharing {
+            with: ClientId::new(42),
+        });
 
         assert!(client.is_sharing());
-        assert!(!client.is_owner());
-        assert!(!client.is_follower());
-        assert_eq!(client.target_id(), Some(owner));
+        assert!(!client.is_independent());
+        assert!(!client.is_following());
+        assert_eq!(client.target_id(), Some(ClientId::new(42)));
     }
 
     #[test]
-    fn test_effective_state_owner() {
-        let client = Client::new_owner();
+    fn test_effective_state_independent() {
+        let client = Client::new(ClientId::new(1), test_metadata());
         let clients = HashMap::new();
 
         let state = client.effective_state(&clients);
@@ -402,13 +824,16 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_state_follow() {
+    fn test_effective_state_following() {
         let owner_id = ClientId::new(1);
         let follower_id = ClientId::new(2);
 
         let mut clients = HashMap::new();
-        clients.insert(owner_id, Client::new_owner());
-        clients.insert(follower_id, Client::follow(owner_id));
+        clients.insert(owner_id, Client::new(owner_id, test_metadata()));
+
+        let mut follower = Client::new(follower_id, test_metadata());
+        follower.relation = Some(ClientRelation::Following { target: owner_id });
+        clients.insert(follower_id, follower);
 
         let follower = clients.get(&follower_id).unwrap();
         let state = follower.effective_state(&clients);
@@ -418,13 +843,16 @@ mod tests {
     }
 
     #[test]
-    fn test_effective_state_share() {
+    fn test_effective_state_sharing() {
         let owner_id = ClientId::new(1);
         let sharer_id = ClientId::new(2);
 
         let mut clients = HashMap::new();
-        clients.insert(owner_id, Client::new_owner());
-        clients.insert(sharer_id, Client::share(owner_id));
+        clients.insert(owner_id, Client::new(owner_id, test_metadata()));
+
+        let mut sharer = Client::new(sharer_id, test_metadata());
+        sharer.relation = Some(ClientRelation::Sharing { with: owner_id });
+        clients.insert(sharer_id, sharer);
 
         let sharer = clients.get(&sharer_id).unwrap();
         let state = sharer.effective_state(&clients);
@@ -435,26 +863,35 @@ mod tests {
 
     #[test]
     fn test_effective_state_missing_target() {
-        let follower = Client::follow(ClientId::new(999)); // Non-existent target
+        let mut client = Client::new(ClientId::new(1), test_metadata());
+        client.relation = Some(ClientRelation::Following {
+            target: ClientId::new(999),
+        }); // Non-existent
         let clients = HashMap::new();
 
-        let state = follower.effective_state(&clients);
+        let state = client.effective_state(&clients);
         assert!(state.is_none());
     }
 
     #[test]
     fn test_effective_state_chain() {
-        // Test: Client 3 follows Client 2 who follows Client 1 (owner)
-        let owner_id = ClientId::new(1);
-        let mid_id = ClientId::new(2);
-        let end_id = ClientId::new(3);
+        // Test: Client 3 follows Client 2 who follows Client 1 (independent)
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+        let id3 = ClientId::new(3);
 
         let mut clients = HashMap::new();
-        clients.insert(owner_id, Client::new_owner());
-        clients.insert(mid_id, Client::follow(owner_id));
-        clients.insert(end_id, Client::follow(mid_id));
+        clients.insert(id1, Client::new(id1, test_metadata()));
 
-        let end_client = clients.get(&end_id).unwrap();
+        let mut mid = Client::new(id2, test_metadata());
+        mid.relation = Some(ClientRelation::Following { target: id1 });
+        clients.insert(id2, mid);
+
+        let mut end = Client::new(id3, test_metadata());
+        end.relation = Some(ClientRelation::Following { target: id2 });
+        clients.insert(id3, end);
+
+        let end_client = clients.get(&id3).unwrap();
         let state = end_client.effective_state(&clients);
 
         // Should resolve through the chain to owner's state
@@ -469,14 +906,39 @@ mod tests {
         let id3 = ClientId::new(3);
 
         let mut clients = HashMap::new();
-        clients.insert(id1, Client::follow(id3));
-        clients.insert(id2, Client::follow(id1));
-        clients.insert(id3, Client::follow(id2));
+
+        let mut c1 = Client::new(id1, test_metadata());
+        c1.relation = Some(ClientRelation::Following { target: id3 });
+        clients.insert(id1, c1);
+
+        let mut c2 = Client::new(id2, test_metadata());
+        c2.relation = Some(ClientRelation::Following { target: id1 });
+        clients.insert(id2, c2);
+
+        let mut c3 = Client::new(id3, test_metadata());
+        c3.relation = Some(ClientRelation::Following { target: id2 });
+        clients.insert(id3, c3);
 
         let client = clients.get(&id1).unwrap();
         let state = client.effective_state(&clients);
 
         // Should return None due to cycle (depth limit exceeded)
+        assert!(state.is_none());
+    }
+
+    #[test]
+    fn test_effective_state_mut_following_ignored() {
+        let owner_id = ClientId::new(1);
+        let follower_id = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(owner_id, Client::new(owner_id, test_metadata()));
+
+        let mut follower = Client::new(follower_id, test_metadata());
+        follower.relation = Some(ClientRelation::Following { target: owner_id });
+
+        // Following clients should get None (input ignored)
+        let state = follower.effective_state_mut(&mut clients);
         assert!(state.is_none());
     }
 
@@ -520,5 +982,276 @@ mod tests {
 
         let driver_sel = selection.to_driver_selection();
         assert_eq!(driver_sel.mode, SelectionMode::Character);
+    }
+
+    #[test]
+    fn test_client_metadata_new() {
+        let metadata = ClientMetadata::new("tui", "my-laptop");
+        assert_eq!(metadata.client_type, "tui");
+        assert_eq!(metadata.display_name, "my-laptop");
+        assert!(metadata.joined_at_ms > 0);
+    }
+
+    #[test]
+    fn test_client_relation_following() {
+        let relation = ClientRelation::Following {
+            target: ClientId::new(42),
+        };
+        assert!(relation.is_following());
+        assert!(!relation.is_sharing());
+        assert_eq!(relation.target_id(), ClientId::new(42));
+    }
+
+    #[test]
+    fn test_client_relation_sharing() {
+        let relation = ClientRelation::Sharing {
+            with: ClientId::new(42),
+        };
+        assert!(relation.is_sharing());
+        assert!(!relation.is_following());
+        assert_eq!(relation.target_id(), ClientId::new(42));
+    }
+
+    // =========================================================================
+    // Phase 2: State Machine Tests
+    // =========================================================================
+
+    #[test]
+    fn test_transition_independent_to_following() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(id1, Client::new(id1, test_metadata()));
+        clients.insert(id2, Client::new(id2, test_metadata()));
+
+        let mut client1 = clients.remove(&id1).unwrap();
+        assert!(client1.is_independent());
+
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id2 }), &clients);
+        assert!(result.is_ok());
+        assert!(client1.is_following());
+        assert_eq!(client1.target_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_transition_independent_to_sharing() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(id1, Client::new(id1, test_metadata()));
+        clients.insert(id2, Client::new(id2, test_metadata()));
+
+        let mut client1 = clients.remove(&id1).unwrap();
+        assert!(client1.is_independent());
+
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Sharing { with: id2 }), &clients);
+        assert!(result.is_ok());
+        assert!(client1.is_sharing());
+        assert_eq!(client1.target_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_transition_following_to_independent() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(id2, Client::new(id2, test_metadata()));
+
+        let mut client1 = Client::new(id1, test_metadata());
+        client1.relation = Some(ClientRelation::Following { target: id2 });
+        assert!(client1.is_following());
+
+        let result = client1.try_set_relation(None, &clients);
+        assert!(result.is_ok());
+        assert!(client1.is_independent());
+    }
+
+    #[test]
+    fn test_transition_sharing_to_independent() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(id2, Client::new(id2, test_metadata()));
+
+        let mut client1 = Client::new(id1, test_metadata());
+        client1.relation = Some(ClientRelation::Sharing { with: id2 });
+        assert!(client1.is_sharing());
+
+        let result = client1.try_set_relation(None, &clients);
+        assert!(result.is_ok());
+        assert!(client1.is_independent());
+    }
+
+    #[test]
+    fn test_transition_sharing_to_following() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+        clients.insert(id2, Client::new(id2, test_metadata()));
+
+        let mut client1 = Client::new(id1, test_metadata());
+        client1.relation = Some(ClientRelation::Sharing { with: id2 });
+
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id2 }), &clients);
+        assert!(result.is_ok());
+        assert!(client1.is_following());
+    }
+
+    #[test]
+    fn test_transition_cannot_follow_self() {
+        let id1 = ClientId::new(1);
+        let clients = HashMap::new();
+
+        let mut client1 = Client::new(id1, test_metadata());
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id1 }), &clients);
+        assert_eq!(result, TransitionResult::CannotTargetSelf);
+        assert!(client1.is_independent()); // Relation unchanged
+    }
+
+    #[test]
+    fn test_transition_cannot_share_with_self() {
+        let id1 = ClientId::new(1);
+        let clients = HashMap::new();
+
+        let mut client1 = Client::new(id1, test_metadata());
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Sharing { with: id1 }), &clients);
+        assert_eq!(result, TransitionResult::CannotTargetSelf);
+        assert!(client1.is_independent()); // Relation unchanged
+    }
+
+    #[test]
+    fn test_transition_target_not_found() {
+        let id1 = ClientId::new(1);
+        let id999 = ClientId::new(999);
+        let clients = HashMap::new();
+
+        let mut client1 = Client::new(id1, test_metadata());
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id999 }), &clients);
+        assert_eq!(result, TransitionResult::TargetNotFound(id999));
+        assert!(client1.is_independent()); // Relation unchanged
+    }
+
+    #[test]
+    fn test_transition_prevents_cycle() {
+        // Setup: id2 follows id1 (independent)
+        // Attempt: id1 follows id2 → should fail (would create cycle)
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut clients = HashMap::new();
+
+        let mut client2 = Client::new(id2, test_metadata());
+        client2.relation = Some(ClientRelation::Following { target: id1 });
+        clients.insert(id2, client2);
+
+        let mut client1 = Client::new(id1, test_metadata());
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id2 }), &clients);
+        assert_eq!(result, TransitionResult::WouldCreateCycle);
+        assert!(client1.is_independent()); // Relation unchanged
+    }
+
+    #[test]
+    fn test_transition_prevents_longer_cycle() {
+        // Setup: id2 → id3 → id1 (chain)
+        // Attempt: id1 → id2 → should fail (would create cycle)
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+        let id3 = ClientId::new(3);
+
+        let mut clients = HashMap::new();
+
+        let mut client3 = Client::new(id3, test_metadata());
+        client3.relation = Some(ClientRelation::Following { target: id1 });
+        clients.insert(id3, client3);
+
+        let mut client2 = Client::new(id2, test_metadata());
+        client2.relation = Some(ClientRelation::Following { target: id3 });
+        clients.insert(id2, client2);
+
+        let mut client1 = Client::new(id1, test_metadata());
+        let result =
+            client1.try_set_relation(Some(ClientRelation::Following { target: id2 }), &clients);
+        assert_eq!(result, TransitionResult::WouldCreateCycle);
+    }
+
+    #[test]
+    fn test_transition_result_is_ok() {
+        assert!(TransitionResult::Ok.is_ok());
+        assert!(!TransitionResult::CannotTargetSelf.is_ok());
+        assert!(!TransitionResult::WouldCreateCycle.is_ok());
+    }
+
+    #[test]
+    fn test_transition_result_requires_cursor_sync() {
+        let result = TransitionResult::RequiresCursorSync {
+            current: CursorPosition::default(),
+            target: CursorPosition::new(5, 10),
+        };
+        assert!(result.requires_cursor_sync());
+        assert!(!TransitionResult::Ok.requires_cursor_sync());
+    }
+
+    #[test]
+    fn test_sync_cursor_to() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        // Create target client with a window and cursor
+        let mut target = Client::with_mode_stack_and_window(
+            id2,
+            test_metadata(),
+            test_mode_stack(),
+            reovim_driver_session::Window::new(),
+        );
+        // Set target's cursor position
+        if let Some(w) = target.state.windows.active_mut() {
+            w.cursor = CursorPosition::new(10, 20);
+        }
+
+        // Create source client with a window
+        let mut source = Client::with_mode_stack_and_window(
+            id1,
+            test_metadata(),
+            test_mode_stack(),
+            reovim_driver_session::Window::new(),
+        );
+        // Verify initial cursor is at default
+        assert_eq!(source.state.windows.active().unwrap().cursor, CursorPosition::default());
+
+        // Sync cursor
+        source.sync_cursor_to(&target);
+
+        // Verify cursor was synced
+        assert_eq!(source.state.windows.active().unwrap().cursor, CursorPosition::new(10, 20));
+    }
+
+    #[test]
+    fn test_set_relation_unchecked() {
+        let id1 = ClientId::new(1);
+        let id2 = ClientId::new(2);
+
+        let mut client = Client::new(id1, test_metadata());
+        assert!(client.is_independent());
+
+        // Set relation unchecked (no validation)
+        client.set_relation_unchecked(Some(ClientRelation::Following { target: id2 }));
+        assert!(client.is_following());
+        assert_eq!(client.target_id(), Some(id2));
+
+        // Back to independent
+        client.set_relation_unchecked(None);
+        assert!(client.is_independent());
     }
 }

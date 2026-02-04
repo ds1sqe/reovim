@@ -102,20 +102,20 @@ impl InputService for InputServiceImpl {
             tracing::debug!(%client_id, "Created new client as Owner");
         }
 
-        // Check client role for input routing
+        // Check client relation for input routing
         if let Some(client) = session.get_client(client_id)
-            && client.is_follower()
+            && client.is_following()
         {
-            // Follow role: input is ignored (read-only spectator)
-            tracing::debug!(%client_id, "Input ignored for Follow client");
+            // Following: input is ignored (read-only spectator)
+            tracing::debug!(%client_id, "Input ignored for Following client");
             return Ok(Response::new(SendKeysResponse {
                 ok: false,
                 status: KeyStatus::NotFound.into(),
             }));
         }
-        // Owner/Share: proceed with normal input processing
-        // Note: For Share, input should go to owner's state - full implementation
-        // would require integrating with session.update_client_state()
+        // Independent/Sharing: proceed with normal input processing
+        // Note: For Sharing, input goes to target's state - handled by
+        // session.resolve_key_for_client() and session.execute_command_for_client()
 
         // Parse vim notation keys
         let keys = KeySequence::parse(&req.keys).ok_or_else(|| {

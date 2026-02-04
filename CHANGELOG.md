@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Client Architecture Unification**: Unified three inconsistent client models
+  into a single `ClientRelation`-based architecture. Server layer: All clients
+  now have `EditingState` (not optional), `ClientRelation` enum with `Following`
+  and `Sharing` variants replaces scattered role/sync logic. State machine with
+  `TransitionResult` enum handles validation (cycle detection, self-targeting,
+  target existence). Protocol layer: New `SetRelation` RPC, `ClientRelationType`
+  enum, `ClientInfo`/`ClientViewState`/`ClientMetadata` messages, `TransitionError`
+  enum. Backward compatible via `peers_v2`/`clients_v2` fields alongside deprecated
+  legacy fields. Wire layer: New unified types in `shared/clients/model/src/wire/client.rs`
+  with WASM/TypeScript support. (#480)
+
+### Changed
+
 - **Directory restructure**: Major codebase restructure to clarify
   server/client boundaries. New directory layout: `server/` (kernel, drivers,
   modules), `clients/` (tui, cli), `shared/` (protocol, arch, net, log, trace,

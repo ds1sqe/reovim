@@ -3,15 +3,15 @@
 //! A session is a named editing context (like tmux sessions).
 //! Multiple clients can attach to the same session and share editor state.
 //!
-//! # Per-Client State (Phase 11.2)
+//! # Per-Client State (#480 Client Architecture Unification)
 //!
-//! Each client in a session has a role defined by the [`Client`] enum:
+//! Each client in a session is represented by a [`Client`] struct with:
 //!
-//! - **Owner**: Has own editing state (mode, cursor, etc.)
-//! - **Follow**: Read-only spectator, sees target's state
-//! - **Share**: Bidirectional co-edit with owner
+//! - `relation`: `None` (independent), `Following`, or `Sharing`
+//! - `state`: `EditingState` (always present - mode, cursor, windows)
+//! - `metadata`: `ClientMetadata` (type, display name, join time)
 //!
-//! See the [`Client`] enum for details.
+//! See the [`Client`] struct for details.
 
 mod capture;
 mod client;
@@ -25,8 +25,12 @@ mod syntax_state;
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
-    client::{Client, ClientSelection, EditingState},
+    client::{
+        Client, ClientMetadata, ClientRelation, ClientSelection, EditingState, TransitionResult,
+    },
     id::{ClientId, SessionId},
+    // DEPRECATED: These will be removed in a future version.
+    // Use Client struct with relation field instead.
     presence::{ClientPresence, PresenceMap, SyncMode},
     registry::SessionRegistry,
     session::Session,

@@ -29,24 +29,78 @@ use std::{pin::Pin, sync::Arc, time::SystemTime};
 use {
     futures::Stream,
     reovim_protocol::v2::{
-        ClientPresence as ProtoClientPresence, ClientRole as ProtoRole, JoinRequest, JoinResponse,
-        LeaveRequest, LeaveResponse, LineRange, ListClientsRequest, ListClientsResponse,
-        Notification, PresenceUpdate, SetRoleRequest, SetRoleResponse, SetSyncModeRequest,
-        SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
-        UpdatePresenceRequest, UpdatePresenceResponse, notification::Payload,
-        presence_service_server::PresenceService, presence_update::Update,
+        ClientInfo as ProtoClientInfo, ClientMetadata as ProtoClientMetadata,
+        ClientPresence as ProtoClientPresence, ClientRelation as ProtoClientRelation,
+        ClientRelationType as ProtoRelationType, ClientRole as ProtoRole,
+        ClientViewState as ProtoViewState, JoinRequest, JoinResponse, LeaveRequest, LeaveResponse,
+        LineRange, ListClientsRequest, ListClientsResponse, Notification, Position, PresenceUpdate,
+        SetRelationRequest, SetRelationResponse, SetRoleRequest, SetRoleResponse,
+        SetSyncModeRequest, SetSyncModeResponse, StreamPresenceRequest, SyncMode as ProtoSyncMode,
+        TransitionError as ProtoTransitionError, UpdatePresenceRequest, UpdatePresenceResponse,
+        notification::Payload, presence_service_server::PresenceService, presence_update::Update,
     },
     tokio_stream::wrappers::{BroadcastStream, errors::BroadcastStreamRecvError},
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{ClientId, ClientPresence, Session, SessionId, SessionRegistry, SyncMode};
+use crate::session::{
+    Client, ClientId, ClientPresence, ClientRelation, Session, SessionId, SessionRegistry,
+    SyncMode, TransitionResult,
+};
 
 /// Get current Unix timestamp in milliseconds.
 fn current_timestamp_ms() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Convert internal `Client` to new `ClientInfo` protobuf format (#480).
+fn to_proto_client_info(client: &Client) -> ProtoClientInfo {
+    let relation = client.relation.map(|r| match r {
+        ClientRelation::Following { target } => ProtoClientRelation {
+            r#type: ProtoRelationType::RelationTypeFollowing as i32,
+            target_id: target.as_usize() as u64,
+        },
+        ClientRelation::Sharing { with } => ProtoClientRelation {
+            r#type: ProtoRelationType::RelationTypeSharing as i32,
+            target_id: with.as_usize() as u64,
+        },
+    });
+
+    // Get cursor from active window
+    let cursor = client
+        .state
+        .windows
+        .active()
+        .map(|w| Position {
+            line: w.cursor.line as u64,
+            column: w.cursor.column as u64,
+        })
+        .unwrap_or_default();
+
+    // Get buffer_id from active window
+    let buffer_id = client.state.windows.active().and_then(|w| w.buffer_id);
+
+    let view = ProtoViewState {
+        mode: client.state.mode_stack.current().name().to_string(),
+        cursor: Some(cursor),
+        buffer_id: buffer_id.map(|id| id.as_usize() as u64),
+        selection: None, // TODO: convert selection if present
+    };
+
+    let metadata = ProtoClientMetadata {
+        client_type: client.metadata.client_type.clone(),
+        display_name: client.metadata.display_name.clone(),
+        joined_at_ms: client.metadata.joined_at_ms,
+    };
+
+    ProtoClientInfo {
+        id: client.id.as_usize() as u64,
+        relation,
+        view: Some(view),
+        metadata: Some(metadata),
+    }
 }
 
 /// Convert internal `ClientPresence` to protobuf format.
@@ -196,12 +250,22 @@ impl PresenceService for PresenceServiceImpl {
         // Emit notification to all subscribers
         session.emit_notification(build_presence_joined_notification(&presence));
 
-        // Convert peers to protobuf format
+        // Convert peers to protobuf format (legacy)
         let proto_peers: Vec<ProtoClientPresence> = peers.iter().map(to_proto_presence).collect();
+
+        // Convert clients to new ClientInfo format (#480)
+        let peers_v2: Vec<ProtoClientInfo> = session.with_clients(|clients| {
+            clients
+                .values()
+                .filter(|c| c.id != client_id) // Exclude self
+                .map(to_proto_client_info)
+                .collect()
+        });
 
         Ok(Response::new(JoinResponse {
             client_id: client_id.as_usize() as u64,
             peers: proto_peers,
+            peers_v2,
         }))
     }
 
@@ -372,6 +436,7 @@ impl PresenceService for PresenceServiceImpl {
     ) -> Result<Response<ListClientsResponse>, Status> {
         let session = self.get_session()?;
 
+        // Legacy format
         let clients: Vec<ProtoClientPresence> = session
             .presence()
             .list()
@@ -379,20 +444,30 @@ impl PresenceService for PresenceServiceImpl {
             .map(to_proto_presence)
             .collect();
 
-        Ok(Response::new(ListClientsResponse { clients }))
+        // New unified format (#480)
+        let clients_v2: Vec<ProtoClientInfo> =
+            session.with_clients(|c| c.values().map(to_proto_client_info).collect());
+
+        Ok(Response::new(ListClientsResponse {
+            clients,
+            clients_v2,
+        }))
     }
 
     /// Set a client's editing role (Phase 11.2, Epic #465).
     ///
     /// Controls input routing:
-    /// - Owner: Input goes to own state
+    /// - Owner: Input goes to own state (independent)
     /// - Follow: Input is ignored (read-only spectator)
     /// - Share: Input goes to owner's state
+    ///
+    /// **Note**: This RPC uses the old `ClientRole` enum. For new code,
+    /// prefer using `set_client_relation()` with `ClientRelation` directly.
     async fn set_role(
         &self,
         request: Request<SetRoleRequest>,
     ) -> Result<Response<SetRoleResponse>, Status> {
-        use crate::session::Client as ClientEnum;
+        use crate::session::ClientRelation;
 
         let session = self.get_session()?;
         let req = request.into_inner();
@@ -406,30 +481,111 @@ impl PresenceService for PresenceServiceImpl {
             }));
         }
 
-        // Map proto role to internal Client enum
-        let role = match req.role() {
-            ProtoRole::Owner => ClientEnum::new_owner(),
+        // Map proto role to ClientRelation (#480: unified model)
+        let relation = match req.role() {
+            ProtoRole::Owner => None, // Independent
             ProtoRole::Follow => {
                 let target_id = req.target_id.ok_or_else(|| {
                     Status::invalid_argument("target_id required for FOLLOW role")
                 })?;
-                ClientEnum::follow(ClientId::new(target_id as usize))
+                Some(ClientRelation::Following {
+                    target: ClientId::new(target_id as usize),
+                })
             }
             ProtoRole::Share => {
                 let owner_id = req.target_id.ok_or_else(|| {
                     Status::invalid_argument("target_id (owner) required for SHARE role")
                 })?;
-                ClientEnum::share(ClientId::new(owner_id as usize))
+                Some(ClientRelation::Sharing {
+                    with: ClientId::new(owner_id as usize),
+                })
             }
         };
 
-        // Set the role
-        session.set_client_role(client_id, role);
+        // Set the relation with validation
+        match session.set_client_relation(client_id, relation) {
+            Ok(()) => Ok(Response::new(SetRoleResponse {
+                ok: true,
+                error: None,
+            })),
+            Err(err) => {
+                use crate::session::TransitionResult;
+                let error_msg = match err {
+                    TransitionResult::TargetNotFound(id) => {
+                        format!("Target client {} not found", id.as_usize())
+                    }
+                    TransitionResult::WouldCreateCycle => {
+                        "Cannot set relation: would create a cycle".to_string()
+                    }
+                    TransitionResult::CannotTargetSelf => "Cannot target self".to_string(),
+                    TransitionResult::RequiresCursorSync { .. } => {
+                        "Cursor sync required for this transition".to_string()
+                    }
+                    TransitionResult::Ok => unreachable!(),
+                };
+                Err(Status::failed_precondition(error_msg))
+            }
+        }
+    }
 
-        Ok(Response::new(SetRoleResponse {
-            ok: true,
-            error: None,
-        }))
+    /// Set client's relation (#480 Client Architecture Unification).
+    ///
+    /// Unified API for managing client relationships. Replaces the separate
+    /// `SetSyncMode` and `SetRole` RPCs with a single validated transition.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_id` - Client ID to set relation for
+    /// * `relation` - New relation. `None` = independent
+    ///
+    /// # Returns
+    ///
+    /// * `ok: true` if relation was set
+    /// * `error` - Error code if validation failed
+    async fn set_relation(
+        &self,
+        request: Request<SetRelationRequest>,
+    ) -> Result<Response<SetRelationResponse>, Status> {
+        let session = self.get_session()?;
+        let req = request.into_inner();
+        let client_id = ClientId::new(req.client_id as usize);
+
+        // Convert proto relation to internal relation
+        let relation = req.relation.map(|r| {
+            let target_id = ClientId::new(r.target_id as usize);
+            match ProtoRelationType::try_from(r.r#type) {
+                Ok(ProtoRelationType::RelationTypeFollowing) => {
+                    ClientRelation::Following { target: target_id }
+                }
+                Ok(ProtoRelationType::RelationTypeSharing) => {
+                    ClientRelation::Sharing { with: target_id }
+                }
+                Err(_) => ClientRelation::Following { target: target_id }, // Default to following
+            }
+        });
+
+        // Set the relation with validation
+        match session.set_client_relation(client_id, relation) {
+            Ok(()) => Ok(Response::new(SetRelationResponse {
+                ok: true,
+                error: None,
+            })),
+            Err(err) => {
+                let error_code = match err {
+                    TransitionResult::TargetNotFound(_) => ProtoTransitionError::TargetNotFound,
+                    TransitionResult::WouldCreateCycle => ProtoTransitionError::WouldCreateCycle,
+                    TransitionResult::CannotTargetSelf => ProtoTransitionError::CannotTargetSelf,
+                    TransitionResult::RequiresCursorSync { .. } => {
+                        ProtoTransitionError::RequiresCursorSync
+                    }
+                    TransitionResult::Ok => unreachable!(),
+                };
+                Ok(Response::new(SetRelationResponse {
+                    ok: false,
+                    error: Some(error_code as i32),
+                }))
+            }
+        }
     }
 }
 

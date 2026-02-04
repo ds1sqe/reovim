@@ -41,7 +41,12 @@ service PresenceService {
 
   // Set client's editing role (Phase 11.2, Epic #465).
   // Controls input routing: Owner→self, Follow→ignored, Share→owner.
+  // DEPRECATED: Use SetRelation instead.
   rpc SetRole(SetRoleRequest) returns (SetRoleResponse);
+
+  // Set client's relation (#480 Client Architecture Unification).
+  // Unified API for managing client relationships.
+  rpc SetRelation(SetRelationRequest) returns (SetRelationResponse);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -104,6 +109,7 @@ enum SyncMode {
 
 // Client role for editing state ownership (Phase 11.2, Epic #465).
 // Controls input routing and editing state.
+// DEPRECATED: Use ClientRelationType and ClientRelation instead.
 enum ClientRole {
   // Owns editing state. Input goes to own mode stack, cursor, etc.
   CLIENT_ROLE_OWNER = 0;
@@ -113,6 +119,88 @@ enum ClientRole {
 
   // Bidirectional co-edit with owner. Input goes to owner's state.
   CLIENT_ROLE_SHARE = 2;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified Client Types (#480 Client Architecture Unification)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Relation type for a client.
+enum ClientRelationType {
+  // Read-only spectator. Input is ignored, sees target's state.
+  RELATION_TYPE_FOLLOWING = 0;
+
+  // Bidirectional collaboration. Input goes to target's state.
+  RELATION_TYPE_SHARING = 1;
+}
+
+// Relation to another client.
+// Used as optional - absent means independent.
+message ClientRelation {
+  // Type of relation.
+  ClientRelationType type = 1;
+
+  // Target client ID.
+  uint64 target_id = 2;
+}
+
+// Minimal view state for rendering peer presence.
+message ClientViewState {
+  // Current mode name ("NORMAL", "INSERT", etc.).
+  string mode = 1;
+
+  // Cursor position.
+  Position cursor = 2;
+
+  // Which buffer this client is viewing.
+  optional uint64 buffer_id = 3;
+
+  // Selection range for visual mode.
+  optional Selection selection = 4;
+}
+
+// Client metadata.
+message ClientMetadata {
+  // Client type ("tui", "web", "android", "cli").
+  string client_type = 1;
+
+  // Display name ("laptop", "phone").
+  string display_name = 2;
+
+  // When client joined (Unix ms).
+  uint64 joined_at_ms = 3;
+}
+
+// A client in a session (new unified message).
+message ClientInfo {
+  // Unique client ID.
+  uint64 id = 1;
+
+  // Relation to another client. Absent = independent.
+  optional ClientRelation relation = 2;
+
+  // View state for rendering.
+  ClientViewState view = 3;
+
+  // Metadata.
+  ClientMetadata metadata = 4;
+}
+
+// Transition error codes.
+enum TransitionError {
+  TRANSITION_ERROR_UNSPECIFIED = 0;
+
+  // Target client not found.
+  TRANSITION_ERROR_TARGET_NOT_FOUND = 1;
+
+  // Would create a cycle.
+  TRANSITION_ERROR_WOULD_CREATE_CYCLE = 2;
+
+  // Cannot share with self.
+  TRANSITION_ERROR_CANNOT_TARGET_SELF = 3;
+
+  // Requires cursor sync first (Following -> Sharing).
+  TRANSITION_ERROR_REQUIRES_CURSOR_SYNC = 4;
 }
 
 // Presence update event (streamed to clients).
@@ -148,7 +236,11 @@ message JoinResponse {
   uint64 client_id = 1;
 
   // Currently connected peers (excluding self).
+  // DEPRECATED: Use peers_v2 instead.
   repeated ClientPresence peers = 2;
+
+  // Currently connected peers with unified ClientInfo (#480).
+  repeated ClientInfo peers_v2 = 3;
 }
 
 // Leave request - client announces departure.
@@ -219,7 +311,11 @@ message ListClientsRequest {
 // List clients response.
 message ListClientsResponse {
   // All currently connected clients.
+  // DEPRECATED: Use clients_v2 instead.
   repeated ClientPresence clients = 1;
+
+  // All connected clients with unified ClientInfo (#480).
+  repeated ClientInfo clients_v2 = 2;
 }
 
 // Set role request (Phase 11.2, Epic #465).
@@ -241,4 +337,22 @@ message SetRoleResponse {
 
   // Error message if not ok.
   optional string error = 2;
+}
+
+// Set relation request (#480 Client Architecture Unification).
+message SetRelationRequest {
+  // Client ID to set relation for.
+  uint64 client_id = 1;
+
+  // New relation. Absent = independent.
+  optional ClientRelation relation = 2;
+}
+
+// Set relation response.
+message SetRelationResponse {
+  // True if relation was set.
+  bool ok = 1;
+
+  // Error code if not ok.
+  optional TransitionError error = 2;
 }

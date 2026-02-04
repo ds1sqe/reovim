@@ -168,18 +168,26 @@ impl Session {
     // Client Management (Phase 11.2)
     // =========================================================================
 
-    /// Add a client to the session as an Owner.
+    /// Add a client to the session as independent.
     ///
-    /// New clients default to Owner role with their own editing state.
+    /// New clients default to independent (no relation) with their own editing state.
     /// The client's mode stack is initialized with the session's home mode.
     /// The client's windows are initialized with the session's active buffer.
-    /// Call `set_client_role()` to change to Follow/Share.
+    /// Call `set_client_relation()` to change to Following/Sharing.
     ///
     /// # Per-Client Windows (#471)
     ///
     /// Each client gets their own `WindowLayout` with independent cursors.
     /// If the session has an active buffer, a window is created for it.
     pub fn add_client(&self, client_id: ClientId) {
+        self.add_client_with_metadata(client_id, super::ClientMetadata::default());
+    }
+
+    /// Add a client with metadata.
+    ///
+    /// Creates an independent client with the given metadata.
+    /// This is the preferred method for gRPC handlers that have client info.
+    pub fn add_client_with_metadata(&self, client_id: ClientId, metadata: super::ClientMetadata) {
         use {reovim_driver_session::Window, reovim_kernel::api::v1::ModeStack};
 
         // Per-client state (#471): This is the ONE valid use of shared current_mode() -
@@ -201,29 +209,26 @@ impl Session {
 
         let mode_stack = ModeStack::new(home_mode);
 
-        // Phase #471: Create per-client editing state with initial window
-        let editing_state = if let Some(buffer_id) = active_buffer {
+        // Phase #471/#480: Create per-client with metadata and initial window
+        let client = if let Some(buffer_id) = active_buffer {
             // Session has an active buffer - create window for it
             let window = Window::with_buffer(buffer_id);
-            super::EditingState::with_mode_stack_and_window(mode_stack, window)
+            Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window)
         } else {
             // No buffer yet - empty windows
-            super::EditingState::with_mode_stack(mode_stack)
+            Client::with_mode_stack(client_id, metadata, mode_stack)
         };
 
         let mut clients = self.clients.write();
-        clients.insert(
-            client_id,
-            Client::Owner {
-                state: editing_state,
-            },
-        );
+        clients.insert(client_id, client);
     }
 
-    /// Add a client with a specific initial role.
-    pub fn add_client_with_role(&self, client_id: ClientId, role: Client) {
+    /// Add a client with a specific initial state.
+    ///
+    /// Used for restoring clients or creating clients with pre-configured state.
+    pub fn add_client_with_state(&self, client: Client) {
         let mut clients = self.clients.write();
-        clients.insert(client_id, role);
+        clients.insert(client.id, client);
     }
 
     /// Remove a client from the session.
@@ -241,9 +246,135 @@ impl Session {
         clients.get(&client_id).cloned()
     }
 
-    /// Set a client's role.
+    /// Set a client's relation with validation.
     ///
-    /// Use this to change between Owner/Follow/Share modes.
+    /// Use this to change between Independent/Following/Sharing modes.
+    /// Pass `None` for independent, `Some(ClientRelation::Following { target })`
+    /// for following, or `Some(ClientRelation::Sharing { with })` for sharing.
+    ///
+    /// # Validation
+    ///
+    /// Validates the transition:
+    /// - Cannot target self
+    /// - Target must exist
+    /// - Cannot create cycles (A → B → A)
+    /// - Following → Sharing upgrade may require cursor sync (returns `RequiresCursorSync`)
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(TransitionResult)` if:
+    /// - Client not found (`TargetNotFound`)
+    /// - Attempting to target self (`CannotTargetSelf`)
+    /// - Change would create a cycle (`WouldCreateCycle`)
+    /// - Following → Sharing requires cursor sync first (`RequiresCursorSync`)
+    pub fn set_client_relation(
+        &self,
+        client_id: ClientId,
+        relation: Option<super::ClientRelation>,
+    ) -> Result<(), super::TransitionResult> {
+        let mut clients = self.clients.write();
+
+        // First validate without mutation
+        let validation_result = {
+            let Some(client) = clients.get(&client_id) else {
+                return Err(super::TransitionResult::TargetNotFound(client_id));
+            };
+            Client::validate_relation_change(client, relation, &clients)
+        };
+
+        // If validation passed, apply the change
+        let result = match validation_result {
+            super::TransitionResult::Ok => {
+                if let Some(client) = clients.get_mut(&client_id) {
+                    client.set_relation_unchecked(relation);
+                }
+                Ok(())
+            }
+            other => Err(other),
+        };
+
+        drop(clients);
+        result
+    }
+
+    /// Set a client's relation without validation.
+    ///
+    /// **Use sparingly** - prefer `set_client_relation()` for safety.
+    /// This is useful for initialization where validation isn't needed.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the client was found and relation set, `false` otherwise.
+    pub fn set_client_relation_unchecked(
+        &self,
+        client_id: ClientId,
+        relation: Option<super::ClientRelation>,
+    ) -> bool {
+        let mut clients = self.clients.write();
+        clients.get_mut(&client_id).is_some_and(|client| {
+            client.set_relation_unchecked(relation);
+            true
+        })
+    }
+
+    /// Sync cursor and set relation.
+    ///
+    /// Use this when `set_client_relation()` returns `RequiresCursorSync`.
+    /// This syncs the cursor first, then sets the relation.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(TransitionResult)` if:
+    /// - Client or target not found (`TargetNotFound`)
+    /// - Attempting to target self (`CannotTargetSelf`)
+    /// - Change would create a cycle (`WouldCreateCycle`)
+    pub fn sync_and_set_relation(
+        &self,
+        client_id: ClientId,
+        target_id: ClientId,
+        relation: Option<super::ClientRelation>,
+    ) -> Result<(), super::TransitionResult> {
+        let mut clients = self.clients.write();
+
+        // Sync cursor first
+        let target_cursor = clients
+            .get(&target_id)
+            .and_then(|c| c.state.windows.active())
+            .map(|w| w.cursor);
+
+        if let (Some(cursor), Some(client)) = (target_cursor, clients.get_mut(&client_id))
+            && let Some(window) = client.state.windows.active_mut()
+        {
+            window.cursor = cursor;
+        }
+
+        // Validate without mutation
+        let validation_result = {
+            let Some(client) = clients.get(&client_id) else {
+                return Err(super::TransitionResult::TargetNotFound(client_id));
+            };
+            Client::validate_relation_change(client, relation, &clients)
+        };
+
+        // If validation passed, apply the change
+        let result = match validation_result {
+            super::TransitionResult::Ok => {
+                if let Some(client) = clients.get_mut(&client_id) {
+                    client.set_relation_unchecked(relation);
+                }
+                Ok(())
+            }
+            other => Err(other),
+        };
+
+        drop(clients);
+        result
+    }
+
+    /// Set a client's role (deprecated).
+    ///
+    /// **DEPRECATED**: Use `set_client_relation()` instead.
+    #[deprecated(since = "0.10.0", note = "Use set_client_relation() instead")]
     pub fn set_client_role(&self, client_id: ClientId, role: Client) {
         let mut clients = self.clients.write();
         clients.insert(client_id, role);
@@ -267,9 +398,9 @@ impl Session {
 
     /// Update a client's editing state via closure.
     ///
-    /// - Owner: Updates own state
-    /// - Follow: No-op (input ignored)
-    /// - Share: Updates owner's state
+    /// - Independent: Updates own state
+    /// - Following: No-op (input ignored)
+    /// - Sharing: Updates target's state
     ///
     /// Returns `true` if state was updated.
     pub fn update_client_state<F>(&self, client_id: ClientId, f: F) -> bool
@@ -278,16 +409,20 @@ impl Session {
     {
         let mut clients = self.clients.write();
 
-        // Find the target client ID based on role
-        let target_id = match clients.get(&client_id) {
-            Some(Client::Owner { .. }) => client_id,
-            Some(Client::Share { owner }) => *owner,
-            Some(Client::Follow { .. }) | None => return false, // Input ignored for followers
+        // Find the target client ID based on relation
+        let Some(client) = clients.get(&client_id) else {
+            return false;
+        };
+
+        let target_id = match client.relation {
+            None => client_id, // Independent - update own state
+            Some(super::ClientRelation::Sharing { with }) => with, // Sharing - update target's state
+            Some(super::ClientRelation::Following { .. }) => return false, // Following - input ignored
         };
 
         // Update the target's state
-        if let Some(Client::Owner { state }) = clients.get_mut(&target_id) {
-            f(state);
+        if let Some(target_client) = clients.get_mut(&target_id) {
+            f(&mut target_client.state);
             true
         } else {
             false
@@ -394,13 +529,13 @@ impl Session {
     /// # Returns
     ///
     /// - `Some((ResolveResult, StateChanges))` - if key was resolved
-    /// - `None` - if client not found, client is Follow, or no resolver
+    /// - `None` - if client not found, client is Following, or no resolver
     ///
-    /// # Role Behavior
+    /// # Relation Behavior
     ///
-    /// - **Owner**: Uses own mode stack and windows
-    /// - **Follow**: Returns `None` (input ignored for followers)
-    /// - **Share**: Uses owner's mode stack and windows
+    /// - **Independent**: Uses own mode stack and windows
+    /// - **Following**: Returns `None` (input ignored)
+    /// - **Sharing**: Uses target's mode stack and windows
     #[allow(clippy::unused_async, clippy::significant_drop_tightening)]
     pub async fn resolve_key_for_client(
         &self,
@@ -412,22 +547,13 @@ impl Session {
         let mut clients = self.clients.write();
         let mut state = self.state.write();
 
-        // Find the target client ID based on role
-        let target_id = match clients.get(&client_id) {
-            Some(Client::Owner { .. }) => client_id,
-            Some(Client::Share { owner }) => *owner,
-            Some(Client::Follow { .. }) | None => return None, // Input ignored for followers
-        };
+        // Find the target client ID based on relation
+        let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471: Get mutable references to per-client mode stack AND windows
-        let (mode_stack, windows) = if let Some(Client::Owner {
-            state: editing_state,
-        }) = clients.get_mut(&target_id)
-        {
-            (&mut editing_state.mode_stack, &mut editing_state.windows)
-        } else {
-            return None;
-        };
+        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        let target_client = clients.get_mut(&target_id)?;
+        let editing_state = &mut target_client.state;
+        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
 
         // Resolve key with per-client state
         state.resolve_key_for_client(mode_stack, windows, key)
@@ -445,22 +571,13 @@ impl Session {
         let mut clients = self.clients.write();
         let mut state = self.state.write();
 
-        // Find the target client ID based on role
-        let target_id = match clients.get(&client_id) {
-            Some(Client::Owner { .. }) => client_id,
-            Some(Client::Share { owner }) => *owner,
-            Some(Client::Follow { .. }) | None => return None,
-        };
+        // Find the target client ID based on relation
+        let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471: Get mutable references to per-client mode stack AND windows
-        let (mode_stack, windows) = if let Some(Client::Owner {
-            state: editing_state,
-        }) = clients.get_mut(&target_id)
-        {
-            (&mut editing_state.mode_stack, &mut editing_state.windows)
-        } else {
-            return None;
-        };
+        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        let target_client = clients.get_mut(&target_id)?;
+        let editing_state = &mut target_client.state;
+        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
 
         state.try_on_command_complete_for_client(mode_stack, windows)
     }
@@ -479,13 +596,13 @@ impl Session {
     /// # Returns
     ///
     /// - `Some((CommandResult, StateChanges))` - if command executed
-    /// - `None` - if client not found, client is Follow, or command not registered
+    /// - `None` - if client not found, client is Following, or command not registered
     ///
-    /// # Role Behavior
+    /// # Relation Behavior
     ///
-    /// - **Owner**: Uses own mode stack and windows
-    /// - **Follow**: Returns `None` (input ignored for followers)
-    /// - **Share**: Uses owner's mode stack and windows
+    /// - **Independent**: Uses own mode stack and windows
+    /// - **Following**: Returns `None` (input ignored)
+    /// - **Sharing**: Uses target's mode stack and windows
     #[allow(clippy::significant_drop_tightening)]
     pub fn execute_command_for_client(
         &self,
@@ -498,22 +615,13 @@ impl Session {
         let mut clients = self.clients.write();
         let mut state = self.state.write();
 
-        // Find the target client ID based on role
-        let target_id = match clients.get(&client_id) {
-            Some(Client::Owner { .. }) => client_id,
-            Some(Client::Share { owner }) => *owner,
-            Some(Client::Follow { .. }) | None => return None, // Input ignored for followers
-        };
+        // Find the target client ID based on relation
+        let target_id = Self::find_input_target(&clients, client_id)?;
 
-        // Phase #471: Get mutable references to per-client mode stack AND windows
-        let (mode_stack, windows) = if let Some(Client::Owner {
-            state: editing_state,
-        }) = clients.get_mut(&target_id)
-        {
-            (&mut editing_state.mode_stack, &mut editing_state.windows)
-        } else {
-            return None;
-        };
+        // Phase #471/#480: Get mutable references to per-client mode stack AND windows
+        let target_client = clients.get_mut(&target_id)?;
+        let editing_state = &mut target_client.state;
+        let (mode_stack, windows) = (&mut editing_state.mode_stack, &mut editing_state.windows);
 
         // Execute command with per-client state
         state.execute_command_for_client(mode_stack, windows, cmd_id, args)
@@ -521,8 +629,8 @@ impl Session {
 
     /// Get the current mode for a specific client (#471).
     ///
-    /// Returns the mode from the client's per-client mode stack (if Owner/Share)
-    /// or `None` for Follow clients.
+    /// Returns the mode from the client's per-client mode stack (if Independent/Sharing)
+    /// or `None` for Following clients.
     #[must_use]
     pub fn client_current_mode(
         &self,
@@ -530,20 +638,31 @@ impl Session {
     ) -> Option<reovim_kernel::api::v1::ModeId> {
         let clients = self.clients.read();
 
-        // Find the target client ID based on role
-        let target_id = match clients.get(&client_id) {
-            Some(Client::Owner { .. }) => client_id,
-            Some(Client::Share { owner }) => *owner,
-            Some(Client::Follow { .. }) | None => return None,
-        };
+        // Find the target client ID based on relation
+        let target_id = Self::find_input_target(&clients, client_id)?;
 
         // Get mode from target's mode stack
-        if let Some(Client::Owner {
-            state: editing_state,
-        }) = clients.get(&target_id)
-        {
-            Some(editing_state.mode_stack.current().clone())
+        clients
+            .get(&target_id)
+            .map(|c| c.state.mode_stack.current().clone())
+    }
+
+    /// Find the target client ID for input routing.
+    ///
+    /// - Independent: returns self
+    /// - Following: returns None (input ignored)
+    /// - Sharing: returns target
+    fn find_input_target(
+        clients: &HashMap<ClientId, Client>,
+        client_id: ClientId,
+    ) -> Option<ClientId> {
+        let client = clients.get(&client_id)?;
+        if client.is_independent() {
+            Some(client_id)
+        } else if client.is_sharing() {
+            client.target_id()
         } else {
+            // Following - input ignored
             None
         }
     }
