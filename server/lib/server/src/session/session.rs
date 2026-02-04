@@ -216,6 +216,7 @@ impl Session {
             client_id,
             Client::Owner {
                 state: editing_state,
+                ring_buffer: super::ring_buffer::ClientRingBuffer::new(),
             },
         );
     }
@@ -286,7 +287,7 @@ impl Session {
         };
 
         // Update the target's state
-        if let Some(Client::Owner { state }) = clients.get_mut(&target_id) {
+        if let Some(Client::Owner { state, .. }) = clients.get_mut(&target_id) {
             f(state);
             true
         } else {
@@ -422,6 +423,7 @@ impl Session {
         // Phase #471: Get mutable references to per-client mode stack AND windows
         let (mode_stack, windows) = if let Some(Client::Owner {
             state: editing_state,
+            ..
         }) = clients.get_mut(&target_id)
         {
             (&mut editing_state.mode_stack, &mut editing_state.windows)
@@ -455,6 +457,7 @@ impl Session {
         // Phase #471: Get mutable references to per-client mode stack AND windows
         let (mode_stack, windows) = if let Some(Client::Owner {
             state: editing_state,
+            ..
         }) = clients.get_mut(&target_id)
         {
             (&mut editing_state.mode_stack, &mut editing_state.windows)
@@ -508,6 +511,7 @@ impl Session {
         // Phase #471: Get mutable references to per-client mode stack AND windows
         let (mode_stack, windows) = if let Some(Client::Owner {
             state: editing_state,
+            ..
         }) = clients.get_mut(&target_id)
         {
             (&mut editing_state.mode_stack, &mut editing_state.windows)
@@ -540,12 +544,36 @@ impl Session {
         // Get mode from target's mode stack
         if let Some(Client::Owner {
             state: editing_state,
+            ..
         }) = clients.get(&target_id)
         {
             Some(editing_state.mode_stack.current().clone())
         } else {
             None
         }
+    }
+
+    /// Get access to a client's ring buffer.
+    ///
+    /// Returns `None` if the client doesn't exist or is not an Owner.
+    pub fn with_client_ring_buffer<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&super::ring_buffer::ClientRingBuffer) -> R,
+    {
+        let clients = self.clients.read();
+        if let Some(Client::Owner { ring_buffer, .. }) = clients.get(&client_id) {
+            Some(f(ring_buffer))
+        } else {
+            None
+        }
+    }
+
+    /// Dump a client's ring buffer for debugging.
+    ///
+    /// Returns `None` if the client doesn't exist or is not an Owner.
+    #[must_use]
+    pub fn dump_client_ring_buffer(&self, client_id: ClientId) -> Option<String> {
+        self.with_client_ring_buffer(client_id, super::ring_buffer::ClientRingBuffer::dump)
     }
 }
 

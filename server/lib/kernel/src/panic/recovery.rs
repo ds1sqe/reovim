@@ -53,6 +53,12 @@ pub fn recovery_dir() -> PathBuf {
 ///
 /// Path to the recovery file, or an error.
 ///
+/// # Errors
+///
+/// Returns an error if:
+/// - Unable to create the recovery directory
+/// - Unable to write the recovery file
+///
 /// # Example
 ///
 /// ```ignore
@@ -96,6 +102,10 @@ pub fn save_buffer_for_recovery(
 /// # Returns
 ///
 /// List of paths to recovery files, sorted by modification time (newest first).
+///
+/// # Errors
+///
+/// Returns an error if unable to read the recovery directory.
 pub fn list_recovery_files() -> std::io::Result<Vec<PathBuf>> {
     let dir = recovery_dir();
     if !dir.exists() {
@@ -132,6 +142,12 @@ pub fn list_recovery_files() -> std::io::Result<Vec<PathBuf>> {
 /// # Returns
 ///
 /// Number of files removed.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Unable to list recovery files
+/// - Unable to remove a file
 pub fn cleanup_old_recovery_files(max_age_secs: u64) -> std::io::Result<usize> {
     let now = std::time::SystemTime::now();
     let mut removed = 0;

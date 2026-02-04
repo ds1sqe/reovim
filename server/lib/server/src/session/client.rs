@@ -56,17 +56,20 @@ use {
     reovim_kernel::api::v1::ModeStack,
 };
 
-use super::ClientId;
+use super::{ring_buffer::ClientRingBuffer, ClientId};
 
 /// Per-client role within a session.
 ///
 /// Determines how a client's input is handled and whose state they see.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum Client {
     /// Owns editing state. Input goes to own state.
     Owner {
         /// The editing state owned by this client.
         state: EditingState,
+        /// Per-client debug ring buffer (Phase #478).
+        ring_buffer: ClientRingBuffer,
     },
 
     /// Read-only spectator. Input is ignored, sees target's state.
@@ -88,6 +91,7 @@ impl Client {
     pub fn new_owner() -> Self {
         Self::Owner {
             state: EditingState::default(),
+            ring_buffer: ClientRingBuffer::new(),
         }
     }
 
@@ -96,6 +100,16 @@ impl Client {
     pub fn owner_with_mode(mode_stack: ModeStack) -> Self {
         Self::Owner {
             state: EditingState::with_mode_stack(mode_stack),
+            ring_buffer: ClientRingBuffer::new(),
+        }
+    }
+
+    /// Get the ring buffer for this client (Owner only).
+    #[must_use]
+    pub const fn ring_buffer(&self) -> Option<&ClientRingBuffer> {
+        match self {
+            Self::Owner { ring_buffer, .. } => Some(ring_buffer),
+            Self::Follow { .. } | Self::Share { .. } => None,
         }
     }
 
@@ -142,7 +156,7 @@ impl Client {
         clients: &'a HashMap<ClientId, Self>,
     ) -> Option<&'a EditingState> {
         match self {
-            Self::Owner { state } => Some(state),
+            Self::Owner { state, .. } => Some(state),
             Self::Follow { target } | Self::Share { owner: target } => {
                 // Prevent infinite recursion by limiting depth
                 Self::resolve_state(*target, clients, 10)
@@ -161,7 +175,7 @@ impl Client {
         _self_id: ClientId,
     ) -> Option<&'a mut EditingState> {
         match self {
-            Self::Owner { state } => Some(state),
+            Self::Owner { state, .. } => Some(state),
             Self::Follow { .. } => None, // Input ignored for followers
             Self::Share { owner } => {
                 // Route to owner's state
@@ -178,7 +192,7 @@ impl Client {
     #[allow(clippy::missing_const_for_fn)]
     fn effective_state_mut_inner(&mut self) -> Option<&mut EditingState> {
         match self {
-            Self::Owner { state } => Some(state),
+            Self::Owner { state, .. } => Some(state),
             Self::Follow { .. } | Self::Share { .. } => None,
         }
     }
@@ -205,7 +219,7 @@ impl Client {
 
         let client = clients.get(&target)?;
         match client {
-            Self::Owner { state } => Some(state),
+            Self::Owner { state, .. } => Some(state),
             Self::Follow { target: next } | Self::Share { owner: next } => {
                 Self::resolve_state(*next, clients, depth - 1)
             }
@@ -363,7 +377,7 @@ mod tests {
         let mode_stack = test_mode_stack();
         let client = Client::owner_with_mode(mode_stack.clone());
 
-        if let Client::Owner { state } = client {
+        if let Client::Owner { state, .. } = client {
             assert_eq!(state.mode_stack.current(), mode_stack.current());
         } else {
             panic!("Expected Owner variant");

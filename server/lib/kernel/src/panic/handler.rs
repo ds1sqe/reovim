@@ -6,6 +6,7 @@
 
 use std::{
     panic::{self, PanicHookInfo},
+    path::PathBuf,
     sync::{
         OnceLock,
         atomic::{AtomicBool, Ordering},
@@ -21,6 +22,45 @@ pub type RecoveryCallback = Box<dyn Fn(&PanicHookInfo<'_>) + Send + Sync>;
 
 /// Global recovery callback.
 static RECOVERY_CALLBACK: OnceLock<RecoveryCallback> = OnceLock::new();
+
+/// Debug context collected during panic.
+///
+/// Contains server logs and client dump file paths for crash reports.
+#[derive(Debug, Default)]
+pub struct DebugContext {
+    /// Server debug ring buffer dump (Phase #478).
+    pub server_logs: Option<String>,
+    /// Paths to client debug dump files.
+    pub client_dump_paths: Vec<PathBuf>,
+}
+
+/// Debug context callback type.
+///
+/// Called during panic to collect debug information for the crash report.
+pub type DebugContextCallback = Box<dyn Fn() -> DebugContext + Send + Sync>;
+
+/// Global debug context callback.
+static DEBUG_CONTEXT_CALLBACK: OnceLock<DebugContextCallback> = OnceLock::new();
+
+/// Set the debug context callback.
+///
+/// Called during panic to collect server logs and client dump paths.
+/// Can only be set once.
+///
+/// # Example
+///
+/// ```ignore
+/// set_debug_context_callback(Box::new(|| {
+///     let server_logs = try_debug_ring().and_then(|r| r.try_dump());
+///     DebugContext {
+///         server_logs,
+///         client_dump_paths: Vec::new(),
+///     }
+/// }));
+/// ```
+pub fn set_debug_context_callback(callback: DebugContextCallback) {
+    let _ = DEBUG_CONTEXT_CALLBACK.set(callback);
+}
 
 /// Install the custom panic handler.
 ///
@@ -60,22 +100,29 @@ pub fn install_panic_handler() {
 
     panic::set_hook(Box::new(move |info| {
         // 1. Generate crash report
-        let report = super::report::generate_crash_report(info);
+        let mut report = super::report::generate_crash_report(info);
 
-        // 2. Attempt recovery (save buffers)
+        // 2. Collect debug context (server logs, client dumps)
+        if let Some(callback) = DEBUG_CONTEXT_CALLBACK.get() {
+            let ctx = callback();
+            report.server_logs = ctx.server_logs;
+            report.client_dump_paths = ctx.client_dump_paths;
+        }
+
+        // 3. Attempt recovery (save buffers)
         if let Some(callback) = RECOVERY_CALLBACK.get() {
             callback(info);
         }
 
-        // 3. Log crash report
+        // 4. Log crash report
         crate::pr_err!("PANIC: {}", report.summary());
 
-        // 4. Write crash report to file
+        // 5. Write crash report to file
         if let Err(e) = report.write_to_file() {
             eprintln!("Failed to write crash report: {e}");
         }
 
-        // 5. Call original handler
+        // 6. Call original handler
         default_hook(info);
     }));
 }

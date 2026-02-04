@@ -227,11 +227,54 @@ fn main() -> std::io::Result<()> {
     let filter = if cli.verbose { "debug" } else { "info" };
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
+    // Initialize debug infrastructure (Phase #478)
+    init_debug_infrastructure();
+
     // Run async runtime
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
         .block_on(run(cli))
+}
+
+/// Initialize debug infrastructure for crash reports.
+///
+/// Sets up:
+/// 1. Server debug ring buffer (64 KB)
+/// 2. Composite logger (writes to ring buffer + tracing)
+/// 3. Debug context callback for panic handler
+/// 4. Custom panic handler
+fn init_debug_infrastructure() {
+    use reovim_kernel::api::v1::{
+        DebugContext, install_panic_handler, set_debug_context_callback,
+    };
+    use reovim_server::debug::{
+        COMPOSITE_LOGGER, DebugRingBuffer, init_debug_ring, try_debug_ring,
+    };
+
+    // 1. Initialize global debug ring buffer
+    if let Err(e) = init_debug_ring() {
+        tracing::warn!("Debug ring buffer already initialized: {e}");
+    }
+
+    // 2. Set composite logger (ring buffer + tracing passthrough)
+    if let Err(e) = reovim_kernel::api::v1::set_logger(&COMPOSITE_LOGGER) {
+        tracing::warn!("Logger already set: {e}");
+    }
+
+    // 3. Set debug context callback for panic handler
+    set_debug_context_callback(Box::new(|| {
+        let server_logs = try_debug_ring().and_then(DebugRingBuffer::try_dump);
+        DebugContext {
+            server_logs,
+            client_dump_paths: Vec::new(),
+        }
+    }));
+
+    // 4. Install panic handler
+    install_panic_handler();
+
+    tracing::debug!("Debug infrastructure initialized");
 }
 
 async fn run(cli: Cli) -> std::io::Result<()> {
