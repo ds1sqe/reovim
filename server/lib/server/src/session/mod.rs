@@ -15,9 +15,11 @@
 
 mod capture;
 mod client;
+pub mod crash_dump;
 mod id;
 mod presence;
 mod registry;
+pub mod ring_buffer;
 #[allow(clippy::module_inception)]
 mod session;
 mod state;
@@ -33,6 +35,7 @@ pub use {
     // Use Client struct with relation field instead.
     presence::{ClientPresence, PresenceMap, SyncMode},
     registry::SessionRegistry,
+    ring_buffer::ClientRingBuffer,
     session::Session,
     state::SessionState,
     syntax_state::SyntaxSessionState,

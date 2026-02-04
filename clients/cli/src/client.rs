@@ -25,6 +25,9 @@ use {
         ListBuffersResponse,
         ListClientsRequest,
         ListClientsResponse,
+        // Phase 17 (#481): Debug types
+        LogTailRequest,
+        LogTailResponse,
         PingRequest,
         PingResponse,
         SendKeysRequest,
@@ -34,6 +37,7 @@ use {
         UpdatePresenceRequest,
         UpdatePresenceResponse,
         buffer_service_client::BufferServiceClient,
+        debug_service_client::DebugServiceClient,
         input_service_client::InputServiceClient,
         presence_service_client::PresenceServiceClient,
         server_service_client::ServerServiceClient,
@@ -76,7 +80,7 @@ impl From<tonic::transport::Error> for GrpcClientError {
 
 /// gRPC v2 client for interacting with the reovim server.
 ///
-/// Wraps all service clients (Input, State, Buffer, Server, Presence) and provides
+/// Wraps all service clients (Input, State, Buffer, Server, Presence, Debug) and provides
 /// a unified interface.
 pub struct GrpcClient {
     input: InputServiceClient<Channel>,
@@ -84,6 +88,7 @@ pub struct GrpcClient {
     buffer: BufferServiceClient<Channel>,
     server: ServerServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
+    debug: DebugServiceClient<Channel>,
 }
 
 impl GrpcClient {
@@ -109,7 +114,8 @@ impl GrpcClient {
             state: StateServiceClient::new(channel.clone()),
             buffer: BufferServiceClient::new(channel.clone()),
             server: ServerServiceClient::new(channel.clone()),
-            presence: PresenceServiceClient::new(channel),
+            presence: PresenceServiceClient::new(channel.clone()),
+            debug: DebugServiceClient::new(channel),
         })
     }
 
@@ -443,6 +449,43 @@ impl GrpcClient {
             follow_target,
         };
         let response = self.presence.set_sync_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    // =========================================================================
+    // Debug Service Methods (Phase 17, #481)
+    // =========================================================================
+
+    /// Get recent log entries from the server ring buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Number of entries to retrieve (default: 50).
+    /// * `level` - Optional level filter (trace, debug, info, warn, error).
+    /// * `target` - Optional target module filter (contains match).
+    /// * `grep` - Optional message filter (case-insensitive contains).
+    ///
+    /// # Returns
+    ///
+    /// The response containing log entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    pub async fn log_tail(
+        &mut self,
+        count: u32,
+        level: Option<String>,
+        target: Option<String>,
+        grep: Option<String>,
+    ) -> Result<LogTailResponse, GrpcClientError> {
+        let request = LogTailRequest {
+            count,
+            level,
+            target,
+            grep,
+        };
+        let response = self.debug.log_tail(request).await?;
         Ok(response.into_inner())
     }
 }

@@ -4,6 +4,35 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.3-dev
 
+### Added
+
+- **Server debug ring buffer with panic integration (#478)**: Added comprehensive
+  debug infrastructure for server-side crash reporting and post-mortem analysis.
+  Two-level ring buffer architecture: 64 KB server-wide buffer for kernel/module
+  events, 8 KB per-client buffers for client-specific events (keys, commands,
+  mode changes). `DebugRingBuffer` implements kernel `Logger` trait, capturing
+  `pr_err!`/`pr_info!` calls. `CompositeLogger` forwards to both ring buffer and
+  tracing. Panic handler integration via `DebugContext` callback dumps server logs
+  to crash reports. Human-readable crash report timestamps
+  (`crash-2026-02-04_12-34-56-{nanos}.txt`). Thread-safe with `parking_lot::RwLock`
+  and non-blocking `try_dump()` for panic handler safety. String interning for
+  memory efficiency. New files: `server/lib/server/src/debug/` (ring_buffer.rs,
+  composite_logger.rs), `session/ring_buffer.rs`, `session/crash_dump.rs`.
+  Modified: panic handler with `DebugContext`, crash report with `server_logs`
+  and `client_dump_paths` fields. 55 tests across 5 modules.
+
+- **Complete debug infrastructure (#481)**: Wired remaining debug features from
+  #478. Client disconnect handler: `Session::remove_client()` now dumps client
+  ring buffer to `~/.local/share/reovim/crash/client-{id}-{timestamp}.log` and
+  logs `CLIENT_DISCONNECT` entry to server ring buffer before removal. CLI
+  log-tail command: `reovim cli log-tail` queries server ring buffer via gRPC
+  DebugService. Supports filters: `--count` (entries), `--level` (trace/debug/
+  info/warn/error), `--target` (module filter), `--grep` (message search).
+  Color-coded terminal output (red=ERROR, yellow=WARN, green=INFO, cyan=DEBUG,
+  gray=TRACE). JSON output with `--format json`. New proto: `debug.proto` with
+  `DebugService` (LogTail, LogLevel RPCs). New gRPC handler: `DebugServiceImpl`
+  in `server/lib/server/src/grpc/debug.rs`. 3 new session tests, 6 new gRPC tests.
+
 ### Changed
 
 - **Client Architecture Unification**: Unified three inconsistent client models

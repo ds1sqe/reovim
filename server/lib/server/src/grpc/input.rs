@@ -35,7 +35,7 @@ use {
 
 use crate::{
     grpc::notification_builder,
-    session::{ClientId, Session, SessionId, SessionRegistry, SessionState},
+    session::{ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry, SessionState},
 };
 
 /// gRPC `InputService` implementation.
@@ -128,6 +128,11 @@ impl InputService for InputServiceImpl {
         let mut accumulated_changes = StateChanges::new();
 
         for key in keys.as_slice() {
+            // Phase #478: Log key to client ring buffer
+            session.with_client_ring_buffer(client_id, |rb: &ClientRingBuffer| {
+                rb.log_key(&format!("{:?}", key.code));
+            });
+
             // Debug: Log current mode before resolution
             // Per-client state (#471): Use per-client mode if available, fallback to shared
             // The fallback to shared mode is needed for edge cases (e.g., client not yet added).

@@ -62,7 +62,10 @@ mod report;
 
 // Re-export handler types
 #[allow(unused_imports)]
-pub use handler::{install_panic_handler, is_handler_installed, set_recovery_callback};
+pub use handler::{
+    DebugContext, install_panic_handler, is_handler_installed, set_debug_context_callback,
+    set_recovery_callback,
+};
 
 // Re-export recovery types
 #[allow(unused_imports)]

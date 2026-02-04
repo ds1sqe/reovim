@@ -316,6 +316,69 @@ pub async fn capture(
 }
 
 // =============================================================================
+// Debug Commands (Phase 17, #481)
+// =============================================================================
+
+/// Get recent log entries from server ring buffer.
+///
+/// # Arguments
+///
+/// * `count` - Number of entries (default: 50)
+/// * `level` - Filter by level (trace, debug, info, warn, error)
+/// * `target` - Filter by target module
+/// * `grep` - Search in messages (case-insensitive)
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+pub async fn log_tail(
+    client: &mut GrpcClient,
+    count: u32,
+    level: Option<String>,
+    target: Option<String>,
+    grep: Option<String>,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.log_tail(count, level, target, grep).await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.entries.is_empty() {
+                return Ok("No log entries".to_string());
+            }
+
+            let mut output = String::new();
+            for entry in &response.entries {
+                // Color by level (ANSI escape codes)
+                let level_colored = match entry.level.as_str() {
+                    "ERROR" => format!("\x1b[31m{}\x1b[0m", entry.level), // Red
+                    "WARN" => format!("\x1b[33m{}\x1b[0m", entry.level),  // Yellow
+                    "INFO" => format!("\x1b[32m{}\x1b[0m", entry.level),  // Green
+                    "DEBUG" => format!("\x1b[36m{}\x1b[0m", entry.level), // Cyan
+                    "TRACE" => format!("\x1b[90m{}\x1b[0m", entry.level), // Gray
+                    _ => entry.level.clone(),
+                };
+                let _ =
+                    writeln!(output, "[{}] {} - {}", level_colored, entry.target, entry.message);
+            }
+            Ok(output.trim_end().to_string())
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "entries": response.entries.iter().map(|e| serde_json::json!({
+                    "seq": e.seq,
+                    "timestamp_us": e.timestamp_us,
+                    "level": e.level,
+                    "target": e.target,
+                    "message": e.message,
+                })).collect::<Vec<_>>(),
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+// =============================================================================
 // Presence Commands (Phase 15)
 // =============================================================================
 

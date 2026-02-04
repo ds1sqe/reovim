@@ -257,6 +257,29 @@ pub use crate::{profile, profile_counter, profile_fn, profile_histogram, profile
 pub use crate::debug::{Counter, Histogram, MetricsRegistry, MetricsSnapshot, metrics};
 
 // ============================================================================
+// Panic Handling (panic/)
+// ============================================================================
+
+pub use crate::panic::{
+    // Report
+    CrashReport,
+    // Handler
+    DebugContext,
+    // Recovery
+    RecoverySnapshot,
+    UnsavedBuffer,
+    cleanup_old_recovery_files,
+    generate_crash_report,
+    install_panic_handler,
+    is_handler_installed,
+    list_recovery_files,
+    recovery_dir,
+    save_buffer_for_recovery,
+    set_debug_context_callback,
+    set_recovery_callback,
+};
+
+// ============================================================================
 // Tests
 // ============================================================================
 

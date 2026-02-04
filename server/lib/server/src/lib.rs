@@ -27,6 +27,7 @@
 
 pub mod app;
 pub mod config;
+pub mod debug;
 pub mod registry;
 pub mod session;
 

@@ -48,7 +48,7 @@ use {
     reovim_kernel::api::v1::ModeStack,
 };
 
-use super::ClientId;
+use super::{ClientId, ring_buffer::ClientRingBuffer};
 
 // ============================================================================
 // ClientRelation
@@ -260,6 +260,8 @@ pub struct Client {
     pub state: EditingState,
     /// Client metadata (type, display name, join time).
     pub metadata: ClientMetadata,
+    /// Per-client debug ring buffer (Phase #478/#481).
+    pub ring_buffer: ClientRingBuffer,
 }
 
 impl Client {
@@ -271,6 +273,7 @@ impl Client {
             relation: None,
             state: EditingState::default(),
             metadata,
+            ring_buffer: ClientRingBuffer::new(),
         }
     }
 
@@ -282,6 +285,7 @@ impl Client {
             relation: None,
             state: EditingState::with_mode_stack(mode_stack),
             metadata,
+            ring_buffer: ClientRingBuffer::new(),
         }
     }
 
@@ -298,7 +302,14 @@ impl Client {
             relation: None,
             state: EditingState::with_mode_stack_and_window(mode_stack, window),
             metadata,
+            ring_buffer: ClientRingBuffer::new(),
         }
+    }
+
+    /// Get the ring buffer for this client.
+    #[must_use]
+    pub const fn ring_buffer(&self) -> &ClientRingBuffer {
+        &self.ring_buffer
     }
 
     /// Check if client is independent (no relation).
@@ -706,6 +717,7 @@ pub mod compat {
             relation: Some(ClientRelation::Following { target }),
             state: EditingState::default(),
             metadata: ClientMetadata::default(),
+            ring_buffer: super::ClientRingBuffer::new(),
         }
     }
 
@@ -719,6 +731,7 @@ pub mod compat {
             relation: Some(ClientRelation::Sharing { with: owner }),
             state: EditingState::default(),
             metadata: ClientMetadata::default(),
+            ring_buffer: super::ClientRingBuffer::new(),
         }
     }
 
