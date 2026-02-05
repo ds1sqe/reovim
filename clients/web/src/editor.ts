@@ -34,6 +34,9 @@ import { OverlayRenderer } from "./render/overlay.js";
 // Capture handler (Phase 16)
 import { CaptureHandler, type CaptureableState } from "./capture/index.js";
 
+// Color palette for multi-client presence (Issue #474)
+import { colorForClient, dimmedColorForClient } from "./palette.js";
+
 /** Position within the buffer */
 interface Position {
   line: number;
@@ -1014,8 +1017,9 @@ export class Editor {
    * so local user can see where collaborators are working.
    */
   private renderRemoteCursors(): void {
-    // Clear existing remote cursor elements
+    // Clear existing remote cursor and selection elements
     document.querySelectorAll(".remote-cursor").forEach((el) => el.remove());
+    document.querySelectorAll(".remote-selection").forEach((el) => el.remove());
 
     const container = this.editorElement ?? this.bufferElement;
     if (!container) return;
@@ -1032,11 +1036,20 @@ export class Editor {
         : 0
       : 0;
 
-    for (const [, remote] of this.remoteClients) {
+    for (const [clientId, remote] of this.remoteClients) {
       // Only show cursors for clients viewing the same buffer
       // TODO: Proper buffer ID tracking for multi-buffer comparison
       if (remote.bufferId !== currentBufferId && currentBufferId !== 0) continue;
 
+      // Get per-client color from CBF-8 palette (Issue #474)
+      const cursorColor = colorForClient(clientId);
+
+      // Render remote selection if present (Issue #474)
+      if (remote.selection) {
+        this.renderRemoteSelection(container, clientId, remote, charWidth, lineHeight, lineNumberWidth, padding);
+      }
+
+      // Render remote cursor
       const el = document.createElement("div");
       el.className = "remote-cursor";
       el.style.cssText = `
@@ -1045,13 +1058,94 @@ export class Editor {
         top: ${padding + remote.cursorLine * lineHeight}px;
         width: 2px;
         height: ${lineHeight}px;
-        background: cyan;
-        opacity: 0.7;
+        background: ${cursorColor};
+        opacity: 0.85;
         pointer-events: none;
         z-index: 10;
+        box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
       `;
       // Add tooltip with client name
       el.title = remote.displayName;
+      container.appendChild(el);
+    }
+  }
+
+  /**
+   * Render a remote client's selection (Issue #474).
+   *
+   * Called from renderRemoteCursors for each remote client with an active selection.
+   */
+  private renderRemoteSelection(
+    container: HTMLElement,
+    clientId: bigint,
+    remote: RemoteClient,
+    charWidth: number,
+    lineHeight: number,
+    lineNumberWidth: number,
+    padding: number
+  ): void {
+    const selection = remote.selection;
+    if (!selection) return;
+
+    const selectionColor = dimmedColorForClient(clientId);
+
+    // Use anchor and cursor from the selection (normalize to start/end)
+    const anchorLine = selection.anchor.line;
+    const anchorCol = selection.anchor.col;
+    const cursorLine = selection.cursor.line;
+    const cursorCol = selection.cursor.col;
+
+    // Calculate selection range
+    const startLine = Math.min(anchorLine, cursorLine);
+    const endLine = Math.max(anchorLine, cursorLine);
+
+    for (let line = startLine; line <= endLine; line++) {
+      // Calculate column range for this line based on selection mode
+      let startCol: number;
+      let endCol: number;
+
+      if (selection.mode === "line") {
+        // Line mode: entire line (use a large width)
+        startCol = 0;
+        endCol = 200; // Large enough for most lines
+      } else if (selection.mode === "block") {
+        // Block mode: same columns on every line
+        startCol = Math.min(anchorCol, cursorCol);
+        endCol = Math.max(anchorCol, cursorCol) + 1;
+      } else {
+        // Char mode: depends on line position
+        if (line === startLine && line === endLine) {
+          // Single line selection
+          startCol = Math.min(anchorCol, cursorCol);
+          endCol = Math.max(anchorCol, cursorCol) + 1;
+        } else if (line === startLine) {
+          // First line: from anchor/cursor to end of line
+          startCol = anchorLine < cursorLine ? anchorCol : cursorCol;
+          endCol = 200; // Large width for rest of line
+        } else if (line === endLine) {
+          // Last line: from start of line to anchor/cursor
+          startCol = 0;
+          endCol = (anchorLine < cursorLine ? cursorCol : anchorCol) + 1;
+        } else {
+          // Middle lines: entire line
+          startCol = 0;
+          endCol = 200;
+        }
+      }
+
+      const el = document.createElement("div");
+      el.className = "remote-selection";
+      el.style.cssText = `
+        position: absolute;
+        left: ${padding + lineNumberWidth + startCol * charWidth}px;
+        top: ${padding + line * lineHeight}px;
+        width: ${(endCol - startCol) * charWidth}px;
+        height: ${lineHeight}px;
+        background: ${selectionColor};
+        pointer-events: none;
+        z-index: 5;
+        border-radius: 2px;
+      `;
       container.appendChild(el);
     }
   }

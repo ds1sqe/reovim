@@ -158,6 +158,19 @@ impl Screen {
         &mut self.buffer
     }
 
+    /// Overlay a background color on an existing cell (Issue #474).
+    ///
+    /// Preserves the existing character and foreground color,
+    /// only changing the background. Used for remote selection
+    /// highlighting without overwriting buffer content.
+    pub fn overlay_bg(&mut self, x: u16, y: u16, bg: reovim_arch::Color) {
+        if let Some(cell) = self.buffer.get(x, y).cloned() {
+            let new_style = cell.style.with_bg(bg);
+            let new_cell = crate::frame::Cell::new(cell.char, new_style);
+            self.buffer.set(x, y, new_cell);
+        }
+    }
+
     /// Render the screen to terminal.
     ///
     /// Uses differential rendering to only update changed cells.

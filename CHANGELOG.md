@@ -68,6 +68,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `DebugService` (LogTail, LogLevel RPCs). New gRPC handler: `DebugServiceImpl`
   in `server/lib/server/src/grpc/debug.rs`. 3 new session tests, 6 new gRPC tests.
 
+- **Multi-client presence rendering (#474)**: Implemented client-side rendering
+  of remote clients' cursors and selections. CBF-8 colorblind-friendly palette
+  in `shared/arch/src/palette.rs` provides 8 distinct colors (Wong 2011) with
+  deterministic assignment via `color_for_client(client_id)`. TUI client renders
+  remote cursors with `'▎'` character in per-client colors, remote selections
+  with dimmed background overlays. Web client renders CSS-positioned cursor bars
+  and selection backgrounds. New `Screen::overlay_bg()` method for non-destructive
+  selection rendering. Supports char/line/block visual modes. 5 palette tests.
+  Files: `shared/arch/src/palette.rs` (new), `clients/web/src/palette.ts` (new),
+  `clients/tui/src/app_v2.rs`, `clients/tui/lib/drivers/tui/src/screen.rs`,
+  `clients/web/src/editor.ts`.
+
 ### Changed
 
 - **Session struct refactoring with BootstrapState pattern (#488)**: Simplified driver-level

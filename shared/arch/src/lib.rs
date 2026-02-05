@@ -34,6 +34,7 @@
 
 pub mod dirs;
 pub mod error;
+pub mod palette;
 pub mod sync;
 pub mod traits;
 

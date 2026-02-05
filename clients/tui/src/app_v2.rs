@@ -949,6 +949,12 @@ impl TuiAppV2 {
                     if let Some(client) = p.client {
                         // Skip self
                         if client.client_id != self.state.my_client_id {
+                            tracing::info!(
+                                client_id = client.client_id,
+                                display_name = %client.display_name,
+                                buffer_id = ?client.buffer_id,
+                                "PresenceJoined: Adding remote client"
+                            );
                             self.state.other_clients.insert(
                                 client.client_id,
                                 RemoteClient {
@@ -1404,41 +1410,51 @@ impl TuiAppV2 {
                 self.screen.put_char(x, y, '▪', &border_style);
             }
 
+            // Issue #474: Render other clients' selections (behind cursors)
+            self.render_remote_selections(placement, gutter_width);
+
             // Phase 11.2: Render other clients' cursors for awareness
             self.render_remote_cursors(placement, gutter_width);
         }
     }
 
-    /// Render other clients' cursors within a window (Phase 11.2).
+    /// Render other clients' cursors within a window (Phase 11.2, Issue #474).
     ///
-    /// Shows each remote client's cursor as a colored marker with their name.
+    /// Shows each remote client's cursor as a colored marker.
+    /// Each client gets a distinct color from the CBF-8 colorblind-friendly palette.
     fn render_remote_cursors(
         &mut self,
         placement: &crate::layout_mirror::WindowPlacement,
         gutter_width: u16,
     ) {
         // Collect remote clients viewing this buffer (Phase #479: buffer_id is Option)
+        // Issue #474 fix: Show remote cursor if:
+        // 1. Buffer IDs match (both have same buffer open), OR
+        // 2. Remote buffer_id is None (client hasn't sent presence update yet)
+        // This handles the common case where presence updates aren't sent on buffer change.
         let remotes: Vec<_> = self
             .state
             .other_clients
-            .values()
-            .filter(|r| {
-                placement
-                    .buffer_id
-                    .is_some_and(|bid| r.buffer_id == Some(bid))
+            .iter()
+            .filter(|(_, r)| {
+                match (placement.buffer_id, r.buffer_id) {
+                    // Both have buffer_id - must match
+                    (Some(local_bid), Some(remote_bid)) => local_bid == remote_bid,
+                    // Remote doesn't have buffer_id yet - show cursor (assume same buffer)
+                    (Some(_), None) => true,
+                    // Local doesn't have buffer_id - don't show (shouldn't happen)
+                    (None, _) => false,
+                }
             })
-            .cloned()
+            .map(|(&client_id, remote)| (client_id, remote.clone()))
             .collect();
 
-        // Style for remote cursors (distinct color)
-        let cursor_style = Style::default()
-            .with_fg(Color::Cyan)
-            .with_bg(Color::DarkCyan);
+        for (client_id, remote) in &remotes {
+            // Get deterministic color for this client from CBF-8 palette
+            let fg_color = reovim_arch::palette::color_for_client(*client_id);
+            let bg_color = reovim_arch::palette::dark_color_for_client(*client_id);
+            let cursor_style = Style::default().with_fg(fg_color).with_bg(bg_color);
 
-        // TODO: Render remote selections (requires Screen::set_style or get_cell method)
-        // For now, selections are tracked but not rendered.
-
-        for remote in &remotes {
             // Render remote cursor
             #[allow(clippy::cast_possible_truncation)]
             let cursor_row = remote.cursor_line as u16;
@@ -1455,6 +1471,113 @@ impl TuiAppV2 {
                 {
                     // Use a thin vertical bar to indicate remote cursor
                     self.screen.put_char(screen_x, screen_y, '▎', &cursor_style);
+                }
+            }
+        }
+    }
+
+    /// Render other clients' selections within a window (Issue #474).
+    ///
+    /// Shows visual mode selections from remote clients as colored backgrounds.
+    /// Must be called BEFORE `render_remote_cursors` so cursors appear on top.
+    fn render_remote_selections(
+        &mut self,
+        placement: &crate::layout_mirror::WindowPlacement,
+        gutter_width: u16,
+    ) {
+        // Collect remote clients viewing this buffer with active selections
+        // Issue #474 fix: Same buffer matching logic as render_remote_cursors
+        let remotes: Vec<_> = self
+            .state
+            .other_clients
+            .iter()
+            .filter(|(_, r)| {
+                r.selection.is_some()
+                    && match (placement.buffer_id, r.buffer_id) {
+                        (Some(local_bid), Some(remote_bid)) => local_bid == remote_bid,
+                        (Some(_), None) => true, // Remote hasn't sent presence update yet
+                        (None, _) => false,
+                    }
+            })
+            .map(|(&client_id, remote)| (client_id, remote.clone()))
+            .collect();
+
+        for (client_id, remote) in &remotes {
+            let Some(selection) = &remote.selection else {
+                continue;
+            };
+
+            // Get dimmed color for selection background
+            let bg_color = reovim_arch::palette::dimmed_color_for_client(*client_id);
+
+            // Calculate selection range (normalize start/end)
+            let start_line = selection.start.line.min(selection.end.line);
+            let end_line = selection.start.line.max(selection.end.line);
+
+            for line in start_line..=end_line {
+                #[allow(clippy::cast_possible_truncation)]
+                let line_u16 = line as u16;
+
+                // Skip lines outside visible window
+                if line_u16 >= placement.height {
+                    continue;
+                }
+
+                let screen_y = placement.y + line_u16;
+
+                // Calculate column range for this line based on selection mode
+                let (start_col, end_col) = match selection.mode.as_str() {
+                    "line" => {
+                        // Line mode: entire line
+                        (0u16, placement.width.saturating_sub(gutter_width))
+                    }
+                    "block" => {
+                        // Block mode: same columns on every line
+                        #[allow(clippy::cast_possible_truncation)]
+                        let sc = selection.start.column.min(selection.end.column) as u16;
+                        #[allow(clippy::cast_possible_truncation)]
+                        let ec = selection.start.column.max(selection.end.column) as u16;
+                        (sc, ec.saturating_add(1))
+                    }
+                    _ => {
+                        // Char mode: depends on line position
+                        #[allow(clippy::cast_possible_truncation)]
+                        if line == start_line && line == end_line {
+                            // Single line selection
+                            let sc = selection.start.column.min(selection.end.column) as u16;
+                            let ec = selection.start.column.max(selection.end.column) as u16;
+                            (sc, ec.saturating_add(1))
+                        } else if line == start_line {
+                            // First line: from start column to end of line
+                            #[allow(clippy::cast_possible_truncation)]
+                            let sc = if selection.start.line < selection.end.line {
+                                selection.start.column as u16
+                            } else {
+                                selection.end.column as u16
+                            };
+                            (sc, placement.width.saturating_sub(gutter_width))
+                        } else if line == end_line {
+                            // Last line: from start of line to end column
+                            #[allow(clippy::cast_possible_truncation)]
+                            let ec = if selection.start.line < selection.end.line {
+                                selection.end.column as u16
+                            } else {
+                                selection.start.column as u16
+                            };
+                            (0, ec.saturating_add(1))
+                        } else {
+                            // Middle lines: entire line
+                            (0, placement.width.saturating_sub(gutter_width))
+                        }
+                    }
+                };
+
+                // Apply selection background to each cell in range
+                for col in start_col..end_col {
+                    let screen_x = placement.x + gutter_width + col;
+                    if screen_x < placement.x + placement.width {
+                        self.screen.overlay_bg(screen_x, screen_y, bg_color);
+                    }
                 }
             }
         }
