@@ -100,7 +100,7 @@ impl IntegrationTest {
         loop {
             match GrpcClient::connect(&self.addr).await {
                 Ok(c) => return Ok(c),
-                Err(e) if attempts < MAX_CONNECT_ATTEMPTS => {
+                Err(_) if attempts < MAX_CONNECT_ATTEMPTS => {
                     attempts += 1;
                     let delay = std::cmp::min(
                         RETRY_BASE_MS + u64::from(attempts) * RETRY_BASE_MS,

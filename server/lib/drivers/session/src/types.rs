@@ -163,6 +163,73 @@ impl SessionShared {
 }
 
 // ============================================================================
+// BootstrapState - Initial Per-Client State for Session Initialization (#488)
+// ============================================================================
+
+/// Bootstrap state for creating a new session with initial per-client data.
+///
+/// This struct provides the initial per-client state needed when initializing
+/// a session or adding the first client. It contains fields that will become
+/// part of `EditingState` in the server layer.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// // Create session with bootstrap state for tests
+/// let (session, bootstrap) = Session::bootstrap(ClientId::new(1), home_mode);
+///
+/// // Use bootstrap fields for per-client state
+/// let mode_stack = bootstrap.mode_stack;
+/// let windows = bootstrap.windows;
+/// ```
+///
+/// # Architecture (#488)
+///
+/// This type exists to provide a clean separation between:
+/// - **Session**: Shared infrastructure only (`SessionShared`)
+/// - **`BootstrapState`**: Initial per-client state (mode, windows, extensions)
+///
+/// At runtime, per-client state lives in `EditingState` in the server layer.
+#[derive(Debug)]
+pub struct BootstrapState {
+    /// Initial mode stack with home mode at the bottom.
+    pub mode_stack: ModeStack,
+    /// Initial window layout (empty by default).
+    pub windows: WindowLayout,
+    /// Initial pending keys (empty by default).
+    pub pending_keys: KeySequence,
+    /// Initial extensions map (empty by default).
+    pub extensions: ExtensionMap,
+}
+
+impl BootstrapState {
+    /// Create bootstrap state with the given home mode.
+    ///
+    /// The home mode becomes the bottom of the mode stack.
+    /// Windows, pending keys, and extensions start empty.
+    #[must_use]
+    pub fn new(home_mode: ModeId) -> Self {
+        Self {
+            mode_stack: ModeStack::new(home_mode),
+            windows: WindowLayout::empty(),
+            pending_keys: KeySequence::new(),
+            extensions: ExtensionMap::new(),
+        }
+    }
+
+    /// Create bootstrap state with a window for the given buffer.
+    ///
+    /// This is useful when the session already has an active buffer
+    /// and the new client should have a window showing that buffer.
+    #[must_use]
+    pub fn with_buffer(home_mode: ModeId, buffer_id: BufferId) -> Self {
+        let mut state = Self::new(home_mode);
+        state.windows.add(Window::with_buffer(buffer_id));
+        state
+    }
+}
+
+// ============================================================================
 // TextObjRange
 // ============================================================================
 
@@ -680,21 +747,76 @@ impl std::fmt::Debug for Session {
 }
 
 impl Session {
-    /// Create a new session with a home mode.
+    /// Create a new session with shared infrastructure only.
     ///
-    /// The home mode is the bottom of the mode stack and cannot be popped.
-    /// Terminal size defaults to VT100 standard (80x24).
-    /// Compositor is initialized as `None` and should be set by the layout module.
+    /// # Architecture (#488)
+    ///
+    /// This creates a session with only shared state (`SessionShared`).
+    /// The deprecated fields (`mode_stack`, `windows`, `extensions`) are
+    /// initialized with placeholder values and should NOT be used at runtime.
+    ///
+    /// For per-client state, use [`BootstrapState`] or create `EditingState` directly.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // Create session with shared state only
+    /// let session = Session::new(ClientId::new(1));
+    ///
+    /// // Create per-client state separately
+    /// let mode_stack = ModeStack::new(home_mode);
+    /// let windows = WindowLayout::empty();
+    /// let extensions = ExtensionMap::new();
+    /// ```
     #[must_use]
-    pub fn new(id: ClientId, home_mode: ModeId) -> Self {
+    pub fn new(id: ClientId) -> Self {
+        use reovim_kernel::api::v1::ModuleId;
+
+        // Placeholder mode for deprecated field - NOT used at runtime
+        let placeholder_mode = ModeId::new(ModuleId::new("deprecated"), "placeholder");
+
         Self {
             id,
             shared: SessionShared::new(),
+            // Deprecated fields - initialized with placeholders, NOT used at runtime
             windows: WindowLayout::empty(),
-            mode_stack: ModeStack::new(home_mode),
+            mode_stack: ModeStack::new(placeholder_mode),
             pending_keys: KeySequence::new(),
             extensions: ExtensionMap::new(),
         }
+    }
+
+    /// Create session with bootstrap state for a single client.
+    ///
+    /// This is a convenience method for tests and initialization that need
+    /// both shared session state and initial per-client state.
+    ///
+    /// # Returns
+    ///
+    /// Tuple of `(Session, BootstrapState)` where:
+    /// - `Session` contains shared infrastructure (`SessionShared`)
+    /// - `BootstrapState` contains initial per-client data that should be
+    ///   stored in `EditingState` when adding a client
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let (mut session, bootstrap) = Session::bootstrap(ClientId::new(1), home_mode);
+    ///
+    /// // Use bootstrap for per-client state
+    /// let mut mode_stack = bootstrap.mode_stack;
+    /// let mut windows = bootstrap.windows;
+    /// let mut extensions = bootstrap.extensions;
+    ///
+    /// // Create runtime with per-client state
+    /// let runtime = SessionRuntime::new(
+    ///     &mut session, &mut mode_stack, &mut windows, &mut extensions,
+    ///     &kernel, &executor,
+    /// );
+    /// ```
+    #[must_use]
+    pub fn bootstrap(id: ClientId, home_mode: ModeId) -> (Self, BootstrapState) {
+        (Self::new(id), BootstrapState::new(home_mode))
     }
 
     /// Set the compositor for this session.
@@ -887,23 +1009,38 @@ mod tests {
 
     #[test]
     fn test_session_new() {
-        let mode = test_mode();
-        let session = Session::new(ClientId::new(1), mode.clone());
+        let session = Session::new(ClientId::new(1));
 
         assert_eq!(session.id.as_usize(), 1);
-        assert_eq!(session.current_mode(), &mode);
+        // Deprecated fields are initialized to empty/placeholder values
         assert!(session.windows.is_empty());
         assert!(session.pending_keys.is_empty());
         assert!(session.extensions.is_empty());
-        // New fields initialized correctly
+        // Shared fields initialized correctly
         assert!(session.active_buffer().is_none());
         assert_eq!(session.terminal_size(), (80, 24)); // VT100 default
     }
 
     #[test]
-    fn test_session_active_buffer() {
+    fn test_session_bootstrap() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let (session, bootstrap) = Session::bootstrap(ClientId::new(1), mode.clone());
+
+        // Session has only shared infrastructure
+        assert_eq!(session.id.as_usize(), 1);
+        assert!(session.active_buffer().is_none());
+        assert_eq!(session.terminal_size(), (80, 24));
+
+        // BootstrapState has per-client initial state
+        assert_eq!(bootstrap.mode_stack.current(), &mode);
+        assert!(bootstrap.windows.is_empty());
+        assert!(bootstrap.pending_keys.is_empty());
+        assert!(bootstrap.extensions.is_empty());
+    }
+
+    #[test]
+    fn test_session_active_buffer() {
+        let mut session = Session::new(ClientId::new(1));
 
         // Initially None
         assert!(session.active_buffer().is_none());
@@ -920,8 +1057,7 @@ mod tests {
 
     #[test]
     fn test_session_terminal_size() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
 
         // Default VT100 size
         assert_eq!(session.terminal_size(), (80, 24));
@@ -933,8 +1069,7 @@ mod tests {
 
     #[test]
     fn test_session_terminal_size_boundaries() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
 
         // Min values
         session.set_terminal_size(0, 0);

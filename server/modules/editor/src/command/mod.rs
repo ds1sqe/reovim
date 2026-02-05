@@ -277,7 +277,7 @@ mod tests {
         fn new() -> Self {
             let home_mode = test_mode();
             Self {
-                session: Session::new(ClientId::new(1), home_mode.clone()),
+                session: Session::new(ClientId::new(1)),
                 mode_stack: ModeStack::new(home_mode),
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn test_cursor_up_no_buffer_id_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_cursor_down_no_buffer_id_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -424,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_cursor_left_no_buffer_id_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -435,7 +435,7 @@ mod tests {
 
     #[test]
     fn test_cursor_right_no_buffer_id_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -486,7 +486,7 @@ mod tests {
     /// (which is most tests after #471), use `TestState::with_window()` instead.
     #[allow(dead_code)]
     fn setup_session_with_window(buffer_id: BufferId) -> Session {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         // Create a window displaying this buffer
         let mut window = Window::new();
         window.buffer_id = Some(buffer_id);
@@ -792,7 +792,7 @@ mod tests {
     #[test]
     fn test_undo_command_returns_error_without_buffer() {
         // Undo requires an active buffer - returns error when none is set
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn test_redo_command_returns_error_without_buffer() {
         // Redo requires an active buffer - returns error when none is set
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -816,7 +816,7 @@ mod tests {
     #[test]
     fn test_undo_command_with_count() {
         // Undo with count still requires an active buffer
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let mut args = CommandContext::new();
@@ -829,7 +829,7 @@ mod tests {
     #[test]
     fn test_redo_command_with_count() {
         // Redo with count still requires an active buffer
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let mut args = CommandContext::new();
@@ -866,7 +866,7 @@ mod tests {
     #[test]
     fn test_undo_command_requires_active_buffer() {
         // Undo commands DO require an active buffer (from session, not from args)
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -878,7 +878,7 @@ mod tests {
     #[test]
     fn test_redo_command_requires_active_buffer() {
         // Redo commands DO require an active buffer (from session, not from args)
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -908,7 +908,7 @@ mod tests {
 
     #[test]
     fn test_yank_line_no_buffer_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -1026,7 +1026,7 @@ mod tests {
 
     #[test]
     fn test_paste_after_no_buffer_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -1037,7 +1037,7 @@ mod tests {
 
     #[test]
     fn test_paste_before_no_buffer_returns_error() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
@@ -1240,7 +1240,7 @@ mod tests {
         // Commands now return Success - actual replace-char logic
         // will be handled by SessionRuntime (see #394)/vim resolver
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
             ReplaceCharStart.execute(runtime, &args)
@@ -1251,7 +1251,7 @@ mod tests {
     #[test]
     fn test_replace_char_start_with_count_returns_success() {
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let mut args = CommandContext::new();
             args.set("count", ArgValue::Count(3));
@@ -1283,7 +1283,7 @@ mod tests {
         // Commands now return Success - actual repeat logic
         // will be handled by SessionRuntime (see #394)
         let (kernel, _buffer_id) = setup_buffer_context();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let result = with_test_runtime(&mut session, &kernel, |runtime| {
             let args = CommandContext::new();
             RepeatDot.execute(runtime, &args)

@@ -142,7 +142,7 @@ mod tests {
         /// Create test state with a window containing the given buffer.
         fn with_buffer(buffer_id: Option<BufferId>) -> Self {
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let session = Session::new(ClientId::new(1));
             let mode_stack = ModeStack::new(home_mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();
@@ -168,7 +168,7 @@ mod tests {
             selection: reovim_driver_session::api::Selection,
         ) -> Self {
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let session = Session::new(ClientId::new(1));
             let mode_stack = ModeStack::new(home_mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();

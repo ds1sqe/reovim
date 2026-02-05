@@ -463,7 +463,7 @@ mod tests {
             let buffer_id = ctx.buffers.register(buffer);
 
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let session = Session::new(ClientId::new(1));
 
             // Per-client state as separate fields (#471)
             let mode_stack = ModeStack::new(home_mode);
@@ -527,7 +527,7 @@ mod tests {
     fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
         let ctx = KernelContext::default();
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut session = Session::new(ClientId::new(1));
 
         // Per-client state as separate fields (#471)
         let mut mode_stack = ModeStack::new(home_mode);

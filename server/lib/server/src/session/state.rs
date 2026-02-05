@@ -105,13 +105,18 @@ impl SessionState {
     /// # Arguments
     ///
     /// * `kernel` - The kernel context for this session
-    /// * `initial_mode` - The mode to start in
+    /// * `initial_mode` - The home mode for new clients joining this session
     /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
-        // Create driver session (SSOT for session state)
-        // ClientId(0) for single-session model
-        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+        // Create driver session for shared infrastructure (#488)
+        // ClientId(0) is a placeholder - real clients get IDs from server layer
+        let mut driver_session = DriverSession::new(ClientId::new(0));
+
+        // Set the home mode in the deprecated mode_stack field (#488)
+        // This is used by add_client_with_metadata() to initialize new clients
+        // TODO(#488): Move home_mode to a proper field when removing deprecated fields
+        driver_session.mode_stack = ModeStack::new(initial_mode);
 
         Self {
             driver_session,
@@ -140,8 +145,11 @@ impl SessionState {
         resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
-        // Create driver session (SSOT for session state)
-        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
+        // Create driver session for shared infrastructure (#488)
+        let mut driver_session = DriverSession::new(ClientId::new(0));
+
+        // Set the home mode in the deprecated mode_stack field (#488)
+        driver_session.mode_stack = ModeStack::new(initial_mode);
 
         // Set compositor if provided by a module
         if let Some(c) = compositor {

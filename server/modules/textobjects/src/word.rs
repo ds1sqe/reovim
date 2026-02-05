@@ -379,7 +379,7 @@ mod tests {
     impl TestState {
         /// Create test state with a window containing the given buffer.
         fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
-            let session = Session::new(ClientId::new(1), mode.clone());
+            let session = Session::new(ClientId::new(1));
             let mode_stack = ModeStack::new(mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();
@@ -396,7 +396,7 @@ mod tests {
 
         /// Create test state with a custom window (for cursor positioning).
         fn with_custom_window(window: Window, mode: ModeId) -> Self {
-            let session = Session::new(ClientId::new(1), mode.clone());
+            let session = Session::new(ClientId::new(1));
             let mode_stack = ModeStack::new(mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();
@@ -413,7 +413,7 @@ mod tests {
 
         /// Create test state with an empty window (for error tests).
         fn empty(mode: ModeId) -> Self {
-            let session = Session::new(ClientId::new(1), mode.clone());
+            let session = Session::new(ClientId::new(1));
             let mode_stack = ModeStack::new(mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();

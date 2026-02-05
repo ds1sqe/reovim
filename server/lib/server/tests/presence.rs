@@ -413,7 +413,7 @@ async fn connect_with_retry(addr: &str) -> GrpcClient {
     loop {
         match GrpcClient::connect(addr).await {
             Ok(c) => return c,
-            Err(e) if attempts < 20 => {
+            Err(_) if attempts < 20 => {
                 attempts += 1;
                 tokio::time::sleep(Duration::from_millis(50)).await;
             }

@@ -130,7 +130,11 @@ impl<'a> SessionContext<'a> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::ClientId, reovim_kernel::api::v1::ModuleId};
+    use {
+        super::*,
+        crate::types::ClientId,
+        reovim_kernel::api::v1::{ModeStack, ModuleId},
+    };
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
@@ -138,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_session_context_new() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let ctx = SessionContext::new(&mut session);
 
         assert_eq!(ctx.session.id.as_usize(), 1);
@@ -147,7 +151,9 @@ mod tests {
     #[test]
     fn test_session_context_current_mode() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let mut session = Session::new(ClientId::new(1));
+        // Set mode for testing (deprecated field, but needed for SessionContext tests)
+        session.mode_stack = ModeStack::new(mode.clone());
         let ctx = SessionContext::new(&mut session);
 
         assert_eq!(ctx.current_mode(), &mode);
@@ -156,7 +162,8 @@ mod tests {
     #[test]
     fn test_session_context_home_mode() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let mut session = Session::new(ClientId::new(1));
+        session.mode_stack = ModeStack::new(mode.clone());
         let ctx = SessionContext::new(&mut session);
 
         assert_eq!(ctx.home_mode(), &mode);
@@ -165,7 +172,8 @@ mod tests {
     #[test]
     fn test_session_context_mode_depth() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
+        session.mode_stack = ModeStack::new(mode);
         let ctx = SessionContext::new(&mut session);
 
         assert_eq!(ctx.mode_depth(), 1);
@@ -185,8 +193,7 @@ mod tests {
 
     #[test]
     fn test_session_context_ext_none() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
         let ctx = SessionContext::new(&mut session);
 
         assert!(ctx.ext::<TestExtension>().is_none());
@@ -194,8 +201,7 @@ mod tests {
 
     #[test]
     fn test_session_context_ext_mut_creates() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
         let mut ctx = SessionContext::new(&mut session);
 
         let ext = ctx.ext_mut::<TestExtension>();
@@ -204,8 +210,7 @@ mod tests {
 
     #[test]
     fn test_session_context_ext_after_ext_mut() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
+        let mut session = Session::new(ClientId::new(1));
         {
             let mut ctx = SessionContext::new(&mut session);
             ctx.ext_mut::<TestExtension>().value = 100;
@@ -221,7 +226,8 @@ mod tests {
         let mode = test_mode();
         // Use different discriminant for the other mode
         let other_mode = ModeId::with_discriminant(ModuleId::new("test"), "insert", 1);
-        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let mut session = Session::new(ClientId::new(1));
+        session.mode_stack = ModeStack::new(mode.clone());
         let ctx = SessionContext::new(&mut session);
 
         assert!(ctx.is_mode_active(&mode));

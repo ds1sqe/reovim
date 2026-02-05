@@ -35,6 +35,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Session struct refactoring with BootstrapState pattern (#488)**: Simplified driver-level
+  `Session::new()` signature and introduced `BootstrapState` for test initialization.
+  `Session::new(id)` now takes only `ClientId` (no mode parameter). Added
+  `Session::bootstrap(id, mode)` returning `(Session, BootstrapState)` tuple for tests
+  needing initial per-client state. `BootstrapState` contains `mode_stack`, `windows`,
+  `pending_keys`, `extensions` for initialization. Updated ~60 test callsites across
+  20 files. The deprecated fields remain in `Session` for now (production code still
+  uses them), with full removal deferred to a follow-up issue. This refactoring makes
+  the per-client state architecture from #471/#477 explicit in the type system.
+
 - **Per-Client State Architecture Consolidation (Phase 0)**: Complete per-client
   cursor isolation by consolidating `SessionRuntime` constructors and removing
   deprecated compatibility shims. `SessionRuntime::new()` now requires 6 arguments

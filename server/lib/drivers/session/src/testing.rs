@@ -122,10 +122,10 @@ impl TestSessionRuntime {
     pub fn new() -> Self {
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         Self {
-            session: Session::new(ClientId::new(1), home_mode.clone()),
-            mode_stack: ModeStack::new(home_mode), // Separate field
-            windows: WindowLayout::empty(),        // Separate field
-            extensions: ExtensionMap::new(),       // Separate field
+            session: Session::new(ClientId::new(1)), // Shared infra only (#488)
+            mode_stack: ModeStack::new(home_mode),   // Per-client state
+            windows: WindowLayout::empty(),          // Per-client state
+            extensions: ExtensionMap::new(),         // Per-client state
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -136,10 +136,10 @@ impl TestSessionRuntime {
     #[must_use]
     pub fn with_home_mode(mode: ModeId) -> Self {
         Self {
-            session: Session::new(ClientId::new(1), mode.clone()),
-            mode_stack: ModeStack::new(mode), // Separate field
-            windows: WindowLayout::empty(),   // Separate field
-            extensions: ExtensionMap::new(),  // Separate field
+            session: Session::new(ClientId::new(1)), // Shared infra only (#488)
+            mode_stack: ModeStack::new(mode),        // Per-client state
+            windows: WindowLayout::empty(),          // Per-client state
+            extensions: ExtensionMap::new(),         // Per-client state
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),

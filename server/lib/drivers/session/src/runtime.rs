@@ -1465,7 +1465,7 @@ mod tests {
     fn test_mode_api() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1517,7 +1517,7 @@ mod tests {
     fn test_per_client_mode_stack() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1564,7 +1564,7 @@ mod tests {
     fn test_owner_tracking() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1607,7 +1607,7 @@ mod tests {
     fn test_multi_client_mode_isolation() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1646,17 +1646,17 @@ mod tests {
             assert_eq!(runtime2.current_mode(), &test_mode());
         }
 
-        // Verify isolation
+        // Verify isolation (#471 Phase 0)
         assert_eq!(client1_stack.current(), &test_mode_2()); // Client 1: insert
         assert_eq!(client2_stack.current(), &test_mode()); // Client 2: normal
-        assert_eq!(session.mode_stack.current(), &test_mode()); // Shared: normal
+        // Note: session.mode_stack is deprecated (#488) - per-client stacks are SSOT
     }
 
     #[test]
     fn test_window_api() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1717,7 +1717,7 @@ mod tests {
             }
         }
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1751,7 +1751,7 @@ mod tests {
     fn test_change_tracking() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut session = Session::new(ClientId::new(1));
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 

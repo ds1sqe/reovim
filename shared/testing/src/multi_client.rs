@@ -48,7 +48,7 @@ impl TestClient {
         loop {
             match GrpcClient::connect(addr).await {
                 Ok(c) => return Ok(c),
-                Err(e) if attempts < 20 => {
+                Err(_) if attempts < 20 => {
                     attempts += 1;
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
