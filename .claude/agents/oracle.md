@@ -117,15 +117,19 @@ When designing, always consider:
 ### The Reovim Layer Model
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  MODULES (modules/)                         POLICY          │
-│  - Keymap, Motions, Operators, Layout, Options              │
+│  CLIENTS (clients/)                         APPLICATION     │
+│  - User-facing applications (gRPC v2 protocol)              │
+│  - tui/, cli/, web/                                         │
+├─────────────────────────────────────────────────────────────┤
+│  MODULES (server/modules/)                  POLICY          │
+│  - vim/, keymap/, motions/, textobjects/, editor/           │
 │  - Decide HOW things behave                                 │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (lib/drivers/)                     MECHANISM       │
-│  - syntax/, input/, display/, lsp/, net/, vfs/              │
+│  DRIVERS (server/lib/drivers/)              MECHANISM       │
+│  - input/, syntax/, lsp/, vfs/, session/, buffer/           │
 │  - Provide services, define trait contracts                 │
 ├─────────────────────────────────────────────────────────────┤
-│  KERNEL (lib/kernel/)                       MECHANISM       │
+│  KERNEL (server/lib/kernel/)                MECHANISM       │
 │  - mm/, ipc/, core/, block/, sched/, api/                   │
 │  - Core primitives, WHAT can be done                        │
 └─────────────────────────────────────────────────────────────┘

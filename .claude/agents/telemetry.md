@@ -37,7 +37,7 @@ Checklist:
 
 ### Mode: reentry
 **Purpose**: Final review before merge (RFL Agent 2 of 3)
-**Trigger**: User runs `/triple-review`
+**Trigger**: User runs `/final-approach`
 **See**: Full Review Protocol below
 
 ### Mode: ground-ops
@@ -309,6 +309,15 @@ Your review MUST include:
 - Timeout handling tested
 - Cancellation behavior tested
 - Concurrent access tested
+
+### For Reovim Projects
+- Verify tests use `shared/testing/` infrastructure:
+  - `IntegrationTest` for single-client tests
+  - `StepTest` for per-keystroke assertions (Issue #428)
+  - `MultiClientTest` for concurrent client tests
+- Check per-test log capture in `{module}/tmp/test-logs/`
+- For "WARN module not found": run `./scripts/build-module.sh <module> --install`
+- Verify module FFI symbols with install script output
 
 ## Output Location
 

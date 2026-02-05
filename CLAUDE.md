@@ -525,10 +525,10 @@ Use `/final-approach [issue]` or run manually:
 
    Flight Director checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
 
-   **Grading:** A+ (exceeds) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
+   **Grading:** A+ (exceeds, skip next round) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
    - Each agent writes to `tmp/{ISSUE}/landing/round-{N}/{agent}.md`
-   - **Must achieve A+ from ALL THREE agents**
-   - If ANY agent reports NO-GO → fix issues → go back to Step 2
+   - **Must achieve GO (A or A+) from ALL THREE agents**
+   - If ANY agent reports NO-GO (B or below) → fix issues → go back to Step 2
    - Loop until all agents report GO
 
 4. **Create Landing Document** at `tmp/{ISSUE}/landing.md`:
@@ -602,7 +602,7 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 │   ├── voyager.md               # Codebase exploration - Sonnet (red)
 │   ├── mission-control.md       # Plan compliance review - Haiku (blue)
 │   ├── telemetry.md             # Test coverage review - Haiku (green)
-│   └── flight-director.md       # Code quality review - Haiku (yellow)
+│   └── flight-director.md       # Code quality review - Sonnet (yellow)
 └── skills/
     ├── countdown/
     │   └── SKILL.md             # /countdown command
@@ -614,6 +614,8 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 ```
 tmp/{ISSUE}/
+├── audit/               # Phase-by-phase verification (optional)
+│   └── voyager-phase{N}.md
 ├── countdown/           # Plan review (before coding)
 │   └── round-{N}/
 │       ├── mission-control.md

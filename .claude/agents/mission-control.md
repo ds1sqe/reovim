@@ -37,7 +37,7 @@ Checklist:
 
 ### Mode: reentry
 **Purpose**: Final review before merge (RFL Agent 1 of 3)
-**Trigger**: User runs `/triple-review`
+**Trigger**: User runs `/final-approach`
 **See**: Full Review Protocol below
 
 ### Mode: ground-ops

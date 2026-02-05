@@ -68,12 +68,16 @@ tmp/{ISSUE}/
 
 ## Success Criteria
 
-**Must achieve A+ from ALL THREE review agents** before implementation.
+**Must achieve GO (A or A+) from ALL THREE review agents** before implementation.
 
-If any agent gives below A+:
+- **A+** = Exemplary, skip this agent in next round
+- **A** = Ready for implementation, GO
+- **B or below** = NO-GO, refine plan
+
+If any agent gives below A:
 1. Refine the plan based on feedback
 2. Re-run `/countdown`
-3. Repeat until all agents report "go"
+3. Repeat until all agents report GO (A or A+)
 
 ## Instructions
 

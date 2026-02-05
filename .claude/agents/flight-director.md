@@ -37,7 +37,7 @@ Checklist:
 
 ### Mode: reentry
 **Purpose**: Final review before merge (RFL Agent 3 of 3)
-**Trigger**: User runs `/triple-review`
+**Trigger**: User runs `/final-approach`
 **See**: Full Review Protocol below
 
 ### Mode: ground-ops
@@ -129,15 +129,19 @@ For this project specifically, verify adherence to:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  MODULES (modules/)                         POLICY          │
+│  CLIENTS (clients/)                         APPLICATION     │
+│  - User-facing applications (gRPC v2 protocol)              │
+│  - tui/, cli/, web/                                         │
+├─────────────────────────────────────────────────────────────┤
+│  MODULES (server/modules/)                  POLICY          │
 │  - Decide HOW things behave                                 │
-│  - Keymap, Motions, Operators, Layout, Options              │
+│  - vim/, keymap/, motions/, textobjects/, editor/           │
 ├─────────────────────────────────────────────────────────────┤
-│  DRIVERS (lib/drivers/)                     MECHANISM       │
+│  DRIVERS (server/lib/drivers/)              MECHANISM       │
 │  - Provide services, define trait contracts                 │
-│  - syntax/, input/, display/, lsp/, net/, vfs/              │
+│  - input/, syntax/, lsp/, vfs/, session/, buffer/           │
 ├─────────────────────────────────────────────────────────────┤
-│  KERNEL (lib/kernel/)                       MECHANISM       │
+│  KERNEL (server/lib/kernel/)                MECHANISM       │
 │  - Core primitives, WHAT can be done                        │
 │  - mm/, ipc/, core/, block/, sched/, api/                   │
 └─────────────────────────────────────────────────────────────┘
@@ -155,7 +159,7 @@ cargo tree -p [crate-name]
 
 Verify:
 - [ ] Kernel has zero external syntax dependencies
-- [ ] Protocol crate is standalone (only serde)
+- [ ] Protocol crate dependencies: prost, tonic, serde (gRPC stack)
 - [ ] Drivers depend only on kernel, not on each other
 - [ ] Modules depend on kernel API only, not internals
 

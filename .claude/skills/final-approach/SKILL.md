@@ -1,6 +1,6 @@
 ---
 name: final-approach
-description: "Final Approach - the landing sequence. Runs Go Poll with review agents (mission-control, telemetry, flight-director) using Haiku model. Supports A+ skip rule for efficient re-reviews."
+description: "Final Approach - the landing sequence. Runs Go Poll with review agents (mission-control, telemetry use Haiku; flight-director uses Sonnet). Supports A+ skip rule for efficient re-reviews."
 ---
 
 # Final Approach
@@ -21,17 +21,18 @@ Final Approach is the end-of-mission workflow:
 2. **Check** - Run `./scripts/check.sh`
 3. **Go Poll** - Review agents report status in `reentry` mode
 4. **Landing Doc** - Create summary document
-5. **Commit** - Ready for merge
+5. **CHANGELOG** - Update CHANGELOG.md with correct phase/version
+6. **Commit** - Ready for merge
 
 ## Go Poll
 
-The Go Poll launches review agents (all use Haiku model for speed):
+The Go Poll launches review agents (mission-control and telemetry use Haiku for speed; flight-director uses Sonnet for deep architectural review):
 
 | Agent | Model | Focus | Call |
 |-------|-------|-------|------|
 | **mission-control** | Haiku | Plan compliance, docs | *"Mission Control, go."* |
 | **telemetry** | Haiku | Test coverage, quality | *"Telemetry, go."* |
-| **flight-director** | Haiku | Code quality, Unix philosophy | *"Flight Director, go."* |
+| **flight-director** | Sonnet | Code quality, Unix philosophy | *"Flight Director, go."* |
 
 ## A+ Skip Rule
 
@@ -77,13 +78,17 @@ tmp/{ISSUE}/
 
 ## Success Criteria
 
-**Must achieve A+ from ALL THREE agents** before landing.
+**Must achieve GO (A or A+) from ALL THREE agents** before landing.
+
+- **A+** = Exceeds standards, skip this agent in next round
+- **A** = Go for landing, GO
+- **B or below** = NO-GO, fix issues
 
 If any agent gives below A:
 1. Fix all identified issues
 2. Run `./scripts/check.sh`
 3. Re-run `/final-approach`
-4. Repeat until all agents report "go"
+4. Repeat until all agents report GO (A or A+)
 
 ## Instructions
 
