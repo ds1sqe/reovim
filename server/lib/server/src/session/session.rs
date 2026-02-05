@@ -610,8 +610,8 @@ impl Session {
             &mut editing_state.extensions,
         );
 
-        // Resolve key with per-client state
-        state.resolve_key_for_client(mode_stack, windows, extensions, key)
+        // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
+        state.resolve_key_for_client(target_id.as_usize(), mode_stack, windows, extensions, key)
     }
 
     /// Try `on_command_complete` with per-client state (#471, #477).
@@ -642,7 +642,12 @@ impl Session {
             &mut editing_state.extensions,
         );
 
-        state.try_on_command_complete_for_client(mode_stack, windows, extensions)
+        state.try_on_command_complete_for_client(
+            target_id.as_usize(),
+            mode_stack,
+            windows,
+            extensions,
+        )
     }
 
     /// Execute a command with per-client state (Phase #471).
@@ -694,8 +699,15 @@ impl Session {
             &mut editing_state.extensions,
         );
 
-        // Execute command with per-client state
-        state.execute_command_for_client(mode_stack, windows, extensions, cmd_id, args)
+        // Execute command with per-client state, passing client_id for per-client undo (#471)
+        state.execute_command_for_client(
+            target_id.as_usize(),
+            mode_stack,
+            windows,
+            extensions,
+            cmd_id,
+            args,
+        )
     }
 
     /// Insert a character for a client, checking per-client extensions first (#477).
@@ -708,13 +720,18 @@ impl Session {
     ///
     /// - `Some(BufferId)` if character was inserted into a buffer
     /// - `None` if inserted into extension or failed
+    #[allow(clippy::significant_drop_tightening)]
     pub fn insert_char_for_client(
         &self,
         client_id: ClientId,
         ch: char,
         target: reovim_driver_input::InputTarget,
     ) -> Option<reovim_kernel::api::v1::BufferId> {
-        use reovim_driver_input::InputTarget;
+        use {
+            reovim_driver_input::InputTarget,
+            reovim_driver_undo::{UndoKey, UndoProviderRegistry},
+            reovim_kernel::api::v1::{Edit, Position},
+        };
 
         match target {
             InputTarget::Buffer => {
@@ -722,19 +739,21 @@ impl Session {
                 let state = self.state.read();
                 let buffer_id = state.active_buffer()?;
                 let buffer_arc = state.buffer(buffer_id)?;
+
+                // Get undo registry for recording edit (#471)
+                let undo_registry = state.app.kernel.services.get::<UndoProviderRegistry>();
+
                 drop(state); // Release lock before getting client
 
                 // Get cursor position from client's window
                 let mut clients = self.clients.write();
                 let client = clients.get_mut(&client_id)?;
                 let active_window = client.state.windows.active_mut()?;
-                let cursor_pos = reovim_kernel::api::v1::Position::new(
-                    active_window.cursor.line,
-                    active_window.cursor.column,
-                );
+                let cursor_before =
+                    Position::new(active_window.cursor.line, active_window.cursor.column);
 
-                tracing::debug!(?buffer_id, ?ch, ?cursor_pos, "Inserting into buffer");
-                buffer_arc.write().insert_at(cursor_pos, &ch.to_string());
+                tracing::debug!(?buffer_id, ?ch, ?cursor_before, "Inserting into buffer");
+                buffer_arc.write().insert_at(cursor_before, &ch.to_string());
 
                 // Update cursor position after insertion
                 // For regular characters, move cursor one position right
@@ -746,7 +765,28 @@ impl Session {
                     active_window.cursor.column += 1;
                 }
 
+                let cursor_after =
+                    Position::new(active_window.cursor.line, active_window.cursor.column);
+
                 drop(clients);
+
+                // Record edit for undo with client origin (#471)
+                if let Some(undo_reg) = undo_registry
+                    && let Some(undo_provider) = undo_reg.get(&UndoKey::Buffer)
+                {
+                    let edit = Edit::Insert {
+                        position: cursor_before,
+                        text: ch.to_string(),
+                    };
+                    undo_provider.record_for_client(
+                        buffer_id,
+                        client_id.as_usize(),
+                        vec![edit],
+                        cursor_before,
+                        cursor_after,
+                    );
+                }
+
                 Some(buffer_id)
             }
             InputTarget::Extension(type_id) => {

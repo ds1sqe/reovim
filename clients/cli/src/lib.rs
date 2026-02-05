@@ -74,6 +74,14 @@ pub enum CliCommand {
     Keys {
         /// Keys in vim notation (e.g., "iHello<Esc>").
         keys: String,
+
+        /// Client ID to send keys as.
+        ///
+        /// If not specified, the CLI auto-joins and uses its own client ID.
+        /// Use this for multi-client testing where you need to control
+        /// which client makes edits (e.g., for per-client undo testing).
+        #[arg(long, short)]
+        client: Option<u64>,
     },
 
     /// Get current editor mode.
@@ -200,7 +208,10 @@ impl CliArgs {
         let mut client = GrpcClient::connect(&self.grpc).await?;
 
         match &self.command {
-            CliCommand::Keys { keys } => commands::keys(&mut client, keys, self.format).await,
+            CliCommand::Keys {
+                keys,
+                client: client_id,
+            } => commands::keys(&mut client, keys, *client_id, self.format).await,
             CliCommand::Mode => commands::mode(&mut client, self.format).await,
             CliCommand::Cursor => commands::cursor(&mut client, self.format).await,
             CliCommand::Buffers => commands::buffers(&mut client, self.format).await,

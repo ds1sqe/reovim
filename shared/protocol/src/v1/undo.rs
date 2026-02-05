@@ -71,6 +71,19 @@ pub struct SerializableUndoNode {
     pub children: Vec<usize>,
     /// Sequential change number.
     pub seq_num: u64,
+    /// Origin of this edit (which client made it).
+    #[serde(default)]
+    pub origin: SerializableEditOrigin,
+}
+
+/// Serializable representation of `EditOrigin`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SerializableEditOrigin {
+    /// Edit made by a specific client.
+    Client(usize),
+    /// System-generated edit.
+    #[default]
+    System,
 }
 
 /// Serializable position (line, column).
@@ -194,7 +207,7 @@ impl From<std::io::Error> for UndoFileError {
 // ============================================================================
 
 use {
-    reovim_kernel::api::v1::{Edit, Position, UndoTree},
+    reovim_kernel::api::v1::{Edit, EditOrigin, Position, UndoTree},
     std::time::Duration,
 };
 
@@ -246,6 +259,28 @@ impl From<SerializableEdit> for Edit {
 }
 
 // ----------------------------------------------------------------------------
+// EditOrigin conversions
+// ----------------------------------------------------------------------------
+
+impl From<EditOrigin> for SerializableEditOrigin {
+    fn from(origin: EditOrigin) -> Self {
+        match origin {
+            EditOrigin::Client(id) => Self::Client(id),
+            EditOrigin::System => Self::System,
+        }
+    }
+}
+
+impl From<SerializableEditOrigin> for EditOrigin {
+    fn from(origin: SerializableEditOrigin) -> Self {
+        match origin {
+            SerializableEditOrigin::Client(id) => Self::Client(id),
+            SerializableEditOrigin::System => Self::System,
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
 // UndoTree conversions
 // ----------------------------------------------------------------------------
 
@@ -276,6 +311,7 @@ pub fn from_undo_tree(tree: &UndoTree) -> SerializableUndoTree {
                 parent: node.parent(),
                 children: node.children().to_vec(),
                 seq_num: node.seq_num(),
+                origin: node.origin().into(),
             }
         })
         .collect();
@@ -312,6 +348,7 @@ pub fn to_undo_tree(serializable: &SerializableUndoTree) -> UndoTree {
                 snode.parent,
                 snode.children.clone(),
                 snode.seq_num,
+                snode.origin.into(),
             )
         })
         .collect();
@@ -340,6 +377,7 @@ mod tests {
                     parent: None,
                     children: vec![1],
                     seq_num: 0,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![SerializableEdit::Insert {
@@ -352,6 +390,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 1,
+                    origin: SerializableEditOrigin::System,
                 },
             ],
             current: 1,
@@ -436,6 +475,7 @@ mod tests {
                 parent: None,
                 children: vec![],
                 seq_num: 0,
+                origin: SerializableEditOrigin::System,
             }],
             current: 0,
             seq_counter: 0,
@@ -469,6 +509,7 @@ mod tests {
                     parent: None,
                     children: vec![1, 2],
                     seq_num: 0,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![SerializableEdit::Insert {
@@ -481,6 +522,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![3],
                     seq_num: 1,
+                    origin: SerializableEditOrigin::Client(0),
                 },
                 SerializableUndoNode {
                     edits: vec![SerializableEdit::Insert {
@@ -493,6 +535,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 2,
+                    origin: SerializableEditOrigin::Client(1),
                 },
                 SerializableUndoNode {
                     edits: vec![SerializableEdit::Insert {
@@ -505,6 +548,7 @@ mod tests {
                     parent: Some(1),
                     children: vec![],
                     seq_num: 3,
+                    origin: SerializableEditOrigin::Client(0),
                 },
             ],
             current: 3,
@@ -536,6 +580,78 @@ mod tests {
 
         let back: Position = serializable.into();
         assert_eq!(back, kernel_pos);
+    }
+
+    #[test]
+    fn test_edit_origin_conversion() {
+        // System origin
+        let system = EditOrigin::System;
+        let serializable: SerializableEditOrigin = system.into();
+        assert_eq!(serializable, SerializableEditOrigin::System);
+        let back: EditOrigin = serializable.into();
+        assert_eq!(back, EditOrigin::System);
+
+        // Client origin
+        let client = EditOrigin::Client(42);
+        let serializable: SerializableEditOrigin = client.into();
+        assert_eq!(serializable, SerializableEditOrigin::Client(42));
+        let back: EditOrigin = serializable.into();
+        assert_eq!(back, EditOrigin::Client(42));
+    }
+
+    #[test]
+    fn test_edit_origin_serialization() {
+        let system = SerializableEditOrigin::System;
+        let bytes = rmp_serde::to_vec(&system).unwrap();
+        let restored: SerializableEditOrigin = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(system, restored);
+
+        let client = SerializableEditOrigin::Client(123);
+        let bytes = rmp_serde::to_vec(&client).unwrap();
+        let restored: SerializableEditOrigin = rmp_serde::from_slice(&bytes).unwrap();
+        assert_eq!(client, restored);
+    }
+
+    #[test]
+    fn test_edit_origin_preserved_through_roundtrip() {
+        let mut tree = UndoTree::new();
+
+        // Push with different origins
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "a")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(1),
+        );
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "b")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::System,
+        );
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 2), "c")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+            EditOrigin::Client(2),
+        );
+
+        // Serialize
+        let serializable = from_undo_tree(&tree);
+        assert_eq!(serializable.nodes[1].origin, SerializableEditOrigin::Client(1));
+        assert_eq!(serializable.nodes[2].origin, SerializableEditOrigin::System);
+        assert_eq!(serializable.nodes[3].origin, SerializableEditOrigin::Client(2));
+
+        // Full roundtrip through file format
+        let format = UndoFileFormat::new("/test.rs".to_string(), serializable);
+        let bytes = format.to_bytes().unwrap();
+        let restored_format = UndoFileFormat::from_bytes(&bytes).unwrap();
+        let restored_tree = to_undo_tree(&restored_format.tree);
+
+        // Verify origins preserved
+        assert_eq!(restored_tree.node(1).unwrap().origin(), EditOrigin::Client(1));
+        assert_eq!(restored_tree.node(2).unwrap().origin(), EditOrigin::System);
+        assert_eq!(restored_tree.node(3).unwrap().origin(), EditOrigin::Client(2));
     }
 
     #[test]
@@ -606,6 +722,7 @@ mod tests {
                     parent: None,
                     children: vec![1, 2, 3, 4],
                     seq_num: 0,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![],
@@ -615,6 +732,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 1,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![],
@@ -624,6 +742,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 2,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![],
@@ -633,6 +752,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 3,
+                    origin: SerializableEditOrigin::System,
                 },
                 SerializableUndoNode {
                     edits: vec![],
@@ -642,6 +762,7 @@ mod tests {
                     parent: Some(0),
                     children: vec![],
                     seq_num: 4,
+                    origin: SerializableEditOrigin::System,
                 },
             ],
             current: 4,

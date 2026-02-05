@@ -74,4 +74,67 @@ pub trait UndoApi: Send {
 
     /// Check if redo is available for a buffer.
     fn can_redo(&self, buffer: BufferId) -> bool;
+
+    // ========================================================================
+    // Multi-Client Undo Methods (#471)
+    // ========================================================================
+
+    /// Undo the last change made by the current client.
+    ///
+    /// This only undoes changes tagged with the current client's origin,
+    /// skipping changes made by other clients. This enables multi-client
+    /// editing where pressing 'u' only undoes YOUR changes.
+    ///
+    /// # Returns
+    ///
+    /// The edits to apply and cursor position, or `None` if there are no
+    /// changes by this client to undo.
+    ///
+    /// # Note
+    ///
+    /// Requires the runtime to be created with [`with_owner`] so it knows
+    /// which client is requesting the undo. Falls back to regular `undo()`
+    /// if no owner is set.
+    ///
+    /// [`with_owner`]: crate::SessionRuntime::with_owner
+    fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult>;
+
+    /// Redo the last undone change made by the current client.
+    ///
+    /// This only redoes changes tagged with the current client's origin,
+    /// skipping changes made by other clients.
+    ///
+    /// # Returns
+    ///
+    /// The edits to apply and cursor position, or `None` if there are no
+    /// changes by this client to redo.
+    ///
+    /// # Note
+    ///
+    /// Requires the runtime to be created with [`with_owner`] so it knows
+    /// which client is requesting the redo. Falls back to regular `redo()`
+    /// if no owner is set.
+    ///
+    /// [`with_owner`]: crate::SessionRuntime::with_owner
+    fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult>;
+
+    /// Record edits for undo history with client origin tagging.
+    ///
+    /// Like [`record_edit`](Self::record_edit), but tags the undo node
+    /// with the current client's origin so that `undo_mine` can identify
+    /// which client made this change.
+    ///
+    /// # Note
+    ///
+    /// Requires the runtime to be created with [`with_owner`]. Falls back
+    /// to regular `record_edit()` if no owner is set.
+    ///
+    /// [`with_owner`]: crate::SessionRuntime::with_owner
+    fn record_edit_mine(
+        &mut self,
+        buffer: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    );
 }

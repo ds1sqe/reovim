@@ -263,6 +263,7 @@ impl SessionState {
     #[must_use]
     pub fn execute_command_for_client(
         &mut self,
+        client_id: usize,
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
@@ -272,7 +273,9 @@ impl SessionState {
         // Flush pending edits before command execution
         self.app.flush_pending_edits();
         // Use per-client state (#471, #477)
+        // Pass client_id for per-client undo support
         self.command_registry.execute_for_client(
+            client_id,
             id,
             &mut self.driver_session,
             client_mode_stack,
@@ -440,7 +443,10 @@ impl SessionState {
     ///
     /// # Arguments
     ///
+    /// * `client_id` - The client ID for undo origin tracking (#471 Phase 5)
     /// * `client_mode_stack` - Per-client mode stack (from server-level `EditingState`)
+    /// * `client_windows` - Per-client window layout
+    /// * `client_extensions` - Per-client extensions
     /// * `key` - The key event to resolve
     ///
     /// # Returns
@@ -456,6 +462,7 @@ impl SessionState {
     ///
     /// // Resolve key with per-client state
     /// let result = session_state.resolve_key_for_client(
+    ///     client_id,
     ///     &mut editing_state.mode_stack,
     ///     &mut editing_state.windows,
     ///     &mut editing_state.extensions,
@@ -464,6 +471,7 @@ impl SessionState {
     /// ```
     pub fn resolve_key_for_client(
         &mut self,
+        client_id: usize,
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
@@ -472,7 +480,9 @@ impl SessionState {
     {
         use {
             reovim_driver_input::ModeState,
-            reovim_driver_session::{SessionRuntime, api::CommandExecutor},
+            reovim_driver_session::{
+                ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
+            },
         };
 
         // Stub command executor - commands are executed separately
@@ -492,9 +502,12 @@ impl SessionState {
         let mode = client_mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
 
-        // Create SessionRuntime with per-client state (#471, #477)
+        // Create SessionRuntime with per-client state and owner (#471 Phase 5)
+        // The owner enables undo_mine()/redo_mine() for per-client undo
         let stub_executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(
+        let driver_client_id = DriverClientId::new(client_id);
+        let mut runtime = SessionRuntime::with_owner(
+            driver_client_id,
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
@@ -588,11 +601,14 @@ impl SessionState {
     /// A `ModeTransition` if the resolver wants to change modes.
     pub fn try_on_command_complete_for_client(
         &mut self,
+        client_id: usize,
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
     ) -> Option<reovim_driver_input::ModeTransition> {
-        use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
+        use reovim_driver_session::{
+            ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
+        };
 
         struct StubExecutor;
         impl CommandExecutor for StubExecutor {
@@ -606,11 +622,13 @@ impl SessionState {
             }
         }
 
-        // Phase #471, #477: Use per-client state
+        // Phase #471, #477: Use per-client state with owner for per-client undo
         let mode = client_mode_stack.current().clone();
         let resolver = self.resolver_registry.get(&mode)?;
         let stub_executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(
+        let driver_client_id = DriverClientId::new(client_id);
+        let mut runtime = SessionRuntime::with_owner(
+            driver_client_id,
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
@@ -768,6 +786,7 @@ mod tests {
         // Call resolve_key_for_client - it will return None (no resolver)
         // but the important thing is it uses per-client state
         let _result = state.resolve_key_for_client(
+            1, // test client_id for per-client undo (#471)
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,

@@ -65,6 +65,20 @@ impl TestClient {
         Ok(())
     }
 
+    /// Send keys to the server with a specific client ID.
+    ///
+    /// This is used for multi-client undo testing (#471) where each client
+    /// needs to send keys as a specific identity so edits are tagged correctly.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn send_keys_as(&mut self, keys: &str, client_id: u64) -> Result<(), String> {
+        let client = self.get_client().await?;
+        client
+            .send_keys_with_client(keys, client_id)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Get cursor position (line, col).
     #[allow(clippy::cast_possible_truncation, clippy::significant_drop_tightening)]
     pub async fn get_cursor(&mut self) -> Result<(u16, u16), String> {

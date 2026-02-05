@@ -125,7 +125,7 @@ pub use crate::core::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
 // ============================================================================
 
 pub use crate::block::{
-    History, HistoryEntry, Snapshot, Transaction, UndoNode, UndoResult, UndoTree,
+    EditOrigin, History, HistoryEntry, Snapshot, Transaction, UndoNode, UndoResult, UndoTree,
 };
 
 // BufferManager is MECHANISM (pure storage interface, like Linux page cache)

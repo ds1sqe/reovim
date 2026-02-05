@@ -8,6 +8,23 @@ use {
     std::time::{Duration, Instant},
 };
 
+/// Origin of an edit for multi-client tracking (#471).
+///
+/// Tracks which client made an edit, enabling per-client undo where
+/// each client only undoes their own changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum EditOrigin {
+    /// Edit made by a specific client.
+    ///
+    /// The `usize` value corresponds to `ClientId::as_usize()`.
+    Client(usize),
+    /// System-generated edit (auto-format, LSP, macro playback, etc.).
+    ///
+    /// This is the default origin for backward compatibility.
+    #[default]
+    System,
+}
+
 /// A node in the undo tree.
 ///
 /// Each node represents a set of edits made at a point in time,
@@ -28,6 +45,8 @@ pub struct UndoNode {
     children: Vec<usize>,
     /// Sequential change number.
     seq_num: u64,
+    /// Origin of this edit (which client made it).
+    origin: EditOrigin,
 }
 
 impl UndoNode {
@@ -83,6 +102,15 @@ impl UndoNode {
     #[must_use]
     pub fn children(&self) -> &[usize] {
         &self.children
+    }
+
+    /// Get the origin of this edit.
+    ///
+    /// Returns which client made this edit, or `EditOrigin::System` for
+    /// system-generated edits.
+    #[must_use]
+    pub const fn origin(&self) -> EditOrigin {
+        self.origin
     }
 }
 
@@ -158,6 +186,7 @@ impl UndoTree {
             parent: None,
             children: Vec::new(),
             seq_num: 0,
+            origin: EditOrigin::System,
         };
 
         Self {
@@ -169,12 +198,32 @@ impl UndoTree {
         }
     }
 
-    /// Push a new change onto the tree.
+    /// Push a new change onto the tree with system origin.
     ///
     /// Creates a new node as a child of the current node.
     /// If the current node already has children (we're in the middle
     /// of the tree after an undo), this creates a new branch.
+    ///
+    /// This is equivalent to `push_with_origin(edits, cursor_before, cursor_after, EditOrigin::System)`.
     pub fn push(&mut self, edits: Vec<Edit>, cursor_before: Position, cursor_after: Position) {
+        self.push_with_origin(edits, cursor_before, cursor_after, EditOrigin::System);
+    }
+
+    /// Push a new change onto the tree with specified origin.
+    ///
+    /// Creates a new node as a child of the current node, tagged with the
+    /// specified origin. This enables per-client undo where each client
+    /// can undo only their own changes.
+    ///
+    /// If the current node already has children (we're in the middle
+    /// of the tree after an undo), this creates a new branch.
+    pub fn push_with_origin(
+        &mut self,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+        origin: EditOrigin,
+    ) {
         if edits.is_empty() {
             return;
         }
@@ -189,6 +238,7 @@ impl UndoTree {
             parent: Some(self.current),
             children: Vec::new(),
             seq_num: self.seq_counter,
+            origin,
         };
 
         let new_idx = self.nodes.len();
@@ -516,6 +566,7 @@ impl UndoTree {
     ///   - `Option<usize>`: Parent node index
     ///   - `Vec<usize>`: Child node indices
     ///   - `u64`: Sequential change number
+    ///   - `EditOrigin`: Origin of this edit
     /// * `current` - Index of current position in tree
     /// * `seq_counter` - Current sequential change counter
     /// * `max_nodes` - Maximum nodes to retain
@@ -535,6 +586,7 @@ impl UndoTree {
             Option<usize>, // parent
             Vec<usize>,    // children
             u64,           // seq_num
+            EditOrigin,    // origin
         )>,
         current: usize,
         seq_counter: u64,
@@ -548,7 +600,16 @@ impl UndoTree {
         let nodes: Vec<UndoNode> = nodes_data
             .into_iter()
             .map(
-                |(edits, cursor_before, cursor_after, relative_time, parent, children, seq_num)| {
+                |(
+                    edits,
+                    cursor_before,
+                    cursor_after,
+                    relative_time,
+                    parent,
+                    children,
+                    seq_num,
+                    origin,
+                )| {
                     UndoNode {
                         edits,
                         cursor_before,
@@ -560,6 +621,7 @@ impl UndoTree {
                         parent,
                         children,
                         seq_num,
+                        origin,
                     }
                 },
             )

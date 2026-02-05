@@ -565,12 +565,12 @@ impl BufferApi for SessionRuntime<'_> {
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
             let cursor_after = cursor_before;
 
-            // Record edit for undo
+            // Record edit for undo - use record_edit_mine for per-client undo (#471)
             let edit = Edit::Insert {
                 position: pos,
                 text: text.to_string(),
             };
-            self.record_edit(buffer, vec![edit], cursor_before, cursor_after);
+            self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
             self.changes.record_buffer_modified(buffer);
         }
@@ -593,13 +593,13 @@ impl BufferApi for SessionRuntime<'_> {
             // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
             let cursor_after = cursor_before;
 
-            // Record edit for undo
+            // Record edit for undo - use record_edit_mine for per-client undo (#471)
             if !deleted_text.is_empty() {
                 let edit = Edit::Delete {
                     position: start,
                     text: deleted_text.clone(),
                 };
-                self.record_edit(buffer, vec![edit], cursor_before, cursor_after);
+                self.record_edit_mine(buffer, vec![edit], cursor_before, cursor_after);
 
                 // Emit BufferModified event for pair module and other subscribers (#440)
                 #[allow(clippy::cast_possible_truncation)]
@@ -913,6 +913,110 @@ impl UndoApi for SessionRuntime<'_> {
             .and_then(|registry| registry.get(&UndoKey::Buffer))
             .and_then(|provider| provider.get_tree(buffer))
             .is_some_and(|tree| tree.can_redo())
+    }
+
+    fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        // #471: Get the client ID from the owner field
+        let client_id = self.owner?.as_usize();
+
+        let undo_provider = self
+            .kernel
+            .services
+            .get::<UndoProviderRegistry>()?
+            .get(&UndoKey::Buffer)?;
+
+        let result = undo_provider.undo_for_client(buffer, client_id)?;
+
+        // Apply the inverse edits to the buffer
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            for edit in &result.edits {
+                match edit {
+                    Edit::Insert { position, text } => {
+                        buf.insert_at(*position, text);
+                    }
+                    Edit::Delete { position, text } => {
+                        buf.delete_at(*position, text.chars().count());
+                    }
+                }
+            }
+        }
+
+        // Restore cursor to per-client active window
+        if let Some(window) = self.windows_mut().active_mut() {
+            window.cursor.line = result.cursor.line;
+            window.cursor.column = result.cursor.column;
+        }
+
+        self.changes.record_buffer_modified(buffer);
+        self.changes.record_cursor_move(buffer);
+
+        Some(result)
+    }
+
+    fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
+        // #471: Get the client ID from the owner field
+        let client_id = self.owner?.as_usize();
+
+        let undo_provider = self
+            .kernel
+            .services
+            .get::<UndoProviderRegistry>()?
+            .get(&UndoKey::Buffer)?;
+
+        let result = undo_provider.redo_for_client(buffer, client_id)?;
+
+        // Apply the edits to the buffer
+        if let Some(buf) = self.kernel.buffers.get(buffer) {
+            let mut buf = buf.write();
+            for edit in &result.edits {
+                match edit {
+                    Edit::Insert { position, text } => {
+                        buf.insert_at(*position, text);
+                    }
+                    Edit::Delete { position, text } => {
+                        buf.delete_at(*position, text.chars().count());
+                    }
+                }
+            }
+        }
+
+        // Restore cursor to per-client active window
+        if let Some(window) = self.windows_mut().active_mut() {
+            window.cursor.line = result.cursor.line;
+            window.cursor.column = result.cursor.column;
+        }
+
+        self.changes.record_buffer_modified(buffer);
+        self.changes.record_cursor_move(buffer);
+
+        Some(result)
+    }
+
+    fn record_edit_mine(
+        &mut self,
+        buffer: BufferId,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        // #471: If we have an owner, use record_for_client with origin tagging
+        if let Some(client_id) = self.owner {
+            if let Some(undo_registry) = self.kernel.services.get::<UndoProviderRegistry>()
+                && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
+            {
+                undo_provider.record_for_client(
+                    buffer,
+                    client_id.as_usize(),
+                    edits,
+                    cursor_before,
+                    cursor_after,
+                );
+            }
+        } else {
+            // Fall back to regular record without origin
+            self.record_edit(buffer, edits, cursor_before, cursor_after);
+        }
     }
 }
 
