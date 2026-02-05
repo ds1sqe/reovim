@@ -1,6 +1,6 @@
 # Server Mode
 
-Reovim can run as a JSON-RPC 2.0 server for programmatic control, enabling integration with external tools, IDEs, and automation scripts.
+Reovim can run as a gRPC server for programmatic control, enabling integration with external tools, IDEs, and automation scripts.
 
 ## Quick Start
 
@@ -229,58 +229,49 @@ reovim tui --debug --debug-name mysession
 | `--debug-dir <DIR>` | Custom log directory (default: `~/.local/share/reovim/logs/tui/`) |
 | `--debug-name <NAME>` | Session name for filenames (default: `default`) |
 
-## JSON-RPC Protocol
+## gRPC Protocol
 
-### Request Format
+Reovim uses gRPC v2 protocol for client-server communication. The protocol definitions are in `shared/protocol/proto/reovim/v2/`.
 
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "keys",
-  "params": { "keys": "iHello<Esc>" }
-}
+### Available Services
+
+| Service | Purpose |
+|---------|---------|
+| `InputService` | Key injection (SendKeys) |
+| `StateService` | Query mode, cursor, layout, selection |
+| `BufferService` | Buffer content access |
+| `NotificationService` | Server-to-client streaming |
+| `PresenceService` | Multi-client collaboration |
+| `SyntaxService` | Syntax token queries |
+| `DebugService` | Log level and log tail access |
+| `ServerService` | Ping, info, kill |
+
+### Key Methods
+
+| Method | Service | Description |
+|--------|---------|-------------|
+| `SendKeys` | InputService | Inject key sequence |
+| `GetMode` | StateService | Get current mode |
+| `GetCursor` | StateService | Get cursor position |
+| `GetLayout` | StateService | Get window layout |
+| `GetSelection` | StateService | Get visual selection |
+| `GetRawContent` | BufferService | Get buffer content |
+| `SubscribeNotifications` | NotificationService | Stream notifications |
+| `LogTail` | DebugService | Get log entries |
+| `Kill` | ServerService | Terminate server |
+
+### Protocol Files
+
 ```
-
-### Response Format
-
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "mode": "Normal",
-    "cursor": { "line": 0, "column": 5 }
-  }
-}
-```
-
-### Available Methods
-
-| Method | Params | Description |
-|--------|--------|-------------|
-| `keys` | `{ keys: string }` | Inject key sequence |
-| `screen` | `{ format?: string }` | Get screen content |
-| `screen_size` | - | Get terminal dimensions |
-| `cursor` | - | Get cursor position |
-| `mode` | - | Get current mode |
-| `kill` | - | Terminate server |
-| `debug/log_level` | `{ level?: string }` | Get/set log level |
-| `debug/log_tail` | `{ count?, level?, target?, grep? }` | Get filtered log entries |
-| `debug/log_subscribe` | `{ level?: string }` | Subscribe to log stream |
-| `debug/log_unsubscribe` | `{ subscription_id: number }` | Unsubscribe from log stream |
-
-### Screen Formats
-
-```json
-// Plain text (default)
-{ "method": "screen", "params": { "format": "plain" } }
-
-// Raw ANSI escape sequences
-{ "method": "screen", "params": { "format": "ansi" } }
-
-// Cell grid (structured)
-{ "method": "screen", "params": { "format": "cells" } }
+shared/protocol/proto/reovim/v2/
+├── input.proto          # InputService
+├── state.proto          # StateService
+├── buffer.proto         # BufferService
+├── notification.proto   # NotificationService, payloads
+├── presence.proto       # PresenceService
+├── syntax.proto         # SyntaxService
+├── debug.proto          # DebugService
+└── server.proto         # ServerService
 ```
 
 ## Use Cases
@@ -370,7 +361,7 @@ The default port `12521` is derived from ASCII: `'r'×100 + 'e'×10 + 'o' = 114�
 
 ### Architecture
 
-- `RpcServer` coordinates JSON-RPC 2.0 request handling
+- gRPC services handle client requests
 - `TransportConfig` selects transport: Stdio, UnixSocket, Tcp
 - `TransportReader`/`TransportWriter` provide async I/O abstraction
 - `TransportListener` accepts connections for socket/TCP

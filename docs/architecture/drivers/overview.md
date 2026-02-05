@@ -6,15 +6,23 @@ Drivers (`server/lib/drivers/*`) implement traits defined by the kernel. Each dr
 
 | Driver | Crate | Purpose | Documentation |
 |--------|-------|---------|---------------|
+| `buffer/` | `reovim-driver-buffer` | Buffer manager registry | [buffer/overview.md](./buffer/overview.md) |
+| `clipboard/` | `reovim-driver-clipboard` | System clipboard interface | [clipboard/overview.md](./clipboard/overview.md) |
 | `command/` | `reovim-driver-command` | Command traits and execution | [command/overview.md](./command/overview.md) |
-| `syntax/` | `reovim-driver-syntax` | Syntax highlighting abstraction | [syntax/overview.md](./syntax/overview.md) |
-| `input/` | `reovim-driver-input` | Keyboard, mouse, clipboard | [input/overview.md](./input/overview.md) |
+| `command-types/` | `reovim-driver-command-types` | CommandContext, CommandResult | [command-types/overview.md](./command-types/overview.md) |
 | `display/` | `reovim-driver-display` | Frame buffer, compositor | [display/overview.md](./display/overview.md) |
+| `ffi/` | `reovim-driver-ffi` | C FFI interface + ABI versioning | [ffi/overview.md](./ffi/overview.md) |
+| `ffi-python/` | `reovim-driver-ffi-python` | Python bindings via PyO3 | [ffi-python/overview.md](./ffi-python/overview.md) |
+| `input/` | `reovim-driver-input` | Keyboard, mouse input | [input/overview.md](./input/overview.md) |
+| `log/` | `reovim-driver-log` | Logger implementation (tracing) | [log/overview.md](./log/overview.md) |
 | `lsp/` | `reovim-driver-lsp` | LSP client infrastructure | [lsp/overview.md](./lsp/overview.md) |
 | `net/` | `reovim-driver-net` | RPC server, transports | [net/overview.md](./net/overview.md) |
-| `vfs/` | `reovim-driver-vfs` | Virtual filesystem | [vfs/overview.md](./vfs/overview.md) |
+| `search/` | `reovim-driver-search` | Search provider interface | [search/overview.md](./search/overview.md) |
 | `session/` | `reovim-driver-session` | Session management traits | [session/overview.md](./session/overview.md) |
-| `log/` | `reovim-driver-log` | Logger implementation (tracing) | [log/overview.md](./log/overview.md) |
+| `syntax/` | `reovim-driver-syntax` | Syntax highlighting abstraction | [syntax/overview.md](./syntax/overview.md) |
+| `syntax-treesitter/` | `reovim-driver-syntax-treesitter` | Tree-sitter implementation | [syntax-treesitter/overview.md](./syntax-treesitter/overview.md) |
+| `undo/` | `reovim-driver-undo` | Undo provider interface | [undo/overview.md](./undo/overview.md) |
+| `vfs/` | `reovim-driver-vfs` | Virtual filesystem | [vfs/overview.md](./vfs/overview.md) |
 
 ## Layer Position
 

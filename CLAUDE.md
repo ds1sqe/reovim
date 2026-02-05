@@ -76,11 +76,12 @@ reovim/
 ├── server/                # Server-side components
 │   ├── lib/kernel/        # Core mechanisms (mm/, ipc/, core/, block/, sched/, api/)
 │   ├── lib/server/        # Server runtime (gRPC handlers, session management)
-│   └── lib/drivers/       # Server drivers (13 crates)
+│   └── lib/drivers/       # Server drivers (14 crates)
 │       ├── command/       # Command trait and registry
 │       ├── command-types/ # Command type definitions
 │       ├── input/         # Key events and input parsing
-│       ├── syntax/        # Tree-sitter integration
+│       ├── syntax/        # Syntax highlighting abstraction
+│       ├── syntax-treesitter/ # Tree-sitter implementation
 │       ├── lsp/           # Language server protocol client
 │       ├── vfs/           # Virtual filesystem operations
 │       ├── session/       # Session management traits
@@ -90,19 +91,31 @@ reovim/
 │       ├── clipboard/     # Clipboard operations
 │       ├── ffi/           # Foreign function interface
 │       └── ffi-python/    # Python FFI bindings
-├── server/modules/        # Policy modules (17 loadable modules)
+├── server/modules/        # Policy modules (19 loadable modules)
 │   ├── vim/               # Core Vim-like behavior
 │   ├── editor/            # Editor core operations
 │   ├── motions/           # Movement commands
 │   ├── textobjects/       # Text object definitions
-│   ├── commands/          # Command implementations
+│   ├── commands/          # Ex-commands (:w, :q, :e, :wq)
 │   ├── keymap/            # Keymap definitions
-│   ├── mode-manager/      # Mode system
-│   └── ...                # (options, buffer-ops, clipboard, search, undo, etc.)
+│   ├── mode-manager/      # Mode state management
+│   ├── options/           # Editor settings (virtualedit)
+│   ├── buffer-ops/        # Buffer lifecycle events
+│   ├── buffer-simple/     # SimpleBufferManager implementation
+│   ├── scratch-buffer/    # Empty buffer on session start
+│   ├── defaults/          # Meta-module aggregating 13 modules
+│   ├── clipboard/         # Clipboard operations
+│   ├── search/            # Search provider
+│   ├── undo/              # Undo provider
+│   ├── vfs-local/         # Local filesystem VFS
+│   ├── window-ops/        # Window operations (<C-w> commands)
+│   ├── treesitter-rust/   # Rust syntax highlighting
+│   └── treesitter-markdown/ # Markdown syntax highlighting
 ├── clients/               # Client applications
 │   ├── cli/               # CLI client (gRPC v2)
-│   └── tui/               # TUI client (gRPC v2)
-│       └── lib/drivers/   # TUI-specific drivers (tui, display)
+│   ├── tui/               # TUI client (gRPC v2)
+│   │   └── lib/drivers/   # TUI-specific drivers (tui, display)
+│   └── web/               # Web client (gRPC-Web, WASM)
 ├── shared/                # Shared libraries
 │   ├── protocol/          # gRPC v2 protocol definitions (.proto files)
 │   ├── arch/              # Platform abstraction (unix/, windows/)
@@ -127,8 +140,14 @@ reovim/
 - `reovim-module-*` → `server/modules/*/`
 - `reovim-client-tui` → `clients/tui/`
 - `reovim-client-cli` → `clients/cli/`
+- `reovim-client-web` → `clients/web/`
 - `reovim-protocol` → `shared/protocol/`
 - `reovim-arch` → `shared/arch/`
+- `reovim-testing` → `shared/testing/`
+- `reovim-log` → `shared/log/`
+- `reovim-net` → `shared/net/`
+- `reovim-trace` → `shared/trace/`
+- `reovim-module-macros` → `shared/module-macros/`
 
 ### Key Dependencies
 
@@ -235,93 +254,71 @@ nursery = "deny"
 - Any command that terminates reovim processes you didn't start
 
 **Safe workflow for testing:**
-1. **Before starting a server**: Run `reovim cli list` to see existing servers
-2. **Start your server**: Note the PID/port from stderr output or `reovim cli list`
-3. **Track your servers**: Keep a list of PIDs you started in this session
-4. **After testing**: Only kill the specific server(s) YOU started: `reovim cli --tcp 127.0.0.1:<PORT> kill`
-5. **Never assume**: Don't kill servers just because they exist - they might be from another session
+1. **Before starting**: Check existing servers with `ps aux | grep reovim`
+2. **Start your server**: Note the PID from output
+3. **Track PIDs**: Keep a list of PIDs you started in this session
+4. **After testing**: Kill only YOUR server with `kill <PID>` or Ctrl+C in its terminal
+5. **Never assume**: Servers from other sessions may be running
+
+## Plan Files
+
+**IMPORTANT**: Claude Code does NOT automatically enforce plan file naming. You MUST manually ensure plans follow this convention.
+
+**Plan File Convention:**
+```
+~/.claude/plans/reovim/{ISSUE_NUMBER}-{Version/Phase}-{SUBJECT}.md
+```
+
+**Examples:**
+- `489-490-v1-documentation-drift.md` - Issues #489 and #490, version 1
+- `465-phase-12-syntax-drivers.md` - Issue #465, phase 12
+- `417-part3-true-clean-architecture.md` - Issue #417, part 3
+
+**Naming Components:**
+- `{ISSUE_NUMBER}` - GitHub issue number(s), use hyphen for multiple (e.g., `489-490`)
+- `{Version/Phase}` - Version (`v1`, `v2`) or phase identifier (`phase-10`, `part-2`)
+- `{SUBJECT}` - Brief kebab-case description of the work
+
+**Plan Requirements:**
+- Plans must be **self-contained** (works after context compact/clear)
+- Include all information needed for implementation:
+  - Architecture diagrams, file locations, type definitions
+  - Reference to related issues and dependencies
+  - Acceptance criteria and test targets
+- Add to every plan: **"Never stop until ALL phases are FULLY FINISHED."**
+- Include a **Final Procedure** section referencing Final Approach
+
+**Known Limitation:**
+Claude Code generates random plan filenames (e.g., `groovy-popping-kahn.md`) by default. After creating a plan, verify and rename to follow the convention above.
+
+**Workaround:**
+1. When plan mode creates a file, note the random filename
+2. After exiting plan mode, move to correct path:
+   ```bash
+   mv ~/.claude/plans/{random-name}.md ~/.claude/plans/reovim/{ISSUE}-{VERSION}-{SUBJECT}.md
+   ```
+3. Continue with countdown/implementation using the correctly named file
 
 ## Build Commands
 
 ```bash
-# Build all crates
-cargo build
-
-# Build release
-cargo build --release
-
-# Run the main binary (default-members set to apps/bin/)
-cargo run
-
-# Run tests
-cargo test
+# Essential commands
+cargo build              # Build all crates
+cargo build --release    # Build release
+cargo run                # Run (starts server + TUI)
+cargo test               # Run tests
+cargo check              # Check without building
+cargo fmt                # Format code
+cargo clippy             # Run linter
 
 # Run tests for a specific crate
 cargo test -p reovim-kernel
 
-# Run integration tests (currently ignored, pending module loading)
-cargo test --test operators --ignored
-cargo test --test cursor_movement --ignored
-
-# Run all ignored integration tests
-cargo test --ignored
-
-# Check code without building
-cargo check
-
-# Format code
-cargo fmt
-
-# Run clippy
-cargo clippy
-
 # Generate performance report
 cargo run -p perf-report -- bench -v X.Y.Z
-
-# Default: Start server + TUI in one command (tmux-like)
-cargo run
-# Server spawns in background, TUI attaches automatically
-# TUI exit doesn't kill server (graceful detach)
-
-# Start server in detached/daemon mode (no TUI)
-cargo run -- -d
-cargo run -- --detach
-
-# Attach TUI to existing server
-cargo run -- attach
-cargo run -- attach --tcp 127.0.0.1:12521
-
-# Explicit server mode (TCP on 127.0.0.1:12521, or next available port)
-cargo run -- server
-# Server prints "Listening on 127.0.0.1:<PORT>" to stderr
-
-# Run server with stdio transport
-cargo run -- server --stdio
-
-# Run server on Unix socket
-cargo run -- server --socket /tmp/reovim.sock
-
-# Run server on custom TCP port
-cargo run -- server --tcp 9000
-
-# Run CLI client
-cargo run -- cli list                     # List running servers
-cargo run -- cli keys 'iHello<Esc>'       # Inject keys
-cargo run -- cli --tcp 127.0.0.1:12522 keys 'j'  # Connect to specific server
-cargo run -- cli mode                     # Get current mode
-cargo run -- cli cursor                   # Get cursor position
-cargo run -- cli --format json mode       # JSON output format
-cargo run -- cli -i                       # Interactive REPL mode
-
-# TUI frame capture (#447) - requires connected TUI
-cargo run -- cli capture                  # Capture with raw_ansi (ANSI colors)
-cargo run -- cli capture --format plain_text  # Plain text without colors
-
-# Explicit TUI client (connects to running server)
-cargo run -- tui                          # Auto-discover server
-cargo run -- tui --tcp 127.0.0.1:12521    # Connect to specific server
-cargo run -- tui --headless               # Headless mode (no TTY, for CI/scripting)
 ```
+
+For detailed server, CLI, and TUI commands, see [Server Mode](docs/user-guide/server-mode.md) and [CLI Reference](docs/user-guide/cli-reference.md).
 
 ## Git Commits
 
@@ -471,12 +468,8 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 
 3. **Plan File Setup** (for implementation tasks):
    - Launch `oracle` agent for complex planning (uses Opus)
-   - Create/update plan file at `~/.claude/plans/reovim/{ISSUE_NUMBER}-{SUBJECT}.md`
+   - Create/update plan file following [Plan Files](#plan-files) naming convention
    - Plan must be **self-contained** (works after context compact/clear)
-   - Include all information needed for implementation:
-     - Architecture diagrams, file locations, type definitions
-     - Reference to related issues and dependencies
-     - Acceptance criteria and test targets
 
 4. **Countdown - Go Poll Round 1**:
    - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode with `model: {model}`
@@ -684,12 +677,6 @@ The logging system is partially implemented. The driver infrastructure exists in
 Query and control logging on a running server via CLI:
 
 ```bash
-# Get current log level
-reovim cli log-level
-
-# Set log level dynamically (trace, debug, info, warn, error, off)
-reovim cli log-level debug
-
 # Get recent log entries (default: 50)
 reovim cli log-tail
 reovim cli log-tail --count 100
@@ -705,46 +692,24 @@ reovim cli log-tail --grep "connection"
 
 # Combine filters
 reovim cli log-tail --level info --target runner --grep error
-
-# Follow mode - stream logs in real-time (Ctrl+C to stop)
-reovim cli log-tail --follow
-reovim cli log-tail --follow --level warn
 ```
 
 Output is color-coded when stdout is a TTY:
 - ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
 
-### TUI Debug Mode
+### Frame Capture
 
-Enable debug mode for TUI diagnostics:
+Capture TUI screen for debugging (requires connected TUI):
 
 ```bash
-# Enable debug statusline and frame capture
-reovim tui --debug
+# Capture with ANSI colors
+reovim cli --grpc 127.0.0.1:PORT capture
 
-# Custom log directory
-reovim tui --debug --debug-dir /tmp/reovim-debug
-
-# Custom session name
-reovim tui --debug --debug-name mysession
+# Plain text (good for logs/LLMs)
+reovim cli --grpc 127.0.0.1:PORT capture --format plain_text
 ```
 
-**Output files:**
-- `~/.local/share/reovim/logs/tui/{name}_{start_time}.log` - Session log
-- `~/.local/share/reovim/logs/tui/frame-buffer/{name}-{timestamp}.frame` - Frame captures (every 5 seconds)
-
-**Statusline format:**
-```
-[YY-MM-DD HH:MM:SS TZ] [server: ADDR] [mode: MODE] [modules: N]
-```
-
-The statusline is rendered at the bottom of the screen with inverse colors.
-
-**Session log events:**
-- Session start/end
-- Mode changes
-- Terminal resize
-- Frame captures
+See [Frame Capture Guide](docs/user-guide/frame-capture.md) for details.
 
 ### Debugging Flaky Tests
 
@@ -791,13 +756,13 @@ The statusline is rendered at the bottom of the screen with inverse colors.
 
 ```bash
 # Start server
-./target/release/reovim server --tcp 13000 &
+./target/release/reovim server --grpc 13000 &
 
 # Test via CLI (Pull - always fresh)
-./target/release/reovim cli --tcp 127.0.0.1:13000 --format json layout
+./target/release/reovim cli --grpc 127.0.0.1:13000 capture --format plain_text
 
 # Test via TUI (Push - depends on notifications)
-./target/release/reovim tui --tcp 127.0.0.1:13000 --debug
+./target/release/reovim tui --grpc 127.0.0.1:13000
 ```
 
 **Key files for layout/notification debugging:**

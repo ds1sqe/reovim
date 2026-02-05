@@ -217,7 +217,7 @@ shared/
 
 - [Session Model](./session-model.md) - tmux-like multi-client architecture
 - [Mechanism vs Policy](./mechanism-vs-policy.md) - Core principle
-- [Module-Mode Inheritance](./module-mode-inheritance.md) - Mode system
-- [Kernel Subsystems](./kernel.md) - Kernel internals
-- [Driver Layer](./drivers.md) - Driver implementations
-- [Module System](./modules.md) - Dynamic modules
+- [Module-Mode Inheritance](./modules/mode-inheritance.md) - Mode system
+- [Kernel Subsystems](./kernel/overview.md) - Kernel internals
+- [Driver Layer](./drivers/overview.md) - Driver implementations
+- [Module System](./modules/overview.md) - Dynamic modules
