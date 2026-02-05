@@ -199,3 +199,58 @@ async fn test_independent_editing() {
         })
         .await;
 }
+
+/// Test that undo is isolated per-client (#471).
+///
+/// When Client 0 makes edits and Client 1 makes edits, then Client 0
+/// undoes, only Client 0's edits should be undone.
+///
+/// This test verifies the multi-client undo architecture where each
+/// client's 'u' command only undoes their own changes.
+#[tokio::test]
+async fn test_undo_isolation() {
+    MultiClientPresenceTest::with_clients(2)
+        .await
+        .run(|mut clients| async move {
+            // Setup: Both clients start with empty buffer
+
+            // Client 0 types "AAA"
+            clients[0]
+                .send_keys("iAAA<Esc>")
+                .await
+                .expect("client 0 types AAA");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            // Client 1 types "BBB" (appends after AAA)
+            clients[1]
+                .send_keys("$aBBB<Esc>")
+                .await
+                .expect("client 1 types BBB");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+
+            // Buffer should now contain "AAABBB"
+            let content_before = clients[0]
+                .get_buffer()
+                .await
+                .expect("get buffer before undo");
+            assert!(
+                content_before.contains("AAABBB"),
+                "Buffer should contain AAABBB before undo, got: {content_before}"
+            );
+
+            // Client 0 undoes - should only undo their "AAA", not Client 1's "BBB"
+            clients[0].send_keys("u").await.expect("client 0 undo");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // Buffer should now contain only "BBB" (Client 0's AAA was undone)
+            let content_after = clients[0]
+                .get_buffer()
+                .await
+                .expect("get buffer after undo");
+            assert!(
+                content_after.contains("BBB") && !content_after.contains("AAA"),
+                "After Client 0 undo: buffer should contain 'BBB' but not 'AAA', got: {content_after}"
+            );
+        })
+        .await;
+}

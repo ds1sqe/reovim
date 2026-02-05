@@ -41,6 +41,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Per-client undo isolation (#471 Phase 5)**: Wired owner field in `SessionRuntime`
+  to enable per-client undo. When Client A presses 'u', it only undoes Client A's
+  changes, not Client B's. Key changes: `SessionRuntime::with_owner()` binds runtime
+  to specific client, `EditOrigin` enum tracks edit ownership (`Client(usize)` |
+  `System`), `record_edit_mine()` uses owner from runtime for undo tracking.
+  `PendingBatch` now includes `origin` field to preserve client identity during
+  insert mode batching. Updated command execution, key resolution, and insert char
+  handling to pass client ID through the stack. E2E test `test_undo_isolation`
+  validates the full scenario. Files: `server/lib/drivers/session/src/runtime.rs`,
+  `server/lib/server/src/registry/command.rs`, `server/lib/server/src/session/state.rs`,
+  `server/modules/undo/src/registry.rs`.
+
 - **Server debug ring buffer with panic integration (#478)**: Added comprehensive
   debug infrastructure for server-side crash reporting and post-mortem analysis.
   Two-level ring buffer architecture: 64 KB server-wide buffer for kernel/module

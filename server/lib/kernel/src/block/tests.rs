@@ -97,7 +97,7 @@ mod transaction_tests {
 // === UndoTree Tests ===
 
 mod undo_tree_tests {
-    use super::*;
+    use {super::*, crate::block::EditOrigin};
 
     #[test]
     fn test_new_tree_at_root() {
@@ -105,6 +105,112 @@ mod undo_tree_tests {
         assert!(!tree.can_undo());
         assert!(!tree.can_redo());
         assert_eq!(tree.node_count(), 1); // Root node
+    }
+
+    // === EditOrigin Tests (#471) ===
+
+    #[test]
+    fn test_edit_origin_default() {
+        assert_eq!(EditOrigin::default(), EditOrigin::System);
+    }
+
+    #[test]
+    fn test_push_default_origin_is_system() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "Hello")],
+            Position::new(0, 0),
+            Position::new(0, 5),
+        );
+
+        // Default push uses System origin
+        let node = tree.node(1).expect("node should exist");
+        assert_eq!(node.origin(), EditOrigin::System);
+    }
+
+    #[test]
+    fn test_push_with_origin_tags_node() {
+        let mut tree = UndoTree::new();
+
+        // Push with client origin
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "Hello")],
+            Position::new(0, 0),
+            Position::new(0, 5),
+            EditOrigin::Client(42),
+        );
+
+        let node = tree.node(1).expect("node should exist");
+        assert_eq!(node.origin(), EditOrigin::Client(42));
+    }
+
+    #[test]
+    fn test_multiple_clients_different_origins() {
+        let mut tree = UndoTree::new();
+
+        // Client 0 makes edit
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(0),
+        );
+
+        // Client 1 makes edit
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(1),
+        );
+
+        // Client 0 makes another edit
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 2), "C")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+            EditOrigin::Client(0),
+        );
+
+        // Verify origins
+        assert_eq!(tree.node(1).unwrap().origin(), EditOrigin::Client(0));
+        assert_eq!(tree.node(2).unwrap().origin(), EditOrigin::Client(1));
+        assert_eq!(tree.node(3).unwrap().origin(), EditOrigin::Client(0));
+    }
+
+    #[test]
+    fn test_root_node_has_system_origin() {
+        let tree = UndoTree::new();
+        let root = tree.node(0).expect("root should exist");
+        assert_eq!(root.origin(), EditOrigin::System);
+    }
+
+    #[test]
+    fn test_origin_preserved_through_undo_redo() {
+        let mut tree = UndoTree::new();
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "X")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(99),
+        );
+
+        // Undo and redo don't change origin
+        tree.undo();
+        tree.redo();
+
+        let node = tree.node(1).unwrap();
+        assert_eq!(node.origin(), EditOrigin::Client(99));
+    }
+
+    #[test]
+    fn test_edit_origin_equality() {
+        assert_eq!(EditOrigin::System, EditOrigin::System);
+        assert_eq!(EditOrigin::Client(1), EditOrigin::Client(1));
+        assert_ne!(EditOrigin::Client(1), EditOrigin::Client(2));
+        assert_ne!(EditOrigin::System, EditOrigin::Client(0));
     }
 
     #[test]

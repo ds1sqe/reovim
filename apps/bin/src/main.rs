@@ -138,6 +138,9 @@ enum CliSubcommand {
     Keys {
         /// Keys in vim notation.
         keys: String,
+        /// Client ID for multi-client undo testing (#471).
+        #[arg(long, short)]
+        client: Option<u64>,
     },
     /// Get current editor mode.
     Mode,
@@ -383,7 +386,10 @@ async fn run_cli(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
     let result: Result<String, GrpcClientError> = match command {
-        CliSubcommand::Keys { keys } => commands::keys(&mut client, &keys, output_format).await,
+        CliSubcommand::Keys {
+            keys,
+            client: client_id,
+        } => commands::keys(&mut client, &keys, client_id, output_format).await,
         CliSubcommand::Mode => commands::mode(&mut client, output_format).await,
         CliSubcommand::Cursor => commands::cursor(&mut client, output_format).await,
         CliSubcommand::Buffers => commands::buffers(&mut client, output_format).await,

@@ -3,7 +3,7 @@
 use {
     crate::UndoPersistError,
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, Edit, Position, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{BufferId, Edit, EditOrigin, Position, UndoResult, UndoTree},
 };
 
 /// Undo provider interface for per-buffer undo/redo operations.
@@ -189,5 +189,133 @@ pub trait UndoProvider: Send + Sync {
                 false
             }
         }
+    }
+
+    // ========================================================================
+    // Multi-Client Undo Methods (#471)
+    // ========================================================================
+
+    /// Undo the last change made by a specific client.
+    ///
+    /// This navigates the undo tree backwards, skipping nodes that were
+    /// created by other clients, until it finds a node with matching origin.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to undo in
+    /// * `client_id` - The client whose changes to undo
+    ///
+    /// # Returns
+    ///
+    /// The edits to apply and cursor position, or `None` if there are no
+    /// changes by this client to undo.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to regular `undo()` - implementations should override
+    /// for proper multi-client support.
+    fn undo_for_client(&self, buffer_id: BufferId, client_id: usize) -> Option<UndoResult> {
+        let _ = client_id;
+        self.undo(buffer_id)
+    }
+
+    /// Redo the last undone change made by a specific client.
+    ///
+    /// This navigates the undo tree forward, skipping nodes that were
+    /// created by other clients, until it finds a node with matching origin.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to redo in
+    /// * `client_id` - The client whose changes to redo
+    ///
+    /// # Returns
+    ///
+    /// The edits to apply and cursor position, or `None` if there are no
+    /// changes by this client to redo.
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to regular `redo()` - implementations should override
+    /// for proper multi-client support.
+    fn redo_for_client(&self, buffer_id: BufferId, client_id: usize) -> Option<UndoResult> {
+        let _ = client_id;
+        self.redo(buffer_id)
+    }
+
+    /// Record an edit transaction with client origin tagging.
+    ///
+    /// Like [`record`](Self::record), but tags the undo node with the
+    /// `EditOrigin::Client(client_id)` so that `undo_for_client` can
+    /// identify which client made this change.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer that was edited
+    /// * `client_id` - The client that made this edit
+    /// * `edits` - The edits that were made
+    /// * `cursor_before` - Cursor position before the edits
+    /// * `cursor_after` - Cursor position after the edits
+    ///
+    /// # Default Implementation
+    ///
+    /// Falls back to regular `record()` - implementations should override
+    /// for proper origin tagging.
+    fn record_for_client(
+        &self,
+        buffer_id: BufferId,
+        client_id: usize,
+        edits: Vec<Edit>,
+        cursor_before: Position,
+        cursor_after: Position,
+    ) {
+        let _ = client_id;
+        self.record(buffer_id, edits, cursor_before, cursor_after);
+    }
+
+    /// Initialize per-client undo cursor tracking for a buffer.
+    ///
+    /// Called when a client attaches to a session or opens a buffer.
+    /// Implementations should set the client's undo cursor to the current
+    /// position in the undo tree.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to initialize tracking for
+    /// * `client_id` - The client to initialize
+    ///
+    /// # Default Implementation
+    ///
+    /// No-op - implementations should override for multi-client support.
+    fn init_client(&self, buffer_id: BufferId, client_id: usize) {
+        let _ = (buffer_id, client_id);
+    }
+
+    /// Remove per-client undo cursor tracking for a buffer.
+    ///
+    /// Called when a client disconnects or closes a buffer.
+    /// Implementations should clean up any per-client state.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer_id` - The buffer to remove tracking from
+    /// * `client_id` - The client to remove
+    ///
+    /// # Default Implementation
+    ///
+    /// No-op - implementations should override for multi-client support.
+    fn remove_client(&self, buffer_id: BufferId, client_id: usize) {
+        let _ = (buffer_id, client_id);
+    }
+
+    /// Get the edit origin for a client ID.
+    ///
+    /// Helper method to convert a `usize` client ID to `EditOrigin`.
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `EditOrigin::Client(client_id)`.
+    fn client_origin(&self, client_id: usize) -> EditOrigin {
+        EditOrigin::Client(client_id)
     }
 }

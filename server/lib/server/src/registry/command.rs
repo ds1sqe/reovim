@@ -132,6 +132,7 @@ impl CommandRegistry {
     #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn execute_for_client(
         &self,
+        client_id: usize,
         id: &CommandId,
         driver_session: &mut DriverSession,
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
@@ -141,7 +142,7 @@ impl CommandRegistry {
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
     ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
-        use reovim_driver_session::api::ChangeTracker;
+        use reovim_driver_session::{ClientId as DriverClientId, api::ChangeTracker};
         profile_scope!("command_execute_for_client", "server::command");
 
         self.entries.get(id).map(|entry| {
@@ -152,9 +153,12 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Create SessionRuntime with per-client state (#471, #477)
+            // Create SessionRuntime with per-client state and owner (#471, #477)
+            // The owner enables undo_mine()/redo_mine() for per-client undo
             let stub_executor = StubCommandExecutor;
-            let mut runtime = SessionRuntime::new(
+            let driver_client_id = DriverClientId::new(client_id);
+            let mut runtime = SessionRuntime::with_owner(
+                driver_client_id,
                 driver_session,
                 client_mode_stack,
                 client_windows,
@@ -413,6 +417,7 @@ mod tests {
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
 
         let result = registry.execute_for_client(
+            1, // test client_id for per-client undo (#471)
             &id,
             &mut driver_session,
             &mut client_mode_stack,

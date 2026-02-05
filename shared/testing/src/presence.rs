@@ -244,6 +244,18 @@ impl PresenceTestClient {
         let pos = response.position.ok_or("No position in response")?;
         Ok((pos.line, pos.column))
     }
+
+    /// Get buffer content.
+    ///
+    /// Returns the content of the active buffer.
+    pub async fn get_buffer(&mut self) -> Result<String, String> {
+        let response = self
+            .client
+            .get_buffer_content(None)
+            .await
+            .map_err(|e| format!("Get buffer failed: {e}"))?;
+        Ok(response.lines.join("\n"))
+    }
 }
 
 /// Multi-client test with automatic presence join/leave.

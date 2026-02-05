@@ -50,5 +50,5 @@ pub use {
     history::{History, HistoryEntry},
     snapshot::Snapshot,
     transaction::Transaction,
-    undo::{UndoNode, UndoResult, UndoTree},
+    undo::{EditOrigin, UndoNode, UndoResult, UndoTree},
 };

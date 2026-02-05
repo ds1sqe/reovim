@@ -61,7 +61,11 @@ impl CommandHandler for UndoCommand {
         let mut undone = 0;
 
         for _ in 0..count {
-            if runtime.undo(buffer).is_some() {
+            // #471: Try per-client undo first, fall back to regular undo
+            // undo_mine() returns None if no owner is set OR nothing to undo
+            let result = runtime.undo_mine(buffer).or_else(|| runtime.undo(buffer));
+
+            if result.is_some() {
                 undone += 1;
             } else {
                 break; // Nothing left to undo
@@ -115,7 +119,11 @@ impl CommandHandler for RedoCommand {
         let mut redone = 0;
 
         for _ in 0..count {
-            if runtime.redo(buffer).is_some() {
+            // #471: Try per-client redo first, fall back to regular redo
+            // redo_mine() returns None if no owner is set OR nothing to redo
+            let result = runtime.redo_mine(buffer).or_else(|| runtime.redo(buffer));
+
+            if result.is_some() {
                 redone += 1;
             } else {
                 break; // Nothing left to redo

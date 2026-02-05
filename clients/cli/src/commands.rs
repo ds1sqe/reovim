@@ -8,15 +8,29 @@ use crate::{GrpcClient, GrpcClientError, OutputFormat};
 
 /// Send keys to the editor.
 ///
+/// # Arguments
+///
+/// * `client` - The gRPC client
+/// * `keys` - Keys in vim notation
+/// * `client_id` - Optional client ID for multi-client testing (#471)
+/// * `format` - Output format
+///
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
 pub async fn keys(
     client: &mut GrpcClient,
     keys: &str,
+    client_id: Option<u64>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.send_keys(keys).await?;
+    let response = if let Some(id) = client_id {
+        // Use specified client ID for multi-client testing (#471)
+        client.send_keys_with_client(keys, id).await?
+    } else {
+        // Auto-join and use default client ID
+        client.send_keys(keys).await?
+    };
 
     let status_str = match response.status {
         1 => "executed",
