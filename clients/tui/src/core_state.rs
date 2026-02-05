@@ -1,0 +1,394 @@
+//! Shared TUI core state for interactive and headless modes.
+//!
+//! This module extracts common state types that both `TuiAppV2` and
+//! `HeadlessEventLoop` need for multi-client awareness and proper
+//! cursor/selection tracking.
+//!
+//! # Architecture (Issue #493)
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │  TuiCoreState (this module)                                 │
+//! │    - Identity: my_client_id, my_role                        │
+//! │    - Mode: mode_name, mode_display, is_insert_mode          │
+//! │    - Cursor: global + per-window (window_cursors)           │
+//! │    - Selection: per-window (window_selections)              │
+//! │    - Layout: focused_window_id, windows                     │
+//! │    - Content: buffer_cache                                  │
+//! │    - Multi-client: other_clients (remote awareness)         │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! Both interactive and headless TUI embed this struct to share
+//! notification handling and rendering logic.
+
+use std::collections::HashMap;
+
+use reovim_protocol::v2::WindowInfo;
+
+/// Line number display mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineNumberMode {
+    /// No line numbers.
+    #[default]
+    None,
+    /// Absolute line numbers (1, 2, 3...).
+    Absolute,
+    /// Relative line numbers (distance from cursor).
+    Relative,
+    /// Hybrid: absolute for cursor line, relative for others.
+    Hybrid,
+}
+
+/// Client role in a multi-client session.
+///
+/// Determines how this client's input is routed:
+/// - `Owner`: Has own independent state (cursor, mode, etc.)
+/// - `Follow`: Read-only spectator of another client
+/// - `Share`: Bidirectional editing with another client's state
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ClientRole {
+    /// Owns editing state (default for new clients).
+    #[default]
+    Owner,
+    /// Read-only spectator of target client.
+    #[allow(dead_code)]
+    Follow,
+    /// Shares state with owner (pair programming).
+    #[allow(dead_code)]
+    Share,
+}
+
+impl ClientRole {
+    /// Returns the display string for the statusline.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "Owner",
+            Self::Follow => "Follow",
+            Self::Share => "Share",
+        }
+    }
+}
+
+/// Cursor position for per-window tracking.
+///
+/// Uses u64 to match protobuf `CursorMovedPayload` types.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CursorPosition {
+    /// Line number (0-indexed).
+    pub line: u64,
+    /// Column number (0-indexed).
+    pub column: u64,
+}
+
+/// Selection state for per-window tracking.
+///
+/// Tracks the visual selection range for highlighting in the TUI.
+#[derive(Debug, Clone, Default)]
+pub struct SelectionState {
+    /// Start position of selection.
+    pub start: CursorPosition,
+    /// End position of selection (exclusive).
+    pub end: CursorPosition,
+    /// Visual mode type (char, line, block).
+    pub mode: String,
+}
+
+/// Presence information for a remote client.
+///
+/// Tracks other clients' cursor positions for awareness rendering.
+#[derive(Debug, Clone)]
+pub struct RemoteClient {
+    /// Client's unique ID.
+    pub client_id: u64,
+    /// User-friendly display name (e.g., "TUI@laptop").
+    pub display_name: String,
+    /// Cursor line (0-indexed).
+    pub cursor_line: u64,
+    /// Cursor column (0-indexed).
+    pub cursor_col: u64,
+    /// Buffer ID the client is viewing (None if no buffer assigned).
+    pub buffer_id: Option<u64>,
+    /// Current mode name.
+    pub mode: String,
+    /// Selection state for visual mode.
+    pub selection: Option<SelectionState>,
+}
+
+/// Shared TUI state tracked from server notifications.
+///
+/// This struct contains all state needed by both interactive and headless
+/// TUI modes for proper multi-client awareness and rendering.
+#[derive(Debug, Default)]
+pub struct TuiCoreState {
+    // =========================================================================
+    // Identity
+    // =========================================================================
+    /// This client's unique ID.
+    ///
+    /// Assigned by `presence_join()` on connect. All `SendKeys` requests
+    /// must include this ID for per-client state isolation.
+    pub my_client_id: u64,
+
+    /// This client's role in the session.
+    pub my_role: ClientRole,
+
+    // =========================================================================
+    // Mode
+    // =========================================================================
+    /// Current mode name (internal).
+    pub mode_name: String,
+
+    /// Current mode display string.
+    pub mode_display: String,
+
+    /// Whether mode accepts text input.
+    pub is_insert_mode: bool,
+
+    // =========================================================================
+    // Cursor (global + per-window)
+    // =========================================================================
+    /// Cursor line (0-indexed) - global for statusline compatibility.
+    pub cursor_line: u64,
+
+    /// Cursor column (0-indexed) - global for statusline compatibility.
+    pub cursor_col: u64,
+
+    /// Per-window cursor positions.
+    ///
+    /// Maps `window_id` -> cursor position. Updated from `CursorMoved`
+    /// notifications that include `window_id`.
+    pub window_cursors: HashMap<u64, CursorPosition>,
+
+    /// Per-window selection state.
+    ///
+    /// Maps `window_id` -> selection. Updated from `SelectionChanged`
+    /// notifications. Used to render visual selection highlighting.
+    pub window_selections: HashMap<u64, SelectionState>,
+
+    // =========================================================================
+    // Layout
+    // =========================================================================
+    /// Focused window ID.
+    pub focused_window_id: u64,
+
+    /// Window layout info.
+    pub windows: Vec<WindowInfo>,
+
+    /// Whether client needs to create a default window (empty server layout).
+    pub needs_default_window: bool,
+
+    // =========================================================================
+    // Content
+    // =========================================================================
+    /// Buffer content cache (`buffer_id` -> lines).
+    pub buffer_cache: HashMap<u64, Vec<String>>,
+
+    // =========================================================================
+    // Multi-client awareness (#474)
+    // =========================================================================
+    /// Other connected clients for awareness rendering.
+    ///
+    /// Maps `client_id` -> `RemoteClient`. Used to render other clients'
+    /// cursors and selections.
+    pub other_clients: HashMap<u64, RemoteClient>,
+
+    // =========================================================================
+    // Display
+    // =========================================================================
+    /// Line number display mode.
+    pub line_number_mode: LineNumberMode,
+
+    /// Whether screen needs redraw.
+    pub needs_redraw: bool,
+
+    /// Last error message for statusline.
+    pub last_error: Option<String>,
+
+    // =========================================================================
+    // Viewport (headless-specific, but kept for unification)
+    // =========================================================================
+    /// Viewport width.
+    pub width: u16,
+
+    /// Viewport height.
+    pub height: u16,
+}
+
+impl TuiCoreState {
+    /// Create a new core state with the given client ID.
+    #[must_use]
+    pub fn new(client_id: u64) -> Self {
+        Self {
+            my_client_id: client_id,
+            ..Self::default()
+        }
+    }
+
+    /// Create a new core state with client ID and viewport size.
+    #[must_use]
+    pub fn new_with_size(client_id: u64, width: u16, height: u16) -> Self {
+        Self {
+            my_client_id: client_id,
+            width,
+            height,
+            ..Self::default()
+        }
+    }
+
+    /// Update cursor position for local client.
+    ///
+    /// Updates both per-window cursor storage and global cursor for
+    /// statusline compatibility.
+    pub fn update_local_cursor(&mut self, window_id: u64, line: u64, column: u64) {
+        self.window_cursors
+            .insert(window_id, CursorPosition { line, column });
+
+        // Update global cursor if this is the focused window
+        if window_id == self.focused_window_id {
+            self.cursor_line = line;
+            self.cursor_col = column;
+        }
+    }
+
+    /// Update cursor position for a remote client.
+    pub fn update_remote_cursor(&mut self, client_id: u64, line: u64, col: u64) {
+        if let Some(remote) = self.other_clients.get_mut(&client_id) {
+            remote.cursor_line = line;
+            remote.cursor_col = col;
+        }
+    }
+
+    /// Update selection for local client.
+    pub fn update_local_selection(&mut self, window_id: u64, selection: Option<SelectionState>) {
+        match selection {
+            Some(sel) => {
+                self.window_selections.insert(window_id, sel);
+            }
+            None => {
+                self.window_selections.remove(&window_id);
+            }
+        }
+    }
+
+    /// Update selection for a remote client.
+    pub fn update_remote_selection(&mut self, client_id: u64, selection: Option<SelectionState>) {
+        if let Some(remote) = self.other_clients.get_mut(&client_id) {
+            remote.selection = selection;
+        }
+    }
+
+    /// Add a remote client from presence notification.
+    pub fn add_remote_client(&mut self, client: RemoteClient) {
+        // Don't track ourselves
+        if client.client_id != self.my_client_id {
+            self.other_clients.insert(client.client_id, client);
+        }
+    }
+
+    /// Remove a remote client when they leave.
+    pub fn remove_remote_client(&mut self, client_id: u64) {
+        self.other_clients.remove(&client_id);
+    }
+
+    /// Clean up stale window cursors after layout change.
+    pub fn cleanup_stale_cursors(&mut self) {
+        let current_window_ids: std::collections::HashSet<u64> =
+            self.windows.iter().map(|w| w.window_id).collect();
+        self.window_cursors
+            .retain(|id, _| current_window_ids.contains(id));
+        self.window_selections
+            .retain(|id, _| current_window_ids.contains(id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_core_state_default() {
+        let state = TuiCoreState::default();
+        assert_eq!(state.my_client_id, 0);
+        assert!(state.mode_name.is_empty());
+        assert!(state.other_clients.is_empty());
+        assert_eq!(state.line_number_mode, LineNumberMode::None);
+    }
+
+    #[test]
+    fn test_core_state_new_with_client_id() {
+        let state = TuiCoreState::new(42);
+        assert_eq!(state.my_client_id, 42);
+    }
+
+    #[test]
+    fn test_core_state_new_with_size() {
+        let state = TuiCoreState::new_with_size(1, 80, 24);
+        assert_eq!(state.my_client_id, 1);
+        assert_eq!(state.width, 80);
+        assert_eq!(state.height, 24);
+    }
+
+    #[test]
+    fn test_update_local_cursor() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 5, 3);
+
+        assert_eq!(state.cursor_line, 5);
+        assert_eq!(state.cursor_col, 3);
+        assert!(state.window_cursors.contains_key(&10));
+    }
+
+    #[test]
+    fn test_add_remove_remote_client() {
+        let mut state = TuiCoreState::new(1);
+
+        let remote = RemoteClient {
+            client_id: 2,
+            display_name: "Test".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(1),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+
+        state.add_remote_client(remote);
+        assert!(state.other_clients.contains_key(&2));
+
+        state.remove_remote_client(2);
+        assert!(!state.other_clients.contains_key(&2));
+    }
+
+    #[test]
+    fn test_add_remote_client_skips_self() {
+        let mut state = TuiCoreState::new(1);
+
+        let remote = RemoteClient {
+            client_id: 1, // Same as my_client_id
+            display_name: "Self".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(1),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+
+        state.add_remote_client(remote);
+        assert!(!state.other_clients.contains_key(&1)); // Should not be added
+    }
+
+    #[test]
+    fn test_client_role_display() {
+        assert_eq!(ClientRole::Owner.as_str(), "Owner");
+        assert_eq!(ClientRole::Follow.as_str(), "Follow");
+        assert_eq!(ClientRole::Share.as_str(), "Share");
+    }
+
+    #[test]
+    fn test_line_number_mode_default() {
+        assert_eq!(LineNumberMode::default(), LineNumberMode::None);
+    }
+}

@@ -28,10 +28,7 @@
 //! ```ignore
 //! let mut tui = TuiAppV2Headless::connect("127.0.0.1:50051").await?;
 //!
-//! // Start notification processing
-//! tui.start().await?;
-//!
-//! // Send keys programmatically
+//! // Send keys programmatically (notation uses angle brackets like <Esc>)
 //! tui.send_keys("ihello<Esc>").await?;
 //!
 //! // Resize viewport
@@ -44,8 +41,6 @@
 //! // Stop the event loop
 //! tui.stop();
 //! ```
-
-use std::collections::HashMap;
 
 use {
     reovim_driver_display::FrameBuffer,
@@ -65,6 +60,7 @@ use {
 };
 
 use crate::{
+    CursorPosition, RemoteClient, SelectionState, TuiCoreState,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
     render_core::{RenderState, build_frame_content},
 };
@@ -148,37 +144,8 @@ pub struct FrameMetadata {
     pub window_count: usize,
 }
 
-/// Headless TUI state (mirrors interactive TUI state).
-#[derive(Debug, Default)]
-struct HeadlessState {
-    /// This client's unique ID (#471).
-    ///
-    /// Used for per-client state isolation. All `send_keys` requests must
-    /// include this ID for proper mode/cursor isolation.
-    my_client_id: u64,
-    /// Current mode name (internal).
-    mode_name: String,
-    /// Current mode display string.
-    mode_display: String,
-    /// Whether mode accepts text input.
-    is_insert_mode: bool,
-    /// Cursor line (0-indexed).
-    cursor_line: u64,
-    /// Cursor column (0-indexed).
-    cursor_col: u64,
-    /// Focused window ID.
-    focused_window_id: u64,
-    /// Window layout info.
-    windows: Vec<WindowInfo>,
-    /// Buffer content cache (`buffer_id` -> lines).
-    buffer_cache: HashMap<u64, Vec<String>>,
-    /// Viewport width.
-    width: u16,
-    /// Viewport height.
-    height: u16,
-    /// Whether client needs to create a default window (empty server layout).
-    needs_default_window: bool,
-}
+// HeadlessState replaced with TuiCoreState from core_state.rs
+// This gives headless TUI multi-client support (other_clients, presence handling)
 
 /// Headless TUI application handle.
 ///
@@ -194,8 +161,8 @@ pub struct TuiAppV2Headless {
 impl TuiAppV2Headless {
     /// Connect to a gRPC server and create a headless TUI.
     ///
-    /// The TUI is not started automatically. Call [`start`](Self::start) to
-    /// begin processing notifications.
+    /// The TUI starts processing notifications automatically when requests are made.
+    /// Use [`capture`](Self::capture) to get the current frame content.
     ///
     /// Uses default viewport size of 160x48 (realistic terminal dimensions).
     ///
@@ -249,13 +216,8 @@ impl TuiAppV2Headless {
         // Create request channel
         let (request_tx, request_rx) = mpsc::channel(32);
 
-        // Create initial state with client_id
-        let state = HeadlessState {
-            my_client_id,
-            width,
-            height,
-            ..Default::default()
-        };
+        // Create initial state with client_id (using shared TuiCoreState)
+        let state = TuiCoreState::new_with_size(my_client_id, width, height);
 
         // Create frame buffer
         let frame_buffer = FrameBuffer::new(width, height);
@@ -330,7 +292,7 @@ impl TuiAppV2Headless {
     ///
     /// # Arguments
     ///
-    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `keys` - Keys in vim notation (e.g., `iHello\<Esc\>`).
     ///
     /// # Returns
     ///
@@ -413,8 +375,9 @@ struct HeadlessEventLoop {
     notification_stream: Streaming<Notification>,
     /// Channel to receive requests.
     request_rx: mpsc::Receiver<HeadlessRequest>,
-    /// Current state.
-    state: HeadlessState,
+    /// Current state (shared with interactive TUI via `TuiCoreState`).
+    /// Now includes multi-client awareness (`other_clients`, presence handling).
+    state: TuiCoreState,
     /// Frame buffer for rendering.
     frame_buffer: FrameBuffer,
     /// Server address.
@@ -694,18 +657,46 @@ impl HeadlessEventLoop {
     }
 
     /// Handle server notification.
+    ///
+    /// Issue #493: Now includes presence handling for multi-client awareness.
+    #[allow(clippy::too_many_lines)]
     async fn handle_notification(&mut self, notif: Notification) {
         if let Some(payload) = notif.payload {
             match payload {
                 Payload::ModeChanged(mode) => {
-                    self.state.mode_name = mode.name;
-                    self.state.mode_display = mode.display;
-                    self.state.is_insert_mode = mode.is_insert;
+                    // Issue #474: Filter by client_id for multi-client mode isolation
+                    let is_local = mode.client_id == self.state.my_client_id;
+                    if is_local {
+                        self.state.mode_name = mode.name;
+                        self.state.mode_display = mode.display;
+                        self.state.is_insert_mode = mode.is_insert;
+                    } else {
+                        // Remote mode update
+                        if let Some(remote) = self.state.other_clients.get_mut(&mode.client_id) {
+                            remote.mode.clone_from(&mode.display);
+                        }
+                    }
                 }
                 Payload::CursorMoved(cursor) => {
+                    // Issue #474: Filter by client_id for multi-client cursor isolation
+                    let is_local = cursor.client_id == self.state.my_client_id;
                     if let Some(pos) = cursor.position {
-                        self.state.cursor_line = pos.line;
-                        self.state.cursor_col = pos.column;
+                        if is_local {
+                            self.state.cursor_line = pos.line;
+                            self.state.cursor_col = pos.column;
+                            // Also update per-window cursor
+                            self.state.window_cursors.insert(
+                                cursor.window_id,
+                                CursorPosition {
+                                    line: pos.line,
+                                    column: pos.column,
+                                },
+                            );
+                        } else {
+                            // Remote cursor update
+                            self.state
+                                .update_remote_cursor(cursor.client_id, pos.line, pos.column);
+                        }
                     }
                 }
                 Payload::BufferModified(buf) => {
@@ -723,10 +714,95 @@ impl HeadlessEventLoop {
                     // Phase #479: focused_window_id is now Option<u64>
                     self.state.focused_window_id = layout.focused_window_id.unwrap_or(0);
                     self.state.windows = layout.windows;
+                    // Clean up stale cursor entries
+                    self.state.cleanup_stale_cursors();
                 }
                 Payload::Detach(detach) => {
                     tracing::info!("Server requested detach: {}", detach.reason);
                     self.running = false;
+                }
+                // Issue #493: Add presence handling for multi-client awareness
+                Payload::PresenceJoined(p) => {
+                    if let Some(client) = p.client
+                        && client.client_id != self.state.my_client_id
+                    {
+                        tracing::info!(
+                            client_id = client.client_id,
+                            display_name = %client.display_name,
+                            buffer_id = ?client.buffer_id,
+                            "PresenceJoined: Adding remote client"
+                        );
+                        self.state.add_remote_client(RemoteClient {
+                            client_id: client.client_id,
+                            display_name: client.display_name,
+                            cursor_line: 0,
+                            cursor_col: 0,
+                            buffer_id: client.buffer_id,
+                            mode: client.mode,
+                            selection: None,
+                        });
+                    }
+                }
+                Payload::PresenceUpdated(p) => {
+                    if let Some(client) = p.client
+                        && client.client_id != self.state.my_client_id
+                    {
+                        // Preserve existing cursor position and selection
+                        let old = self.state.other_clients.get(&client.client_id);
+                        let cursor_line = old.map_or(0, |c| c.cursor_line);
+                        let cursor_col = old.map_or(0, |c| c.cursor_col);
+                        let selection = old.and_then(|c| c.selection.clone());
+
+                        self.state.other_clients.insert(
+                            client.client_id,
+                            RemoteClient {
+                                client_id: client.client_id,
+                                display_name: client.display_name,
+                                cursor_line,
+                                cursor_col,
+                                buffer_id: client.buffer_id,
+                                mode: client.mode,
+                                selection,
+                            },
+                        );
+                    }
+                }
+                Payload::PresenceLeft(p) => {
+                    self.state.remove_remote_client(p.client_id);
+                }
+                Payload::SelectionChanged(sel) => {
+                    // Issue #474: Filter by client_id for multi-client selection isolation
+                    let is_local = sel.client_id == self.state.my_client_id;
+
+                    let selection = if sel.has_selection {
+                        sel.selection.map(|s| {
+                            let start =
+                                s.start
+                                    .map_or_else(CursorPosition::default, |p| CursorPosition {
+                                        line: p.line,
+                                        column: p.column,
+                                    });
+                            let end =
+                                s.end
+                                    .map_or_else(CursorPosition::default, |p| CursorPosition {
+                                        line: p.line,
+                                        column: p.column,
+                                    });
+                            SelectionState {
+                                start,
+                                end,
+                                mode: sel.visual_mode.clone().unwrap_or_default(),
+                            }
+                        })
+                    } else {
+                        None
+                    };
+
+                    if is_local {
+                        self.state.update_local_selection(sel.window_id, selection);
+                    } else {
+                        self.state.update_remote_selection(sel.client_id, selection);
+                    }
                 }
                 Payload::ResizeRequest(resize_req) => {
                     // Handle CLI -> Server -> TUI resize relay
@@ -868,8 +944,86 @@ impl HeadlessEventLoop {
             }
         }
 
+        // Issue #493/#474: Render remote clients' cursors for awareness
+        // Must collect window info first to avoid borrow conflicts
+        let window_info: Vec<_> = self
+            .state
+            .windows
+            .iter()
+            .filter_map(|w| {
+                w.rect.as_ref().map(|rect| {
+                    #[allow(clippy::cast_possible_truncation)]
+                    (
+                        w.buffer_id,
+                        rect.x as u16,
+                        rect.y as u16,
+                        rect.width as u16,
+                        rect.height as u16,
+                    )
+                })
+            })
+            .collect();
+
+        for (buffer_id, x, y, w, h) in window_info {
+            self.render_remote_cursors_in_window(buffer_id, x, y, w, h);
+        }
+
         // Render statusline at bottom
         self.render_statusline();
+    }
+
+    /// Render remote clients' cursors within a window.
+    ///
+    /// Issue #493/#474: Shows each remote client's cursor as a colored marker.
+    /// Each client gets a distinct color from the CBF-8 colorblind-friendly palette.
+    fn render_remote_cursors_in_window(
+        &mut self,
+        buffer_id: Option<u64>,
+        win_x: u16,
+        win_y: u16,
+        win_w: u16,
+        win_h: u16,
+    ) {
+        use reovim_driver_display::Style;
+
+        // Collect remote clients viewing this buffer
+        let remotes: Vec<_> = self
+            .state
+            .other_clients
+            .iter()
+            .filter(|(_, r)| {
+                match (buffer_id, r.buffer_id) {
+                    (Some(local_bid), Some(remote_bid)) => local_bid == remote_bid,
+                    (Some(_), None) => true, // Remote hasn't sent presence update yet
+                    (None, _) => false,
+                }
+            })
+            .map(|(&client_id, remote)| (client_id, remote.cursor_line, remote.cursor_col))
+            .collect();
+
+        for (client_id, cursor_line, cursor_col) in &remotes {
+            // Get deterministic color for this client from CBF-8 palette
+            let fg_color = reovim_arch::palette::color_for_client(*client_id);
+            let bg_color = reovim_arch::palette::dark_color_for_client(*client_id);
+            let cursor_style = Style::default().fg(fg_color).bg(bg_color);
+
+            #[allow(clippy::cast_possible_truncation)]
+            let cursor_row = *cursor_line as u16;
+            #[allow(clippy::cast_possible_truncation)]
+            let cursor_col_u16 = *cursor_col as u16;
+
+            if cursor_row < win_h {
+                let screen_x = win_x + cursor_col_u16;
+                let screen_y = win_y + cursor_row;
+
+                // Only render if within window bounds
+                if screen_x < win_x + win_w && screen_y < win_y + win_h {
+                    // Use a thin vertical bar to indicate remote cursor
+                    self.frame_buffer
+                        .put_char(screen_x, screen_y, '▎', &cursor_style);
+                }
+            }
+        }
     }
 
     /// Render statusline to frame buffer.
@@ -923,8 +1077,9 @@ mod tests {
     }
 
     #[test]
-    fn test_headless_state_default() {
-        let state = HeadlessState::default();
+    fn test_tui_core_state_default() {
+        // HeadlessState replaced with TuiCoreState (shared with interactive TUI)
+        let state = TuiCoreState::default();
         assert!(state.mode_name.is_empty());
         assert!(state.mode_display.is_empty());
         assert!(!state.is_insert_mode);
@@ -932,6 +1087,8 @@ mod tests {
         assert_eq!(state.cursor_col, 0);
         assert_eq!(state.width, 0);
         assert_eq!(state.height, 0);
+        // New: multi-client awareness
+        assert!(state.other_clients.is_empty());
     }
 
     #[test]

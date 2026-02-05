@@ -45,24 +45,10 @@ use {
 };
 
 use crate::{
-    TuiDebugConfig,
+    ClientRole, CursorPosition, LineNumberMode, RemoteClient, SelectionState, TuiDebugConfig,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
     layout_mirror::ServerLayoutMirror,
 };
-
-/// Line number display mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LineNumberMode {
-    /// No line numbers.
-    #[default]
-    None,
-    /// Absolute line numbers (1, 2, 3...).
-    Absolute,
-    /// Relative line numbers (distance from cursor).
-    Relative,
-    /// Hybrid: absolute for cursor line, relative for others.
-    Hybrid,
-}
 
 /// TUI application error.
 #[derive(Debug)]
@@ -100,91 +86,6 @@ impl From<TuiGrpcError> for TuiAppV2Error {
     fn from(e: TuiGrpcError) -> Self {
         Self::Grpc(e)
     }
-}
-
-/// Client role in a multi-client session (Phase 11.2).
-///
-/// Determines how this client's input is routed:
-/// - `Owner`: Has own independent state (cursor, mode, etc.)
-/// - `Follow`: Read-only spectator of another client
-/// - `Share`: Bidirectional editing with another client's state
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-enum ClientRole {
-    /// Owns editing state (default for new clients).
-    #[default]
-    Owner,
-    /// Read-only spectator of target client.
-    /// Constructed via `SetRole` RPC (Phase 9).
-    #[allow(dead_code)]
-    Follow,
-    /// Shares state with owner (pair programming).
-    /// Constructed via `SetRole` RPC (Phase 9).
-    #[allow(dead_code)]
-    Share,
-}
-
-impl ClientRole {
-    /// Returns the display string for the statusline.
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Owner => "Owner",
-            Self::Follow => "Follow",
-            Self::Share => "Share",
-        }
-    }
-}
-
-/// Presence information for a remote client (Phase 11.2).
-///
-/// Tracks other clients' cursor positions for awareness rendering.
-#[derive(Debug, Clone)]
-struct RemoteClient {
-    /// Client's unique ID.
-    /// Reserved for future use (showing client list, identifying for follow/share).
-    #[allow(dead_code)]
-    client_id: u64,
-    /// User-friendly display name (e.g., "TUI@laptop").
-    /// Reserved for future use (showing name label next to cursor).
-    #[allow(dead_code)]
-    display_name: String,
-    /// Cursor line (0-indexed).
-    cursor_line: u64,
-    /// Cursor column (0-indexed).
-    cursor_col: u64,
-    /// Buffer ID the client is viewing (None if no buffer assigned).
-    /// Phase #479: Changed to Option to eliminate ID ambiguity.
-    buffer_id: Option<u64>,
-    /// Current mode name.
-    /// Reserved for future use (showing mode indicator next to cursor).
-    #[allow(dead_code)]
-    mode: String,
-    /// Selection state for visual mode (Phase 14, #471).
-    /// Used to render remote clients' selections.
-    selection: Option<SelectionState>,
-}
-
-/// Cursor position for per-window tracking (Phase 8 #465).
-///
-/// Uses u64 to match protobuf `CursorMovedPayload` types.
-#[derive(Debug, Clone, Copy, Default)]
-struct CursorPosition {
-    /// Line number (0-indexed).
-    line: u64,
-    /// Column number (0-indexed).
-    column: u64,
-}
-
-/// Selection state for per-window tracking (Phase 8 #465).
-///
-/// Tracks the visual selection range for highlighting in the TUI.
-#[derive(Debug, Clone, Default)]
-struct SelectionState {
-    /// Start position of selection.
-    start: CursorPosition,
-    /// End position of selection (exclusive).
-    end: CursorPosition,
-    /// Visual mode type (char, line, block).
-    mode: String,
 }
 
 /// TUI state tracked locally from server notifications.

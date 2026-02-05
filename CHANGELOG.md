@@ -92,6 +92,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `clients/tui/src/app_v2.rs`, `clients/tui/lib/drivers/tui/src/screen.rs`,
   `clients/web/src/editor.ts`.
 
+### Refactoring
+
+- **Unified TUI client architecture (#493)**: Extracted shared code between interactive
+  and headless TUI clients so only TTY attachment differs. New modules: `core_state.rs`
+  (shared state types: `TuiCoreState`, `CursorPosition`, `SelectionState`, `RemoteClient`,
+  `ClientRole`, `LineNumberMode`), `core_helpers.rs` (layout helpers: `collect_windows`,
+  `apply_layout`, `apply_layout_notification`, `create_default_window`, `fetch_buffer_contents`,
+  `refetch_buffer`), `notification_handler.rs` (`NotificationContext` trait for unified
+  notification processing). Headless TUI now uses `TuiCoreState` and has full multi-client
+  awareness: handles `PresenceJoined`, `PresenceUpdated`, `PresenceLeft` notifications,
+  filters `ModeChanged`/`CursorMoved`/`SelectionChanged` by client_id, renders remote
+  cursors with CBF-8 colors. This enables #474 remote cursor rendering in headless mode.
+  Fixed pre-existing rustdoc errors in TUI client (broken service links, unclosed HTML
+  tags). ~400 LOC in new shared modules, ~200 LOC added to headless for presence handling.
+
 ### Changed
 
 - **Session struct refactoring with BootstrapState pattern (#488)**: Simplified driver-level

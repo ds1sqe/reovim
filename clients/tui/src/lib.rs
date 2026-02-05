@@ -79,11 +79,14 @@ impl TuiDebugConfig {
 pub mod adapter;
 pub mod cli_panel;
 pub mod cli_render;
+pub mod core_helpers;
+pub mod core_state;
 pub mod input;
 pub mod layout_mirror;
 pub mod log_buffer;
 pub mod log_panel;
 pub mod log_render;
+pub mod notification_handler;
 pub mod render;
 pub mod render_core;
 
@@ -101,6 +104,9 @@ pub mod app_v2_headless;
 
 pub use {
     cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
+    core_state::{
+        ClientRole, CursorPosition, LineNumberMode, RemoteClient, SelectionState, TuiCoreState,
+    },
     input::InputHandler,
     log_buffer::{LevelColor, TuiLogBuffer, TuiLogEntry},
     log_panel::LogPanelState,

@@ -6,13 +6,13 @@
 //! # Services
 //!
 //! This client wraps all gRPC v2 services:
-//! - [`InputService`] - Send keys to the editor
-//! - [`StateService`] - Query mode, cursor, layout, options
-//! - [`BufferService`] - Buffer content and file operations
-//! - [`ServerService`] - Server management (ping, info, kill)
-//! - [`EditorService`] - Editor operations (resize, quit, active buffer)
-//! - [`ModuleService`] - Module listing
-//! - [`NotificationService`] - Server-to-client streaming
+//! - `InputService` - Send keys to the editor
+//! - `StateService` - Query mode, cursor, layout, options
+//! - `BufferService` - Buffer content and file operations
+//! - `ServerService` - Server management (ping, info, kill)
+//! - `EditorService` - Editor operations (resize, quit, active buffer)
+//! - `ModuleService` - Module listing
+//! - `NotificationService` - Server-to-client streaming
 
 use {
     reovim_protocol::v2::{
@@ -179,7 +179,7 @@ impl TuiGrpcClient {
     ///
     /// # Arguments
     ///
-    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `keys` - Keys in vim notation (e.g., `iHello\<Esc\>`).
     ///
     /// # Errors
     ///
@@ -842,7 +842,7 @@ impl TuiGrpcClient {
     ///
     /// # Arguments
     ///
-    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `keys` - Keys in vim notation (e.g., `iHello\<Esc\>`).
     /// * `client_id` - The client ID from `presence_join()`.
     ///
     /// # Errors
