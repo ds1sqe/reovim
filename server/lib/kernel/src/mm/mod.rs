@@ -31,12 +31,12 @@
 //! assert_eq!(buf.line_count(), 2);
 //! assert_eq!(buf.line(0), Some("Hello"));
 //!
-//! // Edit the buffer
-//! buf.set_position(Position::new(0, 5));
-//! let edit = buf.insert("!");
+//! // Edit the buffer at explicit position (cursor is per-window, not per-buffer)
+//! buf.insert_at(Position::new(0, 5), "!");
 //! assert_eq!(buf.line(0), Some("Hello!"));
 //!
-//! // Edits are self-contained for undo
+//! // Create edit for undo tracking (edits are self-contained)
+//! let edit = Edit::insert(Position::new(0, 5), "!");
 //! assert!(edit.is_insert());
 //! assert_eq!(edit.text(), "!");
 //!

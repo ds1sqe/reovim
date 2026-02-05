@@ -19,7 +19,7 @@
 //! }
 //! ```
 
-use reovim_kernel::api::v1::{BufferId, WindowId};
+use reovim_kernel::api::v1::{BufferId, Position, WindowId};
 
 /// Window management and focus operations.
 ///
@@ -28,6 +28,12 @@ use reovim_kernel::api::v1::{BufferId, WindowId};
 pub trait WindowApi: Send {
     /// Get the active window ID.
     fn active_window(&self) -> Option<WindowId>;
+
+    /// Get cursor position from the active window.
+    ///
+    /// Returns `None` if no active window exists.
+    /// Note: This returns cursor for the current client's active window.
+    fn cursor_position(&self) -> Option<Position>;
 
     /// Get the window count.
     fn window_count(&self) -> usize;

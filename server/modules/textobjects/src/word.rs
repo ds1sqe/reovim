@@ -17,7 +17,7 @@ use {
     },
     reovim_driver_session::{
         OperatorPendingState, SessionRuntime, TextObjRange,
-        api::{BufferApi, ExtensionApi, ModeApi, Selection, SelectionMode},
+        api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine, WordBoundary},
 };
@@ -58,9 +58,14 @@ fn execute_word_textobj(
 
     let count = args.count().unwrap_or(1);
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let pos = Position::new(window.cursor.line, window.cursor.column);
+
     // Calculate text object range using with_buffer_read callback
     let range_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let pos = buffer.position();
         TextObjectEngine::range(buffer, pos, text_object, count)
     });
 
@@ -80,9 +85,11 @@ fn execute_word_textobj(
     if is_visual_mode(runtime) {
         // Visual mode: update the selection to cover the text object
         let sel_mode = visual_selection_mode(runtime);
-        runtime.set_selection(buffer_id, Some(Selection::new(start, end_exclusive, sel_mode)));
-        // Move cursor to end of selection
-        runtime.set_buffer_position(buffer_id, end);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(Selection::new(start, end_exclusive, sel_mode));
+            // Move cursor to end of selection
+            window.cursor = end.into();
+        }
     } else {
         // Operator-pending mode: store range for operator consumption (Epic #465)
         // The operator resolver's on_command_complete will take() this range
@@ -254,9 +261,11 @@ mod tests {
         super::*,
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{ClientId, Session, Window, api::CommandExecutor},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, Window, WindowLayout, api::CommandExecutor,
+        },
         reovim_kernel::api::{
-            ServiceRegistry,
+            ModeStack, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
                 MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
@@ -353,6 +362,90 @@ mod tests {
     }
 
     // =========================================================================
+    // Test Infrastructure (#471)
+    // =========================================================================
+
+    /// Test state holder for per-client state (#471 borrow checker fix).
+    ///
+    /// Holds per-client state as separate fields to avoid the double mutable
+    /// borrow issue when calling `SessionRuntime::new()`.
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        /// Create test state with a window containing the given buffer.
+        fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            windows.add(Window::with_buffer(buffer_id));
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create test state with a custom window (for cursor positioning).
+        fn with_custom_window(window: Window, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create test state with an empty window (for error tests).
+        fn empty(mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            windows.add(Window::new());
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create a runtime from this test state.
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a dyn CommandExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
     // Command ID Tests
     // =========================================================================
 
@@ -402,9 +495,9 @@ mod tests {
     #[test]
     fn test_inner_word_no_buffer_returns_error() {
         let kernel = KernelContext::default();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::empty(test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
         let args = CommandContext::new();
         let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_error());
@@ -413,9 +506,9 @@ mod tests {
     #[test]
     fn test_inner_word_invalid_buffer_returns_error() {
         let kernel = KernelContext::default();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::empty(test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
         args.set("buffer_id", ArgValue::BufferId(999));
         let result = InnerWord.execute(&mut runtime, &args);
@@ -430,9 +523,9 @@ mod tests {
     fn test_inner_word_basic() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world foo");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -449,15 +542,14 @@ mod tests {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
 
-        // Position cursor at 'l' in "hello"
-        {
-            let buffer = kernel.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 2));
-        }
+        // Phase #471: Cursor lives in Window, not Buffer
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 2).into(); // Position cursor at 'l' in "hello"
 
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_custom_window(window, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -474,9 +566,9 @@ mod tests {
     fn test_a_word_includes_trailing_whitespace() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -493,9 +585,9 @@ mod tests {
     fn test_inner_word_big_skips_punctuation() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello-world foo");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -508,9 +600,9 @@ mod tests {
     fn test_inner_word_small_stops_at_punctuation() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello-world foo");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -527,9 +619,9 @@ mod tests {
     fn test_empty_buffer() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -543,9 +635,9 @@ mod tests {
     fn test_whitespace_only() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "   ");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -572,9 +664,9 @@ mod tests {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
         // Use operator-pending mode (delete mode)
-        let mut session = Session::new(ClientId::new(1), operator_pending_mode());
+        let mut state = TestState::with_window(buffer_id, operator_pending_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -583,10 +675,10 @@ mod tests {
         assert!(result.is_success());
 
         // In operator-pending mode, range should be stored in OperatorPendingState
-        let state = runtime.ext::<OperatorPendingState>();
-        assert!(state.is_some(), "OperatorPendingState should exist");
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some(), "OperatorPendingState should exist");
         assert!(
-            state.unwrap().has_textobj_range(),
+            ext_state.unwrap().has_textobj_range(),
             "Text object range should be stored in operator-pending mode"
         );
     }
@@ -595,15 +687,12 @@ mod tests {
     fn test_inner_word_in_visual_mode_sets_selection() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        // Use visual mode
-        let mut session = Session::new(ClientId::new(1), visual_mode());
-        // Phase 8 #465: Selection lives in Window, so we need to create one
+        // Use visual mode with custom window
         let mut window = Window::new();
         window.buffer_id = Some(buffer_id);
-        session.windows.add(window);
-
+        let mut state = TestState::with_custom_window(window, visual_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -611,8 +700,8 @@ mod tests {
         let result = InnerWord.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // In visual mode, selection should be set directly
-        let selection = runtime.selection(buffer_id);
+        // Phase #471: Selection lives in Window, access via windows()
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
         assert!(selection.is_some(), "Selection should be set in visual mode");
 
         // Verify selection covers the word "hello" (indices 0-4)
@@ -626,14 +715,12 @@ mod tests {
     fn test_around_word_in_visual_mode_sets_selection() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(ClientId::new(1), visual_mode());
-        // Phase 8 #465: Selection lives in Window, so we need to create one
+        // Use visual mode with custom window
         let mut window = Window::new();
         window.buffer_id = Some(buffer_id);
-        session.windows.add(window);
-
+        let mut state = TestState::with_custom_window(window, visual_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -641,8 +728,8 @@ mod tests {
         let result = AWord.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // In visual mode, selection should be set directly
-        let selection = runtime.selection(buffer_id);
+        // Phase #471: Selection lives in Window, access via windows()
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
         assert!(selection.is_some(), "Selection should be set in visual mode for around-word");
 
         // Around word includes trailing whitespace ("hello ")
@@ -656,9 +743,9 @@ mod tests {
     fn test_visual_mode_does_not_store_operator_range() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(ClientId::new(1), visual_mode());
+        let mut state = TestState::with_window(buffer_id, visual_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -667,10 +754,10 @@ mod tests {
         assert!(result.is_success());
 
         // In visual mode, OperatorPendingState should NOT have range
-        let state = runtime.ext::<OperatorPendingState>();
-        if let Some(state) = state {
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        if let Some(ext_state) = ext_state {
             assert!(
-                !state.has_textobj_range(),
+                !ext_state.has_textobj_range(),
                 "Visual mode should not store range in OperatorPendingState"
             );
         }

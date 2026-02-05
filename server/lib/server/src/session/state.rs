@@ -293,34 +293,6 @@ impl SessionState {
         self.keymap_registry.lookup(mode, keys)
     }
 
-    /// Execute a command by ID (uses SHARED session state).
-    ///
-    /// Returns `None` if the command isn't registered.
-    ///
-    /// Flushes any pending edits before execution to ensure undo batching
-    /// works correctly (commands break insert mode batches).
-    ///
-    /// Returns `(CommandResult, StateChanges)` - the result and any state
-    /// changes from execution (selection, buffer modifications, etc.).
-    ///
-    /// # Deprecation Note (#471)
-    ///
-    /// This method uses SHARED session state. For multi-client scenarios,
-    /// use [`Self::execute_command_for_client`] instead which operates on
-    /// per-client mode and cursor state.
-    #[must_use]
-    pub fn execute_command(
-        &mut self,
-        id: &CommandId,
-        args: &CommandContext,
-    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
-        // Flush pending edits before command execution
-        self.app.flush_pending_edits();
-        // Use driver_session as SSOT for mode_stack and active_buffer
-        self.command_registry
-            .execute(id, &mut self.driver_session, &mut self.app, &self.vfs, args)
-    }
-
     /// Execute a command with per-client state (#471, #477).
     ///
     /// This enables multi-client isolation by operating on per-client
@@ -479,9 +451,22 @@ impl SessionState {
         let mut mode_state = ModeState::new(mode.clone());
 
         // Create SessionRuntime for resolver access to session state
+        // #471 Phase 0: Create temporary per-client state for backward compatibility.
+        // This is DEPRECATED - use resolve_key_for_client() with proper per-client state.
         let stub_executor = StubExecutor;
-        let mut runtime =
-            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let home_mode = self.driver_session.mode_stack.current().clone();
+        let mut temp_mode_stack = ModeStack::new(home_mode);
+        let mut temp_windows = reovim_driver_session::WindowLayout::empty();
+        let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut self.driver_session,
+            &mut temp_mode_stack,
+            &mut temp_windows,
+            &mut temp_extensions,
+            &self.app.kernel,
+            &stub_executor,
+        );
 
         // Call resolver
         let result = self.resolver_registry.resolve_with_session(
@@ -561,7 +546,7 @@ impl SessionState {
 
         // Create SessionRuntime with per-client state (#471, #477)
         let stub_executor = StubExecutor;
-        let mut runtime = SessionRuntime::new_for_client(
+        let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
@@ -617,9 +602,23 @@ impl SessionState {
 
         let mode = self.driver_session.current_mode().clone();
         let resolver = self.resolver_registry.get(&mode)?;
+
+        // #471 Phase 0: Create temporary per-client state for backward compatibility.
+        // This is DEPRECATED - use try_on_command_complete_for_client() with proper per-client state.
         let stub_executor = StubExecutor;
-        let mut runtime =
-            SessionRuntime::new(&mut self.driver_session, &self.app.kernel, &stub_executor);
+        let home_mode = self.driver_session.mode_stack.current().clone();
+        let mut temp_mode_stack = ModeStack::new(home_mode);
+        let mut temp_windows = reovim_driver_session::WindowLayout::empty();
+        let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut self.driver_session,
+            &mut temp_mode_stack,
+            &mut temp_windows,
+            &mut temp_extensions,
+            &self.app.kernel,
+            &stub_executor,
+        );
 
         resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
     }
@@ -662,7 +661,7 @@ impl SessionState {
         let mode = client_mode_stack.current().clone();
         let resolver = self.resolver_registry.get(&mode)?;
         let stub_executor = StubExecutor;
-        let mut runtime = SessionRuntime::new_for_client(
+        let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             client_mode_stack,
             client_windows,

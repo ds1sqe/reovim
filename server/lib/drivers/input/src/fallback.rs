@@ -87,6 +87,16 @@ pub trait FallbackContext: Send {
     /// Get the active buffer ID, if any.
     fn active_buffer(&self) -> Option<BufferId>;
 
+    /// Get the current cursor position for the active window.
+    ///
+    /// Returns `None` if no active window or buffer.
+    fn cursor_position(&self) -> Option<Position>;
+
+    /// Set the cursor position for the active window.
+    ///
+    /// No-op if no active window.
+    fn set_cursor_position(&mut self, pos: Position);
+
     /// Get a buffer by ID for reading/writing.
     ///
     /// Returns `None` if the buffer doesn't exist.
@@ -251,6 +261,14 @@ mod tests {
             self.active_buffer
         }
 
+        fn cursor_position(&self) -> Option<Position> {
+            Some(Position::origin())
+        }
+
+        fn set_cursor_position(&mut self, _pos: Position) {
+            // No-op in mock
+        }
+
         fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             None
         }
@@ -336,6 +354,10 @@ mod tests {
             fn active_buffer(&self) -> Option<BufferId> {
                 None
             }
+            fn cursor_position(&self) -> Option<Position> {
+                None
+            }
+            fn set_cursor_position(&mut self, _pos: Position) {}
             fn get_buffer(&self, _id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
                 None
             }

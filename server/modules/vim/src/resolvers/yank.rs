@@ -215,19 +215,20 @@ impl ModeKeyResolver for VimYankResolver {
             // For linewise yank, range is [start_line..=end_line] (inclusive)
             // So yy on line 0 with count=1: start=0, end=0 (yank 1 line)
             // And 2yy on line 0: start=0, end=1 (yank 2 lines)
-            let (start, end) = if let Some(buffer_id) = session.active_buffer()
-                && let Some(cursor_pos) = session.buffer_position(buffer_id)
-            {
-                let start = Position::new(cursor_pos.line, 0);
-                let total_count = count.unwrap_or(1) * motion_count;
-                // end_line is inclusive, so subtract 1 from count
-                let end_line = cursor_pos.line + total_count - 1;
-                let end = Position::new(end_line, 0);
-                (start, end)
-            } else {
-                // Fallback: yank line 0
-                (Position::new(0, 0), Position::new(0, 0))
-            };
+            let (start, end) = session.cursor_position().map_or_else(
+                || {
+                    // Fallback: yank line 0
+                    (Position::new(0, 0), Position::new(0, 0))
+                },
+                |cursor_pos| {
+                    let start = Position::new(cursor_pos.line, 0);
+                    let total_count = count.unwrap_or(1) * motion_count;
+                    // end_line is inclusive, so subtract 1 from count
+                    let end_line = cursor_pos.line + total_count - 1;
+                    let end = Position::new(end_line, 0);
+                    (start, end)
+                },
+            );
 
             return ResolveResult::ModeTransition(ModeTransition::Pop {
                 result: Some(build_operator_execute(
@@ -272,9 +273,7 @@ impl ModeKeyResolver for VimYankResolver {
                 let _motion_count = state.take_motion_count();
                 state.clear_keys();
 
-                if let Some(buffer) = session.active_buffer()
-                    && let Some(start_pos) = session.buffer_position(buffer)
-                {
+                if let Some(start_pos) = session.cursor_position() {
                     state.set_start_position(start_pos);
                 }
 
@@ -358,8 +357,7 @@ impl ModeKeyResolver for VimYankResolver {
         let start_pos = state.start_position?;
         drop(state);
 
-        let buffer_id = session.active_buffer()?;
-        let end_pos = session.buffer_position(buffer_id)?;
+        let end_pos = session.cursor_position()?;
 
         // Normalize range and adjust for motion type
         let (range_start, range_end) = {

@@ -62,9 +62,11 @@ impl CommandHandler for CursorDisplayDown {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
             return CommandResult::error("Buffer not found");
@@ -132,7 +134,10 @@ impl CommandHandler for CursorDisplayDown {
                     let line_len = line.chars().count();
                     let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
                     let target_pos = Position::new(new_line, clamped_col);
-                    runtime.set_buffer_position(buffer_id, target_pos);
+                    // Update cursor via per-client Window (#471)
+                    if let Some(window) = runtime.windows_mut().active_mut() {
+                        window.cursor = target_pos.into();
+                    }
 
                     runtime.record_cursor_move(buffer_id);
 
@@ -161,7 +166,10 @@ impl CommandHandler for CursorDisplayDown {
             Position::new(last_line, clamped_col)
         };
 
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Update cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+        }
 
         runtime.record_cursor_move(buffer_id);
 
@@ -202,9 +210,11 @@ impl CommandHandler for CursorDisplayUp {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Terminal width: use 80 as default
         // Note: In the future, this could be retrieved from session state
@@ -263,7 +273,10 @@ impl CommandHandler for CursorDisplayUp {
                     let line_len = line.chars().count();
                     let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
                     let target_pos = Position::new(new_line, clamped_col);
-                    runtime.set_buffer_position(buffer_id, target_pos);
+                    // Update cursor via per-client Window (#471)
+                    if let Some(window) = runtime.windows_mut().active_mut() {
+                        window.cursor = target_pos.into();
+                    }
 
                     runtime.record_cursor_move(buffer_id);
 
@@ -284,7 +297,10 @@ impl CommandHandler for CursorDisplayUp {
             Position::new(0, clamped_col)
         };
 
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Update cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+        }
 
         runtime.record_cursor_move(buffer_id);
 

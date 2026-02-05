@@ -128,6 +128,18 @@ impl FallbackContext for AppState {
         );
     }
 
+    fn cursor_position(&self) -> Option<Position> {
+        panic!(
+            "AppState::cursor_position() should not be called - use client-specific window state instead"
+        );
+    }
+
+    fn set_cursor_position(&mut self, _pos: Position) {
+        panic!(
+            "AppState::set_cursor_position() should not be called - use client-specific window state instead"
+        );
+    }
+
     fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
         self.kernel.buffers.get(id)
     }

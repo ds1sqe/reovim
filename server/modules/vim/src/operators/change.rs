@@ -45,8 +45,8 @@ impl Operator for ChangeOperator {
 
         let mut buffer = buffer_arc.write();
 
-        // Capture cursor before changes for undo
-        let cursor_before = buffer.position();
+        // Use cursor position from context (passed from caller who has window access)
+        let cursor_before = ctx.cursor_position;
 
         // Get text before deleting
         let start = range.start;
@@ -137,8 +137,8 @@ impl Operator for ChangeOperator {
             buffer.delete_range(start, end);
         }
 
-        // Capture cursor after changes
-        let cursor_after = buffer.position();
+        // Cursor after change is at delete_pos (where insertion will happen)
+        let cursor_after = delete_pos;
 
         drop(buffer);
 
@@ -184,8 +184,10 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModuleId},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModeStack, ModuleId},
     };
 
     #[allow(dead_code)]
@@ -206,9 +208,19 @@ mod tests {
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            ctx,
+            &executor,
+        );
         cmd.execute(&mut runtime, args)
     }
 

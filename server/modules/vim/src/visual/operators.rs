@@ -82,8 +82,8 @@ impl CommandHandler for DeleteSelection {
             return CommandResult::error("No active buffer");
         };
 
-        // Get selection using API
-        let Some(selection) = runtime.selection(buffer_id) else {
+        // Get selection from active window
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
             return CommandResult::Success; // No selection - no-op
         };
 
@@ -110,8 +110,10 @@ impl CommandHandler for DeleteSelection {
         runtime.delete_range(buffer_id, start, end);
 
         // Clear selection and set cursor
-        runtime.set_selection(buffer_id, None);
-        runtime.set_buffer_position(buffer_id, cursor_pos);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = None;
+            window.cursor = cursor_pos.into();
+        }
 
         // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
@@ -143,8 +145,8 @@ impl CommandHandler for YankSelection {
             return CommandResult::error("No active buffer");
         };
 
-        // Get selection using API
-        let Some(selection) = runtime.selection(buffer_id) else {
+        // Get selection from active window
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
             return CommandResult::Success; // No selection - no-op
         };
 
@@ -167,7 +169,9 @@ impl CommandHandler for YankSelection {
         }
 
         // Clear selection (yank doesn't delete text or move cursor)
-        runtime.set_selection(buffer_id, None);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = None;
+        }
 
         // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
@@ -198,8 +202,8 @@ impl CommandHandler for ChangeSelection {
             return CommandResult::error("No active buffer");
         };
 
-        // Get selection using API
-        let Some(selection) = runtime.selection(buffer_id) else {
+        // Get selection from active window
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
             return CommandResult::Success; // No selection - no-op
         };
 
@@ -226,8 +230,10 @@ impl CommandHandler for ChangeSelection {
         runtime.delete_range(buffer_id, start, end);
 
         // Clear selection and set cursor
-        runtime.set_selection(buffer_id, None);
-        runtime.set_buffer_position(buffer_id, cursor_pos);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = None;
+            window.cursor = cursor_pos.into();
+        }
 
         // Mode transition to Insert (change = delete + insert mode)
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
@@ -259,8 +265,8 @@ impl CommandHandler for IndentSelection {
             return CommandResult::error("No active buffer");
         };
 
-        // Get selection to determine line range
-        let Some(selection) = runtime.selection(buffer_id) else {
+        // Get selection from active window
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
             return CommandResult::Success; // No selection - no-op
         };
 
@@ -277,7 +283,9 @@ impl CommandHandler for IndentSelection {
         }
 
         // Clear selection
-        runtime.set_selection(buffer_id, None);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = None;
+        }
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
@@ -308,8 +316,8 @@ impl CommandHandler for DedentSelection {
             return CommandResult::error("No active buffer");
         };
 
-        // Get selection to determine line range
-        let Some(selection) = runtime.selection(buffer_id) else {
+        // Get selection from active window
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
             return CommandResult::Success; // No selection - no-op
         };
 
@@ -341,7 +349,9 @@ impl CommandHandler for DedentSelection {
         }
 
         // Clear selection
-        runtime.set_selection(buffer_id, None);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = None;
+        }
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 

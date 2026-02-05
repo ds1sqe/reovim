@@ -32,9 +32,14 @@ fn execute_paragraph_textobj(
 
     let count = args.count().unwrap_or(1);
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let pos = Position::new(window.cursor.line, window.cursor.column);
+
     // Calculate text object range using with_buffer_read callback
     let range_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let pos = buffer.position();
         TextObjectEngine::range(buffer, pos, text_object, count)
     });
 

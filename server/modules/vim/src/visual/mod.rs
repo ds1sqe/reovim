@@ -100,82 +100,130 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{Command, CommandContext, CommandResult},
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{
-            Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-            MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
-            RwLock, ServiceRegistry, TextObjectEngine,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
+                RwLock, ServiceRegistry, TextObjectEngine,
+            },
         },
         std::{collections::HashMap, sync::Arc},
     };
 
     use crate::modes::VIM_MODULE;
 
+    /// Stub command executor for tests.
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    /// Test state holder for per-client state (#471 borrow checker fix).
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        /// Create test state with a window containing the given buffer.
+        fn with_buffer(buffer_id: Option<BufferId>) -> Self {
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            // Phase 8 (#465): Selection lives in Window, so create one for the buffer
+            let mut window = reovim_driver_session::Window::new();
+            if let Some(buffer_id) = buffer_id {
+                window.buffer_id = Some(buffer_id);
+            }
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create test state with a window containing buffer AND pre-existing selection.
+        fn with_selection(
+            buffer_id: BufferId,
+            selection: reovim_driver_session::api::Selection,
+        ) -> Self {
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            // Phase 8 (#465): Set up window with selection
+            let mut window = reovim_driver_session::Window::new();
+            window.buffer_id = Some(buffer_id);
+            window.selection = Some(selection);
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create a runtime from this test state.
+        fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                &StubExecutor,
+            )
+        }
+    }
+
     fn run_command<C: CommandHandler>(
         cmd: &C,
         ctx: &KernelContext,
         args: &CommandContext,
     ) -> CommandResult {
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
-            }
-        }
-        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
-
-        // Phase 8 (#465): Selection lives in Window, so create one for the buffer
-        if let Some(buffer_id) = args.buffer_id() {
-            let mut window = reovim_driver_session::Window::new();
-            window.buffer_id = Some(buffer_id);
-            session.windows.add(window);
-        }
-
-        let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        let mut state = TestState::with_buffer(args.buffer_id());
+        let mut runtime = state.runtime(ctx);
         cmd.execute(&mut runtime, args)
     }
 
-    /// Run a command and return both result and session for selection inspection.
+    /// Run a command and return both result and windows for selection inspection.
     ///
     /// Phase 8 (#465): Selection now lives in Window, not Buffer.
-    /// This helper returns the session so tests can check window.selection.
+    /// This helper returns the windows so tests can check window.selection.
     fn run_command_with_session<C: CommandHandler>(
         cmd: &C,
         ctx: &KernelContext,
         args: &CommandContext,
-    ) -> (CommandResult, Session) {
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
-            }
-        }
-        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
-
-        // Phase 8 (#465): Selection lives in Window, so create one for the buffer
-        if let Some(buffer_id) = args.buffer_id() {
-            let mut window = reovim_driver_session::Window::new();
-            window.buffer_id = Some(buffer_id);
-            session.windows.add(window);
-        }
-
-        let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+    ) -> (CommandResult, WindowLayout) {
+        let mut state = TestState::with_buffer(args.buffer_id());
+        let mut runtime = state.runtime(ctx);
         let result = cmd.execute(&mut runtime, args);
-        (result, session)
+        drop(runtime);
+        (result, state.windows)
     }
 
     /// Run a command with a pre-existing selection on the window.
@@ -187,33 +235,15 @@ mod tests {
         ctx: &KernelContext,
         args: &CommandContext,
         selection: reovim_driver_session::api::Selection,
-    ) -> (CommandResult, Session) {
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
-            }
-        }
-        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
-
-        // Phase 8 (#465): Set up window with selection
-        if let Some(buffer_id) = args.buffer_id() {
-            let mut window = reovim_driver_session::Window::new();
-            window.buffer_id = Some(buffer_id);
-            window.selection = Some(selection);
-            session.windows.add(window);
-        }
-
-        let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+    ) -> (CommandResult, WindowLayout) {
+        let buffer_id = args
+            .buffer_id()
+            .expect("buffer_id required for selection test");
+        let mut state = TestState::with_selection(buffer_id, selection);
+        let mut runtime = state.runtime(ctx);
         let result = cmd.execute(&mut runtime, args);
-        (result, session)
+        drop(runtime);
+        (result, state.windows)
     }
 
     /// Test buffer manager that actually stores buffers.
@@ -328,11 +358,11 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let (result, session) = run_command_with_session(&EnterVisualMode, &ctx, &args);
+        let (result, windows) = run_command_with_session(&EnterVisualMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Phase 8 (#465): Selection lives in Window, not Buffer
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Character);
     }
@@ -348,11 +378,11 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let (result, session) = run_command_with_session(&EnterVisualLineMode, &ctx, &args);
+        let (result, windows) = run_command_with_session(&EnterVisualLineMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Phase 8 (#465): Selection lives in Window, not Buffer
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Line);
     }
@@ -368,22 +398,26 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
 
-        let (result, session) = run_command_with_session(&EnterVisualBlockMode, &ctx, &args);
+        let (result, windows) = run_command_with_session(&EnterVisualBlockMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Phase 8 (#465): Selection lives in Window, not Buffer
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Block);
     }
 
     #[test]
-    fn test_enter_visual_no_buffer_returns_error() {
+    fn test_enter_visual_no_buffer_succeeds_with_window() {
+        // Phase 8 (#471): EnterVisualMode now operates on the active window,
+        // not the buffer_id in args. As long as there's an active window,
+        // the command succeeds. The test helper always creates a window,
+        // so this now returns Success.
         let ctx = create_test_context();
         let args = CommandContext::new();
 
         let result = run_command(&EnterVisualMode, &ctx, &args);
-        assert!(matches!(result, CommandResult::Error(_)));
+        assert_eq!(result, CommandResult::Success);
     }
 
     // =========================================================================
@@ -400,19 +434,19 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // First enter visual mode
-        let (_, session) = run_command_with_session(&EnterVisualMode, &ctx, &args);
+        let (_, windows) = run_command_with_session(&EnterVisualMode, &ctx, &args);
 
         // Phase 8 (#465): Selection lives in Window
-        assert!(session.windows.active().unwrap().selection.is_some());
+        assert!(windows.active().unwrap().selection.is_some());
 
-        // Exit visual mode - need a new session since run_command_with_session consumes it
-        let (result, session) = run_command_with_session(&ExitVisualMode, &ctx, &args);
+        // Exit visual mode - need a new state since run_command_with_session consumes it
+        let (result, windows) = run_command_with_session(&ExitVisualMode, &ctx, &args);
         assert_eq!(result, CommandResult::Success);
 
         // Phase 8 (#465): Selection should be cleared
-        // Note: Since run_command_with_session creates a fresh session each time,
+        // Note: Since run_command_with_session creates a fresh state each time,
         // the selection will be None. The command itself clears selection properly.
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]
@@ -449,10 +483,10 @@ mod tests {
         args.set_buffer_id(buffer_id);
 
         // Enter visual mode - this sets up selection with start at cursor position
-        let (_, session) = run_command_with_session(&EnterVisualMode, &ctx, &args);
+        let (_, windows) = run_command_with_session(&EnterVisualMode, &ctx, &args);
 
         // Verify selection is active
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         let sel = window.selection.as_ref().unwrap();
         // Initial selection: start and end at cursor position (0, 0)
@@ -491,12 +525,12 @@ mod tests {
         // Phase 8 (#465): Set up character selection on window, then toggle.
         // Toggle on char selection should exit (clear selection).
         let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
         // Toggle char mode when already in char should exit (clear selection)
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]
@@ -513,12 +547,12 @@ mod tests {
         // Phase 8 (#465): Set up LINE selection, then toggle to char.
         // Toggle char on line selection should switch to character mode.
         let selection = Selection::line(Position::new(0, 0), Position::new(1, 0));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
         // Toggle char mode when in line mode should switch to char
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Character);
     }
@@ -537,12 +571,12 @@ mod tests {
         // Phase 8 (#465): Set up LINE selection, then toggle.
         // Toggle line on line selection should exit (clear selection).
         let selection = Selection::line(Position::new(0, 0), Position::new(1, 0));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
         // Toggle line mode when already in line should exit (clear selection)
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]
@@ -559,12 +593,12 @@ mod tests {
         // Phase 8 (#465): Set up CHARACTER selection, then toggle to block.
         // Toggle block on char selection should switch to block mode.
         let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
         // Toggle block mode when in char mode should switch to block
-        let window = session.windows.active().unwrap();
+        let window = windows.active().unwrap();
         assert!(window.selection.is_some());
         assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Block);
     }
@@ -728,7 +762,7 @@ mod tests {
         // Phase 8 (#465): Selection lives in Window.
         // Set up selection for "hello" (0,0 to 0,5 exclusive = "hello")
         let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&DeleteSelection, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
@@ -738,7 +772,7 @@ mod tests {
         assert_eq!(buffer.lines()[0], " world");
 
         // Selection should be cleared after delete
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]
@@ -811,7 +845,7 @@ mod tests {
         // Phase 8 (#465): Selection lives in Window.
         // Character-wise selection for "hello" (0,0 to 0,5 exclusive)
         let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-        let (result, session) = run_command_with_selection(&YankSelection, &ctx, &args, selection);
+        let (result, windows) = run_command_with_selection(&YankSelection, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
         // Buffer content should remain unchanged (yank doesn't delete)
@@ -820,7 +854,7 @@ mod tests {
         assert_eq!(buffer.lines()[0], "hello world");
 
         // Selection should be cleared after yank
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]
@@ -837,7 +871,7 @@ mod tests {
         // Phase 8 (#465): Selection lives in Window.
         // Character-wise selection for "hello" (0,0 to 0,5 exclusive)
         let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-        let (result, session) =
+        let (result, windows) =
             run_command_with_selection(&ChangeSelection, &ctx, &args, selection);
         assert_eq!(result, CommandResult::Success);
 
@@ -847,7 +881,7 @@ mod tests {
         assert_eq!(buffer.lines()[0], " world");
 
         // Selection should be cleared after change
-        assert!(session.windows.active().unwrap().selection.is_none());
+        assert!(windows.active().unwrap().selection.is_none());
     }
 
     #[test]

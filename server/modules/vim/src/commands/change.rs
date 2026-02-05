@@ -19,6 +19,19 @@ use {
     reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
+/// Helper to get cursor position from the active window.
+fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
+    let window = runtime.windows().active()?;
+    Some(Position::new(window.cursor.line, window.cursor.column))
+}
+
+/// Helper to set cursor position on the active window.
+fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = pos.into();
+    }
+}
+
 use crate::{ids, modes::VimMode};
 
 /// Change current line (cc).
@@ -53,7 +66,7 @@ impl CommandHandler for ChangeLine {
         };
 
         let count = args.count().unwrap_or(1);
-        let start_line = runtime.buffer_position(buffer_id).map_or(0, |p| p.line);
+        let start_line = get_cursor_position(runtime).map_or(0, |p| p.line);
         let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
 
         if line_count == 0 {
@@ -97,7 +110,7 @@ impl CommandHandler for ChangeLine {
                 let delete_start = Position::new(start_line, 0);
                 let delete_end = Position::new(start_line, line_len);
                 runtime.delete_range(buffer_id, delete_start, delete_end);
-                runtime.set_buffer_position(buffer_id, Position::new(start_line, 0));
+                set_cursor_position(runtime, Position::new(start_line, 0));
             }
             runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
             return CommandResult::Success;
@@ -120,7 +133,7 @@ impl CommandHandler for ChangeLine {
         };
 
         runtime.delete_range(buffer_id, delete_start, delete_end);
-        runtime.set_buffer_position(buffer_id, Position::new(start_line, 0));
+        set_cursor_position(runtime, Position::new(start_line, 0));
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
@@ -158,9 +171,7 @@ impl CommandHandler for ChangeToEndOfLine {
             return CommandResult::error("No active buffer");
         };
 
-        let pos = runtime
-            .buffer_position(buffer_id)
-            .unwrap_or_else(|| Position::new(0, 0));
+        let pos = get_cursor_position(runtime).unwrap_or_else(|| Position::new(0, 0));
         let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Nothing to delete if at or past end of line - just enter insert mode

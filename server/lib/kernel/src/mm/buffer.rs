@@ -3,10 +3,20 @@
 //! The buffer is the core abstraction for text editing. It stores
 //! text as lines and provides efficient operations for insertion,
 //! deletion, and navigation.
+//!
+//! # Cursor Isolation (#471)
+//!
+//! **Buffer does NOT track cursor position.** Cursor is per-client UI state
+//! that lives in `Window`, not in the shared kernel Buffer. This follows the
+//! mechanism vs policy principle:
+//! - **Mechanism**: Buffer provides text storage operations
+//! - **Policy**: Window/Session decides cursor position (per-client)
+//!
+//! Use `SessionRuntime::cursor_position(buffer_id)` to get cursor from Window.
 
 use std::hash::{Hash, Hasher};
 
-use super::{BufferId, Cursor, Edit, Position};
+use super::{BufferId, Position};
 
 /// A text buffer with line-based storage.
 ///
@@ -20,6 +30,11 @@ use super::{BufferId, Cursor, Edit, Position};
 /// - Lines do not contain newline characters
 /// - Positions are clamped to valid ranges on access
 ///
+/// # Cursor Isolation (#471)
+///
+/// Buffer does NOT have a cursor field. Cursor is per-client state in Window.
+/// All edit operations take explicit positions instead of using an internal cursor.
+///
 /// # Example
 ///
 /// ```
@@ -29,8 +44,7 @@ use super::{BufferId, Cursor, Edit, Position};
 /// assert_eq!(buf.line_count(), 2);
 /// assert_eq!(buf.line(0), Some("Hello"));
 ///
-/// buf.set_position(Position::new(0, 5));
-/// buf.insert("!");
+/// buf.insert_at(Position::new(0, 5), "!");
 /// assert_eq!(buf.line(0), Some("Hello!"));
 /// ```
 #[derive(Debug, Clone)]
@@ -39,12 +53,14 @@ pub struct Buffer {
     id: BufferId,
     /// Text content stored as lines.
     lines: Vec<String>,
-    /// Cursor state.
-    cursor: Cursor,
     /// Whether the buffer has unsaved modifications.
     modified: bool,
     /// File path associated with this buffer.
     file_path: Option<String>,
+    // NOTE: Cursor removed in #471 (per-client cursor isolation).
+    // Cursor now lives in Window (per-client state), not Buffer.
+    // See: server/lib/drivers/session/src/types.rs - Window.cursor
+    //
     // NOTE: Selection removed in Phase 8 (#465).
     // Selection now lives in Window (per-window state), not Buffer.
     // See: server/lib/drivers/session/src/types.rs - Window.selection
@@ -57,7 +73,6 @@ impl Buffer {
         Self {
             id: BufferId::new(),
             lines: Vec::new(),
-            cursor: Cursor::origin(),
             modified: false,
             file_path: None,
         }
@@ -71,7 +86,6 @@ impl Buffer {
         Self {
             id,
             lines: Vec::new(),
-            cursor: Cursor::origin(),
             modified: false,
             file_path: None,
         }
@@ -91,7 +105,6 @@ impl Buffer {
         Self {
             id: BufferId::new(),
             lines,
-            cursor: Cursor::origin(),
             modified: false,
             file_path: None,
         }
@@ -105,29 +118,9 @@ impl Buffer {
         self.id
     }
 
-    /// Get the cursor.
-    #[must_use]
-    pub const fn cursor(&self) -> &Cursor {
-        &self.cursor
-    }
-
-    /// Get a mutable reference to the cursor.
-    pub const fn cursor_mut(&mut self) -> &mut Cursor {
-        &mut self.cursor
-    }
-
-    /// Get the cursor position.
-    #[must_use]
-    pub const fn position(&self) -> Position {
-        self.cursor.position
-    }
-
-    /// Set the cursor position.
-    ///
-    /// The position is clamped to valid buffer coordinates.
-    pub fn set_position(&mut self, pos: Position) {
-        self.cursor.position = self.clamp_position(pos);
-    }
+    // NOTE: cursor(), cursor_mut(), position(), set_position() removed in #471.
+    // Cursor is per-client state in Window, not Buffer.
+    // Use SessionRuntime::cursor_position(buffer_id) via BufferApi trait.
 
     /// Check if the buffer has unsaved modifications.
     #[must_use]
@@ -233,25 +226,18 @@ impl Buffer {
         } else {
             content.lines().map(String::from).collect()
         };
-        self.cursor = Cursor::origin();
         self.modified = true;
     }
 
     // === Edit Operations ===
-
-    /// Insert text at the current cursor position.
-    ///
-    /// Returns an [`Edit`] that can be used for undo support.
-    /// The cursor is moved to the end of the inserted text.
-    pub fn insert(&mut self, text: &str) -> Edit {
-        let pos = self.cursor.position;
-        self.insert_at(pos, text);
-        Edit::insert(pos, text)
-    }
+    //
+    // NOTE: insert() and delete() convenience methods removed in #471.
+    // These methods relied on internal cursor which is now per-client in Window.
+    // Use insert_at(pos, text) and delete_at(pos, count) with explicit positions.
 
     /// Insert text at a specific position.
     ///
-    /// The cursor is moved to the end of the inserted text.
+    /// This is a pure text operation - cursor management is the caller's responsibility.
     pub fn insert_at(&mut self, pos: Position, text: &str) {
         if text.is_empty() {
             return;
@@ -279,7 +265,6 @@ impl Buffer {
         if insert_lines.len() == 1 {
             // Single line: just insert in place
             self.lines[line_idx] = format!("{before}{text}{after}");
-            self.cursor.position = Position::new(line_idx, col + text.chars().count());
         } else {
             // Multi-line: split and insert
             // First line gets before + first insert part
@@ -299,28 +284,15 @@ impl Buffer {
                     .map(|s| (*s).to_string())
                     .chain(std::iter::once(last_line)),
             );
-
-            // Update cursor to end of inserted text
-            let new_line_idx = line_idx + insert_lines.len() - 1;
-            self.cursor.position = Position::new(new_line_idx, last_insert.chars().count());
         }
 
         self.modified = true;
     }
 
-    /// Delete text from the current cursor position.
-    ///
-    /// Deletes `count` characters forward.
-    /// Returns an [`Edit`] containing the deleted text for undo support.
-    pub fn delete(&mut self, count: usize) -> Edit {
-        let pos = self.cursor.position;
-        let text = self.delete_at(pos, count);
-        Edit::delete(pos, text)
-    }
-
     /// Delete text at a specific position.
     ///
     /// Returns the deleted text.
+    /// This is a pure text operation - cursor management is the caller's responsibility.
     pub fn delete_at(&mut self, pos: Position, count: usize) -> String {
         if count == 0 || self.lines.is_empty() {
             return String::new();
@@ -366,9 +338,6 @@ impl Buffer {
                 remaining -= chars_to_delete;
             }
         }
-
-        // Update cursor position to deletion start
-        self.cursor.position = self.clamp_position(pos);
 
         if !deleted.is_empty() {
             self.modified = true;

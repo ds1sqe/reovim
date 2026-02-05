@@ -306,7 +306,7 @@ pub trait ChangeTracker: Send {
     /// Record that the cursor moved in a buffer.
     ///
     /// Commands should call this after moving the cursor via
-    /// `BufferApi::set_buffer_position()`.
+    /// `BufferApi::set_cursor_position()`.
     fn record_cursor_move(&mut self, buffer: BufferId);
 }
 

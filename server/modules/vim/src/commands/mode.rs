@@ -22,11 +22,24 @@ use {
     reovim_driver_search::Direction,
     reovim_driver_session::{
         BufferApi, CmdlinePrompt, CmdlineState, SessionRuntime, TransitionContext,
-        api::{ExtensionApi, ModeApi, SearchState},
+        api::{ChangeTracker, ExtensionApi, ModeApi, SearchState},
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
 };
+
+/// Helper to get cursor position from the active window.
+fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
+    let window = runtime.windows().active()?;
+    Some(Position::new(window.cursor.line, window.cursor.column))
+}
+
+/// Helper to set cursor position on the active window.
+fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = pos.into();
+    }
+}
 
 use crate::{ids, modes::VimMode};
 
@@ -34,7 +47,7 @@ use crate::{ids, modes::VimMode};
 ///
 /// All edits until `end_insert_batch` are grouped as a single undo entry.
 fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
-    if let Some(pos) = runtime.buffer_position(buffer_id)
+    if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
         && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
     {
@@ -46,7 +59,7 @@ fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::ap
 ///
 /// Commits all accumulated edits as a single undo entry.
 fn end_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
-    if let Some(pos) = runtime.buffer_position(buffer_id)
+    if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
         && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
     {
@@ -101,12 +114,12 @@ impl CommandHandler for EnterInsertModeAppend {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor right first, then enter insert mode
         if let Some(buffer_id) = args.buffer_id() {
-            if let Some(pos) = runtime.buffer_position(buffer_id)
+            if let Some(pos) = get_cursor_position(runtime)
                 && let Some(line_len) = runtime.buffer_line_len(buffer_id, pos.line)
             {
                 // Move right only if not at end of line
                 if pos.column < line_len {
-                    runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column + 1));
+                    set_cursor_position(runtime, Position::new(pos.line, pos.column + 1));
                 }
             }
             // Start undo batching for insert mode
@@ -139,10 +152,10 @@ impl CommandHandler for ExitToNormal {
             end_insert_batch(runtime, buffer_id);
 
             // Move cursor left one position when exiting insert mode (Vim behavior)
-            if let Some(pos) = runtime.buffer_position(buffer_id)
+            if let Some(pos) = get_cursor_position(runtime)
                 && pos.column > 0
             {
-                runtime.set_buffer_position(buffer_id, Position::new(pos.line, pos.column - 1));
+                set_cursor_position(runtime, Position::new(pos.line, pos.column - 1));
             }
         }
 
@@ -343,16 +356,13 @@ fn execute_search(
     pattern: &str,
     direction: Direction,
 ) {
-    use {
-        reovim_driver_search::{SearchKey, SearchProviderRegistry},
-        reovim_driver_session::api::ChangeTracker,
-    };
+    use reovim_driver_search::{SearchKey, SearchProviderRegistry};
 
     let Some(buffer_id) = args.buffer_id() else {
         return;
     };
 
-    let Some(cursor) = runtime.buffer_position(buffer_id) else {
+    let Some(cursor) = get_cursor_position(runtime) else {
         return;
     };
 
@@ -374,8 +384,7 @@ fn execute_search(
     match search_result {
         Some(Ok(Some(m))) => {
             // Move cursor to match start
-            runtime.set_buffer_position(buffer_id, m.start);
-            runtime.move_cursor(buffer_id, m.start);
+            set_cursor_position(runtime, m.start);
             runtime.record_cursor_move(buffer_id);
             tracing::debug!(
                 pattern,

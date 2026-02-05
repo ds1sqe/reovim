@@ -10,7 +10,7 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        BufferApi, SessionRuntime, TransitionContext,
+        SessionRuntime, TransitionContext,
         api::{ModeApi, SelectionMode},
     },
     reovim_kernel::api::v1::CommandId,
@@ -36,18 +36,22 @@ impl Command for SwapAnchor {
 }
 
 impl CommandHandler for SwapAnchor {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Only operate if selection is active
+        let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
+            return CommandResult::Success; // No selection - no-op
         };
 
-        // Only operate if selection is active
-        if runtime.selection(buffer_id).is_none() {
-            return CommandResult::Success;
-        }
+        // Swap anchor and cursor - swap start and end
+        let swapped = reovim_driver_session::api::Selection {
+            start: selection.end,
+            end: selection.start,
+            mode: selection.mode,
+        };
 
-        // Swap anchor and cursor
-        runtime.swap_selection_ends(buffer_id);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(swapped);
+        }
 
         CommandResult::Success
     }
@@ -71,20 +75,23 @@ impl Command for ToggleVisualChar {
 }
 
 impl CommandHandler for ToggleVisualChar {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
-        };
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
-        let target_mode = match runtime.selection(buffer_id) {
+        let target_mode = match selection {
             Some(sel) if sel.mode == SelectionMode::Character => {
                 // Already in character mode - exit to normal
-                runtime.set_selection(buffer_id, None);
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = None;
+                }
                 VimMode::NORMAL_ID
             }
-            Some(_) => {
+            Some(mut sel) => {
                 // Switch to character mode
-                runtime.set_selection_mode(buffer_id, SelectionMode::Character);
+                sel.mode = SelectionMode::Character;
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = Some(sel);
+                }
                 VimMode::VISUAL_ID
             }
             None => {
@@ -117,20 +124,23 @@ impl Command for ToggleVisualLine {
 }
 
 impl CommandHandler for ToggleVisualLine {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
-        };
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
-        let target_mode = match runtime.selection(buffer_id) {
+        let target_mode = match selection {
             Some(sel) if sel.mode == SelectionMode::Line => {
                 // Already in line mode - exit to normal
-                runtime.set_selection(buffer_id, None);
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = None;
+                }
                 VimMode::NORMAL_ID
             }
-            Some(_) => {
+            Some(mut sel) => {
                 // Switch to line mode
-                runtime.set_selection_mode(buffer_id, SelectionMode::Line);
+                sel.mode = SelectionMode::Line;
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = Some(sel);
+                }
                 VimMode::VISUAL_LINE_ID
             }
             None => {
@@ -163,20 +173,23 @@ impl Command for ToggleVisualBlock {
 }
 
 impl CommandHandler for ToggleVisualBlock {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
-        };
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
-        let target_mode = match runtime.selection(buffer_id) {
+        let target_mode = match selection {
             Some(sel) if sel.mode == SelectionMode::Block => {
                 // Already in block mode - exit to normal
-                runtime.set_selection(buffer_id, None);
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = None;
+                }
                 VimMode::NORMAL_ID
             }
-            Some(_) => {
+            Some(mut sel) => {
                 // Switch to block mode
-                runtime.set_selection_mode(buffer_id, SelectionMode::Block);
+                sel.mode = SelectionMode::Block;
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.selection = Some(sel);
+                }
                 VimMode::VISUAL_BLOCK_ID
             }
             None => {

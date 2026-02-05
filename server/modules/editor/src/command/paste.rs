@@ -8,7 +8,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, RegisterApi, SessionRuntime},
+    reovim_driver_session::{RegisterApi, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -58,10 +58,11 @@ impl CommandHandler for PasteAfter {
             return CommandResult::Success; // Nothing to paste
         }
 
-        // Get position via BufferApi
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Failed to get buffer position");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         if content.is_linewise() {
             // Paste below current line
@@ -75,7 +76,10 @@ impl CommandHandler for PasteAfter {
             if line_count == 0 {
                 // Empty buffer: just insert the content at origin
                 runtime.insert_text(buffer_id, Position::new(0, 0), paste_text);
-                runtime.set_buffer_position(buffer_id, Position::new(0, 0));
+                // Update cursor via per-client Window (#471)
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.cursor = Position::new(0, 0).into();
+                }
                 return CommandResult::Success;
             }
 
@@ -89,7 +93,10 @@ impl CommandHandler for PasteAfter {
 
             // Position cursor on first character of first pasted line
             let new_line = pos.line + 1;
-            runtime.set_buffer_position(buffer_id, Position::new(new_line, 0));
+            // Update cursor via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = Position::new(new_line, 0).into();
+            }
         } else {
             // Characterwise: paste after cursor
             // Get line length via BufferApi
@@ -124,7 +131,10 @@ impl CommandHandler for PasteAfter {
                 let col = if final_col > 0 { final_col - 1 } else { 0 };
                 Position::new(pos.line, col)
             };
-            runtime.set_buffer_position(buffer_id, cursor_after);
+            // Update cursor via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = cursor_after.into();
+            }
         }
 
         CommandResult::Success
@@ -175,10 +185,11 @@ impl CommandHandler for PasteBefore {
             return CommandResult::Success; // Nothing to paste
         }
 
-        // Get position via BufferApi
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Failed to get buffer position");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Build paste text (repeated count times)
         let paste_text = content.text.repeat(count);
@@ -194,7 +205,10 @@ impl CommandHandler for PasteBefore {
             runtime.insert_text(buffer_id, insert_pos, &insert_text);
 
             // Position cursor on first character of first pasted line
-            runtime.set_buffer_position(buffer_id, Position::new(pos.line, 0));
+            // Update cursor via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = Position::new(pos.line, 0).into();
+            }
         } else {
             // Characterwise: paste at cursor position (before)
             runtime.insert_text(buffer_id, pos, &paste_text);
@@ -218,7 +232,10 @@ impl CommandHandler for PasteBefore {
                 let col = if final_col > 0 { final_col - 1 } else { 0 };
                 Position::new(pos.line, col)
             };
-            runtime.set_buffer_position(buffer_id, cursor_after);
+            // Update cursor via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = cursor_after.into();
+            }
         }
 
         CommandResult::Success

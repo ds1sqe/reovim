@@ -48,9 +48,13 @@ impl CommandHandler for DeleteChar {
         };
 
         let count = args.count().unwrap_or(1);
-        let pos = runtime
-            .buffer_position(buffer_id)
-            .unwrap_or_else(|| Position::new(0, 0));
+
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
+
         let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Can't delete on empty line or at end of line
@@ -98,9 +102,12 @@ impl CommandHandler for DeleteCharBefore {
         };
 
         let count = args.count().unwrap_or(1);
-        let pos = runtime
-            .buffer_position(buffer_id)
-            .unwrap_or_else(|| Position::new(0, 0));
+
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Can't delete before column 0
         if pos.column == 0 {
@@ -110,7 +117,10 @@ impl CommandHandler for DeleteCharBefore {
                     .buffer_line_len(buffer_id, pos.line - 1)
                     .unwrap_or(0);
                 let new_pos = Position::new(pos.line - 1, prev_line_len);
-                runtime.set_buffer_position(buffer_id, new_pos);
+                // Update cursor via per-client Window (#471)
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.cursor = new_pos.into();
+                }
                 // Delete the newline character (from end of prev line to start of current line)
                 let end = Position::new(pos.line, 0);
                 runtime.delete_range(buffer_id, new_pos, end);
@@ -122,7 +132,10 @@ impl CommandHandler for DeleteCharBefore {
         let new_col = pos.column - chars_to_delete;
         let delete_pos = Position::new(pos.line, new_col);
 
-        runtime.set_buffer_position(buffer_id, delete_pos);
+        // Update cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = delete_pos.into();
+        }
         runtime.delete_range(buffer_id, delete_pos, pos);
 
         CommandResult::Success
@@ -157,7 +170,9 @@ impl CommandHandler for DeleteLine {
         };
 
         let count = args.count().unwrap_or(1);
-        let start_line = runtime.buffer_position(buffer_id).map_or(0, |p| p.line);
+
+        // Get cursor from per-client Window (#471)
+        let start_line = runtime.windows().active().map_or(0, |w| w.cursor.line);
         let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(0);
 
         if line_count == 0 {
@@ -221,7 +236,10 @@ impl CommandHandler for DeleteLine {
         let first_non_blank = runtime
             .buffer_line(buffer_id, new_line)
             .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
-        runtime.set_buffer_position(buffer_id, Position::new(new_line, first_non_blank));
+        // Update cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = Position::new(new_line, first_non_blank).into();
+        }
 
         CommandResult::Success
     }
@@ -255,9 +273,12 @@ impl CommandHandler for DeleteToEndOfLine {
             return CommandResult::error("No active buffer");
         };
 
-        let pos = runtime
-            .buffer_position(buffer_id)
-            .unwrap_or_else(|| Position::new(0, 0));
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
+
         let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
 
         // Nothing to delete if at or past end of line

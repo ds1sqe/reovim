@@ -119,8 +119,10 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModuleId},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModeStack, ModuleId},
     };
 
     #[allow(dead_code)]
@@ -141,9 +143,19 @@ mod tests {
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            ctx,
+            &executor,
+        );
         cmd.execute(&mut runtime, args)
     }
 

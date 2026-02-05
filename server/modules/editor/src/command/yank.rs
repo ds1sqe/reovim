@@ -7,8 +7,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, RegisterContent},
+    reovim_driver_session::{SessionRuntime, api::BufferApi},
+    reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
 use crate::ids;
@@ -40,10 +40,11 @@ impl CommandHandler for YankLine {
             return CommandResult::error("No active buffer");
         };
 
-        // Get position via BufferApi
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
         let start_line = pos.line;
 
         // Get line count via BufferApi

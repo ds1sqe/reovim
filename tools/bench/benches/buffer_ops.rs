@@ -1,6 +1,11 @@
 //! Buffer operation benchmarks.
 //!
 //! Measures performance of core buffer operations at various sizes.
+//!
+//! # Note (#471)
+//!
+//! Buffer no longer has a cursor - cursor is per-window/per-client.
+//! These benchmarks use explicit positions instead of cursor-based methods.
 
 use {
     criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main},
@@ -23,14 +28,11 @@ fn bench_insert_char(c: &mut Criterion) {
     for &lines in &[10, 100, 1000, 10000] {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
-                || {
-                    let mut buf = generate_buffer(lines);
-                    // Position cursor at middle of buffer
-                    buf.set_position(Position::new(lines / 2, 10));
-                    buf
-                },
+                || generate_buffer(lines),
                 |buf| {
-                    let _ = buf.insert("X");
+                    // Insert at middle of buffer using explicit position
+                    let pos = Position::new(lines / 2, 10);
+                    buf.insert_at(pos, "X");
                 },
                 BatchSize::SmallInput,
             );
@@ -47,13 +49,11 @@ fn bench_insert_word(c: &mut Criterion) {
     for &lines in &[10, 100, 1000] {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
-                || {
-                    let mut buf = generate_buffer(lines);
-                    buf.set_position(Position::new(lines / 2, 10));
-                    buf
-                },
+                || generate_buffer(lines),
                 |buf| {
-                    let _ = buf.insert("benchmark");
+                    // Insert at middle of buffer using explicit position
+                    let pos = Position::new(lines / 2, 10);
+                    buf.insert_at(pos, "benchmark");
                 },
                 BatchSize::SmallInput,
             );
@@ -70,13 +70,11 @@ fn bench_delete_char(c: &mut Criterion) {
     for &lines in &[10, 100, 1000, 10000] {
         group.bench_with_input(BenchmarkId::new("lines", lines), &lines, |b, &lines| {
             b.iter_batched_ref(
-                || {
-                    let mut buf = generate_buffer(lines);
-                    buf.set_position(Position::new(lines / 2, 10));
-                    buf
-                },
+                || generate_buffer(lines),
                 |buf| {
-                    let _ = buf.delete(1);
+                    // Delete at middle of buffer using explicit position
+                    let pos = Position::new(lines / 2, 10);
+                    let _ = buf.delete_at(pos, 1);
                 },
                 BatchSize::SmallInput,
             );

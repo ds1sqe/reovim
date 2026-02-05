@@ -171,6 +171,11 @@ pub struct OperatorContext<'a> {
     pub register: Option<char>,
     /// Count prefix (e.g., `3dd` has count 3).
     pub count: usize,
+    /// Cursor position before operator execution (for undo tracking).
+    ///
+    /// This is passed from the caller who has access to window state.
+    /// Used to record `cursor_before` for undo.
+    pub cursor_position: Position,
 }
 
 /// Operator execution errors.

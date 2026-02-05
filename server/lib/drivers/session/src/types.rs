@@ -1,17 +1,23 @@
-//! Session types for per-client state.
+//! Session types for driver-layer state.
 //!
-//! This module provides types for managing per-client session state.
-//! Each connected client has its own `Session` with windows, mode stack,
-//! and extension storage.
+//! This module provides types for managing session state at the driver layer.
 //!
-//! # Design
+//! # Design (#471)
 //!
-//! - **Session**: Complete per-client state container
+//! - **`SessionShared`**: Shared session infrastructure (compositor, `terminal_size`)
+//! - **`Session`**: DEPRECATED - legacy type being migrated to `SessionShared`
 //! - **`ClientId`**: Unique client connection identifier
 //! - **Viewport**: Client viewport dimensions and scroll
 //! - **Window**: Single window with buffer reference
 //! - **`WindowLayout`**: Window arrangement for a session
 //! - **`TextObjRange`**: Range computed by text object commands
+//!
+//! # Architecture (#471)
+//!
+//! Per-client state (mode, cursor, selection) lives in `server::EditingState`.
+//! The driver layer provides ONLY shared infrastructure via `SessionShared`.
+//! `DriverRuntime` (formerly `SessionRuntime`) borrows both to operate on
+//! the correct client's state.
 
 use {
     reovim_driver_display::layout::RootCompositor,
@@ -19,6 +25,146 @@ use {
 };
 
 use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
+
+// ============================================================================
+// SessionShared - Shared Session Infrastructure (#471)
+// ============================================================================
+
+/// Shared session infrastructure.
+///
+/// Contains state that is shared across all clients in a session:
+/// - Compositor for window layout management
+/// - Default terminal size
+/// - Active buffer ID (session-level)
+///
+/// # Architecture (#471)
+///
+/// Per-client state lives in `server::EditingState`, NOT here.
+/// This type provides only the truly shared infrastructure.
+///
+/// ```text
+/// ┌─────────────────────────────────────────────────────────────────┐
+/// │ SERVER LAYER                                                    │
+/// │   Session                                                       │
+/// │   └── clients: HashMap<ClientId, Client>                        │
+/// │       └── Client                                                │
+/// │           └── state: EditingState  ◄─── OWNS per-client state   │
+/// │               ├── mode_stack                                    │
+/// │               ├── windows (with cursors!)                       │
+/// │               └── extensions                                    │
+/// └─────────────────────────────────────────────────────────────────┘
+/// ┌─────────────────────────────────────────────────────────────────┐
+/// │ DRIVER LAYER                                                    │
+/// │   SessionShared  ◄─── Truly shared infrastructure               │
+/// │   ├── compositor                                                │
+/// │   ├── terminal_size                                             │
+/// │   └── active_buffer                                             │
+/// └─────────────────────────────────────────────────────────────────┘
+/// ```
+///
+/// # Migration from `Session`
+///
+/// `Session` is being replaced by `SessionShared`. The following fields:
+/// - `mode_stack`, `pending_keys`, `extensions` → now in `EditingState`
+/// - `windows` → now in `EditingState` (per-client cursors)
+/// - `id: ClientId` → now in `server::Client`
+pub struct SessionShared {
+    /// Window compositor for layout management.
+    ///
+    /// The compositor manages window geometry, splits, and navigation.
+    /// This is set by the layout module during session initialization.
+    pub compositor: Option<Box<dyn RootCompositor>>,
+
+    /// Currently active buffer ID.
+    ///
+    /// This is a session-level concern - all clients attached to this
+    /// session see the same active buffer.
+    active_buffer: Option<BufferId>,
+
+    /// Terminal dimensions (width, height) as session-level default.
+    ///
+    /// Per-client dimensions may override this via `ClientViewport`.
+    /// Default: (80, 24) - standard VT100 size.
+    terminal_size: (u16, u16),
+}
+
+impl std::fmt::Debug for SessionShared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionShared")
+            .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .field("active_buffer", &self.active_buffer)
+            .field("terminal_size", &self.terminal_size)
+            .finish()
+    }
+}
+
+impl Default for SessionShared {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SessionShared {
+    /// Create a new shared session infrastructure.
+    ///
+    /// Terminal size defaults to VT100 standard (80x24).
+    /// Compositor is initialized as `None` and should be set by the layout module.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            compositor: None,
+            active_buffer: None,
+            terminal_size: (80, 24), // VT100 default
+        }
+    }
+
+    /// Set the compositor for this session.
+    ///
+    /// Called by the layout module during session initialization.
+    pub fn set_compositor(&mut self, compositor: Box<dyn RootCompositor>) {
+        self.compositor = Some(compositor);
+    }
+
+    /// Get a reference to the compositor.
+    #[must_use]
+    pub fn compositor(&self) -> Option<&dyn RootCompositor> {
+        self.compositor.as_deref()
+    }
+
+    /// Get a mutable reference to the compositor.
+    pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
+        self.compositor.as_deref_mut()
+    }
+
+    /// Get the active buffer ID.
+    #[must_use]
+    pub const fn active_buffer(&self) -> Option<BufferId> {
+        self.active_buffer
+    }
+
+    /// Set the active buffer ID.
+    pub const fn set_active_buffer(&mut self, id: Option<BufferId>) {
+        self.active_buffer = id;
+    }
+
+    /// Get terminal dimensions (width, height).
+    ///
+    /// This is the session-level default. Per-client dimensions
+    /// may differ and are stored in `ClientViewport`.
+    #[must_use]
+    pub const fn terminal_size(&self) -> (u16, u16) {
+        self.terminal_size
+    }
+
+    /// Set terminal dimensions.
+    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
+        self.terminal_size = (width, height);
+    }
+}
+
+// ============================================================================
+// TextObjRange
+// ============================================================================
 
 /// Range computed by a text object command.
 ///
@@ -183,13 +329,6 @@ impl Viewport {
     #[must_use]
     pub const fn is_position_visible(&self, line: usize, column: usize) -> bool {
         self.is_line_visible(line) && self.is_column_visible(column)
-    }
-
-    /// Deprecated: use `scroll_top` field directly.
-    #[deprecated(since = "0.9.3", note = "Use `scroll_top` field directly")]
-    #[must_use]
-    pub const fn scroll_offset(&self) -> usize {
-        self.scroll_top
     }
 }
 
@@ -459,86 +598,83 @@ impl KeySequence {
     }
 }
 
-/// Complete session (server-side storage for one client).
+/// Legacy session type - **DEPRECATED, use [`SessionShared`] instead**.
 ///
-/// Each connected client has its own session with independent state.
-/// Sessions are identified by `ClientId` and contain:
+/// # Migration Guide (#471)
 ///
-/// - Windows and their layouts
-/// - Mode stack (current editing mode)
-/// - Pending key sequence
-/// - Module-provided extensions (policy state)
-/// - Active buffer ID
-/// - Terminal size (session-level default)
+/// This type mixes shared infrastructure with per-client state, causing confusion.
+/// It is being replaced by a cleaner separation:
 ///
-/// # Per-Client vs Per-Session State
-///
-/// `terminal_size` here is the session-level default. Per-client dimensions
-/// may differ and are stored in `ClientViewport` at the runner layer.
-/// The precedence rule is: `ClientViewport` (if exists) > Session default.
+/// | Old Field | New Location |
+/// |-----------|--------------|
+/// | `shared.compositor` | [`SessionShared::compositor`] |
+/// | `shared.terminal_size` | [`SessionShared::terminal_size()`] |
+/// | `shared.active_buffer` | [`SessionShared::active_buffer()`] |
+/// | `mode_stack` | `server::EditingState::mode_stack` (per-client) |
+/// | `windows` | `server::EditingState::windows` (per-client) |
+/// | `pending_keys` | `server::EditingState::pending_keys` (per-client) |
+/// | `extensions` | `server::EditingState::extensions` (per-client) |
+/// | `id: ClientId` | `server::Client` owns the ID |
 ///
 /// # Deprecation Note (#471)
 ///
-/// The `windows` and `mode_stack` fields are for **BOOTSTRAP ONLY**. At runtime,
-/// per-client state should be used via `EditingState` in the server layer:
+/// **BOOTSTRAP ONLY** - This type exists for backward compatibility during migration.
+/// At runtime, per-client state lives in `EditingState` in the server layer.
 ///
-/// - **Cursor position** - Use `EditingState.windows` (per-client)
-/// - **Mode stack** - Use `EditingState.mode_stack` (per-client)
-/// - **Selection** - Use `EditingState.windows[].selection` (per-client)
+/// Commands should use `SessionRuntime::new()` (or the upcoming
+/// `DriverRuntime`) to operate on per-client state.
 ///
-/// Commands should use `SessionRuntime::new_for_client()` to operate on per-client
-/// state, NOT `SessionRuntime::new()` which uses this shared state.
+/// # Architecture
+///
+/// ```text
+/// OLD (confusing):
+///   Session { compositor, mode_stack, windows, ... }  // Mixed!
+///
+/// NEW (clear separation):
+///   Session.shared: SessionShared { compositor, terminal_size, active_buffer }
+///   EditingState { mode_stack, windows, extensions, ... }  // Per-client
+/// ```
 pub struct Session {
     /// Unique client identifier.
     pub id: ClientId,
+    /// Shared session infrastructure (compositor, `terminal_size`, `active_buffer`).
+    ///
+    /// # Phase 0.3 (#471)
+    ///
+    /// This field contains truly shared state that is accessed by all clients.
+    /// `SessionRuntime` accesses shared state via `session.shared`.
+    pub shared: SessionShared,
     /// Window layout (per-session windows).
     ///
     /// # Deprecation Note (#471)
     ///
     /// **BOOTSTRAP ONLY** - This field exists for session initialization.
     /// At runtime, use `EditingState.windows` for per-client cursor/selection state.
-    /// Commands should use `SessionRuntime::new_for_client()`.
+    /// Commands should use `SessionRuntime::new()`.
     pub windows: WindowLayout,
-    /// Window compositor for layout management.
-    ///
-    /// The compositor manages window geometry, splits, and navigation.
-    /// This is set by the layout module during session initialization.
-    pub compositor: Option<Box<dyn RootCompositor>>,
     /// Mode stack (current mode on top).
     ///
     /// # Deprecation Note (#471)
     ///
     /// **BOOTSTRAP ONLY** - This field exists for session initialization.
     /// At runtime, use `EditingState.mode_stack` for per-client mode state.
-    /// Commands should use `SessionRuntime::new_for_client()`.
+    /// Commands should use `SessionRuntime::new()`.
     pub mode_stack: ModeStack,
     /// Keys accumulated but not yet processed.
     pub pending_keys: KeySequence,
     /// Module-provided per-session state.
     pub extensions: ExtensionMap,
-    /// Currently active buffer ID.
-    ///
-    /// This is a session-level concern - all clients attached to this
-    /// session see the same active buffer.
-    active_buffer: Option<BufferId>,
-    /// Terminal dimensions (width, height) as session-level default.
-    ///
-    /// Per-client dimensions may override this via `ClientViewport`.
-    /// Default: (80, 24) - standard VT100 size.
-    terminal_size: (u16, u16),
 }
 
 impl std::fmt::Debug for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Session")
             .field("id", &self.id)
+            .field("shared", &self.shared)
             .field("windows", &self.windows)
-            .field("compositor", &self.compositor.as_ref().map(|_| "..."))
             .field("mode_stack", &self.mode_stack)
             .field("pending_keys", &self.pending_keys)
             .field("extensions", &self.extensions)
-            .field("active_buffer", &self.active_buffer)
-            .field("terminal_size", &self.terminal_size)
             .finish()
     }
 }
@@ -553,32 +689,35 @@ impl Session {
     pub fn new(id: ClientId, home_mode: ModeId) -> Self {
         Self {
             id,
+            shared: SessionShared::new(),
             windows: WindowLayout::empty(),
-            compositor: None,
             mode_stack: ModeStack::new(home_mode),
             pending_keys: KeySequence::new(),
             extensions: ExtensionMap::new(),
-            active_buffer: None,
-            terminal_size: (80, 24), // VT100 default
         }
     }
 
     /// Set the compositor for this session.
     ///
     /// Called by the layout module during session initialization.
+    /// Delegates to `self.shared.set_compositor()`.
     pub fn set_compositor(&mut self, compositor: Box<dyn RootCompositor>) {
-        self.compositor = Some(compositor);
+        self.shared.set_compositor(compositor);
     }
 
     /// Get a reference to the compositor.
+    ///
+    /// Delegates to `self.shared.compositor()`.
     #[must_use]
     pub fn compositor(&self) -> Option<&dyn RootCompositor> {
-        self.compositor.as_deref()
+        self.shared.compositor()
     }
 
     /// Get a mutable reference to the compositor.
+    ///
+    /// Delegates to `self.shared.compositor_mut()`.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
-        self.compositor.as_deref_mut()
+        self.shared.compositor_mut()
     }
 
     /// Get the current mode.
@@ -588,37 +727,35 @@ impl Session {
     }
 
     /// Get the active buffer ID.
+    ///
+    /// Delegates to `self.shared.active_buffer()`.
     #[must_use]
     pub const fn active_buffer(&self) -> Option<BufferId> {
-        self.active_buffer
+        self.shared.active_buffer()
     }
 
     /// Set the active buffer ID.
+    ///
+    /// Delegates to `self.shared.set_active_buffer()`.
     pub const fn set_active_buffer(&mut self, id: Option<BufferId>) {
-        self.active_buffer = id;
+        self.shared.set_active_buffer(id);
     }
 
     /// Get terminal dimensions (width, height).
     ///
     /// This is the session-level default. Per-client dimensions
     /// may differ and are stored in `ClientViewport`.
+    /// Delegates to `self.shared.terminal_size()`.
     #[must_use]
     pub const fn terminal_size(&self) -> (u16, u16) {
-        self.terminal_size
+        self.shared.terminal_size()
     }
 
     /// Set terminal dimensions.
-    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
-        self.terminal_size = (width, height);
-    }
-
-    /// Get the active buffer ID from the active window (legacy method).
     ///
-    /// This is kept for backward compatibility. Prefer `active_buffer()`.
-    #[must_use]
-    #[deprecated(since = "0.9.5", note = "Use active_buffer() instead")]
-    pub fn window_active_buffer(&self) -> Option<BufferId> {
-        self.windows.active().and_then(|w| w.buffer_id)
+    /// Delegates to `self.shared.set_terminal_size()`.
+    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
+        self.shared.set_terminal_size(width, height);
     }
 }
 
@@ -782,22 +919,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
-    fn test_session_window_active_buffer() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
-
-        // window_active_buffer derives from active window
-        assert!(session.window_active_buffer().is_none());
-
-        let buf_id = BufferId::new();
-        let window = Window::with_buffer(buf_id);
-        session.windows.add(window);
-
-        assert_eq!(session.window_active_buffer(), Some(buf_id));
-    }
-
-    #[test]
     fn test_session_terminal_size() {
         let mode = test_mode();
         let mut session = Session::new(ClientId::new(1), mode);
@@ -897,5 +1018,83 @@ mod tests {
 
         let multiline_empty = TextObjRange::linewise(Position::new(1, 0), Position::new(2, 0));
         assert!(!multiline_empty.is_empty()); // Different lines
+    }
+
+    // =========================================================================
+    // SessionShared tests (#471)
+    // =========================================================================
+
+    #[test]
+    fn test_session_shared_new() {
+        let shared = SessionShared::new();
+
+        assert!(shared.compositor.is_none());
+        assert!(shared.active_buffer().is_none());
+        assert_eq!(shared.terminal_size(), (80, 24)); // VT100 default
+    }
+
+    #[test]
+    fn test_session_shared_default() {
+        let shared = SessionShared::default();
+
+        assert!(shared.compositor.is_none());
+        assert!(shared.active_buffer().is_none());
+        assert_eq!(shared.terminal_size(), (80, 24));
+    }
+
+    #[test]
+    fn test_session_shared_active_buffer() {
+        let mut shared = SessionShared::new();
+
+        // Initially None
+        assert!(shared.active_buffer().is_none());
+
+        // Set active buffer
+        let buf_id = BufferId::new();
+        shared.set_active_buffer(Some(buf_id));
+        assert_eq!(shared.active_buffer(), Some(buf_id));
+
+        // Clear active buffer
+        shared.set_active_buffer(None);
+        assert!(shared.active_buffer().is_none());
+    }
+
+    #[test]
+    fn test_session_shared_terminal_size() {
+        let mut shared = SessionShared::new();
+
+        // Default VT100 size
+        assert_eq!(shared.terminal_size(), (80, 24));
+
+        // Update terminal size
+        shared.set_terminal_size(120, 40);
+        assert_eq!(shared.terminal_size(), (120, 40));
+    }
+
+    #[test]
+    fn test_session_shared_terminal_size_boundaries() {
+        let mut shared = SessionShared::new();
+
+        // Min values
+        shared.set_terminal_size(0, 0);
+        assert_eq!(shared.terminal_size(), (0, 0));
+
+        // Near-min
+        shared.set_terminal_size(1, 1);
+        assert_eq!(shared.terminal_size(), (1, 1));
+
+        // Max values
+        shared.set_terminal_size(u16::MAX, u16::MAX);
+        assert_eq!(shared.terminal_size(), (u16::MAX, u16::MAX));
+    }
+
+    #[test]
+    fn test_session_shared_debug() {
+        let shared = SessionShared::new();
+        let debug_str = format!("{shared:?}");
+
+        assert!(debug_str.contains("SessionShared"));
+        assert!(debug_str.contains("compositor"));
+        assert!(debug_str.contains("terminal_size"));
     }
 }

@@ -58,17 +58,31 @@ impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
             if let Some(ch) = key_to_char(&key) {
                 // Insert the character into the active buffer
                 if let Some(buffer_id) = ctx.active_buffer()
+                    && let Some(cursor_before) = ctx.cursor_position()
                     && let Some(buffer_arc) = ctx.get_buffer(buffer_id)
                 {
                     let mut buffer = buffer_arc.write();
-                    let cursor_before = buffer.position();
                     // Insert character at cursor position
-                    let edit = buffer.insert(&ch.to_string());
-                    let cursor_after = buffer.position();
+                    let text = ch.to_string();
+                    buffer.insert_at(cursor_before, &text);
                     drop(buffer);
+
+                    // Calculate cursor after insert (advance by text length)
+                    let cursor_after = if ch == '\n' {
+                        reovim_kernel::api::v1::Position::new(cursor_before.line + 1, 0)
+                    } else {
+                        reovim_kernel::api::v1::Position::new(
+                            cursor_before.line,
+                            cursor_before.column + 1,
+                        )
+                    };
+
+                    // Update cursor position
+                    ctx.set_cursor_position(cursor_after);
 
                     // Accumulate edit for batched undo tracking
                     // (consecutive inserts become single undo node)
+                    let edit = reovim_kernel::api::v1::Edit::insert(cursor_before, &text);
                     ctx.accumulate_edit(buffer_id, edit, cursor_before, cursor_after);
 
                     return FallbackResult::Handled;
@@ -158,6 +172,14 @@ mod tests {
 
         fn active_buffer(&self) -> Option<BufferId> {
             self.active_buffer
+        }
+
+        fn cursor_position(&self) -> Option<Position> {
+            Some(Position::origin())
+        }
+
+        fn set_cursor_position(&mut self, _pos: Position) {
+            // No-op in mock
         }
 
         fn get_buffer(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {

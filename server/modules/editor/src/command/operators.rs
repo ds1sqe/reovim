@@ -149,8 +149,12 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::CommandContext,
-        reovim_driver_session::{ClientId, Session, api::CommandExecutor},
-        reovim_kernel::api::v1::{CommandId as KernelCommandId, KernelContext, ModeId, ModuleId},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::v1::{
+            CommandId as KernelCommandId, KernelContext, ModeId, ModeStack, ModuleId,
+        },
     };
 
     fn test_mode() -> ModeId {
@@ -204,10 +208,21 @@ mod tests {
     fn test_enter_delete_operator_returns_success() {
         // Commands now return Success - actual operator-pending logic
         // will be handled by the vim resolver via SessionRuntime (see #394)
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
         let args = CommandContext::new();
         let result = EnterDeleteOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
@@ -215,10 +230,21 @@ mod tests {
 
     #[test]
     fn test_enter_yank_operator_returns_success() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
         let args = CommandContext::new();
         let result = EnterYankOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
@@ -226,10 +252,21 @@ mod tests {
 
     #[test]
     fn test_enter_change_operator_returns_success() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
         let args = CommandContext::new();
         let result = EnterChangeOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
@@ -237,10 +274,21 @@ mod tests {
 
     #[test]
     fn test_enter_indent_operator_returns_success() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
         let args = CommandContext::new();
         let result = EnterIndentOperator.execute(&mut runtime, &args);
         assert!(result.is_success());
@@ -248,10 +296,21 @@ mod tests {
 
     #[test]
     fn test_enter_dedent_operator_returns_success() {
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
         let args = CommandContext::new();
         let result = EnterDedentOperator.execute(&mut runtime, &args);
         assert!(result.is_success());

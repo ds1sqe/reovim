@@ -269,6 +269,7 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
             session.with_state_sync(|state| {
                 state
                     .driver_session
+                    .shared
                     .compositor
                     .as_ref()
                     .and_then(|c| c.focused())
@@ -278,7 +279,7 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
 
     // Build window info list from shared state (layout is session-wide)
     let windows: Vec<WindowInfo> = session.with_state_sync(|state| {
-        if let Some(compositor) = &state.driver_session.compositor {
+        if let Some(compositor) = &state.driver_session.shared.compositor {
             // Get placements from compositor
             let (width, height) = state.driver_session.terminal_size();
             let screen = reovim_driver_display::Rect::new(0, 0, width, height);

@@ -113,66 +113,9 @@ impl CommandRegistry {
         self.entries.contains_key(id)
     }
 
-    /// Execute a command by ID (uses SHARED session state).
-    ///
-    /// Returns `None` if the command isn't registered.
-    /// Returns `(CommandResult, StateChanges)` with the result and any state
-    /// changes that occurred during execution (selection, buffer mods, etc.).
-    ///
-    /// The active buffer ID from `driver_session` is automatically populated
-    /// into the `CommandContext` before execution, allowing commands to
-    /// know which buffer they should operate on.
-    ///
-    /// # Deprecation Note (#471)
-    ///
-    /// This method uses SHARED session state. For multi-client scenarios,
-    /// use [`Self::execute_for_client`] instead which operates on per-client
-    /// mode and cursor state.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The command ID to execute
-    /// * `driver_session` - Driver session (SSOT for `mode_stack`, `active_buffer`)
-    /// * `app` - Application state (contains `KernelContext`)
-    /// * `vfs` - VFS driver for file operations
-    /// * `args` - Command arguments (count, register, etc.)
-    #[must_use]
-    pub fn execute(
-        &self,
-        id: &CommandId,
-        driver_session: &mut DriverSession,
-        app: &mut AppState,
-        vfs: &Arc<dyn VfsDriver>,
-        args: &CommandContext,
-    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
-        use reovim_driver_session::api::ChangeTracker;
-        profile_scope!("command_execute", "server::command");
-
-        self.entries.get(id).map(|entry| {
-            // Single clone point for context enrichment (Epic #415)
-            let mut ctx = args.clone();
-            if let Some(buffer_id) = driver_session.active_buffer() {
-                ctx.set_buffer_id(buffer_id);
-            }
-            ctx.set_vfs(Arc::clone(vfs));
-
-            // Create SessionRuntime for command execution
-            let stub_executor = StubCommandExecutor;
-            let mut runtime = SessionRuntime::new(driver_session, &app.kernel, &stub_executor);
-
-            // Execute command
-            let result = entry.handler.execute(&mut runtime, &ctx);
-
-            // Phase 8 (#465): Take accumulated changes (selection, buffer mods, etc.)
-            let changes = runtime.take_changes();
-
-            (result, changes)
-        })
-    }
-
     /// Execute a command with per-client state (#471, #477).
     ///
-    /// This uses [`SessionRuntime::new_for_client`] to ensure commands operate
+    /// This uses [`SessionRuntime::new`] to ensure commands operate
     /// on per-client mode, cursor, and extension state, enabling multi-client isolation.
     ///
     /// # Arguments
@@ -211,7 +154,7 @@ impl CommandRegistry {
 
             // Create SessionRuntime with per-client state (#471, #477)
             let stub_executor = StubCommandExecutor;
-            let mut runtime = SessionRuntime::new_for_client(
+            let mut runtime = SessionRuntime::new(
                 driver_session,
                 client_mode_stack,
                 client_windows,
@@ -450,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn test_command_registry_execute() {
+    fn test_command_registry_execute_for_client() {
         let mut registry = CommandRegistry::new();
         let cmd = TestCommand::new("exec-cmd");
         let id = cmd.id.clone();
@@ -459,12 +402,26 @@ mod tests {
 
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-        let mut driver_session = DriverSession::new(ClientId::new(0), mode);
-        let mut app = AppState::new(kernel);
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
+        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
 
-        let result = registry.execute(&id, &mut driver_session, &mut app, &vfs, &args);
+        // Per-client state
+        let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
+        let mut client_windows = reovim_driver_session::WindowLayout::empty();
+        let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+
+        let result = registry.execute_for_client(
+            &id,
+            &mut driver_session,
+            &mut client_mode_stack,
+            &mut client_windows,
+            &mut client_extensions,
+            &app,
+            &vfs,
+            &args,
+        );
         assert!(result.is_some());
         let (cmd_result, _changes) = result.unwrap();
         assert_eq!(cmd_result, CommandResult::Success);

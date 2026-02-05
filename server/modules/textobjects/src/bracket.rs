@@ -16,7 +16,7 @@ use {
     },
     reovim_driver_session::{
         OperatorPendingState, SessionRuntime, TextObjRange,
-        api::{BufferApi, ExtensionApi, ModeApi, Selection, SelectionMode},
+        api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine},
 };
@@ -57,9 +57,14 @@ fn execute_bracket_textobj(
 
     let count = args.count().unwrap_or(1);
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let pos = Position::new(window.cursor.line, window.cursor.column);
+
     // Calculate text object range using with_buffer_read callback
     let range_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let pos = buffer.position();
         TextObjectEngine::range(buffer, pos, text_object, count)
     });
 
@@ -78,9 +83,11 @@ fn execute_bracket_textobj(
     if is_visual_mode(runtime) {
         // Visual mode: update the selection to cover the text object
         let sel_mode = visual_selection_mode(runtime);
-        runtime.set_selection(buffer_id, Some(Selection::new(start, end_exclusive, sel_mode)));
-        // Move cursor to end of selection
-        runtime.set_buffer_position(buffer_id, end);
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(Selection::new(start, end_exclusive, sel_mode));
+            // Move cursor to end of selection
+            window.cursor = end.into();
+        }
     } else {
         // Operator-pending mode: store range for operator consumption (Epic #465)
         // The operator resolver's on_command_complete will take() this range

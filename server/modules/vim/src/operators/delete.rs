@@ -138,8 +138,8 @@ impl Operator for DeleteOperator {
             registers::store_to_register(ctx.kernel, ctx.register, &content);
             registers::push_to_history(ctx.kernel, &content);
 
-            // Record cursor before delete
-            let cursor_before = buffer.position();
+            // Use cursor position from context (passed from caller who has window access)
+            let cursor_before = ctx.cursor_position;
 
             // Delete entire lines
             buffer.delete_range(delete_start, delete_end);
@@ -170,10 +170,9 @@ impl Operator for DeleteOperator {
                 // Case 1: Cursor at column 0
                 0
             };
-            buffer.set_position(reovim_kernel::api::v1::Position::new(final_line, final_col));
-
-            // Record cursor after delete and record edit for undo
-            let cursor_after = buffer.position();
+            // Note: Cursor position after delete is determined by the caller
+            // For undo tracking, we use the calculated final position
+            let cursor_after = reovim_kernel::api::v1::Position::new(final_line, final_col);
 
             // Record edit for undo
             if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
@@ -220,14 +219,14 @@ impl Operator for DeleteOperator {
             registers::store_to_register(ctx.kernel, ctx.register, &content);
             registers::push_to_history(ctx.kernel, &content);
 
-            // Record cursor before delete
-            let cursor_before = buffer.position();
+            // Use cursor position from context (passed from caller who has window access)
+            let cursor_before = ctx.cursor_position;
 
             // Delete the text from buffer
             buffer.delete_range(start, end);
 
-            // Record cursor after delete and record edit for undo
-            let cursor_after = buffer.position();
+            // Cursor after characterwise delete is at the start position
+            let cursor_after = start;
 
             // Record edit for undo
             if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
@@ -259,8 +258,10 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModuleId},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModeStack, ModuleId},
     };
 
     #[allow(dead_code)]
@@ -281,9 +282,19 @@ mod tests {
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            ctx,
+            &executor,
+        );
         cmd.execute(&mut runtime, args)
     }
 

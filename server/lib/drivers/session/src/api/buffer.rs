@@ -5,16 +5,22 @@
 //!
 //! # Design
 //!
-//! Following Unix philosophy: this trait does ONE thing well - buffer management.
+//! Following Unix philosophy: this trait does ONE thing well - **buffer content** management.
+//!
+//! **Note (#471):** Cursor and selection are per-window, not per-buffer.
+//! Commands receive cursor position via `CommandContext::cursor_position()`,
+//! not from this trait.
 //!
 //! # Example
 //!
 //! ```ignore
 //! use reovim_driver_session::api::BufferApi;
+//! use reovim_driver_command_types::CommandContext;
 //!
-//! fn delete_word<S: BufferApi>(session: &mut S) {
+//! fn delete_word<S: BufferApi>(session: &mut S, args: &CommandContext) {
 //!     if let Some(buffer) = session.active_buffer() {
-//!         if let Some(pos) = session.cursor_position(buffer) {
+//!         // Cursor comes from CommandContext, not BufferApi
+//!         if let Some(pos) = args.cursor_position() {
 //!             // Calculate word end and delete
 //!             let end = Position::new(pos.line, pos.column + 4);
 //!             session.delete_range(buffer, pos, end);
@@ -27,8 +33,10 @@ use reovim_kernel::api::v1::{BufferId, Position};
 
 /// Buffer content and lifecycle operations.
 ///
-/// Provides access to buffer content, cursor, and selection for
-/// resolvers and commands.
+/// Provides access to buffer **content** for resolvers and commands.
+///
+/// **Note (#471):** Cursor and selection are NOT part of this trait.
+/// They are per-window properties, passed via `CommandContext`.
 pub trait BufferApi: Send {
     // === Queries ===
 
@@ -45,38 +53,10 @@ pub trait BufferApi: Send {
     /// Returns `None` if the buffer doesn't exist.
     fn buffer_line_count(&self, buffer: BufferId) -> Option<usize>;
 
-    /// Get cursor position in a buffer (window cursor).
-    ///
-    /// Returns the cursor position from the window displaying this buffer.
-    /// Returns `None` if no window displays this buffer.
-    ///
-    /// **Note:** This is the *window* cursor, not the buffer's internal position.
-    /// For the buffer's intrinsic position, use [`buffer_position`](Self::buffer_position).
-    fn cursor_position(&self, buffer: BufferId) -> Option<Position>;
-
-    /// Get buffer's internal position.
-    ///
-    /// Returns the buffer's intrinsic cursor position (stored in kernel).
-    /// This may differ from the window cursor position.
-    ///
-    /// Returns `None` if the buffer doesn't exist.
-    fn buffer_position(&self, buffer: BufferId) -> Option<Position>;
-
-    /// Set buffer's internal position.
-    ///
-    /// Updates the buffer's intrinsic cursor position (stored in kernel).
-    /// Does not affect the window cursor position.
-    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position);
-
     /// Get the length of a line in characters.
     ///
     /// Returns `None` if the buffer doesn't exist or line is out of bounds.
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize>;
-
-    /// Get selection in a buffer.
-    ///
-    /// Returns `None` if no selection is active.
-    fn selection(&self, buffer: BufferId) -> Option<Selection>;
 
     /// Extract text from a range in the buffer.
     ///
@@ -117,24 +97,6 @@ pub trait BufferApi: Send {
 
     /// Delete a range.
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position);
-
-    /// Move cursor to a position.
-    fn move_cursor(&mut self, buffer: BufferId, pos: Position);
-
-    /// Set selection.
-    fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>);
-
-    /// Swap selection anchor and cursor positions.
-    ///
-    /// This is used by the `o` command in visual mode to adjust the other end.
-    /// Does nothing if no selection is active.
-    fn swap_selection_ends(&mut self, buffer: BufferId);
-
-    /// Change selection mode without resetting anchor.
-    ///
-    /// Useful for toggling between character/line/block modes.
-    /// Does nothing if no selection is active.
-    fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode);
 
     // === Lifecycle ===
 

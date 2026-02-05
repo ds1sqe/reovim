@@ -9,8 +9,8 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine},
+    reovim_driver_session::{ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{CommandId, Cursor, LinePosition, Motion, MotionEngine, Position},
 };
 
 use crate::ids;
@@ -33,16 +33,20 @@ fn execute_line_position(
         return CommandResult::error("No active buffer");
     };
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let old_pos = Position::new(window.cursor.line, window.cursor.column);
+
     // Calculate motion using with_buffer_read callback
     let motion = Motion::LinePosition(position);
     let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
-        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, 1);
-        (old_pos, new_pos)
+        let cursor = Cursor::new(old_pos);
+        MotionEngine::calculate(buffer, &cursor, motion, 1)
     });
 
-    let Some((old_pos, Some(new_pos))) = motion_result else {
+    let Some(Some(new_pos)) = motion_result else {
         // Buffer not found or motion calculation failed
         return if motion_result.is_none() {
             CommandResult::error("Buffer not found")
@@ -55,8 +59,10 @@ fn execute_line_position(
         return CommandResult::Success; // No movement
     }
 
-    // Move cursor via BufferApi (both normal and operator-pending modes)
-    runtime.set_buffer_position(buffer_id, new_pos);
+    // Move cursor via per-client Window (#471)
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = new_pos.into();
+    }
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
@@ -81,16 +87,20 @@ fn execute_jump_line(
         return CommandResult::error("No active buffer");
     };
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let old_pos = Position::new(window.cursor.line, window.cursor.column);
+
     // Calculate motion using with_buffer_read callback
     let motion = Motion::JumpLine(target_line);
     let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
-        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, 1);
-        (old_pos, new_pos)
+        let cursor = Cursor::new(old_pos);
+        MotionEngine::calculate(buffer, &cursor, motion, 1)
     });
 
-    let Some((old_pos, Some(new_pos))) = motion_result else {
+    let Some(Some(new_pos)) = motion_result else {
         // Buffer not found or motion calculation failed
         return if motion_result.is_none() {
             CommandResult::error("Buffer not found")
@@ -103,8 +113,10 @@ fn execute_jump_line(
         return CommandResult::Success; // No movement
     }
 
-    // Move cursor via BufferApi (both normal and operator-pending modes)
-    runtime.set_buffer_position(buffer_id, new_pos);
+    // Move cursor via per-client Window (#471)
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = new_pos.into();
+    }
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
@@ -337,9 +349,12 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+            api::CommandExecutor,
+        },
         reovim_kernel::api::{
-            KernelContext, ServiceRegistry,
+            KernelContext, ModeStack, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
                 OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
@@ -398,45 +413,140 @@ mod tests {
         }
     }
 
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
+    // =========================================================================
+    // Test Infrastructure (#471)
+    // =========================================================================
+
+    /// Stub command executor for tests.
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
     }
 
-    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
-        let buffer = Buffer::from_string(content);
-        ctx.buffers.register(buffer)
+    /// Explicit test setup for motion commands.
+    ///
+    /// All state is explicit - no hidden implicit state in helper functions.
+    /// Per-client state is held as separate fields to avoid borrow conflicts (#471).
+    struct TestSetup {
+        ctx: KernelContext,
+        session: Session,
+        // Per-client state as separate fields (#471 borrow checker fix)
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+        buffer_id: BufferId,
     }
 
-    fn run_command<C: CommandHandler>(
-        cmd: &C,
-        ctx: &KernelContext,
-        args: &CommandContext,
-    ) -> CommandResult {
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+    impl TestSetup {
+        /// Create test setup with buffer content.
+        fn new(content: &str) -> Self {
+            let ctx = KernelContext::new(
+                Arc::new(EventBus::new()),
+                Arc::new(TestBufferManager::new()),
+                Arc::new(MotionEngine),
+                Arc::new(TextObjectEngine),
+                Arc::new(RwLock::new(RegisterBank::new())),
+                Arc::new(RwLock::new(MarkBank::new())),
+                Arc::new(OptionRegistry::default()),
+                Arc::new(ServiceRegistry::new()),
+            );
+
+            let buffer = Buffer::from_string(content);
+            let buffer_id = ctx.buffers.register(buffer);
+
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+
+            // Per-client state as separate fields (#471)
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            // Create window with buffer
+            let mut window = Window::new();
+            window.buffer_id = Some(buffer_id);
+            windows.add(window);
+
+            Self {
+                ctx,
+                session,
+                mode_stack,
+                windows,
+                extensions,
+                buffer_id,
             }
         }
+
+        /// Set cursor position explicitly.
+        fn set_cursor(&mut self, pos: Position) {
+            if let Some(window) = self.windows.active_mut() {
+                window.cursor = pos.into();
+            }
+        }
+
+        /// Get current cursor position.
+        fn cursor(&self) -> Position {
+            self.windows.active().map_or_else(
+                || Position::new(0, 0),
+                |w| Position::new(w.cursor.line, w.cursor.column),
+            )
+        }
+
+        /// Create command args with `buffer_id` set.
+        fn args(&self) -> CommandContext {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(self.buffer_id);
+            args
+        }
+
+        /// Run a command and return the result.
+        fn run<C: CommandHandler>(&mut self, cmd: &C, args: &CommandContext) -> CommandResult {
+            let executor = StubExecutor;
+            let mut runtime = SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                &self.ctx,
+                &executor,
+            );
+            cmd.execute(&mut runtime, args)
+        }
+    }
+
+    /// Run command without buffer (for error tests).
+    /// Creates a session with an empty window to satisfy `windows()` (#471).
+    fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
+        let ctx = KernelContext::default();
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+
+        // Per-client state as separate fields (#471)
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        // Add an empty window so windows() doesn't panic
+        windows.add(Window::new());
+
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
-        cmd.execute(&mut runtime, args)
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &executor,
+        );
+        cmd.execute(&mut runtime, &CommandContext::new())
     }
 
     // =========================================================================
@@ -480,47 +590,27 @@ mod tests {
 
     #[test]
     fn test_line_start_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "  hello world");
+        let mut setup = TestSetup::new("  hello world");
+        setup.set_cursor(Position::new(0, 5)); // Middle of line
 
-        // Position in middle of line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 5));
-        }
+        let args = setup.args();
+        let result = setup.run(&LineStart, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&LineStart, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 0);
+        assert_eq!(setup.cursor().column, 0);
     }
 
     #[test]
     fn test_line_start_on_empty_line() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello\n\nworld");
+        let mut setup = TestSetup::new("hello\n\nworld");
+        setup.set_cursor(Position::new(1, 0)); // On empty line
 
-        // Position on empty line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(1, 0));
-        }
+        let args = setup.args();
+        let result = setup.run(&LineStart, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&LineStart, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 1);
-        assert_eq!(pos.column, 0);
+        assert_eq!(setup.cursor().line, 1);
+        assert_eq!(setup.cursor().column, 0);
     }
 
     // =========================================================================
@@ -529,41 +619,27 @@ mod tests {
 
     #[test]
     fn test_line_end_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world");
+        let mut setup = TestSetup::new("hello world");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&LineEnd, &args);
 
-        let result = run_command(&LineEnd, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 10); // Last char 'd' at index 10
+        assert_eq!(setup.cursor().column, 10); // Last char 'd' at index 10
     }
 
     #[test]
     fn test_line_end_on_empty_line() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello\n\nworld");
+        let mut setup = TestSetup::new("hello\n\nworld");
+        setup.set_cursor(Position::new(1, 0)); // On empty line
 
-        // Position on empty line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(1, 0));
-        }
+        let args = setup.args();
+        let result = setup.run(&LineEnd, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&LineEnd, &ctx, &args);
         assert!(result.is_success());
-
+        assert_eq!(setup.cursor().line, 1);
         // Empty line - $ should stay at 0 or go to 0
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 1);
     }
 
     // =========================================================================
@@ -572,46 +648,26 @@ mod tests {
 
     #[test]
     fn test_first_non_blank_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "  hello world");
+        let mut setup = TestSetup::new("  hello world");
+        setup.set_cursor(Position::new(0, 10)); // At end of line
 
-        // Position at end of line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 10));
-        }
+        let args = setup.args();
+        let result = setup.run(&FirstNonBlank, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&FirstNonBlank, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 2); // 'h' is at column 2
+        assert_eq!(setup.cursor().column, 2); // 'h' is at column 2
     }
 
     #[test]
     fn test_first_non_blank_no_leading_whitespace() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world");
+        let mut setup = TestSetup::new("hello world");
+        setup.set_cursor(Position::new(0, 5)); // In middle
 
-        // Position in middle
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 5));
-        }
+        let args = setup.args();
+        let result = setup.run(&FirstNonBlank, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&FirstNonBlank, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 0); // 'h' is at column 0
+        assert_eq!(setup.cursor().column, 0); // 'h' is at column 0
     }
 
     // =========================================================================
@@ -620,42 +676,29 @@ mod tests {
 
     #[test]
     fn test_document_start_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
+        let mut setup = TestSetup::new("line one\nline two\nline three");
+        setup.set_cursor(Position::new(2, 3)); // On last line
 
-        // Position on last line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(2, 3));
-        }
+        let args = setup.args();
+        let result = setup.run(&DocumentStart, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&DocumentStart, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 0);
-        assert_eq!(pos.column, 0); // First non-blank (or 0 if no leading whitespace)
+        assert_eq!(setup.cursor().line, 0);
+        assert_eq!(setup.cursor().column, 0);
     }
 
     #[test]
     fn test_document_start_with_count() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
+        let mut setup = TestSetup::new("line one\nline two\nline three");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let mut args = setup.args();
         args.set("count", ArgValue::Count(2)); // Go to line 2 (0-indexed: line 1)
 
-        let result = run_command(&DocumentStart, &ctx, &args);
-        assert!(result.is_success());
+        let result = setup.run(&DocumentStart, &args);
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 1); // Line 2 in vim is line 1 in 0-indexed
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().line, 1); // Line 2 in vim is line 1 in 0-indexed
     }
 
     // =========================================================================
@@ -664,57 +707,40 @@ mod tests {
 
     #[test]
     fn test_document_end_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
+        let mut setup = TestSetup::new("line one\nline two\nline three");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&DocumentEnd, &args);
 
-        let result = run_command(&DocumentEnd, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 2); // Last line
+        assert_eq!(setup.cursor().line, 2); // Last line
     }
 
     #[test]
     fn test_document_end_with_count() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "line one\nline two\nline three");
+        let mut setup = TestSetup::new("line one\nline two\nline three");
+        setup.set_cursor(Position::new(0, 0)); // At start
 
-        // Position at start
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 0));
-        }
-
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let mut args = setup.args();
         args.set("count", ArgValue::Count(2)); // Go to line 2 (0-indexed: line 1)
 
-        let result = run_command(&DocumentEnd, &ctx, &args);
-        assert!(result.is_success());
+        let result = setup.run(&DocumentEnd, &args);
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 1); // Line 2 in vim is line 1 in 0-indexed
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().line, 1); // Line 2 in vim is line 1 in 0-indexed
     }
 
     #[test]
     fn test_document_end_single_line_buffer() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "only line");
+        let mut setup = TestSetup::new("only line");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&DocumentEnd, &args);
 
-        let result = run_command(&DocumentEnd, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 0); // Only line
+        assert_eq!(setup.cursor().line, 0); // Only line
     }
 
     // =========================================================================
@@ -723,9 +749,7 @@ mod tests {
 
     #[test]
     fn test_line_motion_no_buffer_returns_error() {
-        let ctx = KernelContext::default();
-        let args = CommandContext::new();
-        let result = run_command(&LineStart, &ctx, &args);
+        let result = run_command_no_buffer(&LineStart);
         assert!(result.is_error());
     }
 

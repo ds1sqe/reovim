@@ -8,7 +8,7 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        BufferApi, SessionRuntime, TransitionContext,
+        SessionRuntime, TransitionContext,
         api::{ModeApi, Selection},
     },
     reovim_kernel::api::v1::{CommandId, Position},
@@ -31,27 +31,26 @@ impl Command for EnterVisualMode {
 }
 
 impl CommandHandler for EnterVisualMode {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            tracing::warn!("EnterVisualMode: No active buffer in args");
-            return CommandResult::error("No active buffer");
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Get current cursor position from per-client window
+        let Some(window) = runtime.windows().active() else {
+            tracing::warn!("EnterVisualMode: No active window");
+            return CommandResult::error("No active window");
         };
-
-        // Get current cursor position
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            tracing::warn!(?buffer_id, "EnterVisualMode: Buffer not found");
-            return CommandResult::error("Buffer not found");
-        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Start character-wise selection at current cursor position.
         // Phase 8 (#465): Use exclusive end semantics - to include the character
         // at the cursor, end must be cursor + 1.
         let selection = Selection::character(pos, Position::new(pos.line, pos.column + 1));
-        tracing::debug!(?buffer_id, ?pos, ?selection, "EnterVisualMode: Setting selection");
-        runtime.set_selection(buffer_id, Some(selection));
+        tracing::debug!(?pos, ?selection, "EnterVisualMode: Setting selection");
+
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(selection);
+        }
 
         // Verify selection was set
-        let sel_check = runtime.selection(buffer_id);
+        let sel_check = runtime.windows().active().and_then(|w| w.selection.clone());
         tracing::debug!(?sel_check, "EnterVisualMode: Selection after set");
 
         // Change to visual mode
@@ -76,21 +75,21 @@ impl Command for EnterVisualLineMode {
 }
 
 impl CommandHandler for EnterVisualLineMode {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Get current cursor position from per-client window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
-
-        // Get current cursor position
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Start line-wise selection at current cursor position.
         // Phase 8 (#465): Use exclusive end semantics - to select the current line,
         // end.line must be pos.line + 1.
         let selection = Selection::line(Position::new(pos.line, 0), Position::new(pos.line + 1, 0));
-        runtime.set_selection(buffer_id, Some(selection));
+
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(selection);
+        }
 
         // Change to visual line mode
         runtime.set_mode(VimMode::VISUAL_LINE_ID, TransitionContext::new());
@@ -114,21 +113,21 @@ impl Command for EnterVisualBlockMode {
 }
 
 impl CommandHandler for EnterVisualBlockMode {
-    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        let Some(buffer_id) = args.buffer_id() else {
-            return CommandResult::error("No active buffer");
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Get current cursor position from per-client window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
-
-        // Get current cursor position
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
-        };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         // Start block selection at current cursor position.
         // Phase 8 (#465): Use exclusive end semantics - to include the character
         // at the cursor, end must be cursor + 1.
         let selection = Selection::block(pos, Position::new(pos.line, pos.column + 1));
-        runtime.set_selection(buffer_id, Some(selection));
+
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.selection = Some(selection);
+        }
 
         // Change to visual block mode
         runtime.set_mode(VimMode::VISUAL_BLOCK_ID, TransitionContext::new());

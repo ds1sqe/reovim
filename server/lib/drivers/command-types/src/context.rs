@@ -5,7 +5,7 @@
 use {
     crate::args::ArgValue,
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::BufferId,
+    reovim_kernel::api::v1::{BufferId, Position},
     std::{collections::HashMap, sync::Arc},
 };
 
@@ -235,6 +235,57 @@ impl CommandContext {
     pub fn is_linewise(&self) -> bool {
         matches!(self.args.get("linewise"), Some(ArgValue::Bang(true)))
     }
+
+    // === Per-Window State (Issue #471) ===
+    //
+    // Cursor and selection are per-WINDOW properties, not per-buffer.
+    // A buffer can appear in multiple windows (`:split`), each with its own cursor.
+    //
+    // The runner sets these from the client's ACTIVE window before dispatching
+    // commands. Commands should use these methods, NOT search for cursor position.
+
+    /// Get the cursor position from the active window.
+    ///
+    /// This is the cursor position explicitly passed by the runner from the
+    /// client's active window. Commands should use this instead of searching
+    /// for cursor position through window lookups.
+    ///
+    /// Returns `None` if cursor was not set. Commands should fail explicitly
+    /// rather than use a fallback position (Fail Loud Policy).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+    ///     let Some(pos) = args.cursor_position() else {
+    ///         return CommandResult::error("No cursor position");
+    ///     };
+    ///     // Use pos for operation...
+    /// }
+    /// ```
+    #[must_use]
+    pub fn cursor_position(&self) -> Option<Position> {
+        match self.args.get("cursor") {
+            Some(ArgValue::Position(line, col)) => Some(Position::new(*line, *col)),
+            _ => None,
+        }
+    }
+
+    /// Set the cursor position from the active window.
+    ///
+    /// Called by the runner before dispatching a command. The runner gets
+    /// the cursor from the client's active window and passes it explicitly.
+    ///
+    /// # Why Explicit Passing
+    ///
+    /// A buffer can appear in multiple windows (`:split`). Using
+    /// `cursor_position(buffer_id)` would find the FIRST window with that
+    /// buffer, which may not be the ACTIVE window. Explicit passing ensures
+    /// we always use the correct cursor position.
+    pub fn set_cursor_position(&mut self, pos: Position) {
+        self.args
+            .insert("cursor", ArgValue::Position(pos.line, pos.column));
+    }
 }
 
 #[cfg(test)]
@@ -354,5 +405,42 @@ mod tests {
 
         ctx.set_mode_name("normal");
         assert!(!ctx.is_operator_pending());
+    }
+
+    #[test]
+    fn test_command_context_cursor_position_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.cursor_position().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_cursor_position() {
+        use reovim_kernel::api::v1::Position;
+
+        let mut ctx = CommandContext::new();
+        let pos = Position::new(10, 5);
+        ctx.set_cursor_position(pos);
+
+        let result = ctx.cursor_position();
+        assert!(result.is_some());
+        let cursor = result.unwrap();
+        assert_eq!(cursor.line, 10);
+        assert_eq!(cursor.column, 5);
+    }
+
+    #[test]
+    fn test_command_context_cursor_position_explicit_passing() {
+        use reovim_kernel::api::v1::Position;
+
+        // Simulating runner pattern: set cursor before command dispatch
+        let mut ctx = CommandContext::new();
+
+        // Runner sets cursor from active window
+        ctx.set_cursor_position(Position::new(42, 17));
+
+        // Command reads cursor - should get exactly what was set
+        let pos = ctx.cursor_position().expect("cursor should be set");
+        assert_eq!(pos.line, 42);
+        assert_eq!(pos.column, 17);
     }
 }

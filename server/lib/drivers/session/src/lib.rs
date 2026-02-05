@@ -6,23 +6,37 @@
 //!
 //! This driver provides:
 //!
-//! - **Session types**: Per-client state ([`Session`], [`ClientId`], [`Window`])
+//! - **Session infrastructure**: Shared state ([`SessionShared`]) and runtime ([`SessionRuntime`])
+//! - **Client identification**: [`ClientId`] for explicit client binding
+//! - **Window management**: [`Window`], [`WindowLayout`], [`CursorPosition`]
 //! - **Mode lifecycle**: Runtime mode hooks ([`SessionMode`], [`ModeError`])
 //! - **Extension system**: Module per-session state ([`SessionExtension`], [`ExtensionMap`])
 //! - **Empty session handling**: Startup behavior ([`EmptySessionHandler`])
 //!
-//! # Architecture
+//! # Architecture (#471 Phase 0)
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
 //! │ SESSION DRIVER (lib/drivers/session/) - PURE MECHANISM          │
 //! │                                                                 │
-//! │ Session: id, windows, mode_stack, pending_keys, extensions      │
+//! │ SessionShared: compositor, terminal_size, active_buffer (SHARED)│
+//! │ SessionRuntime: ALWAYS operates on per-client state             │
+//! │   - new() - requires per-client state (mode, windows, ext)      │
+//! │   - with_owner() - like new() but tracks ClientId               │
+//! │                                                                 │
+//! │ Session (DEPRECATED): migrating to SessionShared + EditingState │
 //! │ SessionMode: id(), on_enter(), on_exit()                        │
 //! │ SessionExtension: create() - module per-session state           │
 //! │ EmptySessionHandler: handle() - startup behavior                │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
+//!
+//! # Per-Client State (#471 Phase 0)
+//!
+//! Per-client state (mode, cursor, selection) lives in `server::EditingState`,
+//! not in this driver. The driver provides shared infrastructure only.
+//! Use [`SessionRuntime::new`] with per-client state, or [`SessionRuntime::with_owner`]
+//! for explicit client binding. Per-client state is now REQUIRED (no Option wrappers).
 //!
 //! # Empty Session Handling
 //!
@@ -97,7 +111,8 @@ pub use mode::{ModeError, SessionMode};
 
 // Session types
 pub use types::{
-    ClientId, CursorPosition, KeySequence, Session, TextObjRange, Viewport, Window, WindowLayout,
+    ClientId, CursorPosition, KeySequence, Session, SessionShared, TextObjRange, Viewport, Window,
+    WindowLayout,
 };
 
 // Session context

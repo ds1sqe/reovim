@@ -809,30 +809,32 @@ mod history_tests {
 mod snapshot_tests {
     use super::*;
 
+    // Note: Tests updated for #471 - cursor is now per-window, not per-buffer.
+    // Snapshot::capture takes cursor position explicitly.
+
     #[test]
     fn test_capture_and_restore() {
         let mut buffer = Buffer::from_string("Hello\nWorld");
-        buffer.set_position(Position::new(1, 3));
+        let cursor = Position::new(1, 3);
 
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, cursor);
 
         // Modify buffer
         buffer.set_content("Something else");
-        buffer.set_position(Position::new(0, 0));
 
-        // Restore
-        snapshot.restore(&mut buffer);
+        // Restore returns cursor position
+        let restored_cursor = snapshot.restore(&mut buffer);
 
         assert_eq!(buffer.content(), "Hello\nWorld");
-        assert_eq!(buffer.position(), Position::new(1, 3));
+        assert_eq!(restored_cursor, Position::new(1, 3));
     }
 
     #[test]
     fn test_accessors() {
-        let mut buffer = Buffer::from_string("Test content");
-        buffer.set_position(Position::new(0, 5));
+        let buffer = Buffer::from_string("Test content");
+        let cursor = Position::new(0, 5);
 
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, cursor);
 
         assert_eq!(snapshot.lines(), &["Test content"]);
         assert_eq!(snapshot.cursor(), Position::new(0, 5));
@@ -842,17 +844,11 @@ mod snapshot_tests {
 
     #[test]
     fn test_cursor_preserved() {
-        let mut buffer = Buffer::from_string("Line 1\nLine 2\nLine 3");
-        buffer.set_position(Position::new(2, 4));
+        let buffer = Buffer::from_string("Line 1\nLine 2\nLine 3");
+        let cursor = Position::new(2, 4);
 
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, cursor);
         assert_eq!(snapshot.cursor(), Position::new(2, 4));
-
-        // Modify and restore cursor only
-        buffer.set_position(Position::new(0, 0));
-        snapshot.restore_cursor(&mut buffer);
-
-        assert_eq!(buffer.position(), Position::new(2, 4));
     }
 
     #[test]
@@ -872,7 +868,7 @@ mod snapshot_tests {
     #[test]
     fn test_matches_buffer() {
         let buffer = Buffer::from_string("Test");
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
 
         assert!(snapshot.matches_buffer(&buffer));
 
@@ -883,7 +879,7 @@ mod snapshot_tests {
     #[test]
     fn test_char_count() {
         let buffer = Buffer::from_string("Hello\nWorld");
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
 
         // "Hello" (5) + "\n" (1) + "World" (5) = 11
         assert_eq!(snapshot.char_count(), 11);
@@ -892,14 +888,14 @@ mod snapshot_tests {
     #[test]
     fn test_line_count() {
         let buffer = Buffer::from_string("A\nB\nC");
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
         assert_eq!(snapshot.line_count(), 3);
     }
 
     #[test]
     fn test_empty_snapshot() {
         let buffer = Buffer::new();
-        let snapshot = Snapshot::capture(&buffer);
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
 
         assert!(snapshot.is_empty());
         assert_eq!(snapshot.line_count(), 0);

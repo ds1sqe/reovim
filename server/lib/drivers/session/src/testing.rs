@@ -28,15 +28,16 @@
 
 use {
     crate::{
-        ClientId, Session,
+        ClientId, Session, WindowLayout,
         api::{CommandExecutor, StateChanges},
+        extension::ExtensionMap,
         runtime::SessionRuntime,
     },
     reovim_arch::sync::RwLock,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_kernel::api::v1::{
-        Buffer, BufferError, BufferId, BufferManager, CommandId, KernelContext, ModeId, ModuleId,
-        Position,
+        Buffer, BufferError, BufferId, BufferManager, CommandId, KernelContext, ModeId, ModeStack,
+        ModuleId, Position,
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -45,8 +46,45 @@ use {
 ///
 /// Owns all the components needed to create a `SessionRuntime` and provides
 /// convenient assertion methods for testing.
+///
+/// # Architecture (#471 Phase 0)
+///
+/// Per-client state (`mode_stack`, `windows`, `extensions`) is held as **separate
+/// fields** instead of inside `session`. This mirrors the production architecture
+/// where `EditingState` (per-client) is separate from `Session` (shared).
+///
+/// This separation is REQUIRED by the borrow checker: `SessionRuntime::new()` takes
+/// `&mut Session` AND `&mut ModeStack` etc. If `mode_stack` were inside `session`,
+/// we'd have a double mutable borrow conflict.
+///
+/// ```text
+/// TestSessionRuntime
+/// ├── session: Session              // Shared infra (terminal_size, compositor)
+/// ├── mode_stack: ModeStack         // Per-client (SEPARATE field)
+/// ├── windows: WindowLayout         // Per-client (SEPARATE field)
+/// ├── extensions: ExtensionMap      // Per-client (SEPARATE field)
+/// ├── kernel: KernelContext
+/// └── changes: StateChanges
+/// ```
 pub struct TestSessionRuntime {
+    /// Shared session infrastructure (compositor, `terminal_size`).
+    ///
+    /// Does NOT contain per-client state - that's in separate fields below.
     session: Session,
+    /// Per-client mode stack (SEPARATE from session for borrow-checker).
+    ///
+    /// Commands use this via `runtime.current_mode()`, `runtime.push_mode()`, etc.
+    /// Public for direct test access (e.g., `test.mode_stack.current()`).
+    pub mode_stack: ModeStack,
+    /// Per-client window layout with cursors (SEPARATE from session).
+    ///
+    /// Commands use this via `runtime.windows()`.
+    /// Public for direct test access (e.g., `test.windows.active_mut()`).
+    pub windows: WindowLayout,
+    /// Per-client extensions (SEPARATE from session).
+    ///
+    /// Commands use this via `runtime.ext::<T>()`, `runtime.ext_mut::<T>()`.
+    pub extensions: ExtensionMap,
     kernel: KernelContext,
     executor: StubExecutor,
     /// Accumulated changes from operations.
@@ -84,7 +122,10 @@ impl TestSessionRuntime {
     pub fn new() -> Self {
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         Self {
-            session: Session::new(ClientId::new(1), home_mode),
+            session: Session::new(ClientId::new(1), home_mode.clone()),
+            mode_stack: ModeStack::new(home_mode), // Separate field
+            windows: WindowLayout::empty(),        // Separate field
+            extensions: ExtensionMap::new(),       // Separate field
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -95,7 +136,10 @@ impl TestSessionRuntime {
     #[must_use]
     pub fn with_home_mode(mode: ModeId) -> Self {
         Self {
-            session: Session::new(ClientId::new(1), mode),
+            session: Session::new(ClientId::new(1), mode.clone()),
+            mode_stack: ModeStack::new(mode), // Separate field
+            windows: WindowLayout::empty(),   // Separate field
+            extensions: ExtensionMap::new(),  // Separate field
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -114,7 +158,7 @@ impl TestSessionRuntime {
         // Create a window displaying this buffer
         let mut window = crate::Window::new();
         window.buffer_id = Some(buffer_id);
-        test.session.windows.add(window);
+        test.windows.add(window); // Use self.windows, NOT self.session.windows
 
         // Set the active buffer (SSOT for session state)
         test.session.set_active_buffer(Some(buffer_id));
@@ -126,6 +170,12 @@ impl TestSessionRuntime {
     ///
     /// This is the preferred way to use the test runtime. Changes are
     /// automatically captured when the callback returns.
+    ///
+    /// # Per-Client State (#471 Phase 0)
+    ///
+    /// Uses `SessionRuntime::new()` with per-client state held as
+    /// **separate fields** in `TestSessionRuntime`. This matches production behavior
+    /// where `EditingState` (per-client) is separate from `Session` (shared).
     ///
     /// # Example
     ///
@@ -141,7 +191,16 @@ impl TestSessionRuntime {
     {
         use crate::api::ChangeTracker;
 
-        let mut runtime = SessionRuntime::new(&mut self.session, &self.kernel, &self.executor);
+        // Phase #471 Phase 0: Use new() with per-client state from SEPARATE fields
+        // (not from session, which would cause double mutable borrow)
+        let mut runtime = SessionRuntime::new(
+            &mut self.session,    // Shared infra (no conflict)
+            &mut self.mode_stack, // Separate field (no conflict)
+            &mut self.windows,    // Separate field (no conflict)
+            &mut self.extensions, // Separate field (no conflict)
+            &self.kernel,
+            &self.executor,
+        );
         let result = f(&mut runtime);
         let changes = ChangeTracker::take_changes(&mut runtime);
         self.changes.merge(changes);
@@ -153,8 +212,19 @@ impl TestSessionRuntime {
     /// **Note**: Changes are NOT automatically captured when using this method.
     /// Prefer `with_runtime` for tests that need to verify changes.
     /// Use this for simple operations where change tracking isn't needed.
+    ///
+    /// # Per-Client State (#471 Phase 0)
+    ///
+    /// Uses `SessionRuntime::new()` with per-client state from separate fields.
     pub fn runtime(&mut self) -> SessionRuntime<'_> {
-        SessionRuntime::new(&mut self.session, &self.kernel, &self.executor)
+        SessionRuntime::new(
+            &mut self.session,
+            &mut self.mode_stack,
+            &mut self.windows,
+            &mut self.extensions,
+            &self.kernel,
+            &self.executor,
+        )
     }
 
     /// Take accumulated changes and reset the tracker.
@@ -178,7 +248,7 @@ impl TestSessionRuntime {
     ///
     /// Panics if the current mode doesn't match.
     pub fn assert_mode(&self, expected: &ModeId) {
-        let current = self.session.mode_stack.current();
+        let current = self.mode_stack.current(); // Use separate field, NOT session.mode_stack
         assert_eq!(current, expected, "Expected mode {expected:?}, got {current:?}");
     }
 
@@ -188,7 +258,7 @@ impl TestSessionRuntime {
     ///
     /// Panics if the mode name doesn't match.
     pub fn assert_mode_name(&self, expected_name: &str) {
-        let current = self.session.mode_stack.current();
+        let current = self.mode_stack.current(); // Use separate field
         assert_eq!(
             current.name(),
             expected_name,
@@ -204,7 +274,7 @@ impl TestSessionRuntime {
     ///
     /// Panics if the depth doesn't match.
     pub fn assert_mode_depth(&self, expected: usize) {
-        let depth = self.session.mode_stack.depth();
+        let depth = self.mode_stack.depth(); // Use separate field
         assert_eq!(depth, expected, "Expected mode depth {expected}, got {depth}");
     }
 
@@ -215,8 +285,7 @@ impl TestSessionRuntime {
     /// Panics if no active window or cursor position doesn't match.
     pub fn assert_cursor(&self, line: usize, column: usize) {
         let window = self
-            .session
-            .windows
+            .windows // Use separate field, NOT session.windows
             .active()
             .expect("No active window for cursor assertion");
         assert_eq!(
@@ -277,7 +346,7 @@ impl TestSessionRuntime {
     ///
     /// Panics if window count doesn't match.
     pub fn assert_window_count(&self, expected: usize) {
-        let count = self.session.windows.len();
+        let count = self.windows.len(); // Use separate field
         assert_eq!(count, expected, "Expected {expected} windows, got {count}");
     }
 
@@ -286,7 +355,7 @@ impl TestSessionRuntime {
     /// Get the current mode ID.
     #[must_use]
     pub fn current_mode(&self) -> &ModeId {
-        self.session.mode_stack.current()
+        self.mode_stack.current() // Use separate field
     }
 
     /// Get the active buffer ID, if any.
@@ -298,8 +367,7 @@ impl TestSessionRuntime {
     /// Get the cursor position for the active buffer.
     #[must_use]
     pub fn cursor_position(&self) -> Option<Position> {
-        self.session
-            .windows
+        self.windows // Use separate field
             .active()
             .map(|w| Position::new(w.cursor.line, w.cursor.column))
     }
@@ -449,22 +517,23 @@ mod tests {
         assert!(changes.buffer_modified);
     }
 
+    /// Test cursor manipulation via per-client window state (#471).
+    ///
+    /// Cursor is now a per-WINDOW property, not per-buffer. Commands update
+    /// cursor via `runtime.windows_mut().active_mut()?.cursor`.
     #[test]
     fn test_cursor_operations() {
-        use crate::api::BufferApi;
-
         let mut test = TestSessionRuntime::with_buffer("hello\nworld");
 
-        test.with_runtime(|runtime| {
-            if let Some(buffer_id) = runtime.active_buffer() {
-                runtime.move_cursor(buffer_id, Position::new(1, 3));
-            }
-        });
+        // Initial cursor should be at (0, 0)
+        test.assert_cursor(0, 0);
 
+        // Manually set cursor via window (simulating what a command would do)
+        // Use test.windows (separate field), NOT test.session.windows
+        test.windows.active_mut().unwrap().cursor = crate::CursorPosition::new(1, 3);
+
+        // Verify cursor was updated
         test.assert_cursor(1, 3);
-
-        let changes = test.take_changes();
-        assert!(changes.cursor_moved);
     }
 
     #[test]
@@ -474,29 +543,36 @@ mod tests {
         test.assert_mode(&custom_mode);
     }
 
+    /// Test cursor position via per-client window state (#471).
+    ///
+    /// Post-#471: Cursor is per-WINDOW, not per-buffer. Access via
+    /// `test.windows.active()?.cursor` (read) or
+    /// `test.windows.active_mut()?.cursor = ...` (write).
+    ///
+    /// Commands should use `runtime.windows()` to access the
+    /// client's window state.
     #[test]
-    fn test_buffer_position_api() {
-        use crate::api::BufferApi;
-
+    fn test_cursor_position_via_window() {
         let mut test = TestSessionRuntime::with_buffer("hello\nworld");
-        let buffer_id = test.active_buffer().expect("should have active buffer");
+        let _buffer_id = test.active_buffer().expect("should have active buffer");
 
         // Initial position should be (0, 0)
-        test.with_runtime(|runtime| {
-            let pos = runtime.buffer_position(buffer_id);
-            assert_eq!(pos, Some(Position::new(0, 0)));
+        // Use test.windows (separate field), NOT test.session.windows
+        let window = test.windows.active().expect("should have active window");
+        assert_eq!((window.cursor.line, window.cursor.column), (0, 0));
 
-            // Set new position
-            runtime.set_buffer_position(buffer_id, Position::new(1, 3));
+        // Set new position via window
+        test.windows.active_mut().unwrap().cursor = crate::CursorPosition::new(1, 3);
 
-            // Verify new position
-            let pos = runtime.buffer_position(buffer_id);
-            assert_eq!(pos, Some(Position::new(1, 3)));
+        // Verify new position
+        let window = test.windows.active().expect("should have active window");
+        assert_eq!((window.cursor.line, window.cursor.column), (1, 3));
 
-            // Non-existent buffer returns None
-            let fake_id = BufferId::new();
-            assert!(runtime.buffer_position(fake_id).is_none());
-        });
+        // Window without buffer still has cursor
+        let mut layout = crate::WindowLayout::empty();
+        layout.add(crate::Window::new()); // Empty window (no buffer)
+        assert!(layout.active().is_some()); // Window exists
+        assert_eq!(layout.active().unwrap().buffer_id, None); // But no buffer
     }
 
     #[test]
@@ -520,23 +596,9 @@ mod tests {
         });
     }
 
-    #[test]
-    fn test_buffer_position_vs_cursor_position() {
-        use crate::api::BufferApi;
-
-        let mut test = TestSessionRuntime::with_buffer("hello\nworld");
-        let buffer_id = test.active_buffer().expect("should have active buffer");
-
-        test.with_runtime(|runtime| {
-            // Set buffer position (kernel) and window cursor separately
-            runtime.set_buffer_position(buffer_id, Position::new(1, 2));
-            runtime.move_cursor(buffer_id, Position::new(0, 4));
-
-            // Verify they are independent
-            assert_eq!(runtime.buffer_position(buffer_id), Some(Position::new(1, 2)));
-            assert_eq!(runtime.cursor_position(buffer_id), Some(Position::new(0, 4)));
-        });
-    }
+    // NOTE: test_buffer_position_vs_cursor_position removed (#471)
+    // There is now only ONE cursor location: per-client Window.cursor
+    // The kernel Buffer no longer has a cursor field.
 
     #[test]
     fn test_register_api() {

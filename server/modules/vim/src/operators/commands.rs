@@ -74,14 +74,15 @@ impl Command for YankCommand {
 
 impl CommandHandler for YankCommand {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        use reovim_driver_session::api::BufferApi;
-
         // In Vim, after yank the cursor should be restored to the start of the yanked range.
         // Get the range start BEFORE executing the yank, so we can restore cursor after.
         let (start_line, start_col) = args.range_start().unwrap_or((0, 0));
         let restore_pos = Position::new(start_line, start_col);
 
-        let cur_pos = args.buffer_id().and_then(|id| runtime.buffer_position(id));
+        let cur_pos = runtime
+            .windows()
+            .active()
+            .map(|w| Position::new(w.cursor.line, w.cursor.column));
         tracing::debug!(
             range_start = ?restore_pos,
             current_pos = ?cur_pos,
@@ -91,12 +92,15 @@ impl CommandHandler for YankCommand {
         let result = execute_operator(&YankOperator, runtime, args);
 
         // Restore cursor to start of yanked range (Vim behavior)
-        if matches!(result, CommandResult::Success)
-            && let Some(buffer_id) = args.buffer_id()
-        {
-            runtime.set_buffer_position(buffer_id, restore_pos);
+        if matches!(result, CommandResult::Success) && args.buffer_id().is_some() {
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = restore_pos.into();
+            }
 
-            let cur_pos = runtime.buffer_position(buffer_id);
+            let cur_pos = runtime
+                .windows()
+                .active()
+                .map(|w| Position::new(w.cursor.line, w.cursor.column));
             tracing::debug!(
                 restored_to = ?restore_pos,
                 current_pos = ?cur_pos,
@@ -135,17 +139,17 @@ impl CommandHandler for ChangeCommand {
         use {
             super::ChangeOperator,
             crate::modes::VimMode,
-            reovim_driver_session::BufferApi,
             reovim_driver_undo::{UndoKey, UndoProviderRegistry},
         };
 
         // Start undo batching BEFORE the delete - both the delete and subsequent
         // insert edits should be grouped as a single undo entry
         if let Some(buffer_id) = args.buffer_id()
-            && let Some(pos) = runtime.buffer_position(buffer_id)
+            && let Some(window) = runtime.windows().active()
             && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
             && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
         {
+            let pos = Position::new(window.cursor.line, window.cursor.column);
             undo_provider.begin_batch(buffer_id, pos);
         }
 
@@ -171,9 +175,10 @@ impl CommandHandler for ChangeCommand {
 /// 1. Extracts `range_start`, `range_end`, linewise from args
 /// 2. Builds an `OperatorContext` with kernel access
 /// 3. Calls `operator.execute()`
+/// 4. Updates cursor in window for text-modifying operators
 fn execute_operator(
     operator: &dyn Operator,
-    runtime: &SessionRuntime<'_>,
+    runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
 ) -> CommandResult {
     // Get buffer ID
@@ -200,17 +205,38 @@ fn execute_operator(
     let count = args.count().unwrap_or(1);
     let register = args.register();
 
+    // Get cursor position from window (for undo tracking)
+    let cursor_position = runtime
+        .windows()
+        .active()
+        .map_or_else(Position::origin, |w| Position::new(w.cursor.line, w.cursor.column));
+
     // Build operator context using runtime's kernel (uses interior mutability)
     let mut op_ctx = OperatorContext {
         kernel: runtime.kernel(),
         buffer_id,
         register,
         count,
+        cursor_position,
     };
 
     // Execute operator
     match operator.execute(&mut op_ctx, range) {
-        Ok(()) => CommandResult::Success,
+        Ok(()) => {
+            // Update cursor for text-modifying operators (#471)
+            // After delete/change, cursor should be at the start of the range
+            if operator.is_text_modifying()
+                && let Some(window) = runtime.windows_mut().active_mut()
+            {
+                window.cursor = start.into();
+                tracing::debug!(
+                    ?start,
+                    operator = operator.id(),
+                    "Updated cursor after text-modifying operator"
+                );
+            }
+            CommandResult::Success
+        }
         Err(e) => CommandResult::error(&e.to_string()),
     }
 }

@@ -720,13 +720,35 @@ impl Session {
 
         match target {
             InputTarget::Buffer => {
-                // Insert into active buffer
+                // Insert into active buffer at client's cursor position
                 let state = self.state.read();
                 let buffer_id = state.active_buffer()?;
                 let buffer_arc = state.buffer(buffer_id)?;
-                drop(state); // Release lock before mutating buffer
-                tracing::debug!(?buffer_id, ?ch, "Inserting into buffer");
-                buffer_arc.write().insert(&ch.to_string());
+                drop(state); // Release lock before getting client
+
+                // Get cursor position from client's window
+                let mut clients = self.clients.write();
+                let client = clients.get_mut(&client_id)?;
+                let active_window = client.state.windows.active_mut()?;
+                let cursor_pos = reovim_kernel::api::v1::Position::new(
+                    active_window.cursor.line,
+                    active_window.cursor.column,
+                );
+
+                tracing::debug!(?buffer_id, ?ch, ?cursor_pos, "Inserting into buffer");
+                buffer_arc.write().insert_at(cursor_pos, &ch.to_string());
+
+                // Update cursor position after insertion
+                // For regular characters, move cursor one position right
+                // For newlines, move to start of next line
+                if ch == '\n' {
+                    active_window.cursor.line += 1;
+                    active_window.cursor.column = 0;
+                } else {
+                    active_window.cursor.column += 1;
+                }
+
+                drop(clients);
                 Some(buffer_id)
             }
             InputTarget::Extension(type_id) => {

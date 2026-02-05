@@ -35,6 +35,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Per-Client State Architecture Consolidation (Phase 0)**: Complete per-client
+  cursor isolation by consolidating `SessionRuntime` constructors and removing
+  deprecated compatibility shims. `SessionRuntime::new()` now requires 6 arguments
+  with per-client state REQUIRED (mode_stack, windows, extensions). Added
+  `SessionShared` type for truly shared session infrastructure. Removed kernel-level
+  cursor concept from `Buffer` (cursor now lives in `Window`). 100% command migration
+  complete: editor (cursor, delete, display_line, insert_edit, paste, replace, yank),
+  motions (line, search, word), textobjects (bracket, paragraph, quote, word), vim
+  (change, find_char, mode, visual/*). Removed deprecated methods: `effective_windows()`,
+  `scroll_offset()`, `window_active_buffer()`, `CommandRegistry::execute()`,
+  `SessionState::execute_command()`. Architecture: SessionRuntime always operates
+  on per-client state, enabling true multi-client isolation. Parts of #465.
+
 - **Remove Silent Fallbacks - Fail Loud Policy (#479, #484, #485, #486)**: Eliminated
   all silent fallback patterns in gRPC handlers. Server now returns explicit errors for
   invalid `client_id` instead of silently falling back to shared state. Clients panic

@@ -3,6 +3,11 @@
 //! This module provides `BufferSnapshot`, a read-only capture of buffer state
 //! that can be safely shared across threads without locking.
 //!
+//! # Cursor Isolation (#471)
+//!
+//! Cursor must be passed explicitly to `from_buffer()` since cursor is now
+//! per-client state in Window, not Buffer.
+//!
 //! # Design Philosophy
 //!
 //! Following the kernel "mechanism, not policy" principle:
@@ -22,13 +27,13 @@
 //! use reovim_kernel::api::v1::*;
 //!
 //! let mut buffer = Buffer::from_string("Hello\nWorld");
-//! buffer.set_position(Position::new(0, 5));
+//! let cursor = Cursor::new(Position::new(0, 5)); // Get from Window
 //!
-//! // Capture state
-//! let snapshot = BufferSnapshot::from_buffer(&buffer);
+//! // Capture state with explicit cursor
+//! let snapshot = BufferSnapshot::from_buffer(&buffer, cursor);
 //!
 //! // Snapshot is independent of buffer changes
-//! buffer.insert("!");
+//! buffer.insert_at(Position::new(0, 5), "!");
 //!
 //! assert_eq!(snapshot.line_count(), 2);
 //! assert_eq!(snapshot.content(), "Hello\nWorld"); // Original content
@@ -41,6 +46,10 @@ use super::{BufferId, Cursor, Position};
 /// A `BufferSnapshot` captures the complete state of a buffer at a point
 /// in time. It's cheap to clone and safe to share across threads.
 ///
+/// # Cursor Isolation (#471)
+///
+/// Cursor is passed explicitly to `from_buffer()` - get it from Window.
+///
 /// # Immutability
 ///
 /// All methods are read-only. The snapshot cannot be modified after
@@ -50,18 +59,19 @@ use super::{BufferId, Cursor, Position};
 ///
 /// - `id`: Buffer identifier
 /// - `lines`: All text lines
-/// - `cursor`: Cursor state (position, anchor, preferred column)
+/// - `cursor`: Cursor state (passed from Window)
 /// - `file_path`: Associated file path (if any)
 /// - `modified`: Whether buffer had unsaved changes
 ///
 /// Note: Selection removed in Phase 8 (#465) - it now lives in Window.
+/// Note: Cursor removed from Buffer in #471 - it now lives in Window.
 #[derive(Debug, Clone)]
 pub struct BufferSnapshot {
     /// Buffer identifier.
     pub id: BufferId,
     /// Text content as lines.
     pub lines: Vec<String>,
-    /// Cursor state.
+    /// Cursor state (from Window, not Buffer).
     pub cursor: Cursor,
     /// File path (if buffer is associated with a file).
     pub file_path: Option<String>,
@@ -72,14 +82,15 @@ pub struct BufferSnapshot {
 impl BufferSnapshot {
     /// Create a snapshot from a buffer.
     ///
+    /// Cursor must be passed explicitly - get it from Window.
     /// This clones all buffer state, so the snapshot is independent
     /// of subsequent buffer modifications.
     #[must_use]
-    pub fn from_buffer(buffer: &super::Buffer) -> Self {
+    pub fn from_buffer(buffer: &super::Buffer, cursor: Cursor) -> Self {
         Self {
             id: buffer.id(),
             lines: buffer.lines().to_vec(),
-            cursor: *buffer.cursor(),
+            cursor,
             file_path: buffer.file_path().map(String::from),
             modified: buffer.is_modified(),
         }
@@ -234,15 +245,16 @@ mod tests {
     use super::*;
 
     fn make_test_buffer() -> super::super::Buffer {
-        let mut buffer = super::super::Buffer::from_string("Hello\nWorld\nTest");
-        buffer.set_position(Position::new(1, 2));
-        buffer
+        // Buffer no longer has cursor state - cursor is per-window (#471)
+        super::super::Buffer::from_string("Hello\nWorld\nTest")
     }
 
     #[test]
     fn test_snapshot_from_buffer() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        // Pass cursor explicitly - cursor at (1, 2) for test
+        let cursor = Cursor::new(Position::new(1, 2));
+        let snapshot = BufferSnapshot::from_buffer(&buffer, cursor);
 
         assert_eq!(snapshot.id, buffer.id());
         assert_eq!(snapshot.line_count(), 3);
@@ -252,14 +264,14 @@ mod tests {
     #[test]
     fn test_snapshot_line_count() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
         assert_eq!(snapshot.line_count(), 3);
     }
 
     #[test]
     fn test_snapshot_line_access() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         assert_eq!(snapshot.line(0), Some("Hello"));
         assert_eq!(snapshot.line(1), Some("World"));
@@ -269,14 +281,14 @@ mod tests {
     #[test]
     fn test_snapshot_content() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
         assert_eq!(snapshot.content(), "Hello\nWorld\nTest");
     }
 
     #[test]
     fn test_snapshot_text_in_range_single_line() {
         let buffer = super::super::Buffer::from_string("Hello World");
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         let text = snapshot.text_in_range(Position::new(0, 0), Position::new(0, 5));
         assert_eq!(text, "Hello");
@@ -285,7 +297,7 @@ mod tests {
     #[test]
     fn test_snapshot_text_in_range_multi_line() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         let text = snapshot.text_in_range(Position::new(0, 3), Position::new(1, 3));
         assert_eq!(text, "lo\nWor");
@@ -294,7 +306,7 @@ mod tests {
     #[test]
     fn test_snapshot_empty_buffer() {
         let buffer = super::super::Buffer::new();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         assert!(snapshot.is_empty());
         assert_eq!(snapshot.line_count(), 0);
@@ -304,7 +316,7 @@ mod tests {
     #[test]
     fn test_snapshot_line_access_out_of_bounds() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         assert!(snapshot.line(100).is_none());
     }
@@ -312,7 +324,7 @@ mod tests {
     #[test]
     fn test_snapshot_text_in_range_boundary() {
         let buffer = super::super::Buffer::from_string("Hello");
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         // End column exceeds line length - should clamp
         let text = snapshot.text_in_range(Position::new(0, 0), Position::new(0, 100));
@@ -322,7 +334,7 @@ mod tests {
     #[test]
     fn test_snapshot_is_valid_position() {
         let buffer = make_test_buffer();
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         assert!(snapshot.is_valid_position(Position::new(0, 0)));
         assert!(snapshot.is_valid_position(Position::new(0, 5))); // At end of "Hello"
@@ -336,7 +348,7 @@ mod tests {
     #[test]
     fn test_snapshot_immutability() {
         let mut buffer = super::super::Buffer::from_string("Original");
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         // Modify the buffer
         buffer.set_content("Modified");
@@ -363,7 +375,7 @@ mod tests {
     #[test]
     fn test_snapshot_line_len() {
         let buffer = super::super::Buffer::from_string("Hello\nWorld!");
-        let snapshot = BufferSnapshot::from_buffer(&buffer);
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
 
         assert_eq!(snapshot.line_len(0), Some(5));
         assert_eq!(snapshot.line_len(1), Some(6));

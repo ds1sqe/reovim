@@ -252,16 +252,18 @@ fn search_word(
     args: &CommandContext,
     direction: Direction,
 ) -> CommandResult {
-    use reovim_driver_session::api::BufferApi;
+    use reovim_kernel::api::v1::Position;
 
     // Get active buffer and cursor position
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
     };
 
-    let Some(cursor) = runtime.buffer_position(buffer_id) else {
-        return CommandResult::error("No cursor position");
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
     };
+    let cursor = Position::new(window.cursor.line, window.cursor.column);
 
     // Get search provider from kernel services
     let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
@@ -329,16 +331,18 @@ fn search_and_move(
     pattern: &str,
     direction: Direction,
 ) -> CommandResult {
-    use reovim_driver_session::api::{BufferApi, ChangeTracker};
+    use {reovim_driver_session::ChangeTracker, reovim_kernel::api::v1::Position};
 
     // Get active buffer and cursor position
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
     };
 
-    let Some(cursor) = runtime.buffer_position(buffer_id) else {
-        return CommandResult::error("No cursor position");
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
     };
+    let cursor = Position::new(window.cursor.line, window.cursor.column);
 
     // Get search provider
     let Some(search_registry) = runtime.kernel().services.get::<SearchProviderRegistry>() else {
@@ -356,9 +360,10 @@ fn search_and_move(
 
     match search_result {
         Some(Ok(Some(m))) => {
-            // Move cursor to match start - update BOTH buffer position and window cursor
-            runtime.set_buffer_position(buffer_id, m.start);
-            runtime.move_cursor(buffer_id, m.start);
+            // Move cursor to match start via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = m.start.into();
+            }
             runtime.record_cursor_move(buffer_id);
             CommandResult::Success
         }
@@ -379,7 +384,7 @@ fn search_and_move_from(
     direction: Direction,
     search_from: Position,
 ) -> CommandResult {
-    use reovim_driver_session::api::{BufferApi, ChangeTracker};
+    use reovim_driver_session::ChangeTracker;
 
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("No active buffer");
@@ -399,8 +404,10 @@ fn search_and_move_from(
 
     match search_result {
         Some(Ok(Some(m))) => {
-            runtime.set_buffer_position(buffer_id, m.start);
-            runtime.move_cursor(buffer_id, m.start);
+            // Move cursor via per-client Window (#471)
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = m.start.into();
+            }
             runtime.record_cursor_move(buffer_id);
             CommandResult::Success
         }

@@ -9,8 +9,10 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Cursor, Direction, Motion, MotionEngine, WordBoundary},
+    reovim_driver_session::{ChangeTracker, SessionRuntime},
+    reovim_kernel::api::v1::{
+        CommandId, Cursor, Direction, Motion, MotionEngine, Position, WordBoundary,
+    },
 };
 
 use crate::ids;
@@ -35,6 +37,12 @@ fn execute_word_motion(
         return CommandResult::error("No active buffer");
     };
 
+    // Get cursor from per-client Window (#471)
+    let Some(window) = runtime.windows().active() else {
+        return CommandResult::error("No active window");
+    };
+    let old_pos = Position::new(window.cursor.line, window.cursor.column);
+
     let count = args.count().unwrap_or(1);
     let motion = Motion::Word {
         direction,
@@ -44,13 +52,11 @@ fn execute_word_motion(
 
     // Calculate motion using with_buffer_read callback
     let motion_result = runtime.with_buffer_read(buffer_id, |buffer| {
-        let cursor = Cursor::new(buffer.position());
-        let old_pos = cursor.position;
-        let new_pos = MotionEngine::calculate(buffer, &cursor, motion, count);
-        (old_pos, new_pos)
+        let cursor = Cursor::new(old_pos);
+        MotionEngine::calculate(buffer, &cursor, motion, count)
     });
 
-    let Some((old_pos, Some(new_pos))) = motion_result else {
+    let Some(Some(new_pos)) = motion_result else {
         // Buffer not found or motion calculation failed
         return if motion_result.is_none() {
             CommandResult::error("Buffer not found")
@@ -63,8 +69,10 @@ fn execute_word_motion(
         return CommandResult::Success; // No movement
     }
 
-    // Move cursor via BufferApi (both normal and operator-pending modes)
-    runtime.set_buffer_position(buffer_id, new_pos);
+    // Move cursor via per-client Window (#471)
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = new_pos.into();
+    }
 
     // Record cursor move via ChangeTracker
     runtime.record_cursor_move(buffer_id);
@@ -359,9 +367,12 @@ mod tests {
     use {
         super::*,
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{ClientId, Session, SessionRuntime, api::CommandExecutor},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+            api::CommandExecutor,
+        },
         reovim_kernel::api::{
-            KernelContext, ModeId, ModuleId, ServiceRegistry,
+            KernelContext, ModeId, ModeStack, ModuleId, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, OptionRegistry,
                 Position, RegisterBank, RwLock, TextObjectEngine,
@@ -421,45 +432,140 @@ mod tests {
         }
     }
 
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
+    // =========================================================================
+    // Test Infrastructure (#471)
+    // =========================================================================
+
+    /// Stub command executor for tests.
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
     }
 
-    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
-        let buffer = Buffer::from_string(content);
-        ctx.buffers.register(buffer)
+    /// Explicit test setup for motion commands.
+    ///
+    /// All state is explicit - no hidden implicit state in helper functions.
+    /// Per-client state is held as separate fields to avoid borrow conflicts (#471).
+    struct TestSetup {
+        ctx: KernelContext,
+        session: Session,
+        // Per-client state as separate fields (#471 borrow checker fix)
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+        buffer_id: BufferId,
     }
 
-    fn run_command<C: CommandHandler>(
-        cmd: &C,
-        ctx: &KernelContext,
-        args: &CommandContext,
-    ) -> CommandResult {
-        struct StubExecutor;
-        impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+    impl TestSetup {
+        /// Create test setup with buffer content.
+        fn new(content: &str) -> Self {
+            let ctx = KernelContext::new(
+                Arc::new(EventBus::new()),
+                Arc::new(TestBufferManager::new()),
+                Arc::new(MotionEngine),
+                Arc::new(TextObjectEngine),
+                Arc::new(RwLock::new(RegisterBank::new())),
+                Arc::new(RwLock::new(MarkBank::new())),
+                Arc::new(OptionRegistry::default()),
+                Arc::new(ServiceRegistry::new()),
+            );
+
+            let buffer = Buffer::from_string(content);
+            let buffer_id = ctx.buffers.register(buffer);
+
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+
+            // Per-client state as separate fields (#471)
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            // Create window with buffer
+            let mut window = Window::new();
+            window.buffer_id = Some(buffer_id);
+            windows.add(window);
+
+            Self {
+                ctx,
+                session,
+                mode_stack,
+                windows,
+                extensions,
+                buffer_id,
             }
         }
+
+        /// Set cursor position explicitly.
+        fn set_cursor(&mut self, pos: Position) {
+            if let Some(window) = self.windows.active_mut() {
+                window.cursor = pos.into();
+            }
+        }
+
+        /// Get current cursor position.
+        fn cursor(&self) -> Position {
+            self.windows.active().map_or_else(
+                || Position::new(0, 0),
+                |w| Position::new(w.cursor.line, w.cursor.column),
+            )
+        }
+
+        /// Create command args with `buffer_id` set.
+        fn args(&self) -> CommandContext {
+            let mut args = CommandContext::new();
+            args.set_buffer_id(self.buffer_id);
+            args
+        }
+
+        /// Run a command and return the result.
+        fn run<C: CommandHandler>(&mut self, cmd: &C, args: &CommandContext) -> CommandResult {
+            let executor = StubExecutor;
+            let mut runtime = SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                &self.ctx,
+                &executor,
+            );
+            cmd.execute(&mut runtime, args)
+        }
+    }
+
+    /// Run command without buffer (for error tests).
+    /// Creates a session with an empty window to satisfy `windows()` (#471).
+    fn run_command_no_buffer<C: CommandHandler>(cmd: &C) -> CommandResult {
+        let ctx = KernelContext::default();
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1), home_mode);
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+
+        // Per-client state as separate fields (#471)
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        // Add an empty window so windows() doesn't panic
+        windows.add(Window::new());
+
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, ctx, &executor);
-        cmd.execute(&mut runtime, args)
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &executor,
+        );
+        cmd.execute(&mut runtime, &CommandContext::new())
     }
 
     // =========================================================================
@@ -523,18 +629,13 @@ mod tests {
 
     #[test]
     fn test_word_forward_no_buffer_returns_error() {
-        let ctx = KernelContext::default();
-        let args = CommandContext::new();
-        let result = run_command(&WordForward, &ctx, &args);
+        let result = run_command_no_buffer(&WordForward);
         assert!(result.is_error());
     }
 
     #[test]
     fn test_word_forward_invalid_buffer_returns_error() {
-        let ctx = KernelContext::default();
-        let mut args = CommandContext::new();
-        args.set("buffer_id", ArgValue::BufferId(999));
-        let result = run_command(&WordForward, &ctx, &args);
+        let result = run_command_no_buffer(&WordForward);
         assert!(result.is_error());
     }
 
@@ -544,58 +645,41 @@ mod tests {
 
     #[test]
     fn test_word_forward_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world foo");
+        let mut setup = TestSetup::new("hello world foo");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
 
-        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 6); // 'w' of world
+        assert_eq!(setup.cursor().column, 6); // 'w' of world
     }
 
     #[test]
     fn test_word_forward_with_count() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "one two three four");
+        let mut setup = TestSetup::new("one two three four");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let mut args = setup.args();
         args.set("count", ArgValue::Count(2));
 
-        let result = run_command(&WordForward, &ctx, &args);
-        assert!(result.is_success());
+        let result = setup.run(&WordForward, &args);
 
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 8); // 't' of three
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 8); // 't' of three
     }
 
     #[test]
     fn test_word_forward_across_lines() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello\nworld");
+        let mut setup = TestSetup::new("hello\nworld");
+        setup.set_cursor(Position::new(0, 4)); // End of first line
 
-        // Position at end of first line
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 4));
-        }
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.line, 1);
-        assert_eq!(pos.column, 0); // Start of 'world'
+        assert_eq!(setup.cursor().line, 1);
+        assert_eq!(setup.cursor().column, 0); // Start of 'world'
     }
 
     // =========================================================================
@@ -604,24 +688,14 @@ mod tests {
 
     #[test]
     fn test_word_backward_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world foo");
+        let mut setup = TestSetup::new("hello world foo");
+        setup.set_cursor(Position::new(0, 12)); // At 'foo'
 
-        // Position at 'foo'
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 12));
-        }
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&WordBackward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 6); // 'w' of world
+        assert_eq!(setup.cursor().column, 6); // 'w' of world
     }
 
     // =========================================================================
@@ -630,18 +704,14 @@ mod tests {
 
     #[test]
     fn test_word_end_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world foo");
+        let mut setup = TestSetup::new("hello world foo");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordEnd, &args);
 
-        let result = run_command(&WordEnd, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 4); // 'o' of hello
+        assert_eq!(setup.cursor().column, 4); // 'o' of hello
     }
 
     // =========================================================================
@@ -650,34 +720,26 @@ mod tests {
 
     #[test]
     fn test_word_forward_big_skips_punctuation() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello-world foo");
+        let mut setup = TestSetup::new("hello-world foo");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordForwardBig, &args);
 
-        let result = run_command(&WordForwardBig, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 12); // 'f' of foo (skips hello-world as single WORD)
+        assert_eq!(setup.cursor().column, 12); // 'f' of foo (skips hello-world)
     }
 
     #[test]
     fn test_word_forward_small_stops_at_punctuation() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello-world foo");
+        let mut setup = TestSetup::new("hello-world foo");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
 
-        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 5); // '-' (punctuation is its own word)
+        assert_eq!(setup.cursor().column, 5); // '-' (punctuation is its own word)
     }
 
     // =========================================================================
@@ -686,24 +748,14 @@ mod tests {
 
     #[test]
     fn test_word_end_backward_basic() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world foo");
+        let mut setup = TestSetup::new("hello world foo");
+        setup.set_cursor(Position::new(0, 12)); // At 'foo'
 
-        // Position at 'foo'
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 12));
-        }
+        let args = setup.args();
+        let result = setup.run(&WordEndBackward, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&WordEndBackward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 10); // 'd' of world
+        assert_eq!(setup.cursor().column, 10); // 'd' of world
     }
 
     // =========================================================================
@@ -712,51 +764,36 @@ mod tests {
 
     #[test]
     fn test_word_forward_at_buffer_end_is_noop() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello");
+        let mut setup = TestSetup::new("hello");
+        setup.set_cursor(Position::new(0, 4)); // At end
 
-        // Position at end
-        {
-            let buffer = ctx.buffers.get(buffer_id).unwrap();
-            buffer.write().set_position(Position::new(0, 4));
-        }
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
-
-        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 4); // Stays at end
+        assert_eq!(setup.cursor().column, 4); // Stays at end
     }
 
     #[test]
     fn test_word_backward_at_buffer_start_is_noop() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "hello world");
+        let mut setup = TestSetup::new("hello world");
+        setup.set_cursor(Position::new(0, 0)); // At start
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
 
-        let result = run_command(&WordBackward, &ctx, &args);
         assert!(result.is_success());
-
-        let buffer = ctx.buffers.get(buffer_id).unwrap();
-        let pos = buffer.read().position();
-        assert_eq!(pos.column, 0); // Stays at start
+        assert_eq!(setup.cursor().column, 0); // Stays at start
     }
 
     #[test]
     fn test_empty_buffer() {
-        let ctx = create_test_context();
-        let buffer_id = setup_buffer(&ctx, "");
+        let mut setup = TestSetup::new("");
+        setup.set_cursor(Position::new(0, 0));
 
-        let mut args = CommandContext::new();
-        args.set_buffer_id(buffer_id);
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
 
-        let result = run_command(&WordForward, &ctx, &args);
         assert!(result.is_success()); // No-op, no crash
     }
 }

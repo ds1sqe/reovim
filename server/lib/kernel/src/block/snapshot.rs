@@ -3,6 +3,13 @@
 //! Snapshots capture the complete state of a buffer at a point in time,
 //! enabling restore operations for recovery or checkpointing.
 //!
+//! # Cursor Isolation (#471)
+//!
+//! Cursor position is passed explicitly to `capture()` and returned from
+//! `restore()`. This is because cursor is now per-client state in Window,
+//! not Buffer. The caller (session layer) is responsible for getting cursor
+//! from Window before capture and setting it back to Window after restore.
+//!
 //! # Design Principle
 //!
 //! Following the kernel purity principle, this module provides pure Rust
@@ -21,6 +28,11 @@ use {
 /// - Crash recovery
 /// - Cursor restoration when reopening files
 ///
+/// # Cursor Isolation (#471)
+///
+/// Cursor is passed explicitly to `capture()` and returned from `restore()`.
+/// The caller manages cursor via Window, not Buffer.
+///
 /// # File Storage
 ///
 /// This struct provides accessors for all data needed by the driver
@@ -34,12 +46,14 @@ use {
 ///
 /// // Create a buffer with some content
 /// let mut buffer = Buffer::from_string("Hello, World!");
+/// let cursor = Position::new(0, 0); // Get from Window in real usage
 ///
-/// // Capture state
-/// let snapshot = Snapshot::capture(&buffer);
+/// // Capture state with explicit cursor
+/// let snapshot = Snapshot::capture(&buffer, cursor);
 ///
 /// // Later, restore the state
-/// snapshot.restore(&mut buffer);
+/// let restored_cursor = snapshot.restore(&mut buffer);
+/// // Caller sets restored_cursor to Window
 /// ```
 #[derive(Debug, Clone)]
 pub struct Snapshot {
@@ -55,11 +69,13 @@ pub struct Snapshot {
 
 impl Snapshot {
     /// Capture the current state of a buffer.
+    ///
+    /// Cursor position must be passed explicitly - get it from Window.
     #[must_use]
-    pub fn capture(buffer: &Buffer) -> Self {
+    pub fn capture(buffer: &Buffer, cursor: Position) -> Self {
         Self {
             lines: buffer.lines().to_vec(),
-            cursor: buffer.position(),
+            cursor,
             buffer_id: buffer.id(),
             timestamp: SystemTime::now(),
         }
@@ -85,23 +101,24 @@ impl Snapshot {
 
     /// Restore a buffer to this snapshot's state.
     ///
-    /// This replaces the buffer's content and cursor position.
+    /// Returns the cursor position that should be set on Window.
     /// The buffer ID is not changed.
-    pub fn restore(&self, buffer: &mut Buffer) {
+    pub fn restore(&self, buffer: &mut Buffer) -> Position {
         // Set content from snapshot lines
         let content = self.lines.join("\n");
         buffer.set_content(&content);
 
-        // Restore cursor position
-        buffer.set_position(self.cursor);
+        // Return cursor position for caller to set on Window
+        self.cursor
     }
 
-    /// Restore only the cursor position.
+    /// Get the cursor position from this snapshot.
     ///
-    /// This is useful when reopening a file that already has its
-    /// content loaded - we only need to restore the cursor.
-    pub fn restore_cursor(&self, buffer: &mut Buffer) {
-        buffer.set_position(self.cursor);
+    /// Use this when reopening a file that already has its content
+    /// loaded - just get the cursor position to set on Window.
+    #[must_use]
+    pub const fn cursor(&self) -> Position {
+        self.cursor
     }
 
     // === Accessors for driver-layer serialization ===
@@ -112,11 +129,7 @@ impl Snapshot {
         &self.lines
     }
 
-    /// Get the captured cursor position.
-    #[must_use]
-    pub const fn cursor(&self) -> Position {
-        self.cursor
-    }
+    // NOTE: cursor() method defined above (single accessor, no duplicate)
 
     /// Get the buffer ID.
     #[must_use]

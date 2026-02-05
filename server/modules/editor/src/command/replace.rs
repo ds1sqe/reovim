@@ -9,7 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, SessionRuntime},
+    reovim_driver_session::{SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -124,10 +124,11 @@ impl CommandHandler for JoinLines {
 
         let count = args.count().unwrap_or(1);
 
-        // Get position and line count via BufferApi
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Failed to get buffer position");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
         let current_line = pos.line;
 
         let Some(mut line_count) = runtime.buffer_line_count(buffer_id) else {
@@ -195,7 +196,10 @@ impl CommandHandler for JoinLines {
             .unwrap_or(0);
         let cursor_pos =
             Position::new(current_line, pos.column.min(final_line_len.saturating_sub(1)));
-        runtime.set_buffer_position(buffer_id, cursor_pos);
+        // Update cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = cursor_pos.into();
+        }
 
         CommandResult::Success
     }

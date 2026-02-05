@@ -14,7 +14,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
+    reovim_driver_session::{ChangeTracker, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -49,9 +49,11 @@ impl CommandHandler for CursorUp {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         let count = args.count().unwrap_or(1);
 
@@ -77,8 +79,15 @@ impl CommandHandler for CursorUp {
             return CommandResult::Success;
         }
 
-        // Normal mode: move cursor
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Normal mode: move cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+            // In visual mode, extend selection to cursor (#471)
+            // Selection end is exclusive, so add 1 to include the character under cursor
+            if let Some(ref mut sel) = window.selection {
+                sel.end = Position::new(new_pos.line, new_pos.column + 1);
+            }
+        }
 
         // Record cursor move via ChangeTracker
         runtime.record_cursor_move(buffer_id);
@@ -116,9 +125,11 @@ impl CommandHandler for CursorDown {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         let count = args.count().unwrap_or(1);
         let Some(line_count) = runtime.buffer_line_count(buffer_id) else {
@@ -148,8 +159,15 @@ impl CommandHandler for CursorDown {
             return CommandResult::Success;
         }
 
-        // Normal mode: move cursor
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Normal mode: move cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+            // In visual mode, extend selection to cursor (#471)
+            // Selection end is exclusive, so add 1 to include the character under cursor
+            if let Some(ref mut sel) = window.selection {
+                sel.end = Position::new(new_pos.line, new_pos.column + 1);
+            }
+        }
 
         // Record cursor move via ChangeTracker
         runtime.record_cursor_move(buffer_id);
@@ -187,9 +205,11 @@ impl CommandHandler for CursorLeft {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         let count = args.count().unwrap_or(1);
 
@@ -212,8 +232,15 @@ impl CommandHandler for CursorLeft {
             return CommandResult::Success;
         }
 
-        // Normal mode: move cursor
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Normal mode: move cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+            // In visual mode, extend selection to cursor (#471)
+            // Selection end is exclusive, so add 1 to include the character under cursor
+            if let Some(ref mut sel) = window.selection {
+                sel.end = Position::new(new_pos.line, new_pos.column + 1);
+            }
+        }
 
         // Record cursor move via ChangeTracker
         runtime.record_cursor_move(buffer_id);
@@ -251,9 +278,11 @@ impl CommandHandler for CursorRight {
             return CommandResult::error("No active buffer");
         };
 
-        let Some(old_pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("Buffer not found");
+        // Get cursor from per-client Window (#471)
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let old_pos = Position::new(window.cursor.line, window.cursor.column);
 
         let count = args.count().unwrap_or(1);
 
@@ -286,8 +315,15 @@ impl CommandHandler for CursorRight {
             return CommandResult::Success;
         }
 
-        // Normal mode: move cursor
-        runtime.set_buffer_position(buffer_id, new_pos);
+        // Normal mode: move cursor via per-client Window (#471)
+        if let Some(window) = runtime.windows_mut().active_mut() {
+            window.cursor = new_pos.into();
+            // In visual mode, extend selection to cursor (#471)
+            // Selection end is exclusive, so add 1 to include the character under cursor
+            if let Some(ref mut sel) = window.selection {
+                sel.end = Position::new(new_pos.line, new_pos.column + 1);
+            }
+        }
 
         // Record cursor move via ChangeTracker
         runtime.record_cursor_move(buffer_id);

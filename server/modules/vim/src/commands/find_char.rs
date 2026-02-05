@@ -22,8 +22,8 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{BufferApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Motion, MotionEngine},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, Cursor, Motion, MotionEngine, Position},
 };
 
 use crate::ids::EXECUTE_FIND_CHAR;
@@ -86,9 +86,15 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
+        // Get cursor position from active window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let cursor = Cursor::new(Position::new(window.cursor.line, window.cursor.column));
+
         // Calculate motion target using with_buffer_read callback
         let target = runtime.with_buffer_read(buffer_id, |buffer| {
-            MotionEngine::calculate(buffer, buffer.cursor(), motion, count)
+            MotionEngine::calculate(buffer, &cursor, motion, count)
         });
 
         let Some(target) = target else {
@@ -96,8 +102,10 @@ impl CommandHandler for ExecuteFindChar {
         };
 
         // Apply motion if target found
-        if let Some(pos) = target {
-            runtime.set_buffer_position(buffer_id, pos);
+        if let Some(pos) = target
+            && let Some(window) = runtime.windows_mut().active_mut()
+        {
+            window.cursor = pos.into();
         }
         // Character not found - this is not an error, just don't move
         // (Vim behavior: cursor stays in place, no beep)

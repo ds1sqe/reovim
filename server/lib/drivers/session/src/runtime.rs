@@ -56,8 +56,8 @@ use crate::{
     Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, CompositorApi,
-        CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi, RegisterContent, Selection,
-        SelectionMode, StateChanges, UndoApi, WindowApi, WindowError,
+        CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi, RegisterContent,
+        StateChanges, UndoApi, WindowApi, WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -72,35 +72,52 @@ use crate::{
 /// The compositor is accessed via `session.compositor`. When present,
 /// `CompositorApi` methods delegate to it. When absent, they return errors.
 ///
-/// # Per-Client State Support (#471, #477)
+/// # Per-Client State (#471, #477)
 ///
-/// When per-client fields are set, operations use per-client state instead
-/// of shared session state. This enables multi-client isolation:
+/// `SessionRuntime` ALWAYS operates on per-client state. The per-client fields
+/// are **required** (no Option wrappers, no fallback to shared state):
 ///
-/// - `client_mode_stack` (#471): Per-client mode (INSERT, NORMAL, etc.)
-/// - `client_windows` (#471): Per-client cursor positions
-/// - `client_extensions` (#477): Per-client module state (`VimSessionState`, etc.)
+/// - `mode_stack` (#471): Per-client mode (INSERT, NORMAL, etc.)
+/// - `windows` (#471): Per-client cursor positions
+/// - `extensions` (#477): Per-client module state (`VimSessionState`, etc.)
+///
+/// This enforces multi-client isolation at compile time - you cannot create
+/// a `SessionRuntime` without providing per-client state.
+///
+/// # Client Binding (#471)
+///
+/// The `owner` field tracks which client this runtime is bound to. When present,
+/// it makes explicit which client's state we're operating on. This is useful for:
+/// - Debugging and logging
+/// - Assertions in tests
+/// - Future multi-client coordination
 ///
 /// [`take_changes`]: ChangeTracker::take_changes
 pub struct SessionRuntime<'a> {
-    /// Per-session state (mode stack, windows, extensions, compositor).
+    /// The client this runtime is bound to (#471).
+    ///
+    /// When `Some`, makes explicit which client's state we're operating on.
+    /// When `None`, this is a test runtime without explicit client binding.
+    owner: Option<crate::ClientId>,
+    /// Shared session state (compositor, `terminal_size`, `active_buffer`).
+    ///
+    /// Per-client state is stored in SEPARATE fields below, not in session.
     session: &'a mut Session,
-    /// Per-client mode stack override (#471).
+    /// Per-client mode stack (REQUIRED - no Option, #471).
     ///
-    /// When `Some`, mode operations use this instead of `session.mode_stack`.
-    /// This enables multi-client mode isolation.
-    client_mode_stack: Option<&'a mut reovim_kernel::api::v1::ModeStack>,
-    /// Per-client window layout override (#471).
+    /// Mode operations use this directly. Multi-client mode isolation is
+    /// enforced by requiring this field at construction time.
+    mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
+    /// Per-client window layout with cursors (REQUIRED - no Option, #471).
     ///
-    /// When `Some`, cursor operations use this instead of `session.windows`.
-    /// This enables multi-client cursor isolation.
-    client_windows: Option<&'a mut crate::WindowLayout>,
-    /// Per-client extensions override (#477).
+    /// Cursor operations use this directly. Multi-client cursor isolation
+    /// is enforced by requiring this field at construction time.
+    windows: &'a mut crate::WindowLayout,
+    /// Per-client extensions (REQUIRED - no Option, #477).
     ///
-    /// When `Some`, extension operations check this first before falling back
-    /// to `session.extensions`. This enables per-client module state isolation
-    /// (e.g., `VimSessionState.pending_count` doesn't leak between clients).
-    client_extensions: Option<&'a mut crate::ExtensionMap>,
+    /// Extension operations use this directly. Per-client module state
+    /// isolation is enforced by requiring this field at construction time.
+    extensions: &'a mut crate::ExtensionMap,
     /// Kernel context (buffers, registers, marks).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
@@ -112,55 +129,26 @@ pub struct SessionRuntime<'a> {
 }
 
 impl<'a> SessionRuntime<'a> {
-    /// Create a new runtime.
+    /// Create a new runtime with per-client state (#471, #477).
     ///
-    /// The compositor is accessed via `session.compositor`.
-    /// Use `session.set_compositor()` before creating the runtime
-    /// for full window management support.
-    ///
-    /// This creates a runtime using SHARED session mode stack.
-    /// For per-client mode isolation, use [`new_for_client`] instead.
-    ///
-    /// [`new_for_client`]: Self::new_for_client
-    pub fn new(
-        session: &'a mut Session,
-        kernel: &'a KernelContext,
-        executor: &'a dyn CommandExecutor,
-    ) -> Self {
-        let screen = {
-            let (width, height) = session.terminal_size();
-            Rect::new(0, 0, width, height)
-        };
-        Self {
-            session,
-            client_mode_stack: None,
-            client_windows: None,
-            client_extensions: None, // No per-client extensions (#477)
-            kernel,
-            executor,
-            screen,
-            changes: StateChanges::new(),
-        }
-    }
-
-    /// Create a runtime with per-client state (#471, #477).
-    ///
-    /// When per-client fields are provided, all mode, cursor, and extension
-    /// operations use per-client state instead of shared session state.
-    ///
-    /// This enables multi-client isolation where each client has:
-    /// - Independent mode state (Client A in INSERT while Client B in NORMAL)
-    /// - Independent cursor positions (Client A at line 5, Client B at line 10)
-    /// - Independent module state (Client A's `pending_count` doesn't affect Client B)
+    /// All per-client state is **required**. There are no fallbacks to shared
+    /// session state. This enforces multi-client isolation at compile time.
     ///
     /// # Arguments
     ///
-    /// * `session` - Shared session state (buffers, shared extensions)
-    /// * `client_mode_stack` - Per-client mode stack to use for this client
-    /// * `client_windows` - Per-client window layout with cursors
-    /// * `client_extensions` - Per-client module extensions (#477)
+    /// * `session` - Shared session state (compositor, `terminal_size`, `active_buffer`)
+    /// * `mode_stack` - Per-client mode stack (source of truth for mode)
+    /// * `windows` - Per-client window layout with cursors
+    /// * `extensions` - Per-client module extensions
     /// * `kernel` - Kernel context (buffers, registers, marks)
     /// * `executor` - Command executor
+    ///
+    /// # Multi-Client Isolation
+    ///
+    /// Each client has independent:
+    /// - Mode state (Client A in INSERT while Client B in NORMAL)
+    /// - Cursor positions (Client A at line 5, Client B at line 10)
+    /// - Module state (Client A's `pending_count` doesn't affect Client B)
     ///
     /// # Example
     ///
@@ -168,26 +156,26 @@ impl<'a> SessionRuntime<'a> {
     /// // From server level, get per-client EditingState
     /// let editing_state = session.client_state_mut(client_id)?;
     ///
-    /// // Create client-aware runtime
-    /// let mut runtime = SessionRuntime::new_for_client(
+    /// // Create runtime with per-client state
+    /// let mut runtime = SessionRuntime::new(
     ///     &mut driver_session,
     ///     &mut editing_state.mode_stack,
     ///     &mut editing_state.windows,
-    ///     &mut editing_state.extensions,  // Per-client extensions (#477)
+    ///     &mut editing_state.extensions,
     ///     &kernel,
     ///     &executor,
     /// );
     ///
-    /// // Mode, cursor, and extension operations now use per-client state
+    /// // All operations use per-client state
     /// runtime.push_mode(insert_mode, ctx);     // Only affects this client
-    /// runtime.move_cursor(buffer, pos);        // Only affects this client's cursor
-    /// runtime.ext_mut::<VimSessionState>();    // Only affects this client's vim state
+    /// runtime.windows().active();              // This client's active window
+    /// runtime.ext_mut::<VimSessionState>();    // This client's vim state
     /// ```
-    pub fn new_for_client(
+    pub fn new(
         session: &'a mut Session,
-        client_mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
-        client_windows: &'a mut crate::WindowLayout,
-        client_extensions: &'a mut crate::ExtensionMap,
+        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
+        windows: &'a mut crate::WindowLayout,
+        extensions: &'a mut crate::ExtensionMap,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -196,10 +184,11 @@ impl<'a> SessionRuntime<'a> {
             Rect::new(0, 0, width, height)
         };
         Self {
+            owner: None,
             session,
-            client_mode_stack: Some(client_mode_stack),
-            client_windows: Some(client_windows),
-            client_extensions: Some(client_extensions),
+            mode_stack,
+            windows,
+            extensions,
             kernel,
             executor,
             screen,
@@ -207,40 +196,96 @@ impl<'a> SessionRuntime<'a> {
         }
     }
 
-    /// Check if this runtime uses per-client mode stack.
+    /// Create a runtime with explicit client binding (#471).
     ///
-    /// Returns `true` if created with [`new_for_client`], `false` otherwise.
+    /// Like [`new`], but also records which client this runtime is bound to.
+    /// The `owner` field can be retrieved via [`owner()`].
     ///
-    /// [`new_for_client`]: Self::new_for_client
-    #[must_use]
-    pub const fn has_client_mode_stack(&self) -> bool {
-        self.client_mode_stack.is_some()
+    /// # Arguments
+    ///
+    /// * `owner` - The `ClientId` this runtime is bound to
+    /// * `session` - Shared session infrastructure
+    /// * `mode_stack` - Per-client mode stack
+    /// * `windows` - Per-client window layout with cursors
+    /// * `extensions` - Per-client module extensions
+    /// * `kernel` - Kernel context (buffers, registers, marks)
+    /// * `executor` - Command executor
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut runtime = SessionRuntime::with_owner(
+    ///     client_id,
+    ///     &mut driver_session,
+    ///     &mut editing_state.mode_stack,
+    ///     &mut editing_state.windows,
+    ///     &mut editing_state.extensions,
+    ///     &kernel,
+    ///     &executor,
+    /// );
+    ///
+    /// // Query which client owns this runtime
+    /// assert_eq!(runtime.owner(), Some(client_id));
+    /// ```
+    ///
+    /// [`new`]: Self::new
+    /// [`owner()`]: Self::owner
+    pub fn with_owner(
+        owner: crate::ClientId,
+        session: &'a mut Session,
+        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
+        windows: &'a mut crate::WindowLayout,
+        extensions: &'a mut crate::ExtensionMap,
+        kernel: &'a KernelContext,
+        executor: &'a dyn CommandExecutor,
+    ) -> Self {
+        let screen = {
+            let (width, height) = session.terminal_size();
+            Rect::new(0, 0, width, height)
+        };
+        Self {
+            owner: Some(owner),
+            session,
+            mode_stack,
+            windows,
+            extensions,
+            kernel,
+            executor,
+            screen,
+            changes: StateChanges::new(),
+        }
     }
 
-    /// Check if this runtime uses per-client windows (#471).
+    /// Get the client ID this runtime is bound to (#471).
     ///
-    /// Returns `true` if created with [`new_for_client`], `false` otherwise.
+    /// Returns `Some(ClientId)` if created with [`with_owner`], `None` otherwise.
+    /// Use this for debugging, logging, or assertions about which client owns
+    /// this runtime.
     ///
-    /// [`new_for_client`]: Self::new_for_client
+    /// # Example
+    ///
+    /// ```ignore
+    /// let runtime = SessionRuntime::with_owner(client_id, ...);
+    /// assert_eq!(runtime.owner(), Some(client_id));
+    ///
+    /// let shared_runtime = SessionRuntime::new(...);
+    /// assert_eq!(shared_runtime.owner(), None);
+    /// ```
+    ///
+    /// [`with_owner`]: Self::with_owner
     #[must_use]
-    pub const fn has_client_windows(&self) -> bool {
-        self.client_windows.is_some()
+    pub const fn owner(&self) -> Option<crate::ClientId> {
+        self.owner
     }
 
-    /// Check if this runtime uses per-client extensions (#477).
-    ///
-    /// Returns `true` if created with [`new_for_client`], `false` otherwise.
-    ///
-    /// [`new_for_client`]: Self::new_for_client
-    #[must_use]
-    pub const fn has_client_extensions(&self) -> bool {
-        self.client_extensions.is_some()
-    }
+    // Note: has_client_mode_stack(), has_client_windows(), has_client_extensions()
+    // have been removed in #471 Phase 0. Per-client state is now REQUIRED,
+    // so these methods would always return true.
 
     /// Check if compositor is available.
     #[must_use]
     pub fn has_compositor(&self) -> bool {
-        self.session.compositor.is_some()
+        self.session.shared.compositor.is_some()
     }
 
     /// Get direct access to the session.
@@ -316,155 +361,87 @@ impl<'a> SessionRuntime<'a> {
             .record_window_option_change(name, value, window_id);
     }
 
-    // === Per-Window Selection Helpers (#465, #471) ===
+    // === Per-Client Window Accessors (#471) ===
 
-    /// Get the effective windows (per-client or session fallback).
+    /// Get the per-client windows.
     ///
-    /// Phase #471: Use per-client windows when available for cursor isolation.
-    fn effective_windows(&self) -> &crate::WindowLayout {
-        self.client_windows
-            .as_ref()
-            .map_or(&self.session.windows, |w| w)
+    /// Phase #471: Direct access to per-client windows. No fallback, no Option.
+    /// Commands use this to access the active window's cursor position.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let Some(window) = runtime.windows().active() else {
+    ///     return CommandResult::error("No active window");
+    /// };
+    /// let pos = Position::new(window.cursor.line, window.cursor.column);
+    /// ```
+    #[must_use]
+    pub const fn windows(&self) -> &crate::WindowLayout {
+        self.windows
     }
 
-    /// Get the effective windows mutably (per-client or session fallback).
+    /// Get the per-client windows mutably.
     ///
-    /// Phase #471: Use per-client windows when available for cursor isolation.
-    #[allow(clippy::missing_const_for_fn)] // Can't be const with &mut self return
-    fn effective_windows_mut(&mut self) -> &mut crate::WindowLayout {
-        if let Some(ref mut client_windows) = self.client_windows {
-            client_windows
-        } else {
-            &mut self.session.windows
-        }
-    }
-
-    /// Find window displaying a buffer (prefer focused window).
+    /// Phase #471: Direct access to per-client windows for cursor/selection updates.
     ///
-    /// Returns the focused window if it displays the buffer, otherwise
-    /// returns any window displaying the buffer.
+    /// # Example
     ///
-    /// Phase #471: Uses per-client windows when available.
-    fn find_window_for_buffer(&self, buffer: BufferId) -> Option<&Window> {
-        let windows = self.effective_windows();
-        // Check if focused window has this buffer
-        if let Some(focused) = windows.active()
-            && focused.buffer_id == Some(buffer)
-        {
-            return Some(focused);
-        }
-        // Fallback: find any window with this buffer
-        windows.windows.iter().find(|w| w.buffer_id == Some(buffer))
-    }
-
-    /// Find window displaying a buffer mutably (prefer focused window).
-    ///
-    /// Phase #471: Uses per-client windows when available.
-    fn find_window_for_buffer_mut(&mut self, buffer: BufferId) -> Option<&mut Window> {
-        // Check if focused window has this buffer
-        let focused_has_buffer = self
-            .effective_windows()
-            .active()
-            .is_some_and(|f| f.buffer_id == Some(buffer));
-
-        let windows = self.effective_windows_mut();
-        if focused_has_buffer {
-            windows.active_mut()
-        } else {
-            windows
-                .windows
-                .iter_mut()
-                .find(|w| w.buffer_id == Some(buffer))
-        }
+    /// ```ignore
+    /// if let Some(window) = runtime.windows_mut().active_mut() {
+    ///     window.cursor = new_pos.into();
+    ///     window.selection = Some(Selection::new(start, end, mode));
+    /// }
+    /// ```
+    #[allow(clippy::missing_const_for_fn)] // &mut self in const fn requires nightly
+    pub fn windows_mut(&mut self) -> &mut crate::WindowLayout {
+        self.windows
     }
 }
 
 // === ModeApi ===
 
-/// Per-client state (#471): Mode operations now support per-client mode stacks.
+/// Per-client state (#471): Mode operations use the per-client mode stack directly.
 ///
-/// When `client_mode_stack` is set (via `new_for_client`), all mode operations
-/// use the per-client mode stack. Otherwise, they use the shared session stack.
-/// This enables multi-client mode isolation.
+/// Since per-client state is now required (no Option), all mode operations
+/// directly access `self.mode_stack` without fallback to session.
 impl ModeApi for SessionRuntime<'_> {
     fn current_mode(&self) -> &ModeId {
-        // Per-client state (#471): Use per-client mode stack if available
-        if let Some(ref client_stack) = self.client_mode_stack {
-            return client_stack.current();
-        }
-        self.session.mode_stack.current()
+        self.mode_stack.current()
     }
 
     fn home_mode(&self) -> &ModeId {
-        // Per-client state (#471): Use per-client mode stack if available
-        if let Some(ref client_stack) = self.client_mode_stack {
-            return client_stack.home();
-        }
-        self.session.mode_stack.home()
+        self.mode_stack.home()
     }
 
     fn mode_depth(&self) -> usize {
-        // Per-client state (#471): Use per-client mode stack if available
-        if let Some(ref client_stack) = self.client_mode_stack {
-            return client_stack.depth();
-        }
-        self.session.mode_stack.depth()
+        self.mode_stack.depth()
     }
 
     fn is_mode_active(&self, mode: &ModeId) -> bool {
-        // Per-client state (#471): Use per-client mode stack if available
-        if let Some(ref client_stack) = self.client_mode_stack {
-            return client_stack.contains(mode);
-        }
-        self.session.mode_stack.contains(mode)
+        self.mode_stack.contains(mode)
     }
 
     fn mode_stack(&self) -> Vec<ModeId> {
-        // Per-client state (#471): Use per-client mode stack if available
-        if let Some(ref client_stack) = self.client_mode_stack {
-            return client_stack.as_slice().to_vec();
-        }
-        self.session.mode_stack.as_slice().to_vec()
+        self.mode_stack.as_slice().to_vec()
     }
 
     fn push_mode(&mut self, mode: ModeId, _ctx: TransitionContext) {
-        // Per-client state (#471): Modify per-client mode stack if available
-        if let Some(ref mut client_stack) = self.client_mode_stack {
-            client_stack.push(mode);
-        } else {
-            self.session.mode_stack.push(mode);
-        }
+        self.mode_stack.push(mode);
         self.changes.record_mode_change();
     }
 
     fn pop_mode(&mut self, _result: Option<PopResult>) -> Result<(), ModeError> {
-        // Per-client state (#471): Check and modify per-client mode stack if available
-        let depth = if let Some(ref client_stack) = self.client_mode_stack {
-            client_stack.depth()
-        } else {
-            self.session.mode_stack.depth()
-        };
-
-        if depth <= 1 {
+        if self.mode_stack.depth() <= 1 {
             return Err(ModeError::CannotPopHomeMode);
         }
-
-        if let Some(ref mut client_stack) = self.client_mode_stack {
-            client_stack.pop();
-        } else {
-            self.session.mode_stack.pop();
-        }
+        self.mode_stack.pop();
         self.changes.record_mode_change();
         Ok(())
     }
 
     fn set_mode(&mut self, mode: ModeId, _ctx: TransitionContext) {
-        // Per-client state (#471): Modify per-client mode stack if available
-        if let Some(ref mut client_stack) = self.client_mode_stack {
-            client_stack.set(mode);
-        } else {
-            self.session.mode_stack.set(mode);
-        }
+        self.mode_stack.set(mode);
         self.changes.record_mode_change();
     }
 }
@@ -490,85 +467,11 @@ impl BufferApi for SessionRuntime<'_> {
             .map(|buf| buf.read().line_count())
     }
 
-    fn cursor_position(&self, buffer: BufferId) -> Option<Position> {
-        // Phase #471: Use per-client windows for cursor isolation
-        let windows = self.effective_windows();
-        windows
-            .windows
-            .iter()
-            .find(|w| w.buffer_id == Some(buffer))
-            .map(|w| Position::new(w.cursor.line, w.cursor.column))
-    }
-
-    fn buffer_position(&self, buffer: BufferId) -> Option<Position> {
-        // Get from buffer's internal position (kernel)
-        self.kernel
-            .buffers
-            .get(buffer)
-            .map(|buf| buf.read().position())
-    }
-
-    fn set_buffer_position(&mut self, buffer: BufferId, pos: Position) {
-        // Set buffer's internal position (kernel)
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            buf.write().set_position(pos);
-        }
-
-        // Phase #471: Use per-client windows for cursor isolation.
-        // Track changes to record after window operations complete.
-        let mut cursor_moved = false;
-        let mut selection_changed = false;
-
-        // Find and update window cursor
-        {
-            let windows = self.effective_windows_mut();
-            if let Some(window) = windows
-                .windows
-                .iter_mut()
-                .find(|w| w.buffer_id == Some(buffer))
-            {
-                window.cursor.line = pos.line;
-                window.cursor.column = pos.column;
-                cursor_moved = true;
-
-                // If selection is active, extend it to follow cursor.
-                // Phase 8 (#465): Use exclusive end semantics.
-                if let Some(ref mut sel) = window.selection {
-                    use crate::api::SelectionMode;
-                    match sel.mode {
-                        SelectionMode::Character | SelectionMode::Block => {
-                            sel.end = Position::new(pos.line, pos.column + 1);
-                        }
-                        SelectionMode::Line => {
-                            sel.end = Position::new(pos.line + 1, 0);
-                        }
-                    }
-                    selection_changed = true;
-                }
-            }
-        }
-
-        // Record changes after window borrow is released
-        if cursor_moved {
-            self.changes.record_cursor_move(buffer);
-        }
-        if selection_changed {
-            self.changes.record_selection_change(buffer);
-        }
-    }
-
     fn buffer_line_len(&self, buffer: BufferId, line: usize) -> Option<usize> {
         self.kernel
             .buffers
             .get(buffer)
             .and_then(|buf| buf.read().line_len(line))
-    }
-
-    fn selection(&self, buffer: BufferId) -> Option<Selection> {
-        // Phase 8 (#465): Read selection from WINDOW, not buffer.
-        // Window.selection is now Option<ApiSelection> with explicit start/end.
-        // Simply return it - no cursor computation needed.
-        self.find_window_for_buffer(buffer)?.selection.clone()
     }
 
     #[allow(clippy::significant_drop_tightening)]
@@ -650,17 +553,17 @@ impl BufferApi for SessionRuntime<'_> {
 
     fn insert_text(&mut self, buffer: BufferId, pos: Position, text: &str) {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let cursor_before = {
-                let b = buf.read();
-                b.position()
-            };
+            // Get cursor from per-client active window (#471)
+            // Note: cursor_after will be set by runner from CommandResult
+            let cursor_before = self.windows().active().map_or_else(
+                || Position::new(0, 0),
+                |w| Position::new(w.cursor.line, w.cursor.column),
+            );
 
             buf.write().insert_at(pos, text);
 
-            let cursor_after = {
-                let b = buf.read();
-                b.position()
-            };
+            // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
+            let cursor_after = cursor_before;
 
             // Record edit for undo
             let edit = Edit::Insert {
@@ -675,20 +578,20 @@ impl BufferApi for SessionRuntime<'_> {
 
     fn delete_range(&mut self, buffer: BufferId, start: Position, end: Position) {
         if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let cursor_before = {
-                let b = buf.read();
-                b.position()
-            };
+            // Get cursor from per-client active window (#471)
+            // TODO(#471 Phase 6): cursor_after should come from CommandResult
+            let cursor_before = self.windows().active().map_or_else(
+                || Position::new(0, 0),
+                |w| Position::new(w.cursor.line, w.cursor.column),
+            );
 
             let deleted_text = {
                 let mut b = buf.write();
                 b.delete_range(start, end)
             };
 
-            let cursor_after = {
-                let b = buf.read();
-                b.position()
-            };
+            // For undo, use cursor_before as cursor_after too (runner will update actual cursor)
+            let cursor_after = cursor_before;
 
             // Record edit for undo
             if !deleted_text.is_empty() {
@@ -715,72 +618,6 @@ impl BufferApi for SessionRuntime<'_> {
 
             self.changes.record_buffer_modified(buffer);
         }
-    }
-
-    fn move_cursor(&mut self, buffer: BufferId, pos: Position) {
-        // Phase #471: Use per-client windows for cursor isolation.
-        let mut cursor_moved = false;
-        let mut selection_changed = false;
-
-        {
-            let windows = self.effective_windows_mut();
-            if let Some(window) = windows
-                .windows
-                .iter_mut()
-                .find(|w| w.buffer_id == Some(buffer))
-            {
-                window.cursor.line = pos.line;
-                window.cursor.column = pos.column;
-                cursor_moved = true;
-
-                // Phase 8 (#465): Check WINDOW selection, not buffer selection.
-                // If window has active selection, cursor movement extends the selection end.
-                if let Some(ref mut sel) = window.selection {
-                    sel.end = pos;
-                    selection_changed = true;
-                }
-            }
-        }
-
-        // Record changes after window borrow is released
-        if cursor_moved {
-            self.changes.record_cursor_move(buffer);
-        }
-        if selection_changed {
-            self.changes.record_selection_change(buffer);
-        }
-    }
-
-    fn set_selection(&mut self, buffer: BufferId, sel: Option<Selection>) {
-        // Phase 8 (#465): Write selection to WINDOW, not buffer.
-        // Store the complete Selection with explicit start/end directly.
-        // DO NOT modify window.cursor - cursor and selection are independent.
-        if let Some(window) = self.find_window_for_buffer_mut(buffer) {
-            window.selection = sel;
-        }
-        self.changes.record_selection_change(buffer);
-    }
-
-    fn swap_selection_ends(&mut self, buffer: BufferId) {
-        // Phase 8 (#465): Selection is stored in Window with explicit start/end.
-        // Swap the start and end positions of the selection.
-        if let Some(window) = self.find_window_for_buffer_mut(buffer)
-            && let Some(ref mut sel) = window.selection
-        {
-            std::mem::swap(&mut sel.start, &mut sel.end);
-        }
-        self.changes.record_selection_change(buffer);
-    }
-
-    fn set_selection_mode(&mut self, buffer: BufferId, mode: SelectionMode) {
-        // Phase 8 (#465): Selection is stored in Window.
-        // Update the mode field directly.
-        if let Some(window) = self.find_window_for_buffer_mut(buffer)
-            && let Some(ref mut sel) = window.selection
-        {
-            sel.mode = mode;
-        }
-        self.changes.record_selection_change(buffer);
     }
 
     fn create_buffer(&mut self, name: Option<&str>, content: &str) -> BufferId {
@@ -820,6 +657,11 @@ impl BufferApi for SessionRuntime<'_> {
 impl WindowApi for SessionRuntime<'_> {
     fn active_window(&self) -> Option<WindowId> {
         self.session.windows.active_id()
+    }
+
+    fn cursor_position(&self) -> Option<Position> {
+        let window = self.windows().active()?;
+        Some(Position::new(window.cursor.line, window.cursor.column))
     }
 
     fn window_count(&self) -> usize {
@@ -991,7 +833,13 @@ impl UndoApi for SessionRuntime<'_> {
                     }
                 }
             }
-            buf.set_position(result.cursor);
+            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
+        }
+
+        // Phase #471: Restore cursor to per-client active window
+        if let Some(window) = self.windows_mut().active_mut() {
+            window.cursor.line = result.cursor.line;
+            window.cursor.column = result.cursor.column;
         }
 
         self.changes.record_buffer_modified(buffer);
@@ -1022,7 +870,13 @@ impl UndoApi for SessionRuntime<'_> {
                     }
                 }
             }
-            buf.set_position(result.cursor);
+            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
+        }
+
+        // Phase #471: Restore cursor to per-client active window
+        if let Some(window) = self.windows_mut().active_mut() {
+            window.cursor.line = result.cursor.line;
+            window.cursor.column = result.cursor.column;
         }
 
         self.changes.record_buffer_modified(buffer);
@@ -1080,31 +934,21 @@ impl CommandApi for SessionRuntime<'_> {
 
 // === ExtensionApi ===
 
-/// Per-client extensions (#477): Extension operations now check per-client
-/// extensions first, falling back to shared session extensions.
+/// Per-client extensions (#477, #471 Phase 0).
 ///
-/// This enables complete module state isolation between clients. For example,
+/// Extensions are now ALWAYS per-client (no fallback to shared session).
+/// This enforces complete module state isolation between clients. For example,
 /// `VimSessionState.pending_count` is per-client, so Client A pressing `5`
 /// doesn't affect Client B's motions.
 impl ExtensionApi for SessionRuntime<'_> {
     fn ext<T: SessionExtension>(&self) -> Option<&T> {
-        // Phase #477: Try per-client extensions first
-        if let Some(ref client_ext) = self.client_extensions
-            && let Some(ext) = client_ext.get::<T>()
-        {
-            return Some(ext);
-        }
-        // Fallback to shared session extensions (e.g., SyntaxSessionState)
-        self.session.extensions.get::<T>()
+        // #471 Phase 0: Per-client extensions are required, direct access
+        self.extensions.get::<T>()
     }
 
     fn ext_mut<T: SessionExtension>(&mut self) -> &mut T {
-        // Phase #477: Use per-client extensions when available
-        if let Some(ref mut client_ext) = self.client_extensions {
-            return client_ext.get_or_insert::<T>();
-        }
-        // Fallback to shared session extensions
-        self.session.extensions.get_or_insert::<T>()
+        // #471 Phase 0: Per-client extensions are required, direct access
+        self.extensions.get_or_insert::<T>()
     }
 }
 
@@ -1133,10 +977,12 @@ const fn to_kernel_split_direction(dir: SplitDirection) -> KernelSplitDirection 
 impl SessionRuntime<'_> {
     /// Emit a `LayoutChanged` event via the kernel's event bus.
     fn emit_layout_event(&self, kind: LayoutChangeKind) {
-        let (window_count, focused_window) =
-            self.session.compositor.as_ref().map_or((0, None), |c| {
-                (c.window_count(), c.focused().map(|id| id.as_usize() as u64))
-            });
+        let (window_count, focused_window) = self
+            .session
+            .shared
+            .compositor
+            .as_ref()
+            .map_or((0, None), |c| (c.window_count(), c.focused().map(|id| id.as_usize() as u64)));
         self.kernel.event_bus.emit(LayoutChanged {
             kind,
             window_count,
@@ -1149,6 +995,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_ref()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1171,6 +1018,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn split(&mut self, direction: SplitDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1206,6 +1054,7 @@ impl CompositorApi for SessionRuntime<'_> {
 
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1245,6 +1094,7 @@ impl CompositorApi for SessionRuntime<'_> {
 
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1287,6 +1137,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn resize(&mut self, direction: NavigateDirection, delta: i16) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1315,6 +1166,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn equalize(&mut self) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1339,6 +1191,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn cycle(&self, forward: bool) -> Result<WindowId, CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_ref()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1361,6 +1214,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn focus(&mut self, window: WindowId) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1384,11 +1238,12 @@ impl CompositorApi for SessionRuntime<'_> {
     }
 
     fn focused_window(&self) -> Option<WindowId> {
-        self.session.compositor.as_ref()?.focused()
+        self.session.shared.compositor.as_ref()?.focused()
     }
 
     fn compositor_window_count(&self) -> usize {
         self.session
+            .shared
             .compositor
             .as_ref()
             .map_or(0, |c| c.window_count())
@@ -1396,18 +1251,19 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn arrange(&self, screen: Rect) -> Vec<WindowPlacement> {
         self.session
+            .shared
             .compositor
             .as_ref()
             .map_or_else(Vec::new, |c| c.composite(screen).placements)
     }
 
     fn active_layer(&self) -> Option<LayerId> {
-        self.session.compositor.as_ref()?.active_layer()
+        self.session.shared.compositor.as_ref()?.active_layer()
     }
 
     fn set_screen(&mut self, screen: Rect) {
         self.screen = screen;
-        if let Some(compositor) = self.session.compositor.as_mut() {
+        if let Some(compositor) = self.session.shared.compositor.as_mut() {
             compositor.set_screen(screen);
         }
     }
@@ -1419,6 +1275,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn toggle_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1442,6 +1299,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn raise_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1464,6 +1322,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn lower_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1493,6 +1352,7 @@ impl CompositorApi for SessionRuntime<'_> {
     ) -> Result<WindowId, CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1513,6 +1373,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn hide_overlay(&mut self, window: WindowId) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1537,6 +1398,7 @@ impl CompositorApi for SessionRuntime<'_> {
     ) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1556,6 +1418,7 @@ impl CompositorApi for SessionRuntime<'_> {
     fn hide_all_overlays(&mut self) -> Result<(), CompositorError> {
         let compositor = self
             .session
+            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1600,11 +1463,25 @@ mod tests {
 
     #[test]
     fn test_mode_api() {
+        use reovim_kernel::api::v1::ModeStack;
+
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        // #471 Phase 0: Per-client state is now REQUIRED
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
 
         // Check initial state
         assert_eq!(runtime.current_mode(), &test_mode());
@@ -1630,10 +1507,10 @@ mod tests {
         assert!(changes.mode_changed);
     }
 
-    /// Test per-client mode stack isolation (#471, #477).
+    /// Test per-client mode stack isolation (#471, #477, Phase 0).
     ///
     /// Verifies that:
-    /// 1. `new_for_client` uses the provided per-client mode stack
+    /// 1. `new()` uses the provided per-client mode stack
     /// 2. Mode changes don't affect the session's shared mode stack
     /// 3. Two runtimes with different client stacks have independent modes
     #[test]
@@ -1654,8 +1531,8 @@ mod tests {
 
         // Use a scope to release mutable borrow before checking session
         {
-            // Create runtime with per-client state
-            let mut runtime = SessionRuntime::new_for_client(
+            // Create runtime with per-client state (#471 Phase 0)
+            let mut runtime = SessionRuntime::new(
                 &mut session,
                 &mut client_mode_stack,
                 &mut client_windows,
@@ -1664,9 +1541,7 @@ mod tests {
                 &executor,
             );
 
-            assert!(runtime.has_client_mode_stack());
-            assert!(runtime.has_client_windows());
-            assert!(runtime.has_client_extensions());
+            // #471 Phase 0: Per-client state is now REQUIRED (no has_* methods)
             assert_eq!(runtime.current_mode(), &test_mode());
 
             // Push mode to per-client stack
@@ -1684,7 +1559,50 @@ mod tests {
         assert_eq!(client_mode_stack.depth(), 2);
     }
 
-    /// Test that two clients have independent mode stacks (#471, #477).
+    /// Test the `owner()` method for explicit client binding (#471 Phase 0).
+    #[test]
+    fn test_owner_tracking() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        // Per-client state is REQUIRED (#471 Phase 0)
+        let mut client_stack = ModeStack::new(test_mode());
+        let mut client_windows = crate::WindowLayout::empty();
+        let mut client_extensions = crate::ExtensionMap::new();
+
+        // Runtime created with new() has no owner
+        {
+            let runtime = SessionRuntime::new(
+                &mut session,
+                &mut client_stack,
+                &mut client_windows,
+                &mut client_extensions,
+                &kernel,
+                &executor,
+            );
+            assert_eq!(runtime.owner(), None);
+        }
+
+        // Runtime created with with_owner() has explicit owner
+        let client_id = ClientId::new(42);
+        {
+            let runtime = SessionRuntime::with_owner(
+                client_id,
+                &mut session,
+                &mut client_stack,
+                &mut client_windows,
+                &mut client_extensions,
+                &kernel,
+                &executor,
+            );
+            assert_eq!(runtime.owner(), Some(client_id));
+        }
+    }
+
+    /// Test that two clients have independent mode stacks (#471, #477, Phase 0).
     #[test]
     fn test_multi_client_mode_isolation() {
         use reovim_kernel::api::v1::ModeStack;
@@ -1701,9 +1619,9 @@ mod tests {
         let mut client2_windows = crate::WindowLayout::empty();
         let mut client2_extensions = crate::ExtensionMap::new();
 
-        // Client 1 enters insert mode
+        // Client 1 enters insert mode (#471 Phase 0: use new())
         {
-            let mut runtime1 = SessionRuntime::new_for_client(
+            let mut runtime1 = SessionRuntime::new(
                 &mut session,
                 &mut client1_stack,
                 &mut client1_windows,
@@ -1714,9 +1632,9 @@ mod tests {
             runtime1.push_mode(test_mode_2(), TransitionContext::new());
         }
 
-        // Client 2 stays in normal mode
+        // Client 2 stays in normal mode (#471 Phase 0: use new())
         {
-            let runtime2 = SessionRuntime::new_for_client(
+            let runtime2 = SessionRuntime::new(
                 &mut session,
                 &mut client2_stack,
                 &mut client2_windows,
@@ -1736,11 +1654,25 @@ mod tests {
 
     #[test]
     fn test_window_api() {
+        use reovim_kernel::api::v1::ModeStack;
+
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        // #471 Phase 0: Per-client state is REQUIRED
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
 
         // Create window
         let window_id = runtime.create_window(None);
@@ -1772,6 +1704,8 @@ mod tests {
 
     #[test]
     fn test_extension_api() {
+        use reovim_kernel::api::v1::ModeStack;
+
         #[derive(Debug, Default)]
         struct TestExtension {
             value: i32,
@@ -1787,7 +1721,19 @@ mod tests {
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        // #471 Phase 0: Per-client state is REQUIRED
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
 
         // Extension doesn't exist initially
         assert!(runtime.ext::<TestExtension>().is_none());
@@ -1803,11 +1749,25 @@ mod tests {
 
     #[test]
     fn test_change_tracking() {
+        use reovim_kernel::api::v1::ModeStack;
+
         let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        // #471 Phase 0: Per-client state is REQUIRED
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
 
         // No changes initially
         assert!(!runtime.changes.has_changes());
@@ -1822,83 +1782,10 @@ mod tests {
         assert!(!runtime.changes.has_changes());
     }
 
-    #[test]
-    fn test_selection_api() {
-        use crate::testing::TestSessionRuntime;
-
-        // Create test runtime with a buffer
-        let mut test = TestSessionRuntime::with_buffer("hello world");
-
-        // Get the buffer ID
-        let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
-
-        // Move cursor to column 5 (at 'w') - selection end will be at cursor
-        test.with_runtime(|runtime| {
-            runtime.move_cursor(buffer_id, Position::new(0, 5));
-        });
-
-        // Selection is None initially
-        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
-        assert!(sel.is_none());
-
-        // Set selection via BufferApi (Phase 8: now writes to Window)
-        test.with_runtime(|runtime| {
-            let sel = Selection::character(Position::new(0, 0), Position::new(0, 5));
-            runtime.set_selection(buffer_id, Some(sel));
-        });
-
-        // Now selection should be Some
-        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
-        assert!(sel.is_some());
-        let sel = sel.unwrap();
-        assert_eq!(sel.start, Position::new(0, 0));
-        assert_eq!(sel.end, Position::new(0, 5));
-        assert_eq!(sel.mode, SelectionMode::Character);
-
-        // Clear selection via set_selection
-        test.with_runtime(|runtime| {
-            runtime.set_selection(buffer_id, None);
-        });
-
-        // Selection should be None again
-        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
-        assert!(sel.is_none());
-
-        // Check changes were recorded
-        assert!(test.changes().selection_changed);
-    }
-
-    #[test]
-    fn test_selection_api_set_selection() {
-        use crate::testing::TestSessionRuntime;
-
-        // Create test runtime with a buffer
-        let mut test = TestSessionRuntime::with_buffer("hello world");
-
-        // Get the buffer ID
-        let buffer_id = test.with_runtime(|runtime| runtime.active_buffer().unwrap());
-
-        // Set selection via API (Phase 8: now writes to Window)
-        test.with_runtime(|runtime| {
-            let sel = Selection::line(Position::new(0, 2), Position::new(0, 8));
-            runtime.set_selection(buffer_id, Some(sel));
-        });
-
-        // Verify Window selection was updated (Phase 8: selection lives in Window)
-        let window_sel = test.session().windows.active().unwrap().selection.as_ref();
-        assert!(window_sel.is_some());
-        let window_sel = window_sel.unwrap();
-        assert_eq!(window_sel.start, Position::new(0, 2));
-        assert_eq!(window_sel.mode, SelectionMode::Line);
-
-        // Verify via BufferApi round-trip
-        let sel = test.with_runtime(|runtime| runtime.selection(buffer_id));
-        assert!(sel.is_some());
-        let sel = sel.unwrap();
-        assert_eq!(sel.start, Position::new(0, 2));
-        assert_eq!(sel.end, Position::new(0, 8));
-        assert_eq!(sel.mode, SelectionMode::Line);
-    }
+    // NOTE: test_selection_api and test_selection_api_set_selection removed
+    // as part of #471 - they tested the removed buffer_id-based selection API.
+    // Selection is now per-window, managed via CommandContext and CommandResult.
+    // New tests will be added in Phase 7/8.
 
     #[test]
     fn test_buffer_text_range_single_line() {

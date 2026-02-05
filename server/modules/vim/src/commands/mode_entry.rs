@@ -20,9 +20,22 @@ use {
 
 use crate::{ids, modes::VimMode};
 
+/// Helper to get cursor position from the active window.
+fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
+    let window = runtime.windows().active()?;
+    Some(Position::new(window.cursor.line, window.cursor.column))
+}
+
+/// Helper to set cursor position on the active window.
+fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
+    if let Some(window) = runtime.windows_mut().active_mut() {
+        window.cursor = pos.into();
+    }
+}
+
 /// Start undo batching for insert mode.
 fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: BufferId) {
-    if let Some(pos) = runtime.buffer_position(buffer_id)
+    if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
         && let Some(undo_provider) = undo_registry.get(&UndoKey::Buffer)
     {
@@ -60,13 +73,13 @@ impl Command for EnterInsertFirstNonBlank {
 impl CommandHandler for EnterInsertFirstNonBlank {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         if let Some(buffer_id) = args.buffer_id() {
-            if let Some(pos) = runtime.buffer_position(buffer_id) {
+            if let Some(pos) = get_cursor_position(runtime) {
                 // Find first non-blank character on current line
                 let first_non_blank = runtime
                     .buffer_line(buffer_id, pos.line)
                     .map_or(0, |line| line.chars().position(|c| !c.is_whitespace()).unwrap_or(0));
 
-                runtime.set_buffer_position(buffer_id, Position::new(pos.line, first_non_blank));
+                set_cursor_position(runtime, Position::new(pos.line, first_non_blank));
             }
             // Start undo batching for insert mode
             begin_insert_batch(runtime, buffer_id);
@@ -95,10 +108,10 @@ impl Command for EnterInsertEndOfLine {
 impl CommandHandler for EnterInsertEndOfLine {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         if let Some(buffer_id) = args.buffer_id() {
-            if let Some(pos) = runtime.buffer_position(buffer_id) {
+            if let Some(pos) = get_cursor_position(runtime) {
                 // Move cursor to end of current line
                 let line_len = runtime.buffer_line_len(buffer_id, pos.line).unwrap_or(0);
-                runtime.set_buffer_position(buffer_id, Position::new(pos.line, line_len));
+                set_cursor_position(runtime, Position::new(pos.line, line_len));
             }
             // Start undo batching for insert mode
             begin_insert_batch(runtime, buffer_id);
@@ -138,7 +151,7 @@ impl CommandHandler for OpenLineBelow {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
+        let Some(pos) = get_cursor_position(runtime) else {
             return CommandResult::error("Failed to get buffer position");
         };
 
@@ -162,7 +175,7 @@ impl CommandHandler for OpenLineBelow {
 
         // Position cursor at end of indent on new line
         let indent_len = indent.chars().count();
-        runtime.set_buffer_position(buffer_id, Position::new(pos.line + 1, indent_len));
+        set_cursor_position(runtime, Position::new(pos.line + 1, indent_len));
 
         // Start undo batching for insert mode
         begin_insert_batch(runtime, buffer_id);
@@ -201,7 +214,7 @@ impl CommandHandler for OpenLineAbove {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
+        let Some(pos) = get_cursor_position(runtime) else {
             return CommandResult::error("Failed to get buffer position");
         };
 
@@ -222,7 +235,7 @@ impl CommandHandler for OpenLineAbove {
 
         // Position cursor at end of indent on the new line (which is now at pos.line)
         let indent_len = indent.chars().count();
-        runtime.set_buffer_position(buffer_id, Position::new(pos.line, indent_len));
+        set_cursor_position(runtime, Position::new(pos.line, indent_len));
 
         // Start undo batching for insert mode
         begin_insert_batch(runtime, buffer_id);

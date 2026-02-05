@@ -16,7 +16,7 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{BufferApi, SessionRuntime, api::ExtensionApi},
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::{
@@ -93,10 +93,11 @@ impl DotRepeat {
             return CommandResult::error("No active buffer");
         };
 
-        // Get buffer position (works without window, unlike cursor_position)
-        let Some(pos) = runtime.buffer_position(buffer_id) else {
-            return CommandResult::error("No buffer position");
+        // Get cursor position from per-client window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
         };
+        let pos = Position::new(window.cursor.line, window.cursor.column);
 
         let effective_count = count.unwrap_or(1);
 
@@ -116,9 +117,11 @@ mod tests {
         super::*,
         crate::session_state::{LastChange, OperatorType},
         reovim_driver_command::ArgValue,
-        reovim_driver_session::{ClientId, Session, api::CommandExecutor},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, Window, WindowLayout, api::CommandExecutor,
+        },
         reovim_kernel::api::{
-            ServiceRegistry,
+            ModeStack, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
                 EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
@@ -216,6 +219,53 @@ mod tests {
     }
 
     // =========================================================================
+    // Test Infrastructure (#471)
+    // =========================================================================
+
+    /// Test state holder for per-client state (#471 borrow checker fix).
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        /// Create test state with a window containing the given buffer.
+        fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            windows.add(Window::with_buffer(buffer_id));
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        /// Create a runtime from this test state.
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a dyn CommandExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
     // Command ID Tests
     // =========================================================================
 
@@ -234,9 +284,9 @@ mod tests {
     fn test_dot_repeat_without_vim_state_returns_success() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -250,9 +300,9 @@ mod tests {
     fn test_dot_repeat_without_last_change_returns_success() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         // Register VimSessionState but don't set last_change
         runtime.ext_mut::<VimSessionState>();
@@ -272,9 +322,9 @@ mod tests {
     fn test_dot_repeat_insert_text() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         // Set up last change: insert "hello"
         {
@@ -305,9 +355,9 @@ mod tests {
     fn test_dot_repeat_insert_with_original_count() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         // Set up last change: insert "ab" with count 3
         {
@@ -337,9 +387,9 @@ mod tests {
     fn test_dot_repeat_count_overrides_original() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "");
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mut state = TestState::with_window(buffer_id, test_mode());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut runtime = state.runtime(&kernel, &executor);
 
         // Set up last change: insert "x" with count 5
         {
@@ -426,9 +476,20 @@ mod tests {
     #[test]
     fn test_dot_repeat_no_buffer_returns_error() {
         let kernel = create_test_context();
-        let mut session = Session::new(ClientId::new(1), test_mode());
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
         let executor = StubExecutor;
-        let mut runtime = SessionRuntime::new(&mut session, &kernel, &executor);
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
 
         // Set up last change
         {

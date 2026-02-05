@@ -12,7 +12,6 @@ use reovim_testing::MultiClientPresenceTest;
 ///
 /// When Client 0 enters INSERT mode, Client 1 should remain in NORMAL mode.
 #[tokio::test]
-#[ignore = "Requires full server with modules loaded"]
 async fn test_mode_isolation() {
     MultiClientPresenceTest::with_clients(2)
         .await
@@ -70,13 +69,12 @@ async fn test_mode_isolation() {
 ///
 /// When Client 0 moves their cursor, Client 1's cursor should not change.
 #[tokio::test]
-#[ignore = "Requires full server with modules loaded and per-client cursor implementation"]
 async fn test_cursor_isolation() {
     MultiClientPresenceTest::with_clients(2)
         .await
         .run(|mut clients| async move {
-            // Note: Cursor isolation requires per-client cursor tracking which
-            // is partially implemented. This test documents the expected behavior.
+            // Per-client cursor tracking is now fully implemented (#471).
+            // Each client has independent cursor position in their active window.
 
             // Get initial cursor positions
             let cursor0 = clients[0].get_cursor().await.expect("get cursor 0");
@@ -109,7 +107,6 @@ async fn test_cursor_isolation() {
 /// When Client 0 enters visual mode and selects text, Client 1 should
 /// remain in normal mode without any selection.
 #[tokio::test]
-#[ignore = "Requires full server with modules loaded"]
 async fn test_selection_isolation() {
     MultiClientPresenceTest::with_clients(2)
         .await
@@ -154,7 +151,6 @@ async fn test_selection_isolation() {
 /// Client 0 types in insert mode while Client 1 remains in normal mode,
 /// verifying complete mode isolation.
 #[tokio::test]
-#[ignore = "Requires full server with modules loaded"]
 async fn test_independent_editing() {
     MultiClientPresenceTest::with_clients(2)
         .await

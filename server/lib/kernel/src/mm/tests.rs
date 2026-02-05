@@ -305,36 +305,34 @@ mod buffer_tests {
         assert!(buf.is_modified());
     }
 
+    // Note: Tests updated to use insert_at/delete_at instead of set_position + insert/delete.
+    // Buffer no longer has built-in cursor state - cursor is per-window (#471).
+
     #[test]
     fn test_insert_single_char() {
         let mut buf = Buffer::from_string("Hello");
-        buf.set_position(Position::new(0, 5));
-        buf.insert("!");
+        buf.insert_at(Position::new(0, 5), "!");
         assert_eq!(buf.line(0), Some("Hello!"));
-        assert_eq!(buf.position(), Position::new(0, 6));
     }
 
     #[test]
     fn test_insert_at_beginning() {
         let mut buf = Buffer::from_string("World");
-        buf.set_position(Position::new(0, 0));
-        buf.insert("Hello ");
+        buf.insert_at(Position::new(0, 0), "Hello ");
         assert_eq!(buf.line(0), Some("Hello World"));
     }
 
     #[test]
     fn test_insert_middle() {
         let mut buf = Buffer::from_string("Hllo");
-        buf.set_position(Position::new(0, 1));
-        buf.insert("e");
+        buf.insert_at(Position::new(0, 1), "e");
         assert_eq!(buf.line(0), Some("Hello"));
     }
 
     #[test]
     fn test_insert_newline() {
         let mut buf = Buffer::from_string("HelloWorld");
-        buf.set_position(Position::new(0, 5));
-        buf.insert("\n");
+        buf.insert_at(Position::new(0, 5), "\n");
         assert_eq!(buf.line_count(), 2);
         assert_eq!(buf.line(0), Some("Hello"));
         assert_eq!(buf.line(1), Some("World"));
@@ -343,8 +341,7 @@ mod buffer_tests {
     #[test]
     fn test_insert_multiline() {
         let mut buf = Buffer::from_string("AC");
-        buf.set_position(Position::new(0, 1));
-        buf.insert("X\nY\nZ");
+        buf.insert_at(Position::new(0, 1), "X\nY\nZ");
         assert_eq!(buf.line_count(), 3);
         assert_eq!(buf.line(0), Some("AX"));
         assert_eq!(buf.line(1), Some("Y"));
@@ -354,7 +351,7 @@ mod buffer_tests {
     #[test]
     fn test_insert_into_empty() {
         let mut buf = Buffer::new();
-        buf.insert("Hello");
+        buf.insert_at(Position::origin(), "Hello");
         assert_eq!(buf.line_count(), 1);
         assert_eq!(buf.line(0), Some("Hello"));
     }
@@ -362,34 +359,29 @@ mod buffer_tests {
     #[test]
     fn test_insert_empty_string() {
         let mut buf = Buffer::from_string("Hello");
-        buf.set_position(Position::new(0, 2));
-        buf.insert("");
+        buf.insert_at(Position::new(0, 2), "");
         assert_eq!(buf.line(0), Some("Hello"));
-        assert_eq!(buf.position(), Position::new(0, 2)); // Position unchanged
     }
 
     #[test]
     fn test_delete_single_char() {
         let mut buf = Buffer::from_string("Hello");
-        buf.set_position(Position::new(0, 0));
-        let edit = buf.delete(1);
+        let deleted = buf.delete_at(Position::new(0, 0), 1);
         assert_eq!(buf.line(0), Some("ello"));
-        assert_eq!(edit.text(), "H");
+        assert_eq!(deleted, "H");
     }
 
     #[test]
     fn test_delete_multiple_chars() {
         let mut buf = Buffer::from_string("Hello World");
-        buf.set_position(Position::new(0, 0));
-        buf.delete(6);
+        buf.delete_at(Position::new(0, 0), 6);
         assert_eq!(buf.line(0), Some("World"));
     }
 
     #[test]
     fn test_delete_newline() {
         let mut buf = Buffer::from_string("Hello\nWorld");
-        buf.set_position(Position::new(0, 5));
-        buf.delete(1);
+        buf.delete_at(Position::new(0, 5), 1);
         assert_eq!(buf.line_count(), 1);
         assert_eq!(buf.line(0), Some("HelloWorld"));
     }
@@ -397,8 +389,7 @@ mod buffer_tests {
     #[test]
     fn test_delete_across_lines() {
         let mut buf = Buffer::from_string("Hello\nWorld");
-        buf.set_position(Position::new(0, 3));
-        buf.delete(5); // "lo\nWo"
+        buf.delete_at(Position::new(0, 3), 5); // "lo\nWo"
         assert_eq!(buf.line_count(), 1);
         assert_eq!(buf.line(0), Some("Helrld"));
     }
@@ -406,18 +397,16 @@ mod buffer_tests {
     #[test]
     fn test_delete_nothing() {
         let mut buf = Buffer::from_string("Hello");
-        buf.set_position(Position::new(0, 2));
-        let edit = buf.delete(0);
+        let deleted = buf.delete_at(Position::new(0, 2), 0);
         assert_eq!(buf.line(0), Some("Hello"));
-        assert!(edit.is_empty());
+        assert!(deleted.is_empty());
     }
 
     #[test]
     fn test_delete_past_end() {
         let mut buf = Buffer::from_string("Hi");
-        buf.set_position(Position::new(0, 0));
-        let edit = buf.delete(100);
-        assert_eq!(edit.text(), "Hi");
+        let deleted = buf.delete_at(Position::new(0, 0), 100);
+        assert_eq!(deleted, "Hi");
         assert_eq!(buf.line(0), Some(""));
     }
 
@@ -493,32 +482,20 @@ mod buffer_tests {
     #[test]
     fn test_unicode_insert() {
         let mut buf = Buffer::from_string("Héllo");
-        buf.set_position(Position::new(0, 5)); // After "Héllo"
-        buf.insert(" World");
+        buf.insert_at(Position::new(0, 5), " World"); // After "Héllo"
         assert_eq!(buf.line(0), Some("Héllo World"));
     }
 
-    #[test]
-    fn test_position_clamping() {
-        let mut buf = Buffer::from_string("Hi");
-        buf.set_position(Position::new(100, 100));
-        // Should clamp to end of buffer
-        assert_eq!(buf.position(), Position::new(0, 2));
-    }
-
-    #[test]
-    fn test_position_clamping_empty() {
-        let mut buf = Buffer::new();
-        buf.set_position(Position::new(5, 5));
-        assert_eq!(buf.position(), Position::origin());
-    }
+    // Note: test_position_clamping, test_position_clamping_empty removed.
+    // Buffer no longer has position/cursor state - cursor is per-window (#471).
 
     #[test]
     fn test_modified_flag() {
         let mut buf = Buffer::from_string("Hello");
         assert!(!buf.is_modified());
 
-        buf.insert("!");
+        // Insert at explicit position (Buffer.insert() removed, use insert_at)
+        buf.insert_at(Position::new(0, 5), "!");
         assert!(buf.is_modified());
 
         buf.set_modified(false);
@@ -549,14 +526,6 @@ mod buffer_tests {
         assert_eq!(lines[2], "Line3");
     }
 
-    #[test]
-    fn test_cursor_accessors() {
-        let mut buf = Buffer::from_string("Hello");
-        buf.set_position(Position::new(0, 3));
-
-        assert_eq!(buf.cursor().position, Position::new(0, 3));
-
-        buf.cursor_mut().start_selection();
-        assert!(buf.cursor().has_selection());
-    }
+    // Note: test_cursor_accessors removed.
+    // Buffer no longer has cursor/selection state - these are per-window (#471).
 }

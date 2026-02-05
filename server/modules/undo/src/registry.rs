@@ -51,7 +51,8 @@ const UNDO_EXTENSION: &str = ".undo";
 /// // Undo the last change
 /// if let Some(result) = registry.undo(buffer_id) {
 ///     apply_edits(&mut buffer, &result.edits);
-///     buffer.set_position(result.cursor);
+///     // Cursor restored via per-client window (see #471)
+///     // window.cursor = result.cursor.into();
 /// }
 ///
 /// // Persist to disk
