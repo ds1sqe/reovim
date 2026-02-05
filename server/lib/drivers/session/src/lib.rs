@@ -13,21 +13,27 @@
 //! - **Extension system**: Module per-session state ([`SessionExtension`], [`ExtensionMap`])
 //! - **Empty session handling**: Startup behavior ([`EmptySessionHandler`])
 //!
-//! # Architecture (#471 Phase 0)
+//! # Architecture (#471, #491)
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
 //! │ SESSION DRIVER (lib/drivers/session/) - PURE MECHANISM          │
 //! │                                                                 │
-//! │ SessionShared: compositor, terminal_size, active_buffer (SHARED)│
-//! │ SessionRuntime: ALWAYS operates on per-client state             │
-//! │   - new() - requires per-client state (mode, windows, ext)      │
-//! │   - with_owner() - like new() but tracks ClientId               │
+//! │ SHARED INFRASTRUCTURE:                                          │
+//! │   Session { id, shared: SessionShared }                         │
+//! │   SessionShared { compositor, terminal_size, active_buffer,     │
+//! │                   home_mode }                                   │
 //! │                                                                 │
-//! │ Session (DEPRECATED): migrating to SessionShared + EditingState │
-//! │ SessionMode: id(), on_enter(), on_exit()                        │
-//! │ SessionExtension: create() - module per-session state           │
-//! │ EmptySessionHandler: handle() - startup behavior                │
+//! │ RUNTIME (borrows shared + per-client state):                    │
+//! │   SessionRuntime::new(&session, &mode_stack, &windows, ...)     │
+//! │                                                                 │
+//! │ PER-CLIENT TYPES (defined here, owned by server::EditingState): │
+//! │   ModeStack, WindowLayout, KeySequence, ExtensionMap, Viewport  │
+//! │                                                                 │
+//! │ LIFECYCLE TRAITS:                                               │
+//! │   SessionMode: id(), on_enter(), on_exit()                      │
+//! │   SessionExtension: create() - module state factory             │
+//! │   EmptySessionHandler: handle() - startup behavior              │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -85,7 +91,6 @@
 //! ```
 
 pub mod api;
-mod context;
 mod empty_handler;
 mod extension;
 mod handler_key;
@@ -115,8 +120,7 @@ pub use types::{
     Viewport, Window, WindowLayout,
 };
 
-// Session context
-pub use context::SessionContext;
+// SessionContext removed in #491 - use SessionRuntime instead
 
 // Transition types
 pub use transition::{PopResult, TransitionContext};

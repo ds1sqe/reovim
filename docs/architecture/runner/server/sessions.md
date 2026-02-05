@@ -8,7 +8,7 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 - Per-client state: `server/lib/server/src/session/client.rs` (`EditingState`)
 - Driver Session: `server/lib/drivers/session/` (shared state + bootstrap)
 
-## Session Architecture (#471)
+## Session Architecture (#471, #491)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -16,15 +16,16 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │ SessionState (shared)                                   │ │
 │  │ ├── driver_session: DriverSession                      │ │
-│  │ │   ├── extensions (module state)                      │ │
-│  │ │   ├── active_buffer                                  │ │
-│  │ │   ├── terminal_size                                  │ │
-│  │ │   ├── mode_stack (BOOTSTRAP ONLY - deprecated)       │ │
-│  │ │   └── windows (BOOTSTRAP ONLY - deprecated)          │ │
+│  │ │   └── shared: SessionShared                          │ │
+│  │ │       ├── compositor                                 │ │
+│  │ │       ├── active_buffer                              │ │
+│  │ │       ├── terminal_size                              │ │
+│  │ │       └── home_mode (for new client init)            │ │
 │  │ ├── app: AppState                                      │ │
 │  │ │   ├── kernel (buffers, event_bus)                    │ │
 │  │ │   ├── undo_registry                                  │ │
-│  │ │   └── cmdline                                        │ │
+│  │ │   ├── cmdline                                        │ │
+│  │ │   └── extensions (session-wide module state)         │ │
 │  │ └── CommandRegistry, KeymapRegistry, ModeRegistry      │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
@@ -34,33 +35,38 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 │  │ │   ├── mode_stack (NORMAL)                            │ │
 │  │ │   ├── windows (cursor@10:5)                          │ │
 │  │ │   ├── viewport (80x24)                               │ │
+│  │ │   ├── extensions (per-client module state)           │ │
 │  │ │   └── selection (none)                               │ │
 │  │ ├── Client 2 → EditingState                            │ │
 │  │ │   ├── mode_stack (INSERT)                            │ │
 │  │ │   ├── windows (cursor@20:3)                          │ │
 │  │ │   ├── viewport (200x50)                              │ │
+│  │ │   ├── extensions (per-client module state)           │ │
 │  │ │   └── selection (char: 0,0-0,5)                      │ │
 │  │ └── Client 3 → EditingState                            │ │
 │  │     ├── mode_stack (VISUAL)                            │ │
 │  │     ├── windows (cursor@1:0)                           │ │
 │  │     ├── viewport (120x40)                              │ │
+│  │     ├── extensions (per-client module state)           │ │
 │  │     └── selection (line: 1-5)                          │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## State Ownership (#471)
+## State Ownership (#471, #491)
 
-### Shared State (driver_session + kernel)
+### Shared State (driver_session.shared + app)
 
 | Field | Location | Description |
 |-------|----------|-------------|
-| `extensions` | `driver_session` | Module-provided policy state |
-| `active_buffer` | `driver_session` | Currently active buffer ID |
-| `terminal_size` | `driver_session` | Session-level terminal dimensions |
+| `home_mode` | `driver_session.shared` | Mode for initializing new clients |
+| `active_buffer` | `driver_session.shared` | Session-level active buffer |
+| `terminal_size` | `driver_session.shared` | Default terminal dimensions |
+| `compositor` | `driver_session.shared` | Window layout management |
 | `kernel` | `app` | Core kernel services (buffers, events) |
 | `undo_registry` | `app` | Per-buffer undo trees |
 | `cmdline` | `app` | Command-line mode state |
+| `extensions` | `app` | Session-wide module state |
 
 ### Per-Client State (EditingState)
 
@@ -71,15 +77,9 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 | `viewport` | `EditingState` | Per-client terminal dimensions, scroll offset |
 | `selection` | `EditingState` | Per-client visual selection |
 | `pending_keys` | `EditingState` | Per-client key sequence accumulator |
+| `extensions` | `EditingState` | Per-client module state (#477) |
 
-### Deprecated (Bootstrap Only)
-
-| Field | Location | Note |
-|-------|----------|------|
-| `mode_stack` | `driver_session` | Use `EditingState.mode_stack` at runtime |
-| `windows` | `driver_session` | Use `EditingState.windows` at runtime |
-
-Commands should use `SessionRuntime::new_for_client()` to operate on per-client state.
+Commands use `SessionRuntime` which borrows both shared and per-client state.
 
 ### Accessing Per-Client State
 

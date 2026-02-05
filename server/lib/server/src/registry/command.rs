@@ -402,7 +402,7 @@ mod tests {
 
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
-        let mut driver_session = DriverSession::new(ClientId::new(0));
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone()); // #491
         let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();

@@ -154,14 +154,14 @@ pub fn build_notifications(
 /// * `client_id` - Client that changed mode (Phase 14 #471: multi-client filtering)
 #[allow(clippy::cast_possible_truncation)] // client_id u64→usize is safe on 64-bit
 fn build_mode_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
-    // Phase #486: Read mode from per-client state
+    // Phase #486, #491: Read mode from per-client state
     let mode_name = session
         .client_state(ClientId::new(client_id as usize))
         .map_or_else(
             || {
-                // Fallback to shared state if client not found
-                tracing::warn!(%client_id, "Client not found for mode notification, using shared state");
-                session.with_state_sync(|s| s.driver_session.mode_stack.current().name().to_string())
+                // Fallback to home_mode if client not found (#491)
+                tracing::warn!(%client_id, "Client not found for mode notification, using home_mode");
+                session.with_state_sync(|s| s.home_mode().name().to_string())
             },
             |s| s.mode_stack.current().name().to_string(),
         );
@@ -260,12 +260,13 @@ fn build_buffer_list_notification(
 /// * `client_id` - Client for per-client focused window
 #[allow(clippy::cast_possible_truncation, clippy::option_if_let_else)]
 fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
-    // Phase #486: Try per-client focused window first, fallback to shared state
+    // Phase #486: Try per-client focused window first, fallback to compositor
+    // Phase #491: Removed driver_session.windows fallback (deprecated field removed)
     let focused_id = session
         .client_state(ClientId::new(client_id as usize))
         .and_then(|s| s.windows.active_id())
         .or_else(|| {
-            // Fallback to shared state
+            // Fallback to compositor focused window
             session.with_state_sync(|state| {
                 state
                     .driver_session
@@ -273,11 +274,15 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                     .compositor
                     .as_ref()
                     .and_then(|c| c.focused())
-                    .or_else(|| state.driver_session.windows.active_id())
             })
         });
 
-    // Build window info list from shared state (layout is session-wide)
+    // Phase #491: Get per-client windows for buffer_id lookup
+    let client_windows = session
+        .client_state(ClientId::new(client_id as usize))
+        .map(|s| s.windows);
+
+    // Build window info list from shared compositor (layout is session-wide)
     let windows: Vec<WindowInfo> = session.with_state_sync(|state| {
         if let Some(compositor) = &state.driver_session.shared.compositor {
             // Get placements from compositor
@@ -285,16 +290,19 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
             let screen = reovim_driver_display::Rect::new(0, 0, width, height);
             let composite = compositor.composite(screen);
 
+            // Phase #491: Use per-client windows or active_buffer for buffer_id
+            let active_buffer = state.driver_session.active_buffer();
+
             composite
                 .placements
                 .iter()
                 .map(|p| {
-                    // Phase #479: buffer_id is Option to eliminate ID ambiguity
-                    let buffer_id = state
-                        .driver_session
-                        .windows
-                        .get(p.window_id)
+                    // Phase #491: Get buffer_id from per-client windows, fallback to active_buffer
+                    let buffer_id = client_windows
+                        .as_ref()
+                        .and_then(|w| w.get(p.window_id))
                         .and_then(|w| w.buffer_id)
+                        .or(active_buffer)
                         .map(|id| id.as_usize() as u64);
 
                     WindowInfo {
@@ -311,25 +319,27 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                 })
                 .collect()
         } else {
-            // Fallback: create window info from driver session windows
-            state
-                .driver_session
-                .windows
-                .windows
-                .iter()
-                .map(|w| WindowInfo {
-                    window_id: w.id.as_usize() as u64,
-                    // Phase #479: buffer_id is now Option<u64>
-                    buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
-                    rect: Some(WindowRect {
-                        x: 0,
-                        y: 0,
-                        width: 80, // Default size
-                        height: 24,
-                    }),
-                    focused: focused_id == Some(w.id),
-                })
-                .collect()
+            // Phase #491: Fallback when compositor is not set - use per-client windows
+            // or return empty (compositor should always be set in production)
+            if let Some(windows) = &client_windows {
+                windows
+                    .windows
+                    .iter()
+                    .map(|w| WindowInfo {
+                        window_id: w.id.as_usize() as u64,
+                        buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
+                        rect: Some(WindowRect {
+                            x: 0,
+                            y: 0,
+                            width: 80, // Default size
+                            height: 24,
+                        }),
+                        focused: focused_id == Some(w.id),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            }
         }
     });
 

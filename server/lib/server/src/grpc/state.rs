@@ -796,23 +796,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_layout_single_window() {
-        use reovim_driver_session::Viewport;
-
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer (which also creates a window via Phase 8 change)
-        // Then modify the existing window's viewport
+        // Create a buffer (active buffer is set in SessionShared)
         session
             .with_state_mut(|state| {
                 let _buffer_id = state.create_buffer("hello world");
-                // Modify the existing window created by create_buffer
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                }
             })
             .await;
 
-        // Create a client to get per-client state with initial window
+        // Create a client - this creates per-client windows in EditingState (#491)
+        // The client will have a window with the active buffer
         session.add_client(ClientId::new(1));
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
@@ -823,13 +817,14 @@ mod tests {
         assert!(response.is_ok());
         let resp = response.unwrap().into_inner();
 
-        // Should have a root node (single leaf)
+        // Should have a root node (single leaf) from per-client state
         assert!(resp.root.is_some());
         let root = resp.root.unwrap();
 
-        // Check it's a leaf
+        // Check it's a leaf with default viewport dimensions
         match root.node {
             Some(reovim_protocol::v2::window_node::Node::Leaf(leaf)) => {
+                // Default viewport is 80x24
                 assert_eq!(leaf.rect.as_ref().unwrap().width, 80);
                 assert_eq!(leaf.rect.as_ref().unwrap().height, 24);
             }
@@ -874,23 +869,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_visible_lines_with_window() {
-        use reovim_driver_session::Viewport;
-
         let (registry, session) = test_registry_with_buffer_manager();
 
-        // Create a buffer (which also creates a window via Phase 8 change)
-        // Then modify the existing window's viewport
+        // Create a buffer (active buffer is set in SessionShared)
         session
             .with_state_mut(|state| {
                 let _buffer_id = state.create_buffer("line0\nline1\nline2\nline3");
-                if let Some(window) = state.driver_session_mut().windows.active_mut() {
-                    window.viewport = Viewport::new(80, 24);
-                    // scroll_top is 0 by default
-                }
             })
             .await;
 
-        // Create a client
+        // Create a client - this creates per-client windows in EditingState (#491)
         session.add_client(ClientId::new(1));
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));

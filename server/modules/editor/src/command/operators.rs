@@ -209,7 +209,7 @@ mod tests {
         // Commands now return Success - actual operator-pending logic
         // will be handled by the vim resolver via SessionRuntime (see #394)
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn test_enter_yank_operator_returns_success() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn test_enter_change_operator_returns_success() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);
@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_enter_indent_operator_returns_success() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);
@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_enter_dedent_operator_returns_success() {
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let kernel = KernelContext::default();
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);

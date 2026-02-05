@@ -285,9 +285,10 @@ pub struct Session {
 
 impl Session {
     /// Multiple concurrent readers allowed
-    pub async fn get_mode(&self) -> ModeId {
+    /// Per-client mode access (#491)
+    pub async fn get_mode(&self, client_id: ClientId) -> Option<ModeId> {
         let state = self.state.read().await;
-        state.app.current_mode().clone()
+        state.client_current_mode(client_id).cloned()
     }
 
     /// Single writer, blocks readers
@@ -329,6 +330,7 @@ enum SessionCommand {
         reply: oneshot::Sender<CommandResult>
     },
     GetMode {
+        client_id: ClientId,  // Per-client (#491)
         reply: oneshot::Sender<ModeId>
     },
 }
@@ -340,8 +342,12 @@ async fn session_actor(mut rx: mpsc::Receiver<SessionCommand>, mut state: Sessio
                 let result = state.process_key(key);
                 let _ = reply.send(result);
             }
-            SessionCommand::GetMode { reply } => {
-                let _ = reply.send(state.app.current_mode().clone());
+            SessionCommand::GetMode { client_id, reply } => {
+                // Per-client mode access (#491)
+                let mode = state.client_current_mode(client_id)
+                    .cloned()
+                    .unwrap_or_else(|| state.home_mode().clone());
+                let _ = reply.send(mode);
             }
         }
     }

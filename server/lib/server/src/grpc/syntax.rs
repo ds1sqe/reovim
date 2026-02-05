@@ -274,8 +274,8 @@ impl SyntaxService for SyntaxServiceImpl {
                 drop(buffer);
                 drop(buffer_arc);
 
-                // Get syntax session state from extensions
-                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+                // Get syntax session state from session-wide extensions (#491)
+                let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
                 // Get or create driver for this buffer
                 let tokens = if syntax_state.ensure_driver(buffer_id, language_id, &content) {
@@ -340,8 +340,8 @@ impl SyntaxService for SyntaxServiceImpl {
                 drop(buffer);
                 drop(buffer_arc);
 
-                // Get syntax state and ensure driver exists
-                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+                // Get syntax state and ensure driver exists (#491)
+                let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
                 // Ensure driver is created for this buffer
                 syntax_state.ensure_driver(buffer_id, language_id, &content);
@@ -431,8 +431,8 @@ impl SyntaxService for SyntaxServiceImpl {
                 drop(buffer);
                 drop(buffer_arc);
 
-                // Check if a parser is available via the factory
-                let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+                // Check if a parser is available via the factory (#491)
+                let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
                 let has_parser = syntax_state
                     .factory()
                     .is_some_and(|f| f.supports(language_id));

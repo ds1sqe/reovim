@@ -288,12 +288,14 @@ nursery = "deny"
 - Add to every plan: **"Never stop until ALL phases are FULLY FINISHED."**
 - Include a **Final Procedure** section referencing Final Approach
 
-**Known Limitation:**
-Claude Code generates random plan filenames (e.g., `groovy-popping-kahn.md`) by default. After creating a plan, verify and rename to follow the convention above.
+**IMPORTANT:**
+Claude Code generates random plan filenames (e.g., `groovy-popping-kahn.md`) by default.
+After creating a plan, **YOU MUST DO** verify and rename to follow the convention above.
 
 **Workaround:**
 1. When plan mode creates a file, note the random filename
 2. After exiting plan mode, move to correct path:
+ -  random-name plan should be removed
    ```bash
    mv ~/.claude/plans/{random-name}.md ~/.claude/plans/reovim/{ISSUE}-{VERSION}-{SUBJECT}.md
    ```
@@ -458,7 +460,6 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
 
 1. **Gather Context**:
    - Check Epic and related issues via `gh issue view {Number}` and linked issues
-   - Read `tmp/{ISSUE}/*` for context from previous sessions
    - Check recent git logs: `git log --oneline -20`
    - Launch `voyager` agent for codebase understanding if needed
 

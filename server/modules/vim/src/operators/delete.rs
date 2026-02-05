@@ -282,7 +282,7 @@ mod tests {
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), home_mode.clone()); // #491
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();

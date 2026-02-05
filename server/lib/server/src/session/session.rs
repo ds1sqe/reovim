@@ -190,12 +190,10 @@ impl Session {
     pub fn add_client_with_metadata(&self, client_id: ClientId, metadata: super::ClientMetadata) {
         use {reovim_driver_session::Window, reovim_kernel::api::v1::ModeStack};
 
-        // Per-client state (#471): This is the ONE valid use of shared current_mode() -
-        // to initialize new clients with the session's home mode (e.g., "vim/normal").
-        // After this, the client's per-client mode stack is used for all operations.
+        // Per-client state (#471, #491): Initialize new clients with session's home mode
+        // stored in SessionShared. After this, the client's per-client mode stack is used.
         let state = self.state.read();
-        #[allow(deprecated)]
-        let home_mode = state.current_mode().clone();
+        let home_mode = state.home_mode().clone();
         let active_buffer = state.active_buffer();
         drop(state); // Release lock before acquiring clients lock
 
@@ -766,13 +764,9 @@ impl Session {
                 }
                 drop(clients);
 
-                // Fallback to shared session extensions
+                // Fallback to shared session extensions (#491)
                 let mut state = self.state.write();
-                if let Some(sink) = state
-                    .driver_session_mut()
-                    .extensions
-                    .get_text_input_sink_by_id(type_id)
-                {
+                if let Some(sink) = state.app.extensions.get_text_input_sink_by_id(type_id) {
                     sink.insert_char(ch);
                     tracing::debug!(?type_id, "Inserted char via shared extension");
                 } else {

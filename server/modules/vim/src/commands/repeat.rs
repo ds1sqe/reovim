@@ -233,7 +233,7 @@ mod tests {
     impl TestState {
         /// Create test state with a window containing the given buffer.
         fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
-            let session = Session::new(ClientId::new(1));
+            let session = Session::new(ClientId::new(1), mode.clone()); // #491
             let mode_stack = ModeStack::new(mode);
             let mut windows = WindowLayout::empty();
             let extensions = ExtensionMap::new();
@@ -477,7 +477,7 @@ mod tests {
     fn test_dot_repeat_no_buffer_returns_error() {
         let kernel = create_test_context();
         let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), mode.clone()); // #491
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(mode);
         let mut windows = WindowLayout::empty();

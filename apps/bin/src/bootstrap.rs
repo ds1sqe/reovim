@@ -370,8 +370,8 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
 
     tracing::info!(count = 1, ?languages, "Configured syntax highlighting from modules");
 
-    // Configure SyntaxSessionState with the factory (after logging releases borrow)
-    let syntax_state = state.extensions_mut().get_or_insert::<SyntaxSessionState>();
+    // Configure SyntaxSessionState with the factory (#491: use app.extensions)
+    let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
     syntax_state.set_factory(factory);
 }
 
@@ -420,13 +420,12 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(deprecated)] // Testing that session initializes with correct home mode
     fn test_create_session_state() {
         // This test verifies that module bootstrap doesn't panic
         let state = create_session_state();
 
-        // Verify we have a valid mode
-        let mode = state.current_mode();
+        // #491: Use home_mode() instead of removed current_mode()
+        let mode = state.home_mode();
         assert!(mode.name().contains("normal"), "Expected normal mode, got {}", mode.name());
     }
 

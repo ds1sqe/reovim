@@ -656,7 +656,7 @@ impl BufferApi for SessionRuntime<'_> {
 
 impl WindowApi for SessionRuntime<'_> {
     fn active_window(&self) -> Option<WindowId> {
-        self.session.windows.active_id()
+        self.windows.active_id() // #491: use per-client windows
     }
 
     fn cursor_position(&self) -> Option<Position> {
@@ -665,35 +665,31 @@ impl WindowApi for SessionRuntime<'_> {
     }
 
     fn window_count(&self) -> usize {
-        self.session.windows.len()
+        self.windows.len() // #491: use per-client windows
     }
 
     fn window_buffer(&self, window: WindowId) -> Option<BufferId> {
-        self.session.windows.get(window).and_then(|w| w.buffer_id)
+        self.windows.get(window).and_then(|w| w.buffer_id) // #491: use per-client windows
     }
 
     fn create_window(&mut self, buffer: Option<BufferId>) -> WindowId {
         let mut window = Window::new();
         window.buffer_id = buffer;
         let id = window.id;
-        self.session.windows.add(window);
+        self.windows.add(window); // #491: use per-client windows
         self.changes.record_window_created(id);
         id
     }
 
     fn close_window(&mut self, window: WindowId) -> Result<(), WindowError> {
-        if self.session.windows.len() <= 1 {
+        if self.windows.len() <= 1 {
+            // #491: use per-client windows
             return Err(WindowError::CannotCloseLastWindow);
         }
         // Find and remove the window
-        let idx = self
-            .session
-            .windows
-            .windows
-            .iter()
-            .position(|w| w.id == window);
+        let idx = self.windows.windows.iter().position(|w| w.id == window); // #491: use per-client windows
         if let Some(idx) = idx {
-            self.session.windows.windows.remove(idx);
+            self.windows.windows.remove(idx); // #491: use per-client windows
             self.changes.record_window_closed(window);
             Ok(())
         } else {
@@ -702,7 +698,8 @@ impl WindowApi for SessionRuntime<'_> {
     }
 
     fn focus_window(&mut self, window: WindowId) -> Result<(), WindowError> {
-        if !self.session.windows.set_active(window) {
+        if !self.windows.set_active(window) {
+            // #491: use per-client windows
             return Err(WindowError::NotFound(window));
         }
         self.changes.record_focus_change();
@@ -713,7 +710,8 @@ impl WindowApi for SessionRuntime<'_> {
         if self.kernel.buffers.get(buffer).is_none() {
             return Err(WindowError::BufferNotFound(buffer));
         }
-        if let Some(w) = self.session.windows.get_mut(window) {
+        if let Some(w) = self.windows.get_mut(window) {
+            // #491: use per-client windows
             // Phase 8 (#465): Clear selection when switching buffers.
             // Selection is per-window but associated with a specific buffer,
             // so it makes no sense to keep selection when viewing a different buffer.
@@ -1465,7 +1463,7 @@ mod tests {
     fn test_mode_api() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1517,7 +1515,7 @@ mod tests {
     fn test_per_client_mode_stack() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1526,8 +1524,8 @@ mod tests {
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
 
-        // Record session's initial mode for comparison
-        let session_initial_mode = session.mode_stack.current().clone();
+        // #491: Session no longer has mode_stack field - use home_mode() from shared
+        let session_home_mode = session.shared.home_mode().clone();
 
         // Use a scope to release mutable borrow before checking session
         {
@@ -1550,9 +1548,8 @@ mod tests {
             assert_eq!(runtime.mode_depth(), 2);
         }
 
-        // After runtime is dropped, verify session's shared stack is NOT affected
-        assert_eq!(session.mode_stack.current(), &session_initial_mode);
-        assert_eq!(session.mode_stack.depth(), 1);
+        // #491: After runtime is dropped, session.shared.home_mode() remains unchanged
+        assert_eq!(session.shared.home_mode(), &session_home_mode);
 
         // Verify client_mode_stack was modified
         assert_eq!(client_mode_stack.current(), &test_mode_2());
@@ -1564,7 +1561,7 @@ mod tests {
     fn test_owner_tracking() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1607,7 +1604,7 @@ mod tests {
     fn test_multi_client_mode_isolation() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1656,7 +1653,7 @@ mod tests {
     fn test_window_api() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1717,7 +1714,7 @@ mod tests {
             }
         }
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 
@@ -1751,7 +1748,7 @@ mod tests {
     fn test_change_tracking() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let mut session = Session::new(ClientId::new(1));
+        let mut session = Session::new(ClientId::new(1), test_mode());
         let kernel = KernelContext::default();
         let executor = StubExecutor;
 

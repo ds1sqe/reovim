@@ -80,6 +80,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   uses them), with full removal deferred to a follow-up issue. This refactoring makes
   the per-client state architecture from #471/#477 explicit in the type system.
 
+- **Add home_mode to SessionShared (#491)**: Added `home_mode: ModeId` field to
+  `SessionShared` for proper session-level storage of the home mode used to initialize
+  new clients. `Session::new(id, home_mode)` now takes home_mode parameter and stores
+  it in `SessionShared`. Added `SessionShared::home_mode()` accessor. Fixed WindowApi
+  implementation to use per-client `self.windows` instead of deprecated `self.session.windows`.
+  Deprecated `SessionContext` in favor of `SessionRuntime` which properly supports
+  per-client state isolation. Updated 50+ test callsites across server and modules.
+  This completes the architectural separation: session-level config (home_mode) lives
+  in `SessionShared`, per-client state lives in `EditingState`.
+
+- **Remove deprecated Session fields (#491 Phase 7)**: Completed the per-client state
+  migration by removing deprecated fields from driver-level `Session` struct. Removed
+  `windows`, `mode_stack`, `pending_keys`, `extensions` fields - these now live in
+  server-level `EditingState` per-client. Removed `Session::current_mode()` method.
+  Deleted `SessionContext` (deprecated type with zero production usage). Removed
+  delegation methods from `SessionState` (`mode_stack()`, `extensions()`, etc.).
+  Updated notification_builder to use per-client windows for buffer_id lookup.
+  Updated all callers to use `home_mode()` or per-client `EditingState`. After this
+  change, `Session` contains only `id: ClientId` and `shared: SessionShared` - truly
+  minimal shared infrastructure. ~20 files modified, 366+ tests passing.
+
 - **Per-Client State Architecture Consolidation (Phase 0)**: Complete per-client
   cursor isolation by consolidating `SessionRuntime` constructors and removing
   deprecated compatibility shims. `SessionRuntime::new()` now requires 6 arguments

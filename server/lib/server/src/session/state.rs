@@ -21,8 +21,8 @@ use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
-    reovim_driver_input::{ExtensionMap, FallbackContext, ResolverRegistry},
-    reovim_driver_session::{ClientId, Session as DriverSession, Window},
+    reovim_driver_input::{FallbackContext, ResolverRegistry},
+    reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack},
 };
@@ -109,14 +109,9 @@ impl SessionState {
     /// * `vfs` - The virtual filesystem driver for file operations
     #[must_use]
     pub fn new(kernel: KernelContext, initial_mode: ModeId, vfs: Arc<dyn VfsDriver>) -> Self {
-        // Create driver session for shared infrastructure (#488)
+        // Create driver session with home_mode in SessionShared (#491)
         // ClientId(0) is a placeholder - real clients get IDs from server layer
-        let mut driver_session = DriverSession::new(ClientId::new(0));
-
-        // Set the home mode in the deprecated mode_stack field (#488)
-        // This is used by add_client_with_metadata() to initialize new clients
-        // TODO(#488): Move home_mode to a proper field when removing deprecated fields
-        driver_session.mode_stack = ModeStack::new(initial_mode);
+        let driver_session = DriverSession::new(ClientId::new(0), initial_mode);
 
         Self {
             driver_session,
@@ -145,11 +140,8 @@ impl SessionState {
         resolver_registry: ResolverRegistry,
         compositor: Option<Box<dyn RootCompositor>>,
     ) -> Self {
-        // Create driver session for shared infrastructure (#488)
-        let mut driver_session = DriverSession::new(ClientId::new(0));
-
-        // Set the home mode in the deprecated mode_stack field (#488)
-        driver_session.mode_stack = ModeStack::new(initial_mode);
+        // Create driver session with home_mode in SessionShared (#491)
+        let mut driver_session = DriverSession::new(ClientId::new(0), initial_mode);
 
         // Set compositor if provided by a module
         if let Some(c) = compositor {
@@ -161,13 +153,8 @@ impl SessionState {
         if let Some(&first_buffer) = buffer_ids.first() {
             driver_session.set_active_buffer(Some(first_buffer));
 
-            // Phase 8 (#465): Create Window in driver_session.windows for selection tracking.
-            // This Window stores the per-window cursor and selection state.
-            if driver_session.windows.windows.is_empty() {
-                let window = Window::with_buffer(first_buffer);
-                driver_session.windows.add(window);
-                tracing::debug!("Created initial window in driver_session.windows");
-            }
+            // Phase #491: Per-client windows are now created in EditingState when
+            // clients connect, not in driver_session. Only create compositor window.
 
             // Create initial window in compositor for the first buffer.
             if let Some(compositor) = driver_session.compositor_mut()
@@ -206,32 +193,12 @@ impl SessionState {
     }
 
     // ========================================================================
-    // Delegation Methods (SSOT in driver_session)
+    // Delegation Methods (SSOT in driver_session.shared)
     // ========================================================================
-
-    /// Get a reference to the mode stack (delegates to `driver_session`).
-    #[must_use]
-    pub const fn mode_stack(&self) -> &ModeStack {
-        &self.driver_session.mode_stack
-    }
-
-    /// Get a mutable reference to the mode stack (delegates to `driver_session`).
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn mode_stack_mut(&mut self) -> &mut ModeStack {
-        &mut self.driver_session.mode_stack
-    }
-
-    /// Get a reference to the extensions map (delegates to `driver_session`).
-    #[must_use]
-    pub const fn extensions(&self) -> &ExtensionMap {
-        &self.driver_session.extensions
-    }
-
-    /// Get a mutable reference to the extensions map (delegates to `driver_session`).
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn extensions_mut(&mut self) -> &mut ExtensionMap {
-        &mut self.driver_session.extensions
-    }
+    //
+    // NOTE (#491): mode_stack, extensions delegation methods removed.
+    // Per-client state (mode_stack, extensions) now lives in EditingState.
+    // Access via Session::client_state() / client_state_mut().
 
     /// Get the session-level active buffer ID (delegates to `driver_session`).
     #[must_use]
@@ -255,41 +222,21 @@ impl SessionState {
         self.driver_session.set_terminal_size(width, height);
     }
 
+    /// Get the home mode for initializing new clients (#491).
+    ///
+    /// When a new client connects, their mode stack is initialized with
+    /// this mode at the bottom. This is stored in `SessionShared`.
+    #[must_use]
+    pub const fn home_mode(&self) -> &ModeId {
+        self.driver_session.shared.home_mode()
+    }
+
     // ========================================================================
     // Registry Accessors
     // ========================================================================
 
-    /// Get the current mode ID from SHARED session state.
-    ///
-    /// # Deprecation Warning (#471)
-    ///
-    /// This returns the SHARED mode stack, which is DEPRECATED for multi-client.
-    /// For per-client mode, use `Session::client_current_mode(client_id)` instead.
-    ///
-    /// This method should ONLY be used for:
-    /// - Initial mode for new clients (in `Session::add_client()`)
-    /// - Single-client test scenarios
-    /// - Fallback when `client_id` is not available
-    ///
-    /// # Migration
-    ///
-    /// ```ignore
-    /// // BEFORE (deprecated):
-    /// let mode = session.with_state(|s| s.current_mode().clone());
-    ///
-    /// // AFTER (correct for multi-client):
-    /// let mode = session.client_current_mode(client_id)
-    ///     .unwrap_or_else(|| session.with_state_sync(|s| s.current_mode().clone()));
-    /// ```
-    #[must_use]
-    #[deprecated(
-        since = "0.9.0",
-        note = "Use Session::client_current_mode() for per-client mode isolation. \
-                This method returns SHARED mode which is incorrect for multi-client scenarios."
-    )]
-    pub fn current_mode(&self) -> &ModeId {
-        self.driver_session.current_mode()
-    }
+    // NOTE (#491): current_mode() removed. Per-client mode lives in EditingState.
+    // Use Session::client_current_mode(client_id) or home_mode() instead.
 
     /// Look up a key sequence in the current mode's keymap.
     #[must_use]
@@ -337,12 +284,13 @@ impl SessionState {
         )
     }
 
-    /// Check if the current mode accepts character input.
+    /// Check if the home mode accepts character input.
+    ///
+    /// NOTE (#491): This uses `home_mode()` since per-client mode lives in `EditingState`.
+    /// For per-client mode checking, use the per-client state directly.
     #[must_use]
     pub fn mode_accepts_char_input(&self) -> bool {
-        // Use driver_session as SSOT for current mode
-        self.mode_registry
-            .accepts_char_input(self.driver_session.current_mode())
+        self.mode_registry.accepts_char_input(self.home_mode())
     }
 
     /// Check if the session should continue running.
@@ -404,19 +352,9 @@ impl SessionState {
             self.driver_session.set_active_buffer(Some(id));
         }
 
-        // Phase 8 (#465): Ensure there's always a Window for selection tracking.
-        // If no windows exist, create one for this buffer.
-        if self.driver_session.windows.windows.is_empty() {
-            let window = Window::with_buffer(id);
-            self.driver_session.windows.add(window);
-            tracing::debug!(?id, "Created window for buffer in driver_session.windows");
-        } else if let Some(window) = self.driver_session.windows.active_mut()
-            && window.buffer_id.is_none()
-        {
-            // Assign to active window if it has no buffer
-            window.buffer_id = Some(id);
-            tracing::debug!(?id, "Assigned buffer to active window");
-        }
+        // Phase #491: Per-client windows are created in EditingState when clients
+        // connect. The server layer handles window creation for new clients via
+        // Session::add_client() or when EditingState is initialized.
 
         id
     }
@@ -455,14 +393,16 @@ impl SessionState {
             }
         }
 
-        let mode = self.driver_session.current_mode().clone();
+        // Phase #491: Use home_mode since current_mode() removed.
+        // This method is DEPRECATED - use resolve_key_for_client() with per-client state.
+        let home_mode = self.driver_session.shared.home_mode().clone();
+        let mode = home_mode.clone();
         let mut mode_state = ModeState::new(mode.clone());
 
         // Create SessionRuntime for resolver access to session state
         // #471 Phase 0: Create temporary per-client state for backward compatibility.
         // This is DEPRECATED - use resolve_key_for_client() with proper per-client state.
         let stub_executor = StubExecutor;
-        let home_mode = self.driver_session.mode_stack.current().clone();
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
         let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
@@ -608,13 +548,14 @@ impl SessionState {
             }
         }
 
-        let mode = self.driver_session.current_mode().clone();
+        // Phase #491: Use home_mode since current_mode() removed.
+        // This method is DEPRECATED - use try_on_command_complete_for_client() with per-client state.
+        let home_mode = self.driver_session.shared.home_mode().clone();
+        let mode = home_mode.clone();
         let resolver = self.resolver_registry.get(&mode)?;
 
         // #471 Phase 0: Create temporary per-client state for backward compatibility.
-        // This is DEPRECATED - use try_on_command_complete_for_client() with proper per-client state.
         let stub_executor = StubExecutor;
-        let home_mode = self.driver_session.mode_stack.current().clone();
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
         let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
@@ -738,7 +679,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)] // Testing deprecated current_mode() directly
     fn test_session_state_new() {
         let kernel = KernelContext::default();
         let state = SessionState::new(kernel, test_mode_id(), test_vfs());
@@ -747,7 +687,8 @@ mod tests {
         assert!(state.mode_registry.is_empty());
         assert!(state.command_registry.is_empty());
         assert!(state.keymap_registry.is_empty());
-        assert_eq!(state.current_mode().name(), "normal");
+        // #491: Use home_mode() instead of removed current_mode()
+        assert_eq!(state.home_mode().name(), "normal");
     }
 
     #[test]
@@ -806,7 +747,6 @@ mod tests {
     /// 1. Key resolution uses the provided per-client state
     /// 2. The shared session state is NOT affected
     #[test]
-    #[allow(deprecated)] // Testing that shared current_mode() is NOT modified by per-client resolution
     fn test_resolve_key_for_client_mode_isolation() {
         let kernel = KernelContext::default();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
@@ -817,8 +757,9 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
 
+        // #491: Use home_mode() instead of removed current_mode()
         // Verify initial states
-        assert_eq!(state.current_mode().name(), "normal"); // shared
+        assert_eq!(state.home_mode().name(), "normal"); // shared
         assert_eq!(client_mode_stack.current().name(), "insert"); // per-client
 
         // resolve_key_for_client should use per-client state, not shared
@@ -833,8 +774,8 @@ mod tests {
             &key,
         );
 
-        // Verify shared mode stack is NOT affected
-        assert_eq!(state.current_mode().name(), "normal");
+        // Verify home_mode unchanged
+        assert_eq!(state.home_mode().name(), "normal");
         // Client mode stack should still be in insert mode
         assert_eq!(client_mode_stack.current().name(), "insert");
     }

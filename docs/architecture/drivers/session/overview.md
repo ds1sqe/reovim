@@ -6,40 +6,67 @@ The session driver (`lib/drivers/session/`) provides traits for session manageme
 
 | Type | Purpose |
 |------|---------|
-| `driver::Session` | SSOT for per-session editing state |
+| `Session` | Shared session infrastructure (`id` + `SessionShared`) |
+| `SessionShared` | Truly shared state (compositor, active_buffer, home_mode) |
+| `SessionRuntime` | Runtime that borrows Session + per-client state |
 | `ClientId` | Client connection identifier |
 | `EmptySessionHandler` | Handle empty sessions (no buffers) |
 | `EmptySessionAction` | Action to take for empty session |
 | `EmptySessionContext` | Context passed to handlers |
 
-## Session State (SSOT)
+## Session Architecture (#491)
 
-`driver::Session` is the Single Source of Truth for per-session editing state:
+The session driver defines types and mechanisms. Per-client state ownership
+lives in the server layer (`EditingState`).
+
+### Session (Shared Infrastructure)
+
+```rust
+pub struct Session {
+    pub id: ClientId,
+    pub shared: SessionShared,
+}
+```
+
+### SessionShared
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `mode_stack` | `ModeStack` | Current editing mode hierarchy |
-| `pending_keys` | `Vec<KeyEvent>` | Accumulated key sequence |
-| `extensions` | `ExtensionMap` | Module-provided state |
-| `active_buffer` | `Option<BufferId>` | Default active buffer |
-| `terminal_size` | `(u16, u16)` | Session-level terminal size |
+| `compositor` | `Option<Box<dyn RootCompositor>>` | Window layout management |
+| `active_buffer` | `Option<BufferId>` | Session-level active buffer |
+| `terminal_size` | `(u16, u16)` | Default terminal dimensions (80x24) |
+| `home_mode` | `ModeId` | Mode for initializing new clients |
 
-### Why SSOT?
+### Per-Client State (server::EditingState)
 
-Previously, session state was duplicated between `AppState` and `driver::Session`.
-This caused:
-- Two sources of truth requiring synchronization
-- Potential for state drift
-- Unclear ownership
+Per-client state lives in `server/lib/server/src/session/client.rs`:
 
-Now, `driver::Session` is the authoritative source. `SessionState` in runner
-delegates to it via accessors:
+| Field | Type | Description |
+|-------|------|-------------|
+| `mode_stack` | `ModeStack` | Per-client editing mode |
+| `pending_keys` | `KeySequence` | Per-client key accumulator |
+| `windows` | `WindowLayout` | Per-client cursors (#471) |
+| `viewport` | `Viewport` | Per-client terminal size |
+| `selection` | `Option<ClientSelection>` | Per-client visual selection |
+| `extensions` | `ExtensionMap` | Per-client module state (#477) |
+
+### Why This Split?
+
+1. **Mechanism vs Policy**: Driver defines WHAT (types), server decides HOW (ownership)
+2. **Per-client isolation**: Client A's `5j` doesn't affect Client B
+3. **Shared efficiency**: Compositor, buffer IDs shared across clients
+
+### Access Patterns
 
 ```rust
-// SessionState delegates to driver_session
-pub fn mode_stack(&self) -> &ModeStack {
-    &self.driver_session.mode_stack
-}
+// Shared state access
+let home_mode = state.driver_session.shared.home_mode();
+let active_buffer = state.driver_session.shared.active_buffer();
+
+// Per-client state access (via server Session)
+let editing_state = session.client_state(client_id);
+let mode = editing_state.current_mode();
+let cursor = editing_state.windows.focused().map(|w| w.cursor);
 ```
 
 ## ClientId Type

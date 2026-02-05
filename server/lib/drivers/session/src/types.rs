@@ -36,8 +36,9 @@ use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
 /// - Compositor for window layout management
 /// - Default terminal size
 /// - Active buffer ID (session-level)
+/// - Home mode for initializing new clients
 ///
-/// # Architecture (#471)
+/// # Architecture (#471, #491)
 ///
 /// Per-client state lives in `server::EditingState`, NOT here.
 /// This type provides only the truly shared infrastructure.
@@ -58,7 +59,8 @@ use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
 /// │   SessionShared  ◄─── Truly shared infrastructure               │
 /// │   ├── compositor                                                │
 /// │   ├── terminal_size                                             │
-/// │   └── active_buffer                                             │
+/// │   ├── active_buffer                                             │
+/// │   └── home_mode  ◄─── NEW (#491)                                │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 ///
@@ -86,6 +88,13 @@ pub struct SessionShared {
     /// Per-client dimensions may override this via `ClientViewport`.
     /// Default: (80, 24) - standard VT100 size.
     terminal_size: (u16, u16),
+
+    /// Home mode for initializing new clients (#491).
+    ///
+    /// When a new client connects, their `EditingState.mode_stack` is
+    /// initialized with this mode at the bottom. This is a session-level
+    /// configuration that ensures all clients start in the same mode.
+    home_mode: ModeId,
 }
 
 impl std::fmt::Debug for SessionShared {
@@ -94,27 +103,29 @@ impl std::fmt::Debug for SessionShared {
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
             .field("active_buffer", &self.active_buffer)
             .field("terminal_size", &self.terminal_size)
+            .field("home_mode", &self.home_mode)
             .finish()
     }
 }
 
-impl Default for SessionShared {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// NOTE: Default impl removed in #491 - SessionShared now requires home_mode parameter
 
 impl SessionShared {
-    /// Create a new shared session infrastructure.
+    /// Create a new shared session infrastructure with the specified home mode.
+    ///
+    /// # Parameters
+    ///
+    /// - `home_mode`: The mode used to initialize new clients' mode stacks
     ///
     /// Terminal size defaults to VT100 standard (80x24).
     /// Compositor is initialized as `None` and should be set by the layout module.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new(home_mode: ModeId) -> Self {
         Self {
             compositor: None,
             active_buffer: None,
             terminal_size: (80, 24), // VT100 default
+            home_mode,
         }
     }
 
@@ -159,6 +170,15 @@ impl SessionShared {
     /// Set terminal dimensions.
     pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
         self.terminal_size = (width, height);
+    }
+
+    /// Get the home mode for initializing new clients (#491).
+    ///
+    /// When a new client connects, their mode stack is initialized
+    /// with this mode at the bottom.
+    #[must_use]
+    pub const fn home_mode(&self) -> &ModeId {
+        &self.home_mode
     }
 }
 
@@ -665,72 +685,49 @@ impl KeySequence {
     }
 }
 
-/// Legacy session type - **DEPRECATED, use [`SessionShared`] instead**.
+/// Driver-layer session containing shared infrastructure.
 ///
-/// # Migration Guide (#471)
+/// # Architecture (#471, #491)
 ///
-/// This type mixes shared infrastructure with per-client state, causing confusion.
-/// It is being replaced by a cleaner separation:
+/// After the per-client state migration, `Session` contains only:
+/// - `id`: Client identifier (placeholder for session-level operations)
+/// - `shared`: Truly shared infrastructure (`SessionShared`)
 ///
-/// | Old Field | New Location |
-/// |-----------|--------------|
-/// | `shared.compositor` | [`SessionShared::compositor`] |
-/// | `shared.terminal_size` | [`SessionShared::terminal_size()`] |
-/// | `shared.active_buffer` | [`SessionShared::active_buffer()`] |
-/// | `mode_stack` | `server::EditingState::mode_stack` (per-client) |
-/// | `windows` | `server::EditingState::windows` (per-client) |
-/// | `pending_keys` | `server::EditingState::pending_keys` (per-client) |
-/// | `extensions` | `server::EditingState::extensions` (per-client) |
-/// | `id: ClientId` | `server::Client` owns the ID |
-///
-/// # Deprecation Note (#471)
-///
-/// **BOOTSTRAP ONLY** - This type exists for backward compatibility during migration.
-/// At runtime, per-client state lives in `EditingState` in the server layer.
-///
-/// Commands should use `SessionRuntime::new()` (or the upcoming
-/// `DriverRuntime`) to operate on per-client state.
-///
-/// # Architecture
+/// Per-client state (mode, cursor, selection) now lives in `EditingState`
+/// at the server layer. Commands use `SessionRuntime::new()` which borrows
+/// both shared infrastructure and per-client state.
 ///
 /// ```text
-/// OLD (confusing):
-///   Session { compositor, mode_stack, windows, ... }  // Mixed!
-///
-/// NEW (clear separation):
-///   Session.shared: SessionShared { compositor, terminal_size, active_buffer }
-///   EditingState { mode_stack, windows, extensions, ... }  // Per-client
+/// ┌─────────────────────────────────────────────────────────────────┐
+/// │ SERVER LAYER                                                    │
+/// │   Session (server/lib/server/)                                  │
+/// │   └── clients: HashMap<ClientId, Client>                        │
+/// │       └── Client                                                │
+/// │           └── state: EditingState  ◄─── OWNS per-client state   │
+/// │               ├── mode_stack                                    │
+/// │               ├── windows (with cursors!)                       │
+/// │               ├── pending_keys                                  │
+/// │               └── extensions                                    │
+/// └─────────────────────────────────────────────────────────────────┘
+/// ┌─────────────────────────────────────────────────────────────────┐
+/// │ DRIVER LAYER                                                    │
+/// │   Session (this struct)                                         │
+/// │   ├── id: ClientId (placeholder)                                │
+/// │   └── shared: SessionShared  ◄─── Truly shared infrastructure   │
+/// │       ├── compositor                                            │
+/// │       ├── terminal_size                                         │
+/// │       ├── active_buffer                                         │
+/// │       └── home_mode                                             │
+/// └─────────────────────────────────────────────────────────────────┘
 /// ```
 pub struct Session {
-    /// Unique client identifier.
+    /// Unique client identifier (placeholder for session-level operations).
     pub id: ClientId,
     /// Shared session infrastructure (compositor, `terminal_size`, `active_buffer`).
-    ///
-    /// # Phase 0.3 (#471)
     ///
     /// This field contains truly shared state that is accessed by all clients.
     /// `SessionRuntime` accesses shared state via `session.shared`.
     pub shared: SessionShared,
-    /// Window layout (per-session windows).
-    ///
-    /// # Deprecation Note (#471)
-    ///
-    /// **BOOTSTRAP ONLY** - This field exists for session initialization.
-    /// At runtime, use `EditingState.windows` for per-client cursor/selection state.
-    /// Commands should use `SessionRuntime::new()`.
-    pub windows: WindowLayout,
-    /// Mode stack (current mode on top).
-    ///
-    /// # Deprecation Note (#471)
-    ///
-    /// **BOOTSTRAP ONLY** - This field exists for session initialization.
-    /// At runtime, use `EditingState.mode_stack` for per-client mode state.
-    /// Commands should use `SessionRuntime::new()`.
-    pub mode_stack: ModeStack,
-    /// Keys accumulated but not yet processed.
-    pub pending_keys: KeySequence,
-    /// Module-provided per-session state.
-    pub extensions: ExtensionMap,
 }
 
 impl std::fmt::Debug for Session {
@@ -738,20 +735,23 @@ impl std::fmt::Debug for Session {
         f.debug_struct("Session")
             .field("id", &self.id)
             .field("shared", &self.shared)
-            .field("windows", &self.windows)
-            .field("mode_stack", &self.mode_stack)
-            .field("pending_keys", &self.pending_keys)
-            .field("extensions", &self.extensions)
             .finish()
     }
 }
 
 impl Session {
-    /// Create a new session with shared infrastructure only.
+    /// Create a new session with shared infrastructure.
     ///
-    /// # Architecture (#488)
+    /// # Parameters
     ///
-    /// This creates a session with only shared state (`SessionShared`).
+    /// - `id`: Unique client identifier
+    /// - `home_mode`: The mode used to initialize new clients' mode stacks
+    ///
+    /// # Architecture (#488, #491)
+    ///
+    /// This creates a session with shared state (`SessionShared`) containing
+    /// the `home_mode` for initializing new clients.
+    ///
     /// The deprecated fields (`mode_stack`, `windows`, `extensions`) are
     /// initialized with placeholder values and should NOT be used at runtime.
     ///
@@ -760,29 +760,22 @@ impl Session {
     /// # Example
     ///
     /// ```rust,ignore
-    /// // Create session with shared state only
-    /// let session = Session::new(ClientId::new(1));
+    /// // Create session with home mode
+    /// let session = Session::new(ClientId::new(1), home_mode.clone());
+    ///
+    /// // Get home_mode for initializing new clients
+    /// let mode_for_new_client = session.shared.home_mode().clone();
     ///
     /// // Create per-client state separately
-    /// let mode_stack = ModeStack::new(home_mode);
+    /// let mode_stack = ModeStack::new(mode_for_new_client);
     /// let windows = WindowLayout::empty();
     /// let extensions = ExtensionMap::new();
     /// ```
     #[must_use]
-    pub fn new(id: ClientId) -> Self {
-        use reovim_kernel::api::v1::ModuleId;
-
-        // Placeholder mode for deprecated field - NOT used at runtime
-        let placeholder_mode = ModeId::new(ModuleId::new("deprecated"), "placeholder");
-
+    pub fn new(id: ClientId, home_mode: ModeId) -> Self {
         Self {
             id,
-            shared: SessionShared::new(),
-            // Deprecated fields - initialized with placeholders, NOT used at runtime
-            windows: WindowLayout::empty(),
-            mode_stack: ModeStack::new(placeholder_mode),
-            pending_keys: KeySequence::new(),
-            extensions: ExtensionMap::new(),
+            shared: SessionShared::new(home_mode),
         }
     }
 
@@ -794,7 +787,7 @@ impl Session {
     /// # Returns
     ///
     /// Tuple of `(Session, BootstrapState)` where:
-    /// - `Session` contains shared infrastructure (`SessionShared`)
+    /// - `Session` contains shared infrastructure (`SessionShared`) with `home_mode`
     /// - `BootstrapState` contains initial per-client data that should be
     ///   stored in `EditingState` when adding a client
     ///
@@ -816,7 +809,7 @@ impl Session {
     /// ```
     #[must_use]
     pub fn bootstrap(id: ClientId, home_mode: ModeId) -> (Self, BootstrapState) {
-        (Self::new(id), BootstrapState::new(home_mode))
+        (Self::new(id, home_mode.clone()), BootstrapState::new(home_mode))
     }
 
     /// Set the compositor for this session.
@@ -840,12 +833,6 @@ impl Session {
     /// Delegates to `self.shared.compositor_mut()`.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.shared.compositor_mut()
-    }
-
-    /// Get the current mode.
-    #[must_use]
-    pub fn current_mode(&self) -> &ModeId {
-        self.mode_stack.current()
     }
 
     /// Get the active buffer ID.
@@ -1009,16 +996,17 @@ mod tests {
 
     #[test]
     fn test_session_new() {
-        let session = Session::new(ClientId::new(1));
+        let mode = test_mode();
+        let session = Session::new(ClientId::new(1), mode.clone());
 
         assert_eq!(session.id.as_usize(), 1);
-        // Deprecated fields are initialized to empty/placeholder values
-        assert!(session.windows.is_empty());
-        assert!(session.pending_keys.is_empty());
-        assert!(session.extensions.is_empty());
+        // home_mode is stored in shared (#491)
+        assert_eq!(session.shared.home_mode(), &mode);
         // Shared fields initialized correctly
         assert!(session.active_buffer().is_none());
         assert_eq!(session.terminal_size(), (80, 24)); // VT100 default
+        // Per-client state (mode_stack, windows, extensions) now lives in
+        // BootstrapState or server::EditingState, NOT in Session (#491)
     }
 
     #[test]
@@ -1040,7 +1028,8 @@ mod tests {
 
     #[test]
     fn test_session_active_buffer() {
-        let mut session = Session::new(ClientId::new(1));
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
 
         // Initially None
         assert!(session.active_buffer().is_none());
@@ -1057,7 +1046,8 @@ mod tests {
 
     #[test]
     fn test_session_terminal_size() {
-        let mut session = Session::new(ClientId::new(1));
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
 
         // Default VT100 size
         assert_eq!(session.terminal_size(), (80, 24));
@@ -1069,7 +1059,8 @@ mod tests {
 
     #[test]
     fn test_session_terminal_size_boundaries() {
-        let mut session = Session::new(ClientId::new(1));
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
 
         // Min values
         session.set_terminal_size(0, 0);
@@ -1156,30 +1147,26 @@ mod tests {
     }
 
     // =========================================================================
-    // SessionShared tests (#471)
+    // SessionShared tests (#471, #491)
     // =========================================================================
 
     #[test]
     fn test_session_shared_new() {
-        let shared = SessionShared::new();
+        let mode = test_mode();
+        let shared = SessionShared::new(mode.clone());
 
         assert!(shared.compositor.is_none());
         assert!(shared.active_buffer().is_none());
         assert_eq!(shared.terminal_size(), (80, 24)); // VT100 default
+        assert_eq!(shared.home_mode(), &mode); // #491: home_mode is stored
     }
 
-    #[test]
-    fn test_session_shared_default() {
-        let shared = SessionShared::default();
-
-        assert!(shared.compositor.is_none());
-        assert!(shared.active_buffer().is_none());
-        assert_eq!(shared.terminal_size(), (80, 24));
-    }
+    // NOTE: Default impl removed in #491 - SessionShared now requires home_mode
 
     #[test]
     fn test_session_shared_active_buffer() {
-        let mut shared = SessionShared::new();
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
 
         // Initially None
         assert!(shared.active_buffer().is_none());
@@ -1196,7 +1183,8 @@ mod tests {
 
     #[test]
     fn test_session_shared_terminal_size() {
-        let mut shared = SessionShared::new();
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
 
         // Default VT100 size
         assert_eq!(shared.terminal_size(), (80, 24));
@@ -1208,7 +1196,8 @@ mod tests {
 
     #[test]
     fn test_session_shared_terminal_size_boundaries() {
-        let mut shared = SessionShared::new();
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
 
         // Min values
         shared.set_terminal_size(0, 0);
@@ -1225,11 +1214,21 @@ mod tests {
 
     #[test]
     fn test_session_shared_debug() {
-        let shared = SessionShared::new();
+        let mode = test_mode();
+        let shared = SessionShared::new(mode);
         let debug_str = format!("{shared:?}");
 
         assert!(debug_str.contains("SessionShared"));
         assert!(debug_str.contains("compositor"));
         assert!(debug_str.contains("terminal_size"));
+        assert!(debug_str.contains("home_mode")); // #491: home_mode in debug
+    }
+
+    #[test]
+    fn test_session_shared_home_mode() {
+        let mode = test_mode();
+        let shared = SessionShared::new(mode.clone());
+
+        assert_eq!(shared.home_mode(), &mode);
     }
 }

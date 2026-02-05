@@ -35,7 +35,7 @@ Context types are NOT duplicates - they serve different lifecycle stages:
 |------|-------|---------|-----------|
 | `KernelContext` | kernel | Access to kernel services | Long-lived, passed around |
 | `ModuleContext` | kernel | Module initialization | Init-time only |
-| `SessionContext` | session driver | Per-session state access | Per-session |
+| `SessionRuntime` | session driver | Borrows Session + per-client state | Per-command |
 | `ResolveInput` | input driver | Key resolution input | Per-key |
 | `ResolveContext` | input driver | Command execution args | Per-command |
 | `TransitionContext` | input driver | Mode transition input | Per-transition |
@@ -49,7 +49,7 @@ Each context type has a specific **scope** and **lifetime**:
 
 ```text
 Session starts
-    └─> SessionContext created (per-session state)
+    └─> SessionRuntime created (borrows Session + per-client EditingState)
         │
         └─> Key pressed
             └─> ResolveInput passed to resolver
@@ -189,7 +189,7 @@ To avoid name collisions between layers:
 | Pattern | Example | When to Use |
 |---------|---------|-------------|
 | `Ex*` prefix | `ExCommandContext`, `ExCommandHandler` | Vim ex-command specific types |
-| Layer suffix | `SessionContext`, `RpcContext` | Contexts specific to a layer |
+| Layer suffix | `RpcContext`, `ResolveContext` | Contexts specific to a layer |
 | Descriptive | `OperatorArgs`, `TransitionContext` | Self-documenting purpose |
 
 ### Historical Collisions (Fixed in #391)
