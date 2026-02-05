@@ -49,14 +49,14 @@ Reovim includes an end-to-end integration test system that uses server mode to v
 ### Architecture
 
 ```
-ServerTestHarness
+TestServerHarness
 ├── Spawns: reovim server --tcp <port>
-├── TestClient (TCP connection via JSON-RPC)
+├── GrpcClient (TCP connection via gRPC)
 └── Auto-cleanup on Drop
 
 Test Flow:
-┌─────────────┐     JSON-RPC      ┌─────────────────────────┐
-│ TestClient  │ ────────────────→ │    reovim server        │
+┌─────────────┐      gRPC         ┌─────────────────────────┐
+│ GrpcClient  │ ────────────────→ │    reovim server        │
 │             │                   │                         │
 │ keys()      │  input/keys       │  ChannelKeySource       │
 │ mode()      │  state/mode       │  Runtime                │
@@ -88,18 +88,18 @@ cargo test -p reovim-module-vim test_visual_mode
 
 ```rust
 mod common;
-use common::*;
+use common::IntegrationTest;
 
 #[tokio::test]
 async fn test_example() {
-    let result = ServerTest::new()
+    let result = IntegrationTest::new()
         .await
-        .with_content("hello\nworld")  // Initial buffer content
-        .with_keys("jj")               // Key sequence (vim notation)
+        .with_buffer("hello\nworld")   // Initial buffer content
+        .send_keys("jj")               // Key sequence (vim notation)
         .run()
         .await;
 
-    result.assert_cursor(0, 2);
+    result.assert_cursor(2, 0);
     result.assert_normal_mode();
 }
 ```
@@ -122,14 +122,14 @@ async fn test_example() {
 
 **Examples:**
 ```rust
-.with_keys("ihello<Esc>")    // Enter insert, type "hello", escape
-.with_keys(":wq<CR>")        // Command mode, type "wq", enter
-.with_keys("<C-d>")          // Ctrl+D
-.with_keys("5j")             // Move down 5 lines
-.with_keys("daw")            // Delete a word
+.send_keys("ihello<Esc>")    // Enter insert, type "hello", escape
+.send_keys(":wq<CR>")        // Command mode, type "wq", enter
+.send_keys("<C-d>")          // Ctrl+D
+.send_keys("5j")             // Move down 5 lines
+.send_keys("daw")            // Delete a word
 ```
 
-#### ServerTestResult Assertions
+#### TestResult Assertions
 
 | Method | Description |
 |--------|-------------|
@@ -141,19 +141,19 @@ async fn test_example() {
 | `assert_buffer_contains("text")` | Buffer contains substring |
 | `assert_buffer_eq("text")` | Buffer equals exactly |
 
-#### Accessing ServerTestResult Fields
+#### Accessing TestResult Fields
 
 ```rust
-let result = ServerTest::new()
+let result = IntegrationTest::new()
     .await
-    .with_keys("ihello<Esc>")
+    .send_keys("ihello<Esc>")
     .run()
     .await;
 
 // Direct field access
-println!("Mode: {:?}", result.mode);
+println!("Mode: {:?}", result.edit_mode);
 println!("Buffer: {}", result.buffer_content);
-println!("Cursor: {:?}", result.cursor);
+println!("Cursor: line={}, col={}", result.cursor_line, result.cursor_column);
 ```
 
 ### Integration Test Organization
@@ -218,217 +218,44 @@ IntegrationTest::new()
     .await
 ```
 
-### Visual Testing
+### Step-by-Step Testing
 
-Reovim includes visual debugging infrastructure for testing TUI output. This enables:
-- ASCII art snapshots for human-readable debugging
-- Structured visual snapshots (JSON) for programmatic assertions
-- Layer visibility testing
-- Cell-level content verification
-
-#### Screen Size Configuration
-
-Set explicit screen dimensions for deterministic visual tests:
+For tests that need to verify state at each keystroke, use `StepTest`:
 
 ```rust
-let mut result = ServerTest::new()
-    .await
-    .with_size(80, 24)  // Width x Height
-    .with_content("Hello World")
-    .run()
-    .await;
+use shared::testing::StepTest;
 
-let snap = result.visual_snapshot().await;
-assert_eq!(snap.width, 80);
-assert_eq!(snap.height, 24);
-```
+#[tokio::test]
+async fn test_delete_word_step_by_step() {
+    let trace = StepTest::new()
+        .await
+        .with_buffer("hello world")
+        .step("d")
+            .expect_mode_contains("DELETE")
+        .step("w")
+            .expect_buffer("world")
+        .run()
+        .await;
 
-#### Visual Snapshot Methods
-
-| Method | Description |
-|--------|-------------|
-| `visual_snapshot()` | Get structured snapshot with cells, cursor, layers |
-| `ascii_art(false)` | Get plain ASCII representation |
-| `ascii_art(true)` | Get annotated ASCII with borders and line numbers |
-| `layer_info()` | Get layer visibility and bounds |
-
-**Example: Visual Snapshot**
-
-```rust
-let mut result = ServerTest::new()
-    .await
-    .with_size(40, 10)
-    .with_content("Hello World")
-    .run()
-    .await;
-
-let snap = result.visual_snapshot().await;
-
-// Check dimensions
-assert_eq!(snap.cells.len(), 10);  // 10 rows
-assert_eq!(snap.cells[0].len(), 40);  // 40 columns each
-
-// Check cursor
-if let Some(cursor) = &snap.cursor {
-    println!("Cursor at ({}, {})", cursor.x, cursor.y);
-}
-
-// Check plain text content
-assert!(snap.plain_text.contains("Hello World"));
-```
-
-**Example: ASCII Art Debugging**
-
-```rust
-let mut result = ServerTest::new()
-    .await
-    .with_size(40, 10)
-    .with_content("fn main() {\n    println!(\"Hello\");\n}")
-    .run()
-    .await;
-
-// Plain ASCII
-let plain = result.ascii_art(false).await;
-println!("{}", plain);
-// Output:
-//   1 fn main() {
-//   2     println!("Hello");
-//   3 }
-// ~
-// ...
-
-// Annotated ASCII (with borders and column numbers)
-let annotated = result.ascii_art(true).await;
-println!("{}", annotated);
-// Output:
-//    0123456789...
-//   +----------------------------------------+
-//  0|  1 fn main() {                         |
-//  1|  2     println!("Hello");              |
-//  2|  3 }                                   |
-//   +----------------------------------------+
-```
-
-**Example: Layer Visibility Testing**
-
-```rust
-// Test that which-key layer appears after timeout
-let mut result = ServerTest::new()
-    .await
-    .with_size(80, 24)
-    .with_keys("g")
-    .with_delay(600)  // Wait for which-key popup
-    .run()
-    .await;
-
-let layers = result.layer_info().await;
-assert!(layers.iter().any(|l| l.name == "which_key" && l.visible));
-
-// Test microscope layer
-let mut result = ServerTest::new()
-    .await
-    .with_size(80, 24)
-    .with_keys(" ff")  // Open microscope
-    .with_delay(100)
-    .run()
-    .await;
-
-let layers = result.layer_info().await;
-assert!(layers.iter().any(|l| l.name == "microscope" && l.visible));
-```
-
-#### Visual Assertions Trait
-
-The `VisualAssertions` trait provides assertion methods on `VisualSnapshot`:
-
-```rust
-use reovim_core::testing::VisualAssertions;
-
-let snap = result.visual_snapshot().await;
-
-// Assert specific cell character
-snap.assert_cell_char(0, 0, 'H');
-
-// Assert row content (trimmed)
-snap.assert_row_content(0, "  1 Hello World");
-
-// Assert row starts with prefix
-snap.assert_row_starts_with(0, "  1");
-
-// Assert screen contains text
-snap.assert_contains("Hello World");
-
-// Assert region contains text
-snap.assert_region_contains(0, 0, 20, 5, "Hello");
-```
-
-#### Full Screen Cell Verification
-
-Verify that the screen has the expected dimensions:
-
-```rust
-let mut result = ServerTest::new()
-    .await
-    .with_size(40, 10)
-    .run()
-    .await;
-
-let snap = result.visual_snapshot().await;
-
-// Verify exact row count
-assert_eq!(snap.cells.len(), 10, "Should have 10 rows");
-
-// Verify each row has correct width
-for (y, row) in snap.cells.iter().enumerate() {
-    assert_eq!(row.len(), 40, "Row {} should have 40 cells", y);
+    trace.assert_ok();
 }
 ```
 
-#### VisualSnapshot Structure
+### Frame Assertions
+
+For tests that need to verify TUI output:
 
 ```rust
-pub struct VisualSnapshot {
-    pub width: u16,
-    pub height: u16,
-    pub cells: Vec<Vec<CellSnapshot>>,  // cells[y][x]
-    pub cursor: Option<CursorInfo>,
-    pub layers: Vec<LayerInfo>,
-    pub plain_text: String,
-}
+use shared::testing::frame::{assert_frame_contains, assert_statusline_mode};
 
-pub struct CellSnapshot {
-    pub char: char,
-    pub fg: Option<String>,   // "#RRGGBB"
-    pub bg: Option<String>,
-    pub bold: bool,
-    pub italic: bool,
-    pub underline: bool,
-}
+// Assert frame contains text
+assert_frame_contains(&frame, "Hello");
 
-pub struct CursorInfo {
-    pub x: u16,
-    pub y: u16,
-    pub layer: String,  // "editor", "microscope", etc.
-}
+// Assert statusline shows mode
+assert_statusline_mode(&frame, "NORMAL");
 
-pub struct LayerInfo {
-    pub name: String,
-    pub z_order: u8,
-    pub visible: bool,
-    pub bounds: BoundsInfo,  // x, y, width, height
-}
-```
-
-#### Visual Test Organization
-
-```
-lib/core/tests/
-├── visual_snapshot.rs      # Visual testing tests
-│   ├── Screen size tests   # Explicit dimensions, full screen cells
-│   ├── Basic snapshot      # Content verification, ASCII art
-│   ├── Layer tests         # Editor, microscope, which-key
-│   └── Visual assertions   # Cell/row/content checks
-└── ...
+// Assert specific line content
+assert_frame_line_contains(&frame, 0, "fn main");
 ```
 
 ### Best Practices
@@ -436,7 +263,7 @@ lib/core/tests/
 1. **Build release first** - Tests spawn `./target/release/reovim`
 2. **Keep key sequences short** - Long sequences are harder to debug
 3. **Test one behavior per test** - Makes failures easier to diagnose
-4. **Use `with_content()` for cursor tests** - Need text to move through
+4. **Use `with_buffer()` for cursor tests** - Need text to move through
 5. **Tests run in parallel** - Each spawns its own server on an OS-assigned port
 
 ## Phase 7+ Integration Tests
@@ -451,11 +278,11 @@ IntegrationTest (Builder)
 │   ├── Spawns: reovim server --tcp 0 (OS-assigned port)
 │   ├── Parses port from stderr
 │   └── kill_on_drop(true) for cleanup
-├── RpcClient (TCP JSON-RPC connection)
+├── GrpcClient (TCP gRPC connection)
 └── TestResult (captures final state)
 
 Test Flow:
-┌──────────────────┐     JSON-RPC      ┌─────────────────────────┐
+┌──────────────────┐       gRPC        ┌─────────────────────────┐
 │ IntegrationTest  │ ────────────────→ │    reovim server        │
 │                  │                   │                         │
 │ with_buffer()    │  buffer/set       │  Buffer state           │
@@ -613,13 +440,12 @@ This approach ensures:
 
 ### How It Works
 
-1. `ServerTest::new()` spawns `reovim server --tcp <port>`
-2. Server binds to specified port (tests use atomic counter for unique ports)
-3. Server prints `Listening on 127.0.0.1:<port>` to stderr
-4. Test harness reads stderr to discover the actual port
-5. `TestClient` connects via TCP and sends commands
-6. Keys are injected with 1ms delay between each (for mode propagation)
-7. After keys, 50ms delay allows processing before querying state
+1. `IntegrationTest::new()` spawns `reovim server --tcp 0` (OS-assigned port)
+2. Server binds to an ephemeral port and prints `Listening on 127.0.0.1:<port>` to stderr
+3. Test harness reads stderr to discover the actual port
+4. `GrpcClient` connects via gRPC and sends commands
+5. Keys are injected with delays between each (for mode propagation)
+6. After keys, delay allows processing before querying state
 8. Test cleans up server via kill command
 
 ## Current Test Coverage

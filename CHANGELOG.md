@@ -4,6 +4,41 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.3-dev
 
+### Documentation
+
+- **Documentation drift fixes (#489)**: Fixed CLAUDE.md outdated counts (13->14 drivers,
+  17->19 modules), added missing crate names (reovim-testing, reovim-log, etc.), added
+  web client to clients list, added syntax-treesitter driver. Added "Plan Files" section
+  with naming convention. Simplified Build Commands section with reference to new
+  CLI Reference document. Fixed broken links in docs/architecture/overview.md (module-mode
+  -> modules/mode-inheritance, kernel.md -> kernel/overview.md, etc.). Fixed server-mode.md
+  to use gRPC instead of JSON-RPC. Fixed testing.md fabricated APIs (ServerTest ->
+  IntegrationTest, with_content -> with_buffer, with_keys -> send_keys). Removed
+  fabricated Visual Testing section with more accurate StepTest and frame assertions docs.
+
+- **New module documentation (#490)**: Created 7 module docs in docs/architecture/modules/builtin/:
+  buffer-ops.md (buffer lifecycle events), commands.md (ex-commands), defaults.md (meta-module
+  aggregating 13 modules), mode-manager.md (mode transition tracker), options.md (editor settings),
+  buffer-simple.md (SimpleBufferManager), scratch-buffer.md (empty buffer on startup).
+
+- **New driver documentation (#490)**: Created 8 driver docs in docs/architecture/drivers/:
+  buffer/overview.md (BufferManager registry), clipboard/overview.md (ClipboardProvider trait),
+  command-types/overview.md (CommandContext, CommandResult shared types), ffi/overview.md
+  (C FFI interface + ABI versioning), ffi-python/overview.md (Python bindings via PyO3),
+  search/overview.md (SearchProvider trait), syntax-treesitter/overview.md (TreeSitterDriver),
+  undo/overview.md (UndoProvider trait + persistence).
+
+- **Debug infrastructure documentation**: Created docs/architecture/kernel/panic/overview.md
+  documenting panic handling (install_panic_handler, recovery, crash reports) and
+  docs/architecture/server/debug/overview.md documenting server ring buffer (64KB server +
+  8KB per-client), CompositeLogger, CLI log-tail command, and gRPC DebugService.
+
+- **CLI reference guide**: Created docs/user-guide/cli-reference.md with complete command
+  reference for server, CLI client, and TUI client commands extracted from CLAUDE.md.
+
+- **Updated index files**: Updated docs/architecture/modules/builtin/README.md with all 19
+  modules. Updated docs/architecture/drivers/overview.md with all 14 drivers.
+
 ### Added
 
 - **Server debug ring buffer with panic integration (#478)**: Added comprehensive
