@@ -111,9 +111,13 @@ pub enum CliCommand {
 
     /// Capture TUI screen content.
     ///
-    /// Requests a screen capture from the connected TUI client.
+    /// Requests a screen capture from a specific TUI client.
     /// Requires a headless TUI to be connected to the server.
     Capture {
+        /// Target client ID to capture from (required).
+        #[arg(long, short)]
+        client: u64,
+
         /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
         #[arg(long, short = 'f', default_value = "raw_ansi")]
         capture_format: String,
@@ -219,9 +223,10 @@ impl CliArgs {
             CliCommand::Registers { name } => {
                 commands::registers(&mut client, name.clone(), self.format).await
             }
-            CliCommand::Capture { capture_format } => {
-                commands::capture(&mut client, capture_format, self.format).await
-            }
+            CliCommand::Capture {
+                client: client_id,
+                capture_format,
+            } => commands::capture(&mut client, *client_id, capture_format, self.format).await,
             CliCommand::Ping => commands::ping(&mut client, self.format).await,
             CliCommand::Version => commands::version(&mut client, self.format).await,
             CliCommand::Presence { action } => match action {

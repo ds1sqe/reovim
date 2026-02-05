@@ -27,8 +27,8 @@ reovim tui --tcp 127.0.0.1:12530
 # OR for CI/scripting:
 reovim tui --headless --tcp 127.0.0.1:12530
 
-# Terminal 3: Capture frame
-reovim cli --tcp 127.0.0.1:12530 capture
+# Terminal 3: Capture frame (--client specifies target TUI's client ID)
+reovim cli --tcp 127.0.0.1:12530 capture --client 1
 ```
 
 ## Output Formats
@@ -38,7 +38,7 @@ reovim cli --tcp 127.0.0.1:12530 capture
 Full ANSI-escaped output with colors, suitable for terminal replay:
 
 ```bash
-reovim cli capture --format raw_ansi
+reovim cli capture --client 1 --format raw_ansi
 ```
 
 Output:
@@ -57,7 +57,7 @@ Cursor: 0,0
 Plain text without ANSI codes, ideal for LLM consumption:
 
 ```bash
-reovim cli capture --format plain_text
+reovim cli capture --client 1 --format plain_text
 ```
 
 Output:
@@ -78,7 +78,7 @@ Hello world
 JSON structure with per-cell styling, for programmatic analysis:
 
 ```bash
-reovim cli capture --format cell_grid
+reovim cli capture --client 1 --format cell_grid
 ```
 
 Output:
@@ -107,33 +107,28 @@ Headless mode:
 - Responds to capture requests with rendered frames
 - Uses default 80x24 size (configurable via layout notifications)
 
-## RPC Method
+## gRPC Method
 
-For direct RPC integration:
+For direct gRPC integration (see `shared/protocol/proto/reovim/v2/state.proto`):
 
-```json
+```protobuf
 // Request
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "tui/capture",
-  "params": {
-    "format": "plain_text"
-  }
+message GetScreenContentRequest {
+  string format = 1;     // "plain_text", "raw_ansi", "cell_grid"
+  uint64 client_id = 2;  // Target TUI client ID (required)
 }
 
 // Response
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "width": 80,
-    "height": 24,
-    "format": "plain_text",
-    "content": "=== FRAME CAPTURE ===\n..."
-  }
+message GetScreenContentResponse {
+  uint64 width = 1;
+  uint64 height = 2;
+  string format = 3;
+  string content = 4;
 }
 ```
+
+The `client_id` field routes the capture request to a specific TUI client,
+enabling multi-client scenarios where multiple TUIs are connected.
 
 ## Error Handling
 
@@ -151,7 +146,7 @@ For direct RPC integration:
 Capture plain text for AI analysis:
 
 ```bash
-SCREEN=$(reovim cli capture --format plain_text)
+SCREEN=$(reovim cli capture --client 1 --format plain_text)
 echo "$SCREEN" | llm "What mode is the editor in?"
 ```
 
@@ -161,7 +156,7 @@ Verify editor state in tests:
 
 ```bash
 reovim cli keys 'iHello<Esc>'
-CAPTURE=$(reovim cli capture --format plain_text)
+CAPTURE=$(reovim cli capture --client 1 --format plain_text)
 echo "$CAPTURE" | grep -q "Hello" && echo "PASS"
 ```
 
@@ -171,7 +166,7 @@ Stream content for screen readers:
 
 ```bash
 while true; do
-  reovim cli capture --format plain_text
+  reovim cli capture --client 1 --format plain_text
   sleep 1
 done
 ```
@@ -181,23 +176,23 @@ done
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  CLI Client                                             │
-│  reovim cli capture --format plain_text                 │
+│  reovim cli capture --client 1 --format plain_text      │
 └─────────────────────┬───────────────────────────────────┘
-                      │ RPC: tui/capture
+                      │ gRPC: StateService.GetScreenContent
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Server                                                 │
-│  - Routes request to TUI client                         │
+│  - Routes request to target TUI (by client_id)          │
 │  - Tracks pending captures with timeout                 │
 │  - Relays response back to CLI                          │
 └─────────────────────┬───────────────────────────────────┘
-                      │ Notification: tui/capture-request
+                      │ Notification: CaptureRequest (target_client_id)
                       ▼
 ┌─────────────────────────────────────────────────────────┐
 │  TUI Client (Interactive or Headless)                   │
-│  - Fetches state/screen_content from server             │
+│  - Checks target_client_id matches own client_id        │
 │  - Builds frame with RenderState + FrameBuffer          │
-│  - Sends tui/capture-response notification              │
+│  - Sends CaptureResponse notification                   │
 └─────────────────────────────────────────────────────────┘
 ```
 

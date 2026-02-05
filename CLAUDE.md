@@ -705,11 +705,11 @@ Output is color-coded when stdout is a TTY:
 Capture TUI screen for debugging (requires connected TUI):
 
 ```bash
-# Capture with ANSI colors
-reovim cli --grpc 127.0.0.1:PORT capture
+# Capture with ANSI colors (--client specifies target TUI)
+reovim cli --grpc 127.0.0.1:PORT capture --client 1
 
 # Plain text (good for logs/LLMs)
-reovim cli --grpc 127.0.0.1:PORT capture --format plain_text
+reovim cli --grpc 127.0.0.1:PORT capture --client 1 --format plain_text
 ```
 
 See [Frame Capture Guide](docs/user-guide/frame-capture.md) for details.
@@ -761,8 +761,8 @@ See [Frame Capture Guide](docs/user-guide/frame-capture.md) for details.
 # Start server
 ./target/release/reovim server --grpc 13000 &
 
-# Test via CLI (Pull - always fresh)
-./target/release/reovim cli --grpc 127.0.0.1:13000 capture --format plain_text
+# Test via CLI (Pull - always fresh, --client 1 targets the TUI)
+./target/release/reovim cli --grpc 127.0.0.1:13000 capture --client 1 --format plain_text
 
 # Test via TUI (Push - depends on notifications)
 ./target/release/reovim tui --grpc 127.0.0.1:13000

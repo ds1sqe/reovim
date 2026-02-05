@@ -296,10 +296,11 @@ pub async fn registers(
 
 /// Capture TUI screen content.
 ///
-/// Requests a screen capture from the connected headless TUI via the server relay.
+/// Requests a screen capture from a specific TUI client via the server relay.
 ///
 /// # Arguments
 ///
+/// * `client_id` - Target client ID to capture from
 /// * `capture_format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
 ///
 /// # Errors
@@ -307,10 +308,11 @@ pub async fn registers(
 /// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
 pub async fn capture(
     client: &mut GrpcClient,
+    client_id: u64,
     capture_format: &str,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_screen_content(capture_format).await?;
+    let response = client.get_screen_content(client_id, capture_format).await?;
 
     match format {
         OutputFormat::Plain => {

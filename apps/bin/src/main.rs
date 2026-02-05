@@ -157,6 +157,9 @@ enum CliSubcommand {
     Registers { name: Option<String> },
     /// Capture TUI screen content.
     Capture {
+        /// Target client ID to capture from (required).
+        #[arg(long, short)]
+        client: u64,
         /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
         #[arg(long, short = 'f', default_value = "raw_ansi")]
         capture_format: String,
@@ -397,9 +400,10 @@ async fn run_cli(
         CliSubcommand::Registers { name } => {
             commands::registers(&mut client, name, output_format).await
         }
-        CliSubcommand::Capture { capture_format } => {
-            commands::capture(&mut client, &capture_format, output_format).await
-        }
+        CliSubcommand::Capture {
+            client: client_id,
+            capture_format,
+        } => commands::capture(&mut client, client_id, &capture_format, output_format).await,
         CliSubcommand::Ping => commands::ping(&mut client, output_format).await,
         CliSubcommand::Version => commands::version(&mut client, output_format).await,
         CliSubcommand::LogTail {

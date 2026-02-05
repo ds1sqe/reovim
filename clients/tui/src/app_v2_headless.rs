@@ -744,9 +744,20 @@ impl HeadlessEventLoop {
                 }
                 Payload::CaptureRequest(capture_req) => {
                     // Handle CLI→Server→TUI capture request relay
+                    // Only respond if this request targets our client ID
+                    if capture_req.target_client_id != self.state.my_client_id {
+                        tracing::trace!(
+                            target_client_id = capture_req.target_client_id,
+                            my_client_id = self.state.my_client_id,
+                            "Ignoring capture request for different client"
+                        );
+                        return;
+                    }
+
                     tracing::debug!(
                         request_id = capture_req.request_id,
                         format = %capture_req.format,
+                        target_client_id = capture_req.target_client_id,
                         "Received capture request"
                     );
 

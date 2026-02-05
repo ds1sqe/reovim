@@ -62,16 +62,26 @@ class Client:
 
         return result
 
-    def capture(self, format: str = "raw_ansi") -> str:
+    def capture(self, client_id: int, format: str = "raw_ansi") -> str:
         """Capture screen content from TUI.
 
         Args:
+            client_id: Target TUI client ID (required)
             format: "raw_ansi", "plain_text", or "cell_grid"
 
         Returns:
             Screen content as string
         """
-        return self._cli_raw("capture", "--capture-format", format)
+        return self._cli_raw("capture", "--client", str(client_id), "--capture-format", format)
+
+    def presence_list(self) -> list[dict]:
+        """List all connected clients.
+
+        Returns:
+            List of client info dicts with 'client_id', 'display_name', 'client_type'
+        """
+        data = self._cli_json("presence", "list")
+        return data.get("clients", [])
 
     def ping(self) -> bool:
         """Check if server is responding."""

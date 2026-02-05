@@ -453,6 +453,9 @@ impl StateService for StateServiceImpl {
             }
         };
 
+        // Get target client ID
+        let target_client_id = req.client_id;
+
         // Create pending capture request
         let (request_id, rx) = session.capture_tracker().create_pending();
 
@@ -468,11 +471,12 @@ impl StateService for StateServiceImpl {
             payload: Some(Payload::CaptureRequest(CaptureRequestPayload {
                 request_id,
                 format: format.clone(),
+                target_client_id,
             })),
         };
 
         session.emit_notification(notification);
-        tracing::debug!(request_id, format, "Sent capture_request notification");
+        tracing::debug!(request_id, target_client_id, format, "Sent capture_request notification");
 
         // Wait for TUI response with timeout
         let result = wait_for_capture(rx).await.map_err(|e| {

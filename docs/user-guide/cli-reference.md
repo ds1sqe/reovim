@@ -119,8 +119,9 @@ reovim cli log-tail --follow --level warn
 
 ```bash
 # Capture TUI frame (requires connected TUI)
-reovim cli capture                        # With ANSI colors
-reovim cli capture --format plain_text    # Plain text without colors
+# --client specifies which TUI client to capture from
+reovim cli capture --client 1                        # With ANSI colors
+reovim cli capture --client 1 --format plain_text    # Plain text without colors
 ```
 
 ### Interactive REPL

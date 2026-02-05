@@ -46,6 +46,7 @@ class Editor:
     _server: ServerProcess | None = field(default=None, init=False, repr=False)
     _tui: TuiProcess | None = field(default=None, init=False, repr=False)
     _client: Client | None = field(default=None, init=False, repr=False)
+    _tui_client_id: int = field(default=1, init=False, repr=False)
     _started: bool = field(default=False, init=False, repr=False)
 
     def __enter__(self) -> Self:
@@ -101,10 +102,34 @@ class Editor:
         """Wait for server and TUI to be ready."""
         for i in range(max_attempts):
             if self._client and self._client.ping():
+                # Discover TUI client ID from presence list
+                self._discover_tui_client_id()
                 return
             time.sleep(0.1)
 
         raise TimeoutError("server to respond to ping", self.timeout)
+
+    def _discover_tui_client_id(self) -> None:
+        """Find the TUI's client ID from presence list."""
+        if not self._client:
+            return
+
+        # Give TUI time to join presence
+        for _ in range(10):
+            try:
+                clients = self._client.presence_list()
+                # Find the headless TUI client (client_type is "headless" for headless TUI)
+                for c in clients:
+                    if c.get("client_type") in ("headless", "tui"):
+                        self._tui_client_id = c.get("client_id", 1)
+                        return
+                # If no TUI found yet, wait and retry
+                time.sleep(0.1)
+            except Exception:
+                time.sleep(0.1)
+
+        # Default to 1 if discovery fails
+        self._tui_client_id = 1
 
     def _stop(self) -> None:
         """Cleanup everything."""
@@ -149,7 +174,7 @@ class Editor:
         """Get raw ANSI frame from TUI."""
         self._ensure_started()
         assert self._client is not None
-        return self._client.capture("raw_ansi")
+        return self._client.capture(self._tui_client_id, "raw_ansi")
 
     # =========================================================================
     # Actions - All return self for chaining
@@ -211,7 +236,7 @@ class Editor:
 
         return Capture(
             label=label,
-            frame=self._client.capture("raw_ansi"),
+            frame=self._client.capture(self._tui_client_id, "raw_ansi"),
             mode=self._client.mode(),
             cursor=self._client.cursor(),
             buffer=self._client.buffer(),

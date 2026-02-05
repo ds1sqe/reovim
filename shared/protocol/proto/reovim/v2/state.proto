@@ -177,6 +177,9 @@ message GetSelectionResponse {
 message GetScreenContentRequest {
   // Format: "plain_text", "raw_ansi", "cell_grid"
   string format = 1;
+  // Target client ID for capture (required).
+  // Routes capture request to the specific TUI client with this ID.
+  uint64 client_id = 2;
 }
 
 message GetScreenContentResponse {

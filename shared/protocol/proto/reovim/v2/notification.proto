@@ -171,6 +171,9 @@ message DetachPayload {
 message CaptureRequestPayload {
   uint64 request_id = 1;  // Unique ID to correlate request/response
   string format = 2;      // "plain_text", "raw_ansi", "cell_grid"
+  // Target client ID (required).
+  // Only the TUI with this client_id should respond.
+  uint64 target_client_id = 3;
 }
 
 // TUI responds with captured frame content
