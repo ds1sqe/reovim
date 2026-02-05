@@ -171,6 +171,15 @@ impl Screen {
         }
     }
 
+    /// Apply style to existing cell without replacing character.
+    ///
+    /// Used for cursor overlays where we want to show both the character
+    /// and a cursor indicator (via background color). Delegates to
+    /// `FrameBuffer::apply_style()`.
+    pub fn apply_style(&mut self, x: u16, y: u16, style: &Style) {
+        self.buffer.apply_style(x, y, style);
+    }
+
     /// Render the screen to terminal.
     ///
     /// Uses differential rendering to only update changed cells.

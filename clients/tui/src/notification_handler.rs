@@ -69,6 +69,15 @@ pub trait NotificationContext {
     ) -> Option<String> {
         None
     }
+
+    /// Called when a resize request is received.
+    ///
+    /// Default implementation does nothing. Headless TUI overrides
+    /// to resize its frame buffer.
+    #[allow(unused_variables)]
+    fn on_resize(&mut self, width: u16, height: u16) {
+        // Default: no-op (interactive TUI uses screen.resize() separately)
+    }
 }
 
 /// Result of notification handling.
@@ -215,11 +224,27 @@ pub async fn handle_notification<C: NotificationContext>(
             if let Some(client) = p.client {
                 let state = ctx.state_mut();
                 if client.client_id != state.my_client_id {
-                    // Preserve existing cursor position and selection
                     let old = state.other_clients.get(&client.client_id);
-                    let cursor_line = old.map_or(0, |c| c.cursor_line);
-                    let cursor_col = old.map_or(0, |c| c.cursor_col);
-                    let selection = old.and_then(|c| c.selection.clone());
+
+                    // Check if buffer changed - if so, reset cursor to (0,0)
+                    // The old cursor position doesn't make sense in a new buffer
+                    let buffer_changed = old.is_none_or(|o| o.buffer_id != client.buffer_id);
+
+                    let (cursor_line, cursor_col) = if buffer_changed {
+                        // Reset cursor for new buffer context
+                        // Server will send CursorMoved with actual position
+                        (0, 0)
+                    } else {
+                        // Preserve existing cursor position within same buffer
+                        (old.map_or(0, |c| c.cursor_line), old.map_or(0, |c| c.cursor_col))
+                    };
+
+                    let selection = if buffer_changed {
+                        // Also clear selection on buffer switch
+                        None
+                    } else {
+                        old.and_then(|c| c.selection.clone())
+                    };
 
                     state.other_clients.insert(
                         client.client_id,
@@ -292,6 +317,8 @@ pub async fn handle_notification<C: NotificationContext>(
                 let state = ctx.state_mut();
                 state.width = width;
                 state.height = height;
+                // Notify context for frame buffer resize (headless TUI)
+                ctx.on_resize(width, height);
             }
             Ok(NotificationResult::Redraw)
         }

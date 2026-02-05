@@ -103,6 +103,24 @@ impl FrameBuffer {
         }
     }
 
+    /// Apply style to existing cell without replacing character.
+    ///
+    /// Used for cursor overlays where we want to show both the character
+    /// and a cursor indicator (via background color). Only colors are merged;
+    /// attributes are preserved from the original cell.
+    pub fn apply_style(&mut self, x: u16, y: u16, style: &Style) {
+        if let Some(cell) = self.get_mut(x, y) {
+            if let Some(bg) = style.bg {
+                cell.style.bg = Some(bg);
+            }
+            if let Some(fg) = style.fg {
+                cell.style.fg = Some(fg);
+            }
+            // Note: attrs not merged since Attributes lacks union method
+            // and cursor overlay primarily needs background color
+        }
+    }
+
     /// Write a string starting at (x, y).
     pub fn write_str(&mut self, x: u16, y: u16, s: &str, style: &Style) -> u16 {
         let mut col = x;

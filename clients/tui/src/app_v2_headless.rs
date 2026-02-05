@@ -46,10 +46,7 @@ use {
     reovim_driver_display::FrameBuffer,
     reovim_protocol::{
         v1::ScreenFormat,
-        v2::{
-            GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
-            notification::Payload,
-        },
+        v2::{GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect},
     },
     tokio::{
         select,
@@ -60,8 +57,9 @@ use {
 };
 
 use crate::{
-    CursorPosition, RemoteClient, SelectionState, TuiCoreState,
+    RemoteClient, TuiCoreState,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
+    notification_handler::{NotificationContext, NotificationResult, handle_notification},
     render_core::{RenderState, build_frame_content},
 };
 
@@ -206,6 +204,53 @@ impl TuiAppV2Headless {
         let my_client_id = join_response.client_id;
         tracing::debug!(client_id = my_client_id, "Headless TUI joined presence");
 
+        // Bug #1 fix (#494): Initialize other_clients from JoinResponse.peers_v2
+        // This ensures new clients see existing clients' cursor positions immediately
+        let other_clients: std::collections::HashMap<u64, RemoteClient> = join_response
+            .peers_v2
+            .into_iter()
+            .filter(|peer| peer.id != my_client_id)
+            .map(|peer| {
+                // Extract cursor position from view state
+                let (cursor_line, cursor_col) = peer
+                    .view
+                    .as_ref()
+                    .and_then(|v| v.cursor.as_ref())
+                    .map_or((0, 0), |c| (c.line, c.column));
+
+                let buffer_id = peer.view.as_ref().and_then(|v| v.buffer_id);
+                let mode = peer
+                    .view
+                    .as_ref()
+                    .map(|v| v.mode.clone())
+                    .unwrap_or_default();
+                let display_name = peer
+                    .metadata
+                    .map_or_else(|| format!("Client {}", peer.id), |m| m.display_name);
+
+                tracing::debug!(
+                    client_id = peer.id,
+                    cursor_line,
+                    cursor_col,
+                    ?buffer_id,
+                    "Initialized remote client from JoinResponse"
+                );
+
+                (
+                    peer.id,
+                    RemoteClient {
+                        client_id: peer.id,
+                        display_name,
+                        cursor_line,
+                        cursor_col,
+                        buffer_id,
+                        mode,
+                        selection: None, // Selection synced via SelectionChanged notifications
+                    },
+                )
+            })
+            .collect();
+
         // Subscribe to all notifications
         let notification_stream = client.subscribe_all().await?;
 
@@ -217,7 +262,8 @@ impl TuiAppV2Headless {
         let (request_tx, request_rx) = mpsc::channel(32);
 
         // Create initial state with client_id (using shared TuiCoreState)
-        let state = TuiCoreState::new_with_size(my_client_id, width, height);
+        let mut state = TuiCoreState::new_with_size(my_client_id, width, height);
+        state.other_clients = other_clients;
 
         // Create frame buffer
         let frame_buffer = FrameBuffer::new(width, height);
@@ -656,229 +702,21 @@ impl HeadlessEventLoop {
         Ok(response.ok)
     }
 
-    /// Handle server notification.
+    /// Handle server notification using unified handler.
     ///
-    /// Issue #493: Now includes presence handling for multi-client awareness.
-    #[allow(clippy::too_many_lines)]
+    /// Issue #493: Uses `notification_handler::handle_notification()` for
+    /// unified notification handling between interactive and headless TUI.
     async fn handle_notification(&mut self, notif: Notification) {
-        if let Some(payload) = notif.payload {
-            match payload {
-                Payload::ModeChanged(mode) => {
-                    // Issue #474: Filter by client_id for multi-client mode isolation
-                    let is_local = mode.client_id == self.state.my_client_id;
-                    if is_local {
-                        self.state.mode_name = mode.name;
-                        self.state.mode_display = mode.display;
-                        self.state.is_insert_mode = mode.is_insert;
-                    } else {
-                        // Remote mode update
-                        if let Some(remote) = self.state.other_clients.get_mut(&mode.client_id) {
-                            remote.mode.clone_from(&mode.display);
-                        }
-                    }
-                }
-                Payload::CursorMoved(cursor) => {
-                    // Issue #474: Filter by client_id for multi-client cursor isolation
-                    let is_local = cursor.client_id == self.state.my_client_id;
-                    if let Some(pos) = cursor.position {
-                        if is_local {
-                            self.state.cursor_line = pos.line;
-                            self.state.cursor_col = pos.column;
-                            // Also update per-window cursor
-                            self.state.window_cursors.insert(
-                                cursor.window_id,
-                                CursorPosition {
-                                    line: pos.line,
-                                    column: pos.column,
-                                },
-                            );
-                        } else {
-                            // Remote cursor update
-                            self.state
-                                .update_remote_cursor(cursor.client_id, pos.line, pos.column);
-                        }
-                    }
-                }
-                Payload::BufferModified(buf) => {
-                    // Invalidate cache and refetch
-                    self.state.buffer_cache.remove(&buf.buffer_id);
-                    if let Ok(content) = self
-                        .client
-                        .get_buffer_content(Some(buf.buffer_id), None, None)
-                        .await
-                    {
-                        self.state.buffer_cache.insert(buf.buffer_id, content.lines);
-                    }
-                }
-                Payload::LayoutChanged(layout) => {
-                    // Phase #479: focused_window_id is now Option<u64>
-                    self.state.focused_window_id = layout.focused_window_id.unwrap_or(0);
-                    self.state.windows = layout.windows;
-                    // Clean up stale cursor entries
-                    self.state.cleanup_stale_cursors();
-                }
-                Payload::Detach(detach) => {
-                    tracing::info!("Server requested detach: {}", detach.reason);
-                    self.running = false;
-                }
-                // Issue #493: Add presence handling for multi-client awareness
-                Payload::PresenceJoined(p) => {
-                    if let Some(client) = p.client
-                        && client.client_id != self.state.my_client_id
-                    {
-                        tracing::info!(
-                            client_id = client.client_id,
-                            display_name = %client.display_name,
-                            buffer_id = ?client.buffer_id,
-                            "PresenceJoined: Adding remote client"
-                        );
-                        self.state.add_remote_client(RemoteClient {
-                            client_id: client.client_id,
-                            display_name: client.display_name,
-                            cursor_line: 0,
-                            cursor_col: 0,
-                            buffer_id: client.buffer_id,
-                            mode: client.mode,
-                            selection: None,
-                        });
-                    }
-                }
-                Payload::PresenceUpdated(p) => {
-                    if let Some(client) = p.client
-                        && client.client_id != self.state.my_client_id
-                    {
-                        // Preserve existing cursor position and selection
-                        let old = self.state.other_clients.get(&client.client_id);
-                        let cursor_line = old.map_or(0, |c| c.cursor_line);
-                        let cursor_col = old.map_or(0, |c| c.cursor_col);
-                        let selection = old.and_then(|c| c.selection.clone());
-
-                        self.state.other_clients.insert(
-                            client.client_id,
-                            RemoteClient {
-                                client_id: client.client_id,
-                                display_name: client.display_name,
-                                cursor_line,
-                                cursor_col,
-                                buffer_id: client.buffer_id,
-                                mode: client.mode,
-                                selection,
-                            },
-                        );
-                    }
-                }
-                Payload::PresenceLeft(p) => {
-                    self.state.remove_remote_client(p.client_id);
-                }
-                Payload::SelectionChanged(sel) => {
-                    // Issue #474: Filter by client_id for multi-client selection isolation
-                    let is_local = sel.client_id == self.state.my_client_id;
-
-                    let selection = if sel.has_selection {
-                        sel.selection.map(|s| {
-                            let start =
-                                s.start
-                                    .map_or_else(CursorPosition::default, |p| CursorPosition {
-                                        line: p.line,
-                                        column: p.column,
-                                    });
-                            let end =
-                                s.end
-                                    .map_or_else(CursorPosition::default, |p| CursorPosition {
-                                        line: p.line,
-                                        column: p.column,
-                                    });
-                            SelectionState {
-                                start,
-                                end,
-                                mode: sel.visual_mode.clone().unwrap_or_default(),
-                            }
-                        })
-                    } else {
-                        None
-                    };
-
-                    if is_local {
-                        self.state.update_local_selection(sel.window_id, selection);
-                    } else {
-                        self.state.update_remote_selection(sel.client_id, selection);
-                    }
-                }
-                Payload::ResizeRequest(resize_req) => {
-                    // Handle CLI -> Server -> TUI resize relay
-                    #[allow(clippy::cast_possible_truncation)]
-                    let width = resize_req.width as u16;
-                    #[allow(clippy::cast_possible_truncation)]
-                    let height = resize_req.height as u16;
-
-                    if width > 0 && height > 0 {
-                        tracing::debug!(width, height, "Resize request from CLI");
-                        self.state.width = width;
-                        self.state.height = height;
-                        self.frame_buffer = FrameBuffer::new(width, height);
-                    }
-                }
-                Payload::CaptureRequest(capture_req) => {
-                    // Handle CLI→Server→TUI capture request relay
-                    // Only respond if this request targets our client ID
-                    if capture_req.target_client_id != self.state.my_client_id {
-                        tracing::trace!(
-                            target_client_id = capture_req.target_client_id,
-                            my_client_id = self.state.my_client_id,
-                            "Ignoring capture request for different client"
-                        );
-                        return;
-                    }
-
-                    tracing::debug!(
-                        request_id = capture_req.request_id,
-                        format = %capture_req.format,
-                        target_client_id = capture_req.target_client_id,
-                        "Received capture request"
-                    );
-
-                    // Convert format string to ScreenFormat
-                    let screen_format = match capture_req.format.as_str() {
-                        "plain_text" => ScreenFormat::PlainText,
-                        "cell_grid" => ScreenFormat::CellGrid,
-                        _ => ScreenFormat::RawAnsi, // Default to raw_ansi
-                    };
-
-                    // Capture the frame
-                    let content = self.capture_frame(screen_format);
-
-                    // Submit the response back to server
-                    let result = self
-                        .client
-                        .submit_capture_response(
-                            capture_req.request_id,
-                            u64::from(self.state.width),
-                            u64::from(self.state.height),
-                            &capture_req.format,
-                            content,
-                        )
-                        .await;
-
-                    match result {
-                        Ok(reply) => {
-                            tracing::debug!(
-                                request_id = capture_req.request_id,
-                                ok = reply.ok,
-                                "Submitted capture response"
-                            );
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                request_id = capture_req.request_id,
-                                error = %e,
-                                "Failed to submit capture response"
-                            );
-                        }
-                    }
-                }
-                _ => {
-                    // Other notifications - just trigger a re-render
-                }
+        match handle_notification(self, notif).await {
+            Ok(NotificationResult::Redraw) => {
+                self.state.needs_redraw = true;
+            }
+            Ok(NotificationResult::NoRedraw) => {}
+            Ok(NotificationResult::Stop) => {
+                self.running = false;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Notification handling failed");
             }
         }
 
@@ -1018,9 +856,10 @@ impl HeadlessEventLoop {
 
                 // Only render if within window bounds
                 if screen_x < win_x + win_w && screen_y < win_y + win_h {
-                    // Use a thin vertical bar to indicate remote cursor
+                    // Apply cursor style as background overlay, preserving character
+                    // This fixes Bug #3: cursor marker was replacing content
                     self.frame_buffer
-                        .put_char(screen_x, screen_y, '▎', &cursor_style);
+                        .apply_style(screen_x, screen_y, &cursor_style);
                 }
             }
         }
@@ -1057,6 +896,52 @@ impl HeadlessEventLoop {
         let right_x = width.saturating_sub(right.len() as u16);
         self.frame_buffer
             .write_str(right_x, status_y, &right, &style);
+    }
+}
+
+/// Issue #493: Implement `NotificationContext` for unified notification handling.
+///
+/// This enables `HeadlessEventLoop` to use the shared `handle_notification()`
+/// function from `notification_handler.rs`, eliminating code duplication.
+impl NotificationContext for HeadlessEventLoop {
+    fn state_mut(&mut self) -> &mut TuiCoreState {
+        &mut self.state
+    }
+
+    fn client_mut(&mut self) -> &mut crate::grpc_client::TuiGrpcClient {
+        &mut self.client
+    }
+
+    // on_buffer_modified: use default no-op (headless doesn't need syntax highlighting)
+    // on_option_changed: use default no-op (headless doesn't handle colorscheme changes)
+
+    fn on_resize(&mut self, width: u16, height: u16) {
+        // Resize frame buffer to match new dimensions
+        self.frame_buffer = FrameBuffer::new(width, height);
+    }
+
+    fn on_capture_request(
+        &mut self,
+        _request_id: u64,
+        format: &str,
+        target_client_id: u64,
+    ) -> Option<String> {
+        if target_client_id == self.state.my_client_id {
+            // Convert format string to ScreenFormat
+            let screen_format = match format {
+                "plain_text" => reovim_protocol::v1::ScreenFormat::PlainText,
+                "cell_grid" => reovim_protocol::v1::ScreenFormat::CellGrid,
+                _ => reovim_protocol::v1::ScreenFormat::RawAnsi,
+            };
+
+            // Re-render to ensure frame buffer is up to date
+            self.render_to_buffer();
+
+            // Capture the frame
+            Some(self.capture_frame(screen_format))
+        } else {
+            None
+        }
     }
 }
 

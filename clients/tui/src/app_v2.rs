@@ -37,7 +37,7 @@ use {
     },
     reovim_driver_tui::{Cursor, CursorStyle, InputEvent, InputReader, Screen, Style, Terminal},
     reovim_protocol::v2::{
-        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect, notification::Payload,
+        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
         option_changed_payload::Value as OptionValue,
     },
     tokio::{select, time::interval},
@@ -45,9 +45,10 @@ use {
 };
 
 use crate::{
-    ClientRole, CursorPosition, LineNumberMode, RemoteClient, SelectionState, TuiDebugConfig,
+    CursorPosition, LineNumberMode, RemoteClient, SelectionState, TuiCoreState, TuiDebugConfig,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
     layout_mirror::ServerLayoutMirror,
+    notification_handler::{NotificationContext, NotificationResult, handle_notification},
 };
 
 /// TUI application error.
@@ -88,61 +89,6 @@ impl From<TuiGrpcError> for TuiAppV2Error {
     }
 }
 
-/// TUI state tracked locally from server notifications.
-#[derive(Debug, Default)]
-struct TuiState {
-    /// Current mode name (internal).
-    mode_name: String,
-    /// Current mode display string.
-    mode_display: String,
-    /// Whether mode accepts text input.
-    is_insert_mode: bool,
-    /// Cursor line (0-indexed) - legacy global for statusline.
-    cursor_line: u64,
-    /// Cursor column (0-indexed) - legacy global for statusline.
-    cursor_col: u64,
-    /// Per-window cursor positions (Phase 8 #465).
-    ///
-    /// Maps `window_id` -> cursor position. Updated from `CursorMoved`
-    /// notifications that include `window_id`.
-    window_cursors: HashMap<u64, CursorPosition>,
-    /// Per-window selection state (Phase 8 #465).
-    ///
-    /// Maps `window_id` -> selection. Updated from `SelectionChanged`
-    /// notifications. Used to render visual selection highlighting.
-    window_selections: HashMap<u64, SelectionState>,
-    /// Focused window ID.
-    focused_window_id: u64,
-    /// Window layout info.
-    windows: Vec<WindowInfo>,
-    /// Whether screen needs redraw.
-    needs_redraw: bool,
-    /// Last error message for statusline.
-    last_error: Option<String>,
-    /// Buffer content cache (`buffer_id` -> lines).
-    buffer_cache: HashMap<u64, Vec<String>>,
-    /// Line number display mode.
-    line_number_mode: LineNumberMode,
-    /// Per-window viewport scroll (`window_id` -> `top_line`).
-    /// TODO: Implement viewport scrolling per window
-    #[allow(dead_code)]
-    viewport_scroll: HashMap<u64, usize>,
-    /// Whether client needs to create a default window (empty server layout).
-    needs_default_window: bool,
-    /// This client's unique ID (Phase 11.2 - per-client state).
-    ///
-    /// Assigned by `presence_join()` on connect. CRITICAL: All `SendKeys`
-    /// requests must include this ID, otherwise all clients share state.
-    /// Type is `u64` (not `Option`) because clients ALWAYS have an ID after join.
-    my_client_id: u64,
-    /// This client's role in the session (Phase 11.2).
-    my_role: ClientRole,
-    /// Other connected clients for awareness rendering (Phase 11.2).
-    ///
-    /// Maps `client_id` -> `RemoteClient`. Used to render other clients' cursors.
-    other_clients: HashMap<u64, RemoteClient>,
-}
-
 /// gRPC v2 TUI application.
 ///
 /// Uses streaming notifications for real-time updates and
@@ -160,8 +106,8 @@ pub struct TuiAppV2 {
     cursor: Cursor,
     /// Input event reader.
     input: InputReader,
-    /// Current TUI state.
-    state: TuiState,
+    /// Current TUI state (shared with headless TUI, Issue #493).
+    state: TuiCoreState,
     /// Whether the app is running.
     running: bool,
     /// Server address for display.
@@ -189,6 +135,20 @@ pub struct TuiAppV2 {
     ///
     /// Searches `~/.config/reovim/themes/` and system paths for TOML theme files.
     theme_loader: ThemeLoader,
+
+    // =========================================================================
+    // Deferred Refresh (Issue #493 - TUI Unification)
+    // =========================================================================
+    /// Buffer IDs needing syntax token refresh.
+    ///
+    /// Populated by `NotificationContext::on_buffer_modified()` hook.
+    /// Processed in event loop after notification handling completes.
+    pending_token_refresh: std::collections::HashSet<u64>,
+    /// Whether display options need refresh.
+    ///
+    /// Set by `NotificationContext::on_option_changed()` for number/relativenumber.
+    /// Processed in event loop after notification handling completes.
+    needs_display_options_refresh: bool,
 }
 
 impl TuiAppV2 {
@@ -203,6 +163,7 @@ impl TuiAppV2 {
     /// # Errors
     ///
     /// Returns an error if connection fails.
+    #[allow(clippy::too_many_lines)]
     pub async fn connect(
         addr: &str,
         debug_config: Option<TuiDebugConfig>,
@@ -231,6 +192,53 @@ impl TuiAppV2 {
         let join_resp = client.presence_join("tui", &display_name).await?;
         let my_client_id = join_resp.client_id;
         tracing::info!(client_id = my_client_id, display_name, "Joined presence session");
+
+        // Bug #1 fix (#494): Initialize other_clients from JoinResponse.peers_v2
+        // This ensures new clients see existing clients' cursor positions immediately
+        let other_clients: HashMap<u64, RemoteClient> = join_resp
+            .peers_v2
+            .into_iter()
+            .filter(|peer| peer.id != my_client_id)
+            .map(|peer| {
+                // Extract cursor position from view state
+                let (cursor_line, cursor_col) = peer
+                    .view
+                    .as_ref()
+                    .and_then(|v| v.cursor.as_ref())
+                    .map_or((0, 0), |c| (c.line, c.column));
+
+                let buffer_id = peer.view.as_ref().and_then(|v| v.buffer_id);
+                let mode = peer
+                    .view
+                    .as_ref()
+                    .map(|v| v.mode.clone())
+                    .unwrap_or_default();
+                let display_name = peer
+                    .metadata
+                    .map_or_else(|| format!("Client {}", peer.id), |m| m.display_name);
+
+                tracing::debug!(
+                    client_id = peer.id,
+                    cursor_line,
+                    cursor_col,
+                    ?buffer_id,
+                    "Initialized remote client from JoinResponse"
+                );
+
+                (
+                    peer.id,
+                    RemoteClient {
+                        client_id: peer.id,
+                        display_name,
+                        cursor_line,
+                        cursor_col,
+                        buffer_id,
+                        mode,
+                        selection: None, // Selection synced via SelectionChanged notifications
+                    },
+                )
+            })
+            .collect();
 
         // Create screen and cursor
         let screen = Screen::new(width, height);
@@ -273,11 +281,10 @@ impl TuiAppV2 {
             }
         }
 
-        // Build state with client ID
-        let state = TuiState {
-            my_client_id,
-            ..TuiState::default()
-        };
+        // Build state with client ID, viewport size, and initialized other_clients
+        // Uses TuiCoreState for unification with headless TUI (Issue #493)
+        let mut state = TuiCoreState::new_with_size(my_client_id, width, height);
+        state.other_clients = other_clients;
 
         Ok(Self {
             client,
@@ -294,6 +301,9 @@ impl TuiAppV2 {
             token_cache_manager,
             theme_manager,
             theme_loader,
+            // Issue #493: Deferred refresh fields
+            pending_token_refresh: std::collections::HashSet::new(),
+            needs_display_options_refresh: false,
         })
     }
 
@@ -627,7 +637,23 @@ impl TuiAppV2 {
                 // Server notifications
                 notification = self.notification_stream.message() => {
                     match notification {
-                        Ok(Some(notif)) => self.handle_notification(notif).await?,
+                        Ok(Some(notif)) => {
+                            self.handle_notification(notif).await?;
+
+                            // Process deferred refreshes (Issue #493 - TUI unification)
+                            // These are queued by NotificationContext hooks
+                            if !self.pending_token_refresh.is_empty() {
+                                let buffer_ids: Vec<u64> =
+                                    self.pending_token_refresh.drain().collect();
+                                for buffer_id in buffer_ids {
+                                    self.fetch_tokens_for_buffer(buffer_id).await;
+                                }
+                            }
+                            if self.needs_display_options_refresh {
+                                self.fetch_display_options().await;
+                                self.needs_display_options_refresh = false;
+                            }
+                        }
                         Ok(None) => return Err(TuiAppV2Error::StreamEnded),
                         Err(e) => return Err(TuiAppV2Error::Grpc(e.into())),
                     }
@@ -672,6 +698,10 @@ impl TuiAppV2 {
             InputEvent::Resize(resize) => {
                 self.screen.resize(resize.width, resize.height);
 
+                // Update state dimensions (Issue #493 - unification)
+                self.state.width = resize.width;
+                self.state.height = resize.height;
+
                 // Update layout mirror dimensions (Phase 11.2)
                 self.layout_mirror.set_screen(resize.width, resize.height);
 
@@ -704,272 +734,31 @@ impl TuiAppV2 {
     }
 
     /// Handle server notification.
-    #[allow(clippy::too_many_lines)]
+    ///
+    /// Uses unified handler from `notification_handler.rs` (Issue #493).
+    /// Interactive TUI-specific hooks are handled via `NotificationContext` trait.
     async fn handle_notification(&mut self, notif: Notification) -> Result<(), TuiAppV2Error> {
-        if let Some(payload) = notif.payload {
-            match payload {
-                Payload::ModeChanged(mode) => {
-                    // Phase 14 (#471): Filter by client_id for multi-client mode isolation
-                    let is_local_mode = mode.client_id == self.state.my_client_id;
-
-                    if is_local_mode {
-                        // Local mode update
-                        self.state.mode_name = mode.name;
-                        self.state.mode_display = mode.display;
-                        self.state.is_insert_mode = mode.is_insert;
-                    } else {
-                        // Remote mode update - update other_clients map
-                        if let Some(remote) = self.state.other_clients.get_mut(&mode.client_id) {
-                            remote.mode.clone_from(&mode.display);
-                        }
-                    }
-                    self.state.needs_redraw = true;
-                }
-                Payload::CursorMoved(cursor) => {
-                    // Phase 14 (#471): Filter by client_id for multi-client cursor isolation
-                    let is_local_cursor = cursor.client_id == self.state.my_client_id;
-
-                    if let Some(pos) = cursor.position {
-                        if is_local_cursor {
-                            // Local cursor update
-                            // Store per-window cursor position (Phase 8 #465)
-                            self.state.window_cursors.insert(
-                                cursor.window_id,
-                                CursorPosition {
-                                    line: pos.line,
-                                    column: pos.column,
-                                },
-                            );
-
-                            // Update legacy globals for focused window (statusline compatibility)
-                            if cursor.window_id == self.state.focused_window_id {
-                                self.state.cursor_line = pos.line;
-                                self.state.cursor_col = pos.column;
-                            }
-                        } else {
-                            // Remote cursor update - update other_clients map
-                            if let Some(remote) =
-                                self.state.other_clients.get_mut(&cursor.client_id)
-                            {
-                                remote.cursor_line = pos.line;
-                                remote.cursor_col = pos.column;
-                            }
-                        }
-                    }
-                    self.state.needs_redraw = true;
-                }
-                Payload::BufferModified(buf) => {
-                    // Invalidate cache and refetch
-                    self.state.buffer_cache.remove(&buf.buffer_id);
-                    // Refetch content
-                    if let Ok(content) = self
-                        .client
-                        .get_buffer_content(Some(buf.buffer_id), None, None)
-                        .await
-                    {
-                        self.state.buffer_cache.insert(buf.buffer_id, content.lines);
-
-                        // Refresh syntax tokens (Phase 13.0)
-                        self.fetch_tokens_for_buffer(buf.buffer_id).await;
-                    }
-                    self.state.needs_redraw = true;
-                }
-                Payload::LayoutChanged(layout) => {
-                    // Phase #479: focused_window_id is now Option<u64> to eliminate ID ambiguity
-                    // None means "no focus", which we handle by using first window or 0
-                    let effective_focused_id = match layout.focused_window_id {
-                        Some(id) => id,
-                        None if !layout.windows.is_empty() => {
-                            tracing::debug!(
-                                "Server sent no focused_window_id with {} windows, using first",
-                                layout.windows.len()
-                            );
-                            layout.windows.first().map_or(0, |w| w.window_id)
-                        }
-                        None => 0,
-                    };
-
-                    // Update layout mirror (Phase 11.2)
-                    self.layout_mirror
-                        .apply_layout_changed(effective_focused_id, &layout.windows);
-
-                    // Keep legacy state for statusline compatibility
-                    self.state.focused_window_id = effective_focused_id;
-
-                    // Phase 11.2 Fix: Set focused flag on the matching window
-                    // The server sends window geometry but doesn't set the focused field.
-                    // position_cursor() requires focused=true to locate the cursor window.
-                    self.state.windows = layout
-                        .windows
-                        .into_iter()
-                        .map(|mut w| {
-                            w.focused = w.window_id == effective_focused_id;
-                            w
-                        })
-                        .collect();
-
-                    // Phase 8 (#465): Clean up stale cursor entries for deleted windows
-                    let current_window_ids: std::collections::HashSet<u64> =
-                        self.state.windows.iter().map(|w| w.window_id).collect();
-                    self.state
-                        .window_cursors
-                        .retain(|id, _| current_window_ids.contains(id));
-
-                    self.state.needs_redraw = true;
-                }
-                Payload::RenderComplete(_) => {
-                    // Server signals a frame is ready - refresh content
-                    self.state.needs_redraw = true;
-                }
-                Payload::Detach(_detach) => {
-                    self.running = false;
-                }
-                Payload::OptionChanged(opt) => {
-                    // Handle option changes (Phase 13.0)
-                    match opt.name.as_str() {
-                        "number" | "relativenumber" => {
-                            // Refetch display options asynchronously
-                            self.fetch_display_options().await;
-                            self.state.needs_redraw = true;
-                        }
-                        "colorscheme" => {
-                            // Load and apply new theme
-                            if let Some(OptionValue::StringValue(theme_name)) = opt.value {
-                                self.apply_colorscheme(&theme_name);
-                            }
-                            self.state.needs_redraw = true;
-                        }
-                        _ => {
-                            self.state.needs_redraw = true;
-                        }
-                    }
-                }
-                Payload::PresenceJoined(p) => {
-                    // Phase 11.2: Track other clients for awareness rendering
-                    // Phase 14 (#471): cursor no longer in presence - uses CursorMoved with client_id
-                    if let Some(client) = p.client {
-                        // Skip self
-                        if client.client_id != self.state.my_client_id {
-                            tracing::info!(
-                                client_id = client.client_id,
-                                display_name = %client.display_name,
-                                buffer_id = ?client.buffer_id,
-                                "PresenceJoined: Adding remote client"
-                            );
-                            self.state.other_clients.insert(
-                                client.client_id,
-                                RemoteClient {
-                                    client_id: client.client_id,
-                                    display_name: client.display_name,
-                                    cursor_line: 0, // Updated via CursorMoved notification
-                                    cursor_col: 0,
-                                    buffer_id: client.buffer_id,
-                                    mode: client.mode,
-                                    selection: None, // Updated via SelectionChanged notification
-                                },
-                            );
-                            self.state.needs_redraw = true;
-                        }
-                    }
-                }
-                Payload::PresenceUpdated(p) => {
-                    // Phase 11.2: Update remote client's state (viewport, mode)
-                    // Phase 14 (#471): cursor no longer in presence - uses CursorMoved with client_id
-                    if let Some(client) = p.client
-                        && client.client_id != self.state.my_client_id
-                    {
-                        // Preserve existing cursor position and selection (updated via CursorMoved/SelectionChanged)
-                        let old = self.state.other_clients.get(&client.client_id);
-                        let cursor_line = old.map_or(0, |c| c.cursor_line);
-                        let cursor_col = old.map_or(0, |c| c.cursor_col);
-                        let selection = old.and_then(|c| c.selection.clone());
-
-                        self.state.other_clients.insert(
-                            client.client_id,
-                            RemoteClient {
-                                client_id: client.client_id,
-                                display_name: client.display_name,
-                                cursor_line,
-                                cursor_col,
-                                buffer_id: client.buffer_id,
-                                mode: client.mode,
-                                selection,
-                            },
-                        );
-                        self.state.needs_redraw = true;
-                    }
-                }
-                Payload::PresenceLeft(p) => {
-                    // Phase 11.2: Remove departed client
-                    self.state.other_clients.remove(&p.client_id);
-                    self.state.needs_redraw = true;
-                }
-                Payload::SelectionChanged(sel) => {
-                    // Phase 14 (#471): Filter by client_id for multi-client selection isolation
-                    let is_local_selection = sel.client_id == self.state.my_client_id;
-
-                    if is_local_selection {
-                        // Local selection update
-                        // Phase 8 (#465): Track selection for visual mode highlighting
-                        if sel.has_selection {
-                            if let Some(selection) = sel.selection {
-                                let start =
-                                    selection.start.map_or_else(CursorPosition::default, |p| {
-                                        CursorPosition {
-                                            line: p.line,
-                                            column: p.column,
-                                        }
-                                    });
-                                let end = selection.end.map_or_else(CursorPosition::default, |p| {
-                                    CursorPosition {
-                                        line: p.line,
-                                        column: p.column,
-                                    }
-                                });
-                                let mode = sel.visual_mode.unwrap_or_default();
-                                self.state
-                                    .window_selections
-                                    .insert(sel.window_id, SelectionState { start, end, mode });
-                            }
-                        } else {
-                            // Clear selection for this window
-                            self.state.window_selections.remove(&sel.window_id);
-                        }
-                    } else {
-                        // Remote selection update - update other_clients map
-                        if let Some(remote) = self.state.other_clients.get_mut(&sel.client_id) {
-                            if sel.has_selection {
-                                if let Some(selection) = sel.selection {
-                                    let start =
-                                        selection.start.map_or_else(CursorPosition::default, |p| {
-                                            CursorPosition {
-                                                line: p.line,
-                                                column: p.column,
-                                            }
-                                        });
-                                    let end =
-                                        selection.end.map_or_else(CursorPosition::default, |p| {
-                                            CursorPosition {
-                                                line: p.line,
-                                                column: p.column,
-                                            }
-                                        });
-                                    let mode = sel.visual_mode.unwrap_or_default();
-                                    remote.selection = Some(SelectionState { start, end, mode });
-                                }
-                            } else {
-                                remote.selection = None;
-                            }
-                        }
-                    }
-                    self.state.needs_redraw = true;
-                }
-                _ => {
-                    // Other notifications
-                    self.state.needs_redraw = true;
-                }
+        // Call unified handler (single source of truth)
+        match handle_notification(self, notif).await {
+            Ok(NotificationResult::Redraw) => {
+                self.state.needs_redraw = true;
+            }
+            Ok(NotificationResult::NoRedraw) => {
+                // No action needed
+            }
+            Ok(NotificationResult::Stop) => {
+                self.running = false;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Notification handling failed");
             }
         }
+
+        // Interactive TUI-specific: Update layout mirror after any notification
+        // This keeps the layout mirror in sync with state.windows
+        self.layout_mirror
+            .apply_layout_changed(self.state.focused_window_id, &self.state.windows);
+
         Ok(())
     }
 
@@ -1370,8 +1159,9 @@ impl TuiAppV2 {
                 if screen_x < placement.x + placement.width
                     && screen_y < placement.y + placement.height
                 {
-                    // Use a thin vertical bar to indicate remote cursor
-                    self.screen.put_char(screen_x, screen_y, '▎', &cursor_style);
+                    // Apply cursor style as background overlay, preserving character
+                    // This fixes Bug #3: cursor marker was replacing content
+                    self.screen.apply_style(screen_x, screen_y, &cursor_style);
                 }
             }
         }
@@ -1604,13 +1394,93 @@ impl TuiAppV2 {
     }
 }
 
+// =============================================================================
+// NotificationContext Implementation (Issue #493 - TUI Unification)
+// =============================================================================
+
+impl NotificationContext for TuiAppV2 {
+    fn state_mut(&mut self) -> &mut TuiCoreState {
+        &mut self.state
+    }
+
+    fn client_mut(&mut self) -> &mut TuiGrpcClient {
+        &mut self.client
+    }
+
+    fn on_buffer_modified(&mut self, buffer_id: u64) {
+        // Queue syntax token refresh (deferred pattern)
+        // Will be processed in event loop after notification handling
+        self.pending_token_refresh.insert(buffer_id);
+    }
+
+    fn on_option_changed(&mut self, name: &str, value: Option<OptionValue>) {
+        match name {
+            "colorscheme" => {
+                // Apply colorscheme change immediately
+                if let Some(OptionValue::StringValue(theme_name)) = value {
+                    self.apply_colorscheme(&theme_name);
+                }
+            }
+            "number" | "relativenumber" => {
+                // Queue display options refresh
+                self.needs_display_options_refresh = true;
+            }
+            _ => {
+                // Other options - no special handling needed
+            }
+        }
+    }
+
+    fn on_capture_request(
+        &mut self,
+        _request_id: u64,
+        format: &str,
+        target_client_id: u64,
+    ) -> Option<String> {
+        // Only handle if this request is for us
+        if target_client_id != self.state.my_client_id {
+            return None;
+        }
+
+        // Capture current screen content
+        Some(self.capture_screen(format))
+    }
+}
+
+impl TuiAppV2 {
+    /// Capture current screen content for `CaptureRequest` handling.
+    ///
+    /// Returns the screen content in the specified format.
+    fn capture_screen(&self, format: &str) -> String {
+        let buffer = self.screen.buffer();
+        let mut lines = Vec::new();
+
+        for y in 0..buffer.height() {
+            if let Some(row) = buffer.row(y) {
+                let line: String = row.iter().map(|c| c.char).collect();
+                lines.push(line.trim_end().to_string());
+            }
+        }
+
+        match format {
+            "plain_text" => lines.join("\n"),
+            _ => {
+                // Default to plain text for unknown formats
+                // ANSI format support can be added later
+                lines.join("\n")
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_tui_state_default() {
-        let state = TuiState::default();
+    fn test_tui_core_state_default() {
+        // Issue #493: Unified state - now using TuiCoreState
+        let state = TuiCoreState::default();
         assert!(state.mode_name.is_empty());
         assert!(state.mode_display.is_empty());
         assert!(!state.is_insert_mode);

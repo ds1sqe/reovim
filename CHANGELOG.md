@@ -100,12 +100,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `ClientRole`, `LineNumberMode`), `core_helpers.rs` (layout helpers: `collect_windows`,
   `apply_layout`, `apply_layout_notification`, `create_default_window`, `fetch_buffer_contents`,
   `refetch_buffer`), `notification_handler.rs` (`NotificationContext` trait for unified
-  notification processing). Headless TUI now uses `TuiCoreState` and has full multi-client
-  awareness: handles `PresenceJoined`, `PresenceUpdated`, `PresenceLeft` notifications,
-  filters `ModeChanged`/`CursorMoved`/`SelectionChanged` by client_id, renders remote
-  cursors with CBF-8 colors. This enables #474 remote cursor rendering in headless mode.
-  Fixed pre-existing rustdoc errors in TUI client (broken service links, unclosed HTML
-  tags). ~400 LOC in new shared modules, ~200 LOC added to headless for presence handling.
+  notification processing). Both TUIs now implement `NotificationContext` and use the
+  unified `handle_notification()` function, eliminating ~370 lines of duplicate inline
+  handlers. Interactive TUI replaced `TuiState` with `TuiCoreState`. Uses deferred refresh
+  pattern: sync trait hooks queue async work (syntax tokens, display options) for later
+  processing. Both TUIs have full multi-client awareness with CBF-8 cursor colors.
+  30 new presence render tests verify multi-client behavior. Net code reduction: ~170 LOC.
 
 ### Changed
 

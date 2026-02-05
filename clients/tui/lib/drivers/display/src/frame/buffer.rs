@@ -119,6 +119,28 @@ impl FrameBuffer {
         }
     }
 
+    /// Apply style to existing cell without replacing character.
+    ///
+    /// Used for cursor overlays where we want to show both the character
+    /// and a cursor indicator (via background color). The overlay style's
+    /// colors take precedence over existing colors.
+    pub fn apply_style(&mut self, x: u16, y: u16, style: &Style) {
+        if let Some(cell) = self.get_mut(x, y) {
+            // Merge overlay style with existing cell style
+            // Overlay's colors take precedence (for cursor highlighting)
+            if let Some(bg) = style.bg {
+                cell.style.bg = Some(bg);
+            }
+            if let Some(fg) = style.fg {
+                cell.style.fg = Some(fg);
+            }
+            cell.style.attributes = cell.style.attributes.union(style.attributes);
+            if let Some(underline_color) = style.underline_color {
+                cell.style.underline_color = Some(underline_color);
+            }
+        }
+    }
+
     /// Write a string starting at (x, y) with the given style.
     ///
     /// Returns the number of columns used (accounting for wide characters).
