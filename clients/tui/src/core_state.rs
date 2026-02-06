@@ -178,6 +178,7 @@ pub struct TuiCoreState {
     // =========================================================================
     /// Buffer content cache (`buffer_id` -> lines).
     pub buffer_cache: HashMap<u64, Vec<String>>,
+    // TODO(#494): Add per-window scroll_top: HashMap<u64, usize> for scroll tracking
 
     // =========================================================================
     // Multi-client awareness (#474)

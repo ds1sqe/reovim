@@ -30,6 +30,7 @@ use {reovim_arch::Color, reovim_driver_display::Style};
 ///
 /// This trait abstracts over `Screen` (terminal) and `FrameBuffer` (memory),
 /// allowing unified rendering code to work with both interactive and headless TUIs.
+// TODO(#494): Window separator drawing (│, ─, ┼) for multi-window layout
 pub trait RenderBackend {
     /// Write a character at (x, y) with the given style.
     ///

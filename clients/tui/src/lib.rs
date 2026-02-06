@@ -87,7 +87,6 @@ pub mod log_panel;
 pub mod log_render;
 pub mod notification_handler;
 pub mod output;
-pub mod render;
 pub mod render_backend;
 pub mod render_core;
 pub mod render_engine;
@@ -112,7 +111,6 @@ pub use {
     log_panel::LogPanelState,
     log_render::{format_entry, render_panel},
     output::{HeadlessOutput, TerminalOutput},
-    render::Renderer,
     render_backend::{RenderBackend, format_frame_buffer},
     render_core::{RenderState, build_frame_content},
     render_engine::{RenderConfig, render_frame},

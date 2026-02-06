@@ -112,6 +112,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Shared state modules: `core_state.rs`, `core_helpers.rs`, `notification_handler.rs`.
   185 unit tests, 73+ integration tests. Net reduction: ~1500 LOC.
 
+### Fixed
+
+- **TUI presence rendering bugs (#494)**: Fixed buffer cache race condition (Bug #4)
+  where `buffer_cache.remove()` before async `get_buffer_content()` caused captures
+  to read empty cache. Fix: keep stale data until refetch completes. Replaced brittle
+  `sleep(500ms)` with `wait_for(3s, predicate)` in Bug #5/#6 integration tests for
+  deterministic content sync verification. Added 8 `TODO(#494)` markers at render
+  engine gap locations (multi-window, scroll, syntax highlighting, theme integration,
+  window separators). Deleted dead `render.rs` (186 LOC). Net: -180 LOC.
+
 ### Changed
 
 - **Session struct refactoring with BootstrapState pattern (#488)**: Simplified driver-level

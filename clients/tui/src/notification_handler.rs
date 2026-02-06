@@ -162,10 +162,8 @@ pub async fn handle_notification<C: NotificationContext>(
         Payload::BufferModified(buf) => {
             let buffer_id = buf.buffer_id;
 
-            // Invalidate cache first
-            ctx.state_mut().buffer_cache.remove(&buffer_id);
-
-            // Refetch buffer content
+            // Refetch buffer content (keep stale data until refetch completes
+            // to avoid race condition where capture reads empty cache)
             match ctx
                 .client_mut()
                 .get_buffer_content(Some(buffer_id), None, None)

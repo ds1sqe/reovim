@@ -135,12 +135,12 @@ fn render_buffer_content<B: RenderBackend>(
     let gutter_width = config.gutter_width;
     let content_x = gutter_width;
 
-    // Get first window's buffer for now (simplified)
+    // TODO(#494): Multi-window — iterate all windows with tiling layout
     let buffer_id = state.windows.first().and_then(|w| w.buffer_id);
 
     let lines = buffer_id.and_then(|id| state.buffer_cache.get(&id));
 
-    // Scroll offset (simplified - use 0 for now)
+    // TODO(#494): Per-window scroll tracking — compute from cursor position
     let scroll_top = 0usize;
 
     for row in 0..content_height {
@@ -218,6 +218,7 @@ fn render_line_number<B: RenderBackend>(
 /// Render a line of buffer content.
 #[allow(clippy::cast_possible_truncation)]
 fn render_line_content<B: RenderBackend>(backend: &mut B, x: u16, y: u16, width: u16, line: &str) {
+    // TODO(#494): Syntax highlighting — accept token spans from tree-sitter driver
     let style = Style::default();
 
     for (col, ch) in line.chars().enumerate() {
@@ -251,7 +252,7 @@ fn render_remote_cursors<B: RenderBackend>(
         let cursor_color = client_color(remote.client_id);
         let cursor_style = Style::default().bg(cursor_color).fg(Color::White);
 
-        // Calculate screen position (simplified - no scroll offset)
+        // TODO(#494): Adjust remote cursor for scroll offset
         let screen_line = remote.cursor_line;
         let screen_col = remote.cursor_col as u16 + gutter_width;
 
@@ -276,6 +277,7 @@ fn render_self_cursor<B: RenderBackend>(
         return;
     };
 
+    // TODO(#494): Adjust self cursor for scroll offset
     let (width, _) = backend.size();
     let screen_line = cursor.line;
     let screen_col = cursor.column as u16 + gutter_width;
@@ -316,6 +318,7 @@ fn render_statusline<B: RenderBackend>(
 }
 
 /// Get the style for a mode indicator.
+// TODO(#494): Theme integration — use theme palette instead of hardcoded colors
 fn mode_style(mode: &str) -> Style {
     let mode_lower = mode.to_lowercase();
     let (fg, bg) = if mode_lower.contains("insert") {
