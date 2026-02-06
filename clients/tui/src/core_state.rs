@@ -1,7 +1,7 @@
 //! Shared TUI core state for interactive and headless modes.
 //!
-//! This module extracts common state types that both `TuiAppV2` and
-//! `HeadlessEventLoop` need for multi-client awareness and proper
+//! This module provides `TuiCoreState`, the unified state type that
+//! `TuiApp<O: TuiOutput>` uses for multi-client awareness and proper
 //! cursor/selection tracking.
 //!
 //! # Architecture (Issue #493)
@@ -147,14 +147,8 @@ pub struct TuiCoreState {
     pub is_insert_mode: bool,
 
     // =========================================================================
-    // Cursor (global + per-window)
+    // Cursor (per-window only)
     // =========================================================================
-    /// Cursor line (0-indexed) - global for statusline compatibility.
-    pub cursor_line: u64,
-
-    /// Cursor column (0-indexed) - global for statusline compatibility.
-    pub cursor_col: u64,
-
     /// Per-window cursor positions.
     ///
     /// Maps `window_id` -> cursor position. Updated from `CursorMoved`
@@ -239,17 +233,11 @@ impl TuiCoreState {
 
     /// Update cursor position for local client.
     ///
-    /// Updates both per-window cursor storage and global cursor for
-    /// statusline compatibility.
+    /// Stores cursor position per-window in `window_cursors`.
+    /// Use `get_focused_cursor()` to retrieve the cursor for the focused window.
     pub fn update_local_cursor(&mut self, window_id: u64, line: u64, column: u64) {
         self.window_cursors
             .insert(window_id, CursorPosition { line, column });
-
-        // Update global cursor if this is the focused window
-        if window_id == self.focused_window_id {
-            self.cursor_line = line;
-            self.cursor_col = column;
-        }
     }
 
     /// Update cursor position for a remote client.
@@ -301,6 +289,17 @@ impl TuiCoreState {
         self.window_selections
             .retain(|id, _| current_window_ids.contains(id));
     }
+
+    /// Get cursor position for the focused window.
+    ///
+    /// This is the single source of truth for cursor position, used by both
+    /// the statusline and cursor positioning. Returns `None` if no cursor
+    /// is tracked for the focused window (e.g., before the first `CursorMoved`
+    /// notification arrives after a layout change).
+    #[must_use]
+    pub fn get_focused_cursor(&self) -> Option<CursorPosition> {
+        self.window_cursors.get(&self.focused_window_id).copied()
+    }
 }
 
 #[cfg(test)]
@@ -336,9 +335,13 @@ mod tests {
         state.focused_window_id = 10;
         state.update_local_cursor(10, 5, 3);
 
-        assert_eq!(state.cursor_line, 5);
-        assert_eq!(state.cursor_col, 3);
+        // Verify cursor stored in window_cursors
         assert!(state.window_cursors.contains_key(&10));
+
+        // Verify get_focused_cursor() returns correct position
+        let cursor = state.get_focused_cursor().expect("cursor should exist");
+        assert_eq!(cursor.line, 5);
+        assert_eq!(cursor.column, 3);
     }
 
     #[test]

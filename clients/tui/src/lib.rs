@@ -3,19 +3,17 @@
 //! This crate provides the terminal user interface for connecting
 //! to reovim servers via gRPC v2 protocol.
 //!
-//! - **`TuiAppV2`**: Main event loop with gRPC streaming
-//! - **Rendering**: Client-side rendering via local frame buffer
-//! - **Input**: Keyboard input handling
+//! - **`TuiApp<O: TuiOutput>`**: Unified event loop with common input/output bus
+//! - **Rendering**: Client-side rendering via `RenderBackend` trait
+//! - **Input**: Common channel (TTY keyboard + programmatic `TuiHandle`)
 //!
-//! # Architecture (Epic #465 Phase 10)
+//! # Architecture (Issue #493 - Common Bus TUI)
 //!
 //! ```text
-//! ┌─────────────────────────────────────────────────────────────┐
-//! │  lib/clients/tui/                  (THIS CRATE)             │
-//! │    TuiAppV2, TuiGrpcClient, Renderer                        │
-//! ├─────────────────────────────────────────────────────────────┤
-//! │  lib/protocol/                     (gRPC v2 types)          │
-//! └─────────────────────────────────────────────────────────────┘
+//! TTY keyboard ──┐
+//!                ├──► input_rx ──► TuiApp ──► FrameBuffer ──► output.flush()
+//! TuiHandle ─────┘                              ↑              ↓
+//!                                          render_frame()   TTY / no-op
 //! ```
 //!
 //! NOTE: v1 JSON-RPC code removed (gRPC v2 is the only supported protocol).
@@ -81,51 +79,53 @@ pub mod cli_panel;
 pub mod cli_render;
 pub mod core_helpers;
 pub mod core_state;
+pub mod handle;
 pub mod input;
 pub mod layout_mirror;
 pub mod log_buffer;
 pub mod log_panel;
 pub mod log_render;
 pub mod notification_handler;
+pub mod output;
 pub mod render;
+pub mod render_backend;
 pub mod render_core;
+pub mod render_engine;
+pub mod tui_output;
 
 // gRPC v2 client
 #[cfg(feature = "grpc")]
 pub mod grpc_client;
 
-// gRPC v2 TUI app
+// Unified TUI app (Issue #493)
 #[cfg(feature = "grpc")]
-pub mod app_v2;
-
-// gRPC v2 headless TUI app
-#[cfg(feature = "grpc")]
-pub mod app_v2_headless;
+pub mod app;
 
 pub use {
     cli_panel::{CliHistoryEntry, CliPanelState, CliResult},
     core_state::{
         ClientRole, CursorPosition, LineNumberMode, RemoteClient, SelectionState, TuiCoreState,
     },
+    handle::{TuiHandle, TuiHandleError},
     input::InputHandler,
     log_buffer::{LevelColor, TuiLogBuffer, TuiLogEntry},
     log_panel::LogPanelState,
     log_render::{format_entry, render_panel},
+    output::{HeadlessOutput, TerminalOutput},
     render::Renderer,
+    render_backend::{RenderBackend, format_frame_buffer},
     render_core::{RenderState, build_frame_content},
+    render_engine::{RenderConfig, render_frame},
+    tui_output::{CursorStyleHint, TuiOutput},
 };
+
+// Unified TUI app exports
+#[cfg(feature = "grpc")]
+pub use app::{TuiApp, TuiAppError, connect_headless, connect_interactive};
 
 // gRPC v2 client exports
 #[cfg(feature = "grpc")]
 pub use grpc_client::{TuiGrpcClient, TuiGrpcError};
-
-// gRPC v2 TUI app exports
-#[cfg(feature = "grpc")]
-pub use app_v2::{TuiAppV2, TuiAppV2Error};
-
-// gRPC v2 headless TUI app exports
-#[cfg(feature = "grpc")]
-pub use app_v2_headless::{FrameMetadata, HeadlessError, TuiAppV2Headless};
 
 /// TUI mode CLI arguments.
 ///

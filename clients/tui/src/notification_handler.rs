@@ -1,8 +1,8 @@
 //! Unified notification handler for interactive and headless TUI.
 //!
 //! This module provides a single source of truth for handling server
-//! notifications. Both `TuiAppV2` and `HeadlessEventLoop` implement
-//! the `NotificationContext` trait and use `handle_notification()`.
+//! notifications. `TuiApp<O: TuiOutput>` implements
+//! the `NotificationContext` trait and uses `handle_notification()`.
 //!
 //! # Design
 //!
@@ -138,6 +138,16 @@ pub async fn handle_notification<C: NotificationContext>(
         Payload::CursorMoved(cursor) => {
             let state = ctx.state_mut();
             let is_local = cursor.client_id == state.my_client_id;
+
+            // Debug: trace cursor notifications to diagnose position bugs
+            tracing::debug!(
+                notif_client_id = cursor.client_id,
+                my_client_id = state.my_client_id,
+                is_local,
+                window_id = cursor.window_id,
+                position = ?cursor.position,
+                "CursorMoved notification"
+            );
 
             if let Some(pos) = cursor.position {
                 if is_local {

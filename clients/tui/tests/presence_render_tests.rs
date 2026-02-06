@@ -17,12 +17,28 @@
 //! - #493: Unify Headless and Interactive TUI
 //! - #474: Multi-client presence rendering
 
+// Allow test-specific patterns
+#![allow(clippy::items_after_statements)] // Helper functions inside tests
+#![allow(clippy::collapsible_if)] // Nested if for readability
+#![allow(clippy::manual_assert)] // if-then-panic for test clarity
+#![allow(clippy::uninlined_format_args)] // Format args for compatibility
+
 use std::time::Duration;
 
 use {
-    reovim_client_tui::TuiAppV2Headless, reovim_protocol::v1::ScreenFormat,
+    reovim_client_tui::{TuiAppError, TuiHandle, connect_headless},
     reovim_testing::TestServerHarness,
 };
+
+/// Helper to create a headless TUI connection.
+///
+/// Connects to the server, spawns the event loop, and returns a handle.
+async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, TuiAppError> {
+    let (mut app, handle) = connect_headless(addr, width, height, None, None).await?;
+    // Spawn the event loop in the background
+    tokio::spawn(async move { app.run().await });
+    Ok(handle)
+}
 
 // ============================================================================
 // Multi-Client Connection Tests
@@ -37,15 +53,15 @@ async fn test_three_headless_tuis_connect() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 3 headless TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -54,15 +70,15 @@ async fn test_three_headless_tuis_connect() {
 
     // All TUIs should be able to capture frames
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
     let frame3 = tui3
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 3 failed to capture");
 
@@ -89,11 +105,11 @@ async fn test_independent_key_input() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 2 headless TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -109,11 +125,11 @@ async fn test_independent_key_input() {
 
     // Both TUIs should be able to capture frames
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
 
@@ -138,11 +154,11 @@ async fn test_independent_cursor_positions() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 2 headless TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -169,11 +185,11 @@ async fn test_independent_cursor_positions() {
 
     // Capture frames - each TUI should show its own cursor position in statusline
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
 
@@ -202,15 +218,15 @@ async fn test_remote_cursor_colors_in_ansi_capture() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 3 headless TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -234,7 +250,7 @@ async fn test_remote_cursor_colors_in_ansi_capture() {
     // Capture with RawAnsi (includes escape sequences) from TUI 1's perspective
     // TUI 1 should see TUI 2 and TUI 3's cursors in color
     let frame_ansi = tui1
-        .capture(ScreenFormat::RawAnsi)
+        .capture("ansi")
         .await
         .expect("Failed to capture RawAnsi frame");
 
@@ -263,7 +279,7 @@ async fn test_presence_join_notification() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect first TUI
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
@@ -271,12 +287,12 @@ async fn test_presence_join_notification() {
 
     // Capture initial state
     let frame_before = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Failed to capture before");
 
     // Connect second TUI (should trigger PresenceJoined notification)
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -286,7 +302,7 @@ async fn test_presence_join_notification() {
     // TUI 1 should now track TUI 2 in its other_clients
     // We can verify this indirectly by checking that TUI 2's cursor is rendered
     let frame_after = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Failed to capture after");
 
@@ -307,11 +323,11 @@ async fn test_presence_leave_notification() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect two TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -325,7 +341,7 @@ async fn test_presence_leave_notification() {
 
     // TUI 1 should still be able to capture frames
     let frame = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture after TUI 2 left");
 
@@ -347,11 +363,11 @@ async fn test_independent_mode_state() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 2 headless TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -366,11 +382,11 @@ async fn test_independent_mode_state() {
 
     // Capture frames
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
 
@@ -411,19 +427,19 @@ async fn test_three_tui_comprehensive_scenario() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // === Phase 1: Connect all TUIs ===
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -432,15 +448,15 @@ async fn test_three_tui_comprehensive_scenario() {
 
     // === Phase 2: Verify all TUIs can capture frames ===
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed to capture");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
     let frame3 = tui3
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 3 failed to capture");
 
@@ -457,11 +473,11 @@ async fn test_three_tui_comprehensive_scenario() {
 
     // All TUIs should still be responsive
     let frame1_after = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed after cursor move");
     let frame3_after = tui3
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 3 failed after cursor move");
 
@@ -474,11 +490,11 @@ async fn test_three_tui_comprehensive_scenario() {
 
     // TUI 1 and TUI 3 should still work
     let frame1_final = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed after TUI 2 left");
     let frame3_final = tui3
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 3 failed after TUI 2 left");
 
@@ -503,13 +519,13 @@ async fn test_rapid_connect_disconnect() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Keep one TUI connected throughout
-    let anchor_tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let anchor_tui = headless_tui(&addr, 80, 24)
         .await
         .expect("Anchor TUI failed to connect");
 
     // Rapidly connect and disconnect other TUIs
     for i in 0..5 {
-        let temp_tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+        let temp_tui = headless_tui(&addr, 80, 24)
             .await
             .unwrap_or_else(|_| panic!("Temp TUI {i} failed to connect"));
 
@@ -522,7 +538,7 @@ async fn test_rapid_connect_disconnect() {
 
     // Anchor TUI should still work
     let frame = anchor_tui
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Anchor TUI failed to capture after stress");
 
@@ -551,7 +567,7 @@ async fn test_initial_cursor_sync_on_join() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // TUI 1 connects first
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
@@ -568,7 +584,7 @@ async fn test_initial_cursor_sync_on_join() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Now TUI 2 joins - should receive TUI 1's current cursor position
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -577,7 +593,7 @@ async fn test_initial_cursor_sync_on_join() {
 
     // TUI 2 should see TUI 1's cursor on line 3
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed to capture");
 
@@ -611,10 +627,10 @@ async fn test_buffer_switch_cursor_context() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -632,7 +648,7 @@ async fn test_buffer_switch_cursor_context() {
 
     // TUI 2 should see TUI 1's cursor at line 5
     let frame_before = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed");
 
@@ -646,7 +662,7 @@ async fn test_buffer_switch_cursor_context() {
 
     // TUI 2 should now see TUI 1's cursor at line 1, not line 5
     let frame_after = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture after failed");
 
@@ -678,10 +694,10 @@ async fn test_remote_cursor_at_eol() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -699,7 +715,7 @@ async fn test_remote_cursor_at_eol() {
 
     // TUI 2 should render without panic
     let frame = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed - possible panic at EOL cursor");
 
@@ -718,10 +734,10 @@ async fn test_remote_cursor_empty_buffer() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -730,11 +746,11 @@ async fn test_remote_cursor_empty_buffer() {
 
     // Both TUIs at (0, 0) in empty buffer
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 capture failed");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed");
 
@@ -754,10 +770,10 @@ async fn test_remote_visual_selection() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -777,7 +793,7 @@ async fn test_remote_visual_selection() {
 
     // TUI 2 should capture without panic (selection rendering)
     let frame2 = tui2
-        .capture(ScreenFormat::RawAnsi)
+        .capture("ansi")
         .await
         .expect("TUI 2 capture failed during remote selection");
 
@@ -802,10 +818,10 @@ async fn test_remote_multiline_selection() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -825,7 +841,7 @@ async fn test_remote_multiline_selection() {
 
     // TUI 2 should render the multiline selection
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed during multiline selection");
 
@@ -856,13 +872,13 @@ async fn test_rapid_cursor_updates() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -887,15 +903,15 @@ async fn test_rapid_cursor_updates() {
 
     // All TUIs should still be responsive
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 failed after rapid updates");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 failed after rapid updates");
     let frame3 = tui3
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 3 failed after rapid updates");
 
@@ -917,13 +933,13 @@ async fn test_presence_map_cleanup() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Anchor TUI stays connected
-    let anchor = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let anchor = headless_tui(&addr, 80, 24)
         .await
         .expect("Anchor failed to connect");
 
     // Connect and disconnect 20 clients
     for i in 0..20 {
-        let temp = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+        let temp = headless_tui(&addr, 80, 24)
             .await
             .unwrap_or_else(|_| panic!("Temp TUI {i} failed to connect"));
 
@@ -938,7 +954,7 @@ async fn test_presence_map_cleanup() {
 
     // Anchor should still work and not be tracking stale clients
     let frame = anchor
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Anchor capture failed after mass connect/disconnect");
 
@@ -956,13 +972,13 @@ async fn test_cbf8_color_determinism() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect 3 TUIs
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -981,14 +997,8 @@ async fn test_cbf8_color_determinism() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Capture from TUI 1 and TUI 2 - they should see the same colors for TUI 3
-    let frame1 = tui1
-        .capture(ScreenFormat::RawAnsi)
-        .await
-        .expect("TUI 1 capture failed");
-    let frame2 = tui2
-        .capture(ScreenFormat::RawAnsi)
-        .await
-        .expect("TUI 2 capture failed");
+    let frame1 = tui1.capture("ansi").await.expect("TUI 1 capture failed");
+    let frame2 = tui2.capture("ansi").await.expect("TUI 2 capture failed");
 
     // Both frames should have ANSI color codes
     assert!(frame1.contains('\x1b'), "TUI 1 should see colors");
@@ -1019,10 +1029,10 @@ async fn test_delete_line_remote_cursor_on_deleted_line() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1053,11 +1063,11 @@ async fn test_delete_line_remote_cursor_on_deleted_line() {
 
     // Both TUIs should render without panic
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 capture failed after line deletion");
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed after line deletion");
 
@@ -1089,10 +1099,10 @@ async fn test_per_client_undo_isolation() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1116,7 +1126,7 @@ async fn test_per_client_undo_isolation() {
 
     // Verify both texts are present
     let frame_before = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture failed before undo");
 
@@ -1140,7 +1150,7 @@ async fn test_per_client_undo_isolation() {
 
     // Check result
     let frame_after = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture failed after undo");
 
@@ -1169,10 +1179,10 @@ async fn test_undo_does_not_corrupt_remote_cursor() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1202,7 +1212,7 @@ async fn test_undo_does_not_corrupt_remote_cursor() {
 
     // TUI 2 should still be able to capture without panic
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed after TUI 1 undo");
 
@@ -1228,7 +1238,7 @@ async fn test_capture_after_edit_consistency() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
@@ -1242,10 +1252,7 @@ async fn test_capture_after_edit_consistency() {
     // Wait for buffer sync (Bug #4 workaround)
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let frame = tui1
-        .capture(ScreenFormat::PlainText)
-        .await
-        .expect("Capture failed");
+    let frame = tui1.capture("plain_text").await.expect("Capture failed");
 
     // Frame should have content
     assert!(frame.contains("Test Content"), "Capture should show the content");
@@ -1264,7 +1271,7 @@ async fn test_rapid_edit_capture_interleave() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
@@ -1291,10 +1298,7 @@ async fn test_rapid_edit_capture_interleave() {
         tokio::time::sleep(Duration::from_millis(20)).await;
 
         // Immediate capture
-        let frame = tui1
-            .capture(ScreenFormat::PlainText)
-            .await
-            .expect("Capture failed");
+        let frame = tui1.capture("plain_text").await.expect("Capture failed");
 
         if frame.contains("Line 1") {
             valid_count += 1;
@@ -1328,13 +1332,13 @@ async fn test_multiple_cursors_same_position() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
-    let tui3 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui3 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 3 failed to connect");
 
@@ -1357,7 +1361,7 @@ async fn test_multiple_cursors_same_position() {
     // TUI 1 should render without panic
     // Two remote cursors at same position
     let frame = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture failed with overlapping cursors");
 
@@ -1380,11 +1384,11 @@ async fn test_remote_cursor_beyond_screen_width() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // TUI 1: narrow terminal (40 cols)
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 40, 24)
+    let tui1 = headless_tui(&addr, 40, 24)
         .await
         .expect("TUI 1 failed to connect");
     // TUI 2: wide terminal (120 cols)
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 120, 24)
+    let tui2 = headless_tui(&addr, 120, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1403,7 +1407,7 @@ async fn test_remote_cursor_beyond_screen_width() {
 
     // TUI 1 (narrow) should render without panic
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Narrow TUI capture failed - cursor beyond width");
 
@@ -1424,10 +1428,10 @@ async fn test_remote_cursor_with_tabs() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1445,7 +1449,7 @@ async fn test_remote_cursor_with_tabs() {
 
     // TUI 2 should render tabs correctly with remote cursor
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture with tabs failed");
 
@@ -1466,10 +1470,10 @@ async fn test_remote_cursor_with_unicode() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1489,7 +1493,7 @@ async fn test_remote_cursor_with_unicode() {
 
     // TUI 2 should render without panic
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture with unicode failed");
 
@@ -1510,10 +1514,10 @@ async fn test_rapid_mode_switching() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1531,7 +1535,7 @@ async fn test_rapid_mode_switching() {
 
     // TUI 2 should still be responsive
     let frame2 = tui2
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 2 capture failed after rapid mode switches");
 
@@ -1552,10 +1556,10 @@ async fn test_concurrent_edits_same_line() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
-    let tui2 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui2 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 2 failed to connect");
 
@@ -1576,7 +1580,7 @@ async fn test_concurrent_edits_same_line() {
 
     // Check result
     let frame1 = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("TUI 1 capture failed");
 
@@ -1601,7 +1605,7 @@ async fn test_capture_after_delete_shows_correct_state() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui1 = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let tui1 = headless_tui(&addr, 80, 24)
         .await
         .expect("TUI 1 failed to connect");
 
@@ -1622,7 +1626,7 @@ async fn test_capture_after_delete_shows_correct_state() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     let frame = tui1
-        .capture(ScreenFormat::PlainText)
+        .capture("plain_text")
         .await
         .expect("Capture after delete failed");
 
@@ -1639,4 +1643,494 @@ async fn test_capture_after_delete_shows_correct_state() {
     assert!(!frame.is_empty(), "Frame should have content");
 
     tui1.stop().await;
+}
+
+// ============================================================================
+// Cursor Position Isolation Tests (Issue #494)
+// ============================================================================
+
+/// Test that local cursor does NOT follow remote cursor position.
+///
+/// Bug scenario (#494):
+/// - TUI 1 moves to position 1:2
+/// - TUI 2 moves to position 2:3
+/// - TUI 1's statusline should show "1:2", NOT "2:4" (following TUI 2)
+///
+/// The statusline format is `{line+1}:{col+1}` (1-indexed).
+#[tokio::test]
+async fn test_local_cursor_does_not_follow_remote() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // Connect 2 headless TUIs
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+
+    let tui2 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 2 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Add content: 5 lines of text
+    tui1.send_keys("iLine1_Hello<CR>Line2_World<CR>Line3_Test<CR>Line4_Code<CR>Line5_End<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    // Wait for buffer sync
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    // TUI 1: Move to line 1, column 2 (0-indexed: line 0, col 1)
+    // gg = go to line 1, l = move right 1 column
+    tui1.send_keys("ggl").await.expect("TUI 1 move failed");
+
+    // TUI 2: Move to line 2, column 3 (0-indexed: line 1, col 2)
+    // gg = go to line 1, j = down to line 2, 2l = move right 2 columns
+    tui2.send_keys("ggj2l").await.expect("TUI 2 move failed");
+
+    // Wait for cursor notifications to propagate
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Capture TUI 1's frame
+    let frame1 = tui1
+        .capture("plain_text")
+        .await
+        .expect("TUI 1 capture failed");
+
+    // Capture TUI 2's frame
+    let frame2 = tui2
+        .capture("plain_text")
+        .await
+        .expect("TUI 2 capture failed");
+
+    eprintln!("=== TUI 1 Frame ===\n{frame1}");
+    eprintln!("=== TUI 2 Frame ===\n{frame2}");
+
+    // The statusline is at the bottom of the frame
+    // Format: " NORMAL [Owner#N]  ...  1:2 | 127.0.0.1:PORT "
+    // We need to find the cursor position pattern N:M in the last line
+
+    let frame1_lines: Vec<&str> = frame1.lines().collect();
+    let statusline1 = frame1_lines.last().unwrap_or(&"");
+
+    let frame2_lines: Vec<&str> = frame2.lines().collect();
+    let statusline2 = frame2_lines.last().unwrap_or(&"");
+
+    eprintln!("TUI 1 statusline: {statusline1}");
+    eprintln!("TUI 2 statusline: {statusline2}");
+
+    // Extract cursor position from statusline using regex-like search
+    // Look for pattern like "1:2" or "2:3" (digits:digits)
+    fn extract_cursor_from_statusline(line: &str) -> Option<(u32, u32)> {
+        // The cursor position appears as "N:M |" before the server address
+        // Pattern: " 1:2 | 127.0.0.1"
+        for segment in line.split('|') {
+            let trimmed = segment.trim();
+            // Look for a segment that looks like "N:M" where N and M are digits
+            if let Some(colon_idx) = trimmed.rfind(':') {
+                // Check if the characters around : are digits
+                let before = trimmed[..colon_idx].trim();
+                let after = trimmed[colon_idx + 1..].trim();
+
+                // Get the last word before the colon (might be preceded by space)
+                if let Some(line_str) = before.split_whitespace().last() {
+                    if let (Ok(line_num), Ok(col_num)) =
+                        (line_str.parse::<u32>(), after.parse::<u32>())
+                    {
+                        return Some((line_num, col_num));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    let cursor1 = extract_cursor_from_statusline(statusline1);
+    let cursor2 = extract_cursor_from_statusline(statusline2);
+
+    eprintln!("TUI 1 cursor: {cursor1:?}");
+    eprintln!("TUI 2 cursor: {cursor2:?}");
+
+    // Verify TUI 1's cursor is at expected position (1:2)
+    // TUI 1 should NOT have followed TUI 2's cursor (2:4)
+    if let Some((line1, col1)) = cursor1 {
+        // BUG CHECK: If TUI 1 shows position close to TUI 2's position,
+        // that indicates the local cursor is following the remote cursor
+        if line1 == 2 {
+            eprintln!("BUG #494 CONFIRMED: TUI 1 cursor at line 2 (following TUI 2)");
+            eprintln!("Expected: line 1, Got: line {line1}");
+            // Mark as failed - this is the bug we're trying to fix
+            panic!(
+                "BUG #494: Local cursor following remote cursor. Expected line 1, got line {line1}"
+            );
+        }
+
+        // Verify expected position
+        assert_eq!(line1, 1, "TUI 1 should be on line 1 (1-indexed), got {line1}");
+        assert_eq!(col1, 2, "TUI 1 should be at column 2 (1-indexed), got {col1}");
+    } else {
+        eprintln!("WARNING: Could not parse cursor from TUI 1 statusline");
+    }
+
+    // Verify TUI 2's cursor is at expected position (2:3)
+    if let Some((line2, col2)) = cursor2 {
+        assert_eq!(line2, 2, "TUI 2 should be on line 2 (1-indexed), got {line2}");
+        assert_eq!(col2, 3, "TUI 2 should be at column 3 (1-indexed), got {col2}");
+    } else {
+        eprintln!("WARNING: Could not parse cursor from TUI 2 statusline");
+    }
+
+    tui1.stop().await;
+    tui2.stop().await;
+}
+
+/// Test insert mode cursor position after cursor moves.
+///
+/// Bug scenario (#494):
+/// - Type "iHelloWorld.<Esc>"
+/// - Move left with "hh...hh" to position 1:2
+/// - Enter insert mode again
+/// - Insert cursor should be at 1:2, NOT at end of line
+#[tokio::test]
+async fn test_insert_mode_cursor_at_moved_position() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Type "HelloWorld." and escape
+    tui1.send_keys("iHelloWorld.<Esc>")
+        .await
+        .expect("Failed to type initial content");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Move cursor left to position near the start (column 2)
+    // After insert mode, cursor is at the last character (.)
+    // We need to move left multiple times to get to column 2
+    // "HelloWorld." = 11 chars, cursor at col 11 (0-indexed: 10)
+    // Move left 9 times to get to col 2 (0-indexed: 1)
+    tui1.send_keys("0l").await.expect("Move to col 2 failed"); // 0 = start of line, l = right 1
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Capture frame before entering insert mode
+    let frame_normal = tui1
+        .capture("plain_text")
+        .await
+        .expect("Capture failed in normal mode");
+
+    eprintln!("=== Normal mode frame ===\n{frame_normal}");
+
+    // Extract cursor position
+    let normal_lines: Vec<&str> = frame_normal.lines().collect();
+    let statusline_normal = normal_lines.last().unwrap_or(&"");
+    eprintln!("Normal mode statusline: {statusline_normal}");
+
+    // Now enter insert mode
+    tui1.send_keys("i").await.expect("Enter insert mode failed");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Capture frame in insert mode
+    let frame_insert = tui1
+        .capture("plain_text")
+        .await
+        .expect("Capture failed in insert mode");
+
+    eprintln!("=== Insert mode frame ===\n{frame_insert}");
+
+    let insert_lines: Vec<&str> = frame_insert.lines().collect();
+    let statusline_insert = insert_lines.last().unwrap_or(&"");
+    eprintln!("Insert mode statusline: {statusline_insert}");
+
+    // The statusline should show INSERT mode
+    assert!(
+        statusline_insert.contains("INSERT") || statusline_insert.contains("insert"),
+        "Statusline should show INSERT mode"
+    );
+
+    // Extract cursor position from insert mode
+    fn extract_cursor(line: &str) -> Option<(u32, u32)> {
+        for segment in line.split('|') {
+            let trimmed = segment.trim();
+            if let Some(colon_idx) = trimmed.rfind(':') {
+                let before = trimmed[..colon_idx].trim();
+                let after = trimmed[colon_idx + 1..].trim();
+                if let Some(line_str) = before.split_whitespace().last() {
+                    if let (Ok(l), Ok(c)) = (line_str.parse::<u32>(), after.parse::<u32>()) {
+                        return Some((l, c));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    if let Some((line, col)) = extract_cursor(statusline_insert) {
+        // BUG CHECK: If cursor jumps to end of line (col 11 or 12), that's the bug
+        if col > 5 {
+            eprintln!(
+                "BUG #494 CONFIRMED: Insert cursor jumped to column {col} instead of staying at 2"
+            );
+            panic!("BUG #494: Insert cursor position wrong. Expected col ~2, got col {col}");
+        }
+
+        // Cursor should be at line 1, column 2 (1-indexed)
+        assert_eq!(line, 1, "Should be on line 1");
+        assert_eq!(col, 2, "Should be at column 2, got {col}");
+    } else {
+        eprintln!("WARNING: Could not parse cursor from insert mode statusline");
+    }
+
+    tui1.send_keys("<Esc>").await.ok();
+    tui1.stop().await;
+}
+
+/// Test cursor isolation after rapid cursor movements by both clients.
+///
+/// This test verifies that after multiple cursor movements by both TUIs,
+/// each TUI still reports its own cursor position correctly.
+#[tokio::test]
+async fn test_cursor_isolation_after_rapid_movements() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+
+    let tui2 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 2 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Add 10 lines of content
+    tui1.send_keys("iL1<CR>L2<CR>L3<CR>L4<CR>L5<CR>L6<CR>L7<CR>L8<CR>L9<CR>L10<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Rapid alternating cursor movements
+    for _ in 0..5 {
+        // TUI 1 moves to line 3
+        tui1.send_keys("3gg").await.ok();
+        // TUI 2 moves to line 7
+        tui2.send_keys("7gg").await.ok();
+        // Small delay between movements
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Final positions
+    tui1.send_keys("2gg$")
+        .await
+        .expect("TUI 1 final move failed"); // Line 2, end
+    tui2.send_keys("8gg0")
+        .await
+        .expect("TUI 2 final move failed"); // Line 8, start
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Capture both frames
+    let frame1 = tui1
+        .capture("plain_text")
+        .await
+        .expect("TUI 1 capture failed");
+    let frame2 = tui2
+        .capture("plain_text")
+        .await
+        .expect("TUI 2 capture failed");
+
+    eprintln!("=== TUI 1 Frame (expecting line 2) ===\n{frame1}");
+    eprintln!("=== TUI 2 Frame (expecting line 8) ===\n{frame2}");
+
+    // Check debug output shows correct cursor
+    // Format: "cursor: line=N, col=M"
+    fn extract_debug_cursor(frame: &str) -> Option<(u64, u64)> {
+        for line in frame.lines() {
+            if line.starts_with("cursor:") {
+                // Parse "cursor: line=N, col=M"
+                let line_num = line
+                    .split("line=")
+                    .nth(1)?
+                    .split(',')
+                    .next()?
+                    .parse()
+                    .ok()?;
+                let col_num = line.split("col=").nth(1)?.trim().parse().ok()?;
+                return Some((line_num, col_num));
+            }
+        }
+        None
+    }
+
+    let cursor1 = extract_debug_cursor(&frame1);
+    let cursor2 = extract_debug_cursor(&frame2);
+
+    eprintln!("TUI 1 cursor: {cursor1:?}");
+    eprintln!("TUI 2 cursor: {cursor2:?}");
+
+    // TUI 1 should be on line 2 (0-indexed: line 1)
+    if let Some((line, _)) = cursor1 {
+        assert_eq!(line, 1, "TUI 1 should be on line 2 (0-indexed: 1), got {line}");
+    }
+
+    // TUI 2 should be on line 8 (0-indexed: line 7)
+    if let Some((line, _)) = cursor2 {
+        assert_eq!(line, 7, "TUI 2 should be on line 8 (0-indexed: 7), got {line}");
+    }
+
+    tui1.stop().await;
+    tui2.stop().await;
+}
+
+/// Test exact user-reported scenario (#494):
+/// 1. TUI 1 types "iHelloWorld.<Esc>"
+/// 2. TUI 1 moves left to column 2 with "0l"
+/// 3. TUI 2 moves to a different position
+/// 4. TUI 1 re-enters insert mode
+/// 5. Verify TUI 1's cursor is at the correct position, not following TUI 2
+#[tokio::test]
+async fn test_user_scenario_494_cursor_following() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+
+    let tui2 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 2 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Step 1: TUI 1 types "iHelloWorld.<Esc>"
+    tui1.send_keys("iHelloWorld.<Esc>")
+        .await
+        .expect("TUI 1 failed to type content");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Step 2: TUI 1 moves to column 2 (0-indexed: col 1)
+    // After <Esc>, cursor is at last typed char. Use "0l" to go to start then right 1
+    tui1.send_keys("0l")
+        .await
+        .expect("TUI 1 move to col 2 failed");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Capture TUI 1's position before TUI 2 moves
+    let frame1_before = tui1.capture("plain_text").await.expect("Capture 1 failed");
+    eprintln!("=== TUI 1 before TUI 2 moves ===\n{frame1_before}");
+
+    // Step 3: TUI 2 moves to line 1, column 8 (0-indexed: line 0, col 7)
+    tui2.send_keys("07l").await.expect("TUI 2 move failed");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Capture both TUIs
+    let frame1_after = tui1
+        .capture("plain_text")
+        .await
+        .expect("Capture 1 after failed");
+    let frame2 = tui2.capture("plain_text").await.expect("Capture 2 failed");
+
+    eprintln!("=== TUI 1 after TUI 2 moves ===\n{frame1_after}");
+    eprintln!("=== TUI 2 ===\n{frame2}");
+
+    // Step 4: TUI 1 enters insert mode
+    tui1.send_keys("i")
+        .await
+        .expect("TUI 1 enter insert failed");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Capture TUI 1 in insert mode
+    let frame1_insert = tui1
+        .capture("plain_text")
+        .await
+        .expect("Capture insert failed");
+    eprintln!("=== TUI 1 in INSERT mode ===\n{frame1_insert}");
+
+    // Extract cursor from debug output
+    fn extract_cursor_from_debug(frame: &str) -> Option<(u64, u64)> {
+        for line in frame.lines() {
+            if line.starts_with("cursor:") {
+                let line_num = line
+                    .split("line=")
+                    .nth(1)?
+                    .split(',')
+                    .next()?
+                    .parse()
+                    .ok()?;
+                let col_num = line.split("col=").nth(1)?.trim().parse().ok()?;
+                return Some((line_num, col_num));
+            }
+        }
+        None
+    }
+
+    let cursor1_before = extract_cursor_from_debug(&frame1_before);
+    let cursor1_after = extract_cursor_from_debug(&frame1_after);
+    let cursor1_insert = extract_cursor_from_debug(&frame1_insert);
+    let cursor2 = extract_cursor_from_debug(&frame2);
+
+    eprintln!("TUI 1 cursor before: {cursor1_before:?}");
+    eprintln!("TUI 1 cursor after TUI 2 moves: {cursor1_after:?}");
+    eprintln!("TUI 1 cursor in INSERT: {cursor1_insert:?}");
+    eprintln!("TUI 2 cursor: {cursor2:?}");
+
+    // Verify TUI 1's cursor stayed at column 1 (0-indexed) throughout
+    if let Some((line_before, col_before)) = cursor1_before {
+        assert_eq!(line_before, 0, "TUI 1 should be on line 1 (0-indexed: 0)");
+        assert_eq!(col_before, 1, "TUI 1 should be at column 2 (0-indexed: 1)");
+    }
+
+    if let Some((line_after, col_after)) = cursor1_after {
+        // BUG CHECK: Did TUI 1's cursor move after TUI 2 moved?
+        if col_after != 1 {
+            panic!(
+                "BUG #494: TUI 1 cursor changed from col 1 to col {} after TUI 2 moved!",
+                col_after
+            );
+        }
+        assert_eq!(line_after, 0, "TUI 1 should still be on line 1");
+        assert_eq!(col_after, 1, "TUI 1 should still be at column 2");
+    }
+
+    if let Some((line_insert, col_insert)) = cursor1_insert {
+        // In insert mode, cursor should still be at the same logical position
+        assert_eq!(line_insert, 0, "Insert mode: TUI 1 should be on line 1");
+        // Note: Insert mode cursor position should be at or near the normal mode position
+        assert!(
+            col_insert <= 2,
+            "Insert mode: TUI 1 should be near column 2, got {}",
+            col_insert
+        );
+    }
+
+    // Verify TUI 2 moved to expected position
+    if let Some((_, col2)) = cursor2 {
+        assert_eq!(col2, 7, "TUI 2 should be at column 8 (0-indexed: 7)");
+    }
+
+    tui1.send_keys("<Esc>").await.ok();
+    tui1.stop().await;
+    tui2.stop().await;
 }

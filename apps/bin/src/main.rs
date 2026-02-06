@@ -43,7 +43,7 @@ use {
 
 use {
     reovim_client_cli::OutputFormat,
-    reovim_client_tui::{TuiAppV2, TuiAppV2Headless},
+    reovim_client_tui::{connect_headless, connect_interactive},
 };
 
 /// Reovim editor - new architecture.
@@ -462,16 +462,20 @@ async fn run_cli(
 async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Result<()> {
     tracing::info!("Connecting headless TUI to {addr} ({width}x{height})");
 
-    // connect_with_size spawns the event loop automatically
-    let tui = TuiAppV2Headless::connect_with_size(addr, width, height)
+    let (mut app, handle) = connect_headless(addr, width, height, None, None)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
     tracing::info!("Headless TUI connected and running");
 
-    // Run until interrupted
+    // Spawn event loop and wait for Ctrl-C
+    let app_handle = tokio::spawn(async move { app.run().await });
+
     tokio::signal::ctrl_c().await?;
-    tui.stop().await;
+    handle.stop().await;
+
+    // Wait for event loop to finish
+    let _ = app_handle.await;
 
     Ok(())
 }
@@ -480,16 +484,16 @@ async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Resul
 async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
     tracing::info!("Connecting interactive TUI to {addr}");
 
-    let mut tui = TuiAppV2::connect(addr, None, None)
+    let (mut app, _handle) = connect_interactive(addr, None, None)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
-    let result = tui
+    let result = app
         .run()
         .await
         .map_err(|e| std::io::Error::other(e.to_string()));
 
-    drop(tui);
+    drop(app);
     result
 }
 

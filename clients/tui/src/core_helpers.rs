@@ -1,7 +1,7 @@
-//! Shared helper functions for interactive and headless TUI.
+//! Shared helper functions for TUI layout handling.
 //!
-//! This module extracts common utility functions that both `TuiAppV2` and
-//! `HeadlessEventLoop` use for layout handling and buffer management.
+//! This module extracts common utility functions that `TuiApp<O: TuiOutput>`
+//! uses for layout handling and buffer management.
 //!
 //! # Functions
 //!

@@ -15,9 +15,19 @@
 use std::time::Duration;
 
 use {
-    reovim_client_tui::TuiAppV2Headless, reovim_protocol::v1::ScreenFormat,
+    reovim_client_tui::{TuiAppError, TuiHandle, connect_headless},
     reovim_testing::TestServerHarness,
 };
+
+/// Helper to create a headless TUI connection.
+///
+/// Connects to the server, spawns the event loop, and returns a handle.
+async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, TuiAppError> {
+    let (mut app, handle) = connect_headless(addr, width, height, None, None).await?;
+    // Spawn the event loop in the background
+    tokio::spawn(async move { app.run().await });
+    Ok(handle)
+}
 
 // ============================================================================
 // Connection Tests
@@ -32,7 +42,7 @@ async fn test_headless_tui_connects() {
     let addr = format!("127.0.0.1:{}", harness.port());
 
     // Connect headless TUI
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
@@ -40,15 +50,15 @@ async fn test_headless_tui_connects() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Capture frame directly from TUI
-    let frame = tui
-        .capture(ScreenFormat::PlainText)
+    let frame = handle
+        .capture("plain_text")
         .await
         .expect("Failed to capture");
 
     // Verify non-empty frame - should have at least tildes for empty buffer
     assert!(!frame.is_empty(), "Frame should have content");
 
-    tui.stop().await;
+    handle.stop().await;
 }
 
 /// Test that TUI renders the statusline with mode indicator.
@@ -59,14 +69,14 @@ async fn test_statusline_renders() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let frame = tui
-        .capture(ScreenFormat::PlainText)
+    let frame = handle
+        .capture("plain_text")
         .await
         .expect("Failed to capture");
 
@@ -74,7 +84,7 @@ async fn test_statusline_renders() {
     let last_line = frame.lines().last().unwrap_or("");
     assert!(!last_line.is_empty(), "Statusline (last line) should not be empty");
 
-    tui.stop().await;
+    handle.stop().await;
 }
 
 // ============================================================================
@@ -92,17 +102,17 @@ async fn test_insert_mode_indicator() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Send 'i' to enter insert mode
-    tui.send_keys("i").await.expect("Failed to send keys");
+    handle.send_keys("i").await.expect("Failed to send keys");
 
     // Wait for mode to change
-    let result = tui
+    let result = handle
         .wait_for(Duration::from_secs(2), |frame| frame.to_lowercase().contains("insert"))
         .await;
 
@@ -115,7 +125,7 @@ async fn test_insert_mode_indicator() {
         }
         Err(e) => {
             // If wait_for times out, capture current frame for debugging
-            let frame = tui.capture(ScreenFormat::PlainText).await.ok();
+            let frame = handle.capture("plain_text").await.ok();
             panic!(
                 "Failed to wait for INSERT mode: {e}\nCurrent frame:\n{}",
                 frame.unwrap_or_default()
@@ -123,7 +133,7 @@ async fn test_insert_mode_indicator() {
         }
     }
 
-    tui.stop().await;
+    handle.stop().await;
 }
 
 /// Test that pressing Escape returns to normal mode.
@@ -137,19 +147,22 @@ async fn test_escape_returns_to_normal() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Enter insert mode then escape
-    tui.send_keys("i").await.expect("Failed to send 'i'");
+    handle.send_keys("i").await.expect("Failed to send 'i'");
     tokio::time::sleep(Duration::from_millis(50)).await;
-    tui.send_keys("<Esc>").await.expect("Failed to send Escape");
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Escape");
 
     // Wait for mode to change back to normal
-    let result = tui
+    let result = handle
         .wait_for(Duration::from_secs(2), |frame| {
             let lower = frame.to_lowercase();
             lower.contains("normal") || !lower.contains("insert")
@@ -164,7 +177,7 @@ async fn test_escape_returns_to_normal() {
             );
         }
         Err(e) => {
-            let frame = tui.capture(ScreenFormat::PlainText).await.ok();
+            let frame = handle.capture("plain_text").await.ok();
             panic!(
                 "Failed to return to normal mode: {e}\nCurrent frame:\n{}",
                 frame.unwrap_or_default()
@@ -172,7 +185,7 @@ async fn test_escape_returns_to_normal() {
         }
     }
 
-    tui.stop().await;
+    handle.stop().await;
 }
 
 // ============================================================================
@@ -190,19 +203,20 @@ async fn test_text_input_visible() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Enter insert mode and type "hello"
-    tui.send_keys("ihello<Esc>")
+    handle
+        .send_keys("ihello<Esc>")
         .await
         .expect("Failed to send keys");
 
     // Wait for text to appear
-    let result = tui
+    let result = handle
         .wait_for(Duration::from_secs(2), |frame| frame.contains("hello"))
         .await;
 
@@ -211,12 +225,12 @@ async fn test_text_input_visible() {
             assert!(frame.contains("hello"), "Frame should contain typed text 'hello'");
         }
         Err(e) => {
-            let frame = tui.capture(ScreenFormat::PlainText).await.ok();
+            let frame = handle.capture("plain_text").await.ok();
             panic!("Failed to find typed text: {e}\nCurrent frame:\n{}", frame.unwrap_or_default());
         }
     }
 
-    tui.stop().await;
+    handle.stop().await;
 }
 
 // ============================================================================
@@ -231,24 +245,24 @@ async fn test_resize_updates_viewport() {
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
 
-    let tui = TuiAppV2Headless::connect_with_size(&addr, 80, 24)
+    let handle = headless_tui(&addr, 80, 24)
         .await
         .expect("Failed to connect TUI");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Resize to larger dimensions
-    tui.resize(120, 40).await.expect("Failed to resize");
+    handle.resize(120, 40).await.expect("Failed to resize");
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Capture after resize
-    let frame = tui
-        .capture(ScreenFormat::PlainText)
+    let frame = handle
+        .capture("plain_text")
         .await
         .expect("Failed to capture");
 
     // The frame should be non-empty (we can't easily verify dimensions in plain text)
     assert!(!frame.is_empty(), "Frame should have content after resize");
 
-    tui.stop().await;
+    handle.stop().await;
 }

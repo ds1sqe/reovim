@@ -94,18 +94,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Refactoring
 
-- **Unified TUI client architecture (#493)**: Extracted shared code between interactive
-  and headless TUI clients so only TTY attachment differs. New modules: `core_state.rs`
-  (shared state types: `TuiCoreState`, `CursorPosition`, `SelectionState`, `RemoteClient`,
-  `ClientRole`, `LineNumberMode`), `core_helpers.rs` (layout helpers: `collect_windows`,
-  `apply_layout`, `apply_layout_notification`, `create_default_window`, `fetch_buffer_contents`,
-  `refetch_buffer`), `notification_handler.rs` (`NotificationContext` trait for unified
-  notification processing). Both TUIs now implement `NotificationContext` and use the
-  unified `handle_notification()` function, eliminating ~370 lines of duplicate inline
-  handlers. Interactive TUI replaced `TuiState` with `TuiCoreState`. Uses deferred refresh
-  pattern: sync trait hooks queue async work (syntax tokens, display options) for later
-  processing. Both TUIs have full multi-client awareness with CBF-8 cursor colors.
-  30 new presence render tests verify multi-client behavior. Net code reduction: ~170 LOC.
+- **Unified TUI client architecture (#493)**: Complete TUI unification so the only
+  difference between interactive and headless modes is I/O. Replaced separate `TuiAppV2`
+  (1514 LOC) and `TuiAppV2Headless` (987 LOC) with a single generic `TuiApp<O: TuiOutput>`
+  (977 LOC). Common input bus: single `mpsc::Receiver<TuiInput>` fed by both TTY reader
+  task and `TuiHandle`. Common output: `FrameBuffer` always owned by `TuiApp`, capture
+  works identically for both modes. `TuiOutput` trait (6 display-only methods): `flush`,
+  `position_cursor`, `uses_terminal_cursor`, `set_cursor_style`, `set_cursor_visible`,
+  `invalidate`. Two implementations: `TerminalOutput` (interactive, wraps Screen/Terminal/
+  Cursor) and `HeadlessOutput` (all no-ops). Symmetric connect API: `connect_interactive()`
+  and `connect_headless()` both return `(TuiApp<O>, TuiHandle)`. `TuiHandle` provides
+  same programmatic API for both modes (send_keys, capture, resize, stop, wait_for).
+  `NotificationContext` trait enables unified notification handling with optional hooks.
+  New modules: `handle.rs` (TuiInput, TuiHandle, spawn_tty_reader), `tui_output.rs`
+  (TuiOutput trait), `output/` (TerminalOutput, HeadlessOutput), `render_backend.rs`
+  (RenderBackend trait, format_frame_buffer), `render_engine.rs` (unified render_frame).
+  Shared state modules: `core_state.rs`, `core_helpers.rs`, `notification_handler.rs`.
+  185 unit tests, 73+ integration tests. Net reduction: ~1500 LOC.
 
 ### Changed
 
