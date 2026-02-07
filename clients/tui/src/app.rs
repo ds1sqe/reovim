@@ -901,14 +901,16 @@ async fn connect_common(
     // Subscribe to all notifications
     let notification_stream = client.subscribe_all().await?;
 
-    // Notify server of viewport size
-    client.resize(u64::from(width), u64::from(height)).await?;
-
-    // Join presence session to get unique client ID
+    // Join presence session first to get session token.
+    // Resize must come AFTER join so the token is attached to the request
+    // and the server can set target_client_id in the resize notification.
     let display_name = std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .map_or_else(|_| "TUI Client".to_string(), |user| format!("TUI@{user}"));
     let join_resp = client.presence_join("tui", &display_name).await?;
+
+    // Notify server of viewport size (token now attached via make_request)
+    client.resize(u64::from(width), u64::from(height)).await?;
     let my_client_id = join_resp.client_id;
     tracing::info!(client_id = my_client_id, display_name, "Joined presence session");
 

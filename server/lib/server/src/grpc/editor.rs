@@ -25,7 +25,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry};
+use crate::session::{ClientId, Session, SessionId, SessionRegistry};
 
 /// gRPC `EditorService` implementation.
 ///
@@ -75,13 +75,16 @@ impl EditorService for EditorServiceImpl {
     ) -> Result<Response<ResizeResponse>, Status> {
         use reovim_protocol::v2::{Notification, ResizeRequestPayload, notification::Payload};
 
+        // Extract caller's client_id from token (if authenticated).
+        // Used to target the resize notification to a specific TUI.
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
         // Relay to TUI via notification
+        #[allow(clippy::cast_possible_truncation)]
         let notification = Notification {
             event_type: "resize_request".to_string(),
-            #[allow(clippy::cast_possible_truncation)] // Timestamp won't overflow u64
             timestamp_ms: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("system time before UNIX_EPOCH")
@@ -89,6 +92,7 @@ impl EditorService for EditorServiceImpl {
             payload: Some(Payload::ResizeRequest(ResizeRequestPayload {
                 width: req.width,
                 height: req.height,
+                target_client_id: client_id.map_or(0, |id| id.as_usize() as u64),
             })),
         };
 

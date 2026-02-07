@@ -197,6 +197,10 @@ message CaptureResponsePayload {
 message ResizeRequestPayload {
   uint64 width = 1;   // New viewport width
   uint64 height = 2;  // New viewport height
+  // Target client ID (required).
+  // Only the TUI with this client_id should resize.
+  // 0 = no target (backward compat, all TUIs resize).
+  uint64 target_client_id = 3;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

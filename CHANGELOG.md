@@ -4,6 +4,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.4-dev
 
+### Added
+
+- **Floating cursor labels for remote clients (#474)**: TUI and Web clients now
+  show a colored background overlay above each remote client's cursor, making it
+  easy to identify who is editing where. TUI labels use `apply_style` to preserve
+  buffer content underneath (colored background without hiding text). Labels use
+  the CBF-8 colorblind-friendly palette and truncate long names via Unicode-safe
+  `truncate_end()`. Web labels replace the previous browser-native tooltip with
+  a persistent floating `<div>`.
+
+### Fixed
+
+- **One-way presence visibility (#474)**: When Client B joined after Client A,
+  A could not see B's cursor. Root cause: `ClientPresence::new()` initialized
+  `buffer_id: None`, so the `PresenceJoined` notification lacked the buffer_id.
+  A's render engine skipped B (different-buffer filter). Fix: server now reads
+  the new client's active window buffer_id before broadcasting the notification.
+
+- **Resize propagation to all TUIs (#474)**: `ResizeRequestPayload` had no
+  `target_client_id` field, causing all TUI clients to resize when any one
+  client resized. Fix: added `target_client_id` to the proto, server sets it
+  from the authenticated token, TUI handler filters by target. Also reordered
+  `connect_common()` to call `resize()` after `join()` so the token is attached.
+
 ### Security
 
 - **Connection-bound client identity (#483)**: Replaced self-reported `client_id`

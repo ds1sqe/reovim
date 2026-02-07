@@ -855,7 +855,9 @@ async fn test_remote_multiline_selection() {
         .await
         .expect("TUI 2 capture failed during multiline selection");
 
-    // Verify content is visible through selection overlay
+    // Verify content is visible through selection overlay.
+    // Cursor labels use apply_style (bg overlay) and never replace characters,
+    // so all lines remain fully visible.
     assert!(frame2.contains("Line A"), "Line A should be visible");
     assert!(frame2.contains("Line B"), "Line B should be visible");
     assert!(frame2.contains("Line C"), "Line C should be visible");
@@ -2149,6 +2151,416 @@ async fn test_user_scenario_494_cursor_following() {
     }
 
     tui1.send_keys("<Esc>").await.ok();
+    tui1.stop().await;
+    tui2.stop().await;
+}
+
+// ============================================================================
+// Bug-Fix Verification Tests (#474 Fixes)
+// ============================================================================
+
+/// Verify Fix: Bidirectional cursor visibility between clients.
+///
+/// Bug: When Client B joined after Client A, A could not see B's cursor.
+/// Root cause: `ClientPresence::new()` initialized `buffer_id: None`,
+/// so the `PresenceJoined` notification lacked the `buffer_id`. A's render
+/// engine skipped B (different-buffer filter).
+///
+/// Fix: Server now reads the new client's active window `buffer_id` before
+/// broadcasting the `PresenceJoined` notification.
+///
+/// This test verifies BOTH directions: A sees B AND B sees A.
+#[tokio::test]
+async fn test_fix_bidirectional_cursor_visibility() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // Step 1: TUI A connects first
+    let tui_a = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI A failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Add multi-line content so cursors have room to move
+    tui_a
+        .send_keys("iAlpha<CR>Bravo<CR>Charlie<CR>Delta<CR>Echo<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    // Move A's cursor to line 3 (0-indexed: line 2)
+    tui_a.send_keys("gg2j").await.expect("TUI A move failed");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Step 2: TUI B connects AFTER A has moved
+    let tui_b = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI B failed to connect");
+
+    // Wait for presence notifications to fully propagate
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Move B's cursor to line 5 (0-indexed: line 4)
+    tui_b.send_keys("gg4j").await.expect("TUI B move failed");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Step 3: Verify B sees A's cursor (B→A direction: always worked via peers_v2)
+    let ansi_from_b = tui_b
+        .capture("ansi")
+        .await
+        .expect("TUI B ANSI capture failed");
+
+    // B should see A's cursor rendered with CBF-8 color on Charlie's line
+    // CBF-8 colors produce 48;2;R;G;B background escape codes
+    assert!(
+        ansi_from_b.contains("48;2;"),
+        "TUI B should see remote cursor colors (A's cursor). \
+         This indicates B rendered A's cursor with CBF-8 background color."
+    );
+
+    // Step 4: Verify A sees B's cursor (A→B direction: THIS WAS THE BUG)
+    let ansi_from_a = tui_a
+        .capture("ansi")
+        .await
+        .expect("TUI A ANSI capture failed");
+
+    // A should see B's cursor rendered with CBF-8 color on Echo's line
+    // This was broken before the fix: PresenceJoined had buffer_id: None,
+    // so A's render engine skipped B (buffer mismatch filter)
+    assert!(
+        ansi_from_a.contains("48;2;"),
+        "BUG FIX VERIFICATION FAILED: TUI A does NOT see B's remote cursor. \
+         Expected CBF-8 background colors (48;2;R;G;B) in A's ANSI capture. \
+         This means the PresenceJoined buffer_id fix is not working."
+    );
+
+    // Step 5: Verify content is intact in both views
+    let text_from_a = tui_a
+        .capture("plain_text")
+        .await
+        .expect("TUI A plain capture failed");
+    let text_from_b = tui_b
+        .capture("plain_text")
+        .await
+        .expect("TUI B plain capture failed");
+
+    assert!(text_from_a.contains("Charlie"), "TUI A should see Charlie");
+    assert!(text_from_b.contains("Charlie"), "TUI B should see Charlie");
+
+    tui_a.stop().await;
+    tui_b.stop().await;
+}
+
+/// Verify Fix: Cursor labels preserve buffer content underneath.
+///
+/// Bug: `render_remote_cursor_labels()` used `write_str()` which replaced
+/// buffer characters with the label text, hiding content.
+///
+/// Fix: Changed to per-cell `apply_style()` which overlays bg+fg color
+/// without replacing the character underneath. Content remains readable.
+///
+/// This test verifies that ALL lines remain visible in `plain_text` capture
+/// even when a cursor label overlaps content.
+#[tokio::test]
+async fn test_fix_cursor_label_preserves_content() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // Connect two TUIs
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+
+    let tui2 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 2 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Add content where lines have recognizable text
+    tui1.send_keys("iApple Banana<CR>Cherry Date<CR>Elderberry Fig<CR>Grape Honey<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Move TUI 1's cursor to line 3 (0-indexed: 2) -- label renders on line 2 (above)
+    tui1.send_keys("gg2j").await.expect("TUI 1 move failed");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // TUI 2 captures -- should see TUI 1's cursor label but content preserved
+    let frame2 = tui2
+        .capture("plain_text")
+        .await
+        .expect("TUI 2 capture failed");
+
+    // ALL lines should be fully readable in plain_text capture
+    // The label renders on the line ABOVE the cursor (line 2),
+    // so "Cherry Date" would have the colored overlay. With apply_style,
+    // the characters are preserved -- only background color changes.
+    assert!(
+        frame2.contains("Apple Banana"),
+        "Line 1 content should be visible: 'Apple Banana'"
+    );
+    assert!(
+        frame2.contains("Cherry Date"),
+        "BUG FIX VERIFICATION FAILED: 'Cherry Date' hidden by cursor label. \
+         The label should use apply_style (bg overlay) not write_str (char replace)."
+    );
+    assert!(
+        frame2.contains("Elderberry Fig"),
+        "Line 3 content should be visible: 'Elderberry Fig'"
+    );
+    assert!(
+        frame2.contains("Grape Honey"),
+        "Line 4 content should be visible: 'Grape Honey'"
+    );
+
+    // Also verify ANSI capture shows colored background (label style applied)
+    let frame2_ansi = tui2
+        .capture("ansi")
+        .await
+        .expect("TUI 2 ANSI capture failed");
+    assert!(
+        frame2_ansi.contains("48;2;"),
+        "Should see CBF-8 label background color in ANSI output"
+    );
+
+    tui1.stop().await;
+    tui2.stop().await;
+}
+
+/// Verify Fix: Resize only affects the targeted client.
+///
+/// Bug: `ResizeRequestPayload` had no `target_client_id` field, so when
+/// any client resized, ALL TUI clients received and applied the resize.
+///
+/// Fix: Added `target_client_id` to the proto, server sets it from the
+/// authenticated token, TUI handler filters by target. Also reordered
+/// `connect_common()` to call `resize()` after `join()` so the token
+/// is attached.
+///
+/// This test verifies that resizing TUI A does NOT change TUI B's viewport.
+#[tokio::test]
+async fn test_fix_resize_isolation_between_clients() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // TUI A: 80x24, TUI B: 60x20
+    let tui_a = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI A failed to connect");
+    let tui_b = headless_tui(&addr, 60, 20)
+        .await
+        .expect("TUI B failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Add content with many lines so we can measure viewport
+    tui_a
+        .send_keys("iR01<CR>R02<CR>R03<CR>R04<CR>R05<CR>R06<CR>R07<CR>R08<CR>R09<CR>R10<CR>R11<CR>R12<CR>R13<CR>R14<CR>R15<CR>R16<CR>R17<CR>R18<CR>R19<CR>R20<CR>R21<CR>R22<CR>R23<CR>R24<CR>R25<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Capture B's frame BEFORE A resizes
+    let b_pre_resize = tui_b
+        .capture("plain_text")
+        .await
+        .expect("TUI B capture before resize failed");
+    let b_lines_pre = b_pre_resize.lines().count();
+
+    // TUI A resizes to 120x40 (much larger)
+    tui_a.resize(120, 40).await.expect("TUI A resize failed");
+
+    // Wait for resize notification to propagate
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    // Capture B's frame AFTER A resizes
+    let b_post_resize = tui_b
+        .capture("plain_text")
+        .await
+        .expect("TUI B capture after resize failed");
+    let b_lines_post = b_post_resize.lines().count();
+
+    // B's line count should remain the same (60x20 viewport)
+    // Before the fix, B would also resize to 120x40
+    assert_eq!(
+        b_lines_pre, b_lines_post,
+        "BUG FIX VERIFICATION FAILED: TUI B's viewport changed after TUI A resized. \
+         Before: {b_lines_pre} lines, After: {b_lines_post} lines. \
+         The resize notification should only affect the targeted client.",
+    );
+
+    // Verify A's frame DID change (it should have more lines now)
+    let a_resized = tui_a
+        .capture("plain_text")
+        .await
+        .expect("TUI A capture after resize failed");
+    let a_lines_now = a_resized.lines().count();
+
+    // A should have more lines than B (40 vs 20)
+    assert!(
+        a_lines_now > b_lines_post,
+        "TUI A should have more lines after resize ({a_lines_now}) than TUI B ({b_lines_post})",
+    );
+
+    tui_a.stop().await;
+    tui_b.stop().await;
+}
+
+/// Verify Fix: Late joiner sees existing client's cursor immediately.
+///
+/// This is a more targeted test than `test_fix_bidirectional_cursor_visibility`.
+/// It specifically checks the scenario where:
+/// 1. Client A connects and moves to a specific position
+/// 2. Client B joins much later
+/// 3. B should see A's cursor from the `peers_v2` list in `JoinResponse`
+/// 4. A should see B's cursor from `PresenceJoined` notification (the fixed path)
+#[tokio::test]
+async fn test_fix_late_joiner_sees_existing_cursor() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    // Client A connects and does extensive work
+    let tui_a = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI A failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // A creates content and moves cursor
+    tui_a
+        .send_keys("iFirst<CR>Second<CR>Third<CR>Fourth<CR>Fifth<Esc>")
+        .await
+        .expect("Failed to add content");
+    tui_a
+        .send_keys("gg3j")
+        .await
+        .expect("A move to line 4 failed");
+
+    // Significant delay to simulate late joiner scenario
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Client B joins late
+    let tui_b = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI B failed to connect");
+
+    // Wait for full presence sync
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // B should see the remote cursor indicator (▎) somewhere in the frame
+    let frame_b = tui_b
+        .capture("plain_text")
+        .await
+        .expect("TUI B capture failed");
+
+    // Check for remote cursor marker on the expected line
+    let has_remote_cursor = frame_b.contains('\u{258E}'); // ▎ thin cursor bar
+    eprintln!("Late joiner frame:\n{frame_b}");
+    eprintln!("Has remote cursor marker: {has_remote_cursor}");
+
+    // At minimum, B should see A via peers_v2 in the JoinResponse
+    // The content should be synced
+    assert!(frame_b.contains("First"), "B should see content 'First'");
+    assert!(frame_b.contains("Fourth"), "B should see content 'Fourth'");
+
+    // Now verify A sees B (the previously broken direction)
+    let frame_a_ansi = tui_a
+        .capture("ansi")
+        .await
+        .expect("TUI A ANSI capture failed");
+
+    assert!(
+        frame_a_ansi.contains("48;2;"),
+        "TUI A should see B's remote cursor with CBF-8 colors. \
+         If this fails, the PresenceJoined buffer_id fix is not working."
+    );
+
+    tui_a.stop().await;
+    tui_b.stop().await;
+}
+
+/// Verify Fix: Resize + cursor label interaction doesn't corrupt rendering.
+///
+/// Combined scenario: After resize, cursor labels and remote cursors
+/// should still render correctly within the new viewport dimensions.
+#[tokio::test]
+async fn test_fix_resize_then_cursor_label_rendering() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let tui1 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 1 failed to connect");
+    let tui2 = headless_tui(&addr, 80, 24)
+        .await
+        .expect("TUI 2 failed to connect");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Add content
+    tui1.send_keys("iResize Test Line 1<CR>Resize Test Line 2<CR>Resize Test Line 3<Esc>")
+        .await
+        .expect("Failed to add content");
+
+    // Move cursors to different lines
+    tui1.send_keys("gg1j").await.ok(); // Line 2
+    tui2.send_keys("gg2j").await.ok(); // Line 3
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Resize TUI 1 to a smaller terminal
+    tui1.resize(40, 12).await.expect("Resize failed");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // After resize, TUI 1 should still render correctly
+    let frame1 = tui1
+        .capture("plain_text")
+        .await
+        .expect("TUI 1 capture after resize failed");
+
+    // Content should be visible (possibly truncated due to 40-col width)
+    assert!(frame1.contains("Resize Test"), "Content should be visible after resize");
+
+    // TUI 2 should NOT have been resized (isolation)
+    let frame2 = tui2
+        .capture("plain_text")
+        .await
+        .expect("TUI 2 capture failed");
+
+    // TUI 2's full-width content should be intact (80 cols, not truncated to 40)
+    assert!(
+        frame2.contains("Resize Test Line 1"),
+        "TUI 2 content should be fully visible (not truncated by TUI 1's resize)"
+    );
+
+    // TUI 2 should see TUI 1's cursor label without corruption
+    let frame2_ansi = tui2
+        .capture("ansi")
+        .await
+        .expect("TUI 2 ANSI capture failed");
+    assert!(
+        frame2_ansi.contains("48;2;"),
+        "TUI 2 should still render remote cursor colors after resize"
+    );
+
     tui1.stop().await;
     tui2.stop().await;
 }

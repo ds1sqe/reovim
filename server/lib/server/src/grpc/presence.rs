@@ -51,6 +51,8 @@ use crate::{
     },
 };
 
+use reovim_kernel::api::BufferId;
+
 /// Get current Unix timestamp in milliseconds.
 #[allow(clippy::cast_possible_truncation)]
 fn current_timestamp_ms() -> u64 {
@@ -260,8 +262,20 @@ impl PresenceService for PresenceServiceImpl {
         let metadata = crate::session::ClientMetadata::new(&req.client_type, &req.display_name);
         session.add_client_with_metadata(client_id, metadata);
 
-        // Create presence with default state
-        let presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);
+        // Create presence and populate buffer_id from the new client's state.
+        // ClientPresence::new() defaults to buffer_id: None, but the client
+        // was just assigned a window+buffer by add_client_with_metadata().
+        // Without this, PresenceJoined notifications carry buffer_id: None,
+        // and existing clients skip rendering the new cursor (different-buffer filter).
+        let mut presence = ClientPresence::new(client_id, &req.client_type, &req.display_name);
+        presence.buffer_id = session.with_clients(|clients| {
+            clients.get(&client_id).and_then(|c| {
+                c.state
+                    .windows
+                    .active()
+                    .and_then(|w| w.buffer_id.map(BufferId::as_usize))
+            })
+        });
 
         // Add to presence map, get existing peers
         let peers = session.presence().join(presence.clone());

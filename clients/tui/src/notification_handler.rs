@@ -315,13 +315,24 @@ pub async fn handle_notification<C: NotificationContext>(
         }
 
         Payload::ResizeRequest(resize_req) => {
+            // Only handle resize targeted at us (0 = no target for backward compat)
+            let my_client_id = ctx.state_mut().my_client_id;
+            if resize_req.target_client_id != 0 && resize_req.target_client_id != my_client_id {
+                tracing::trace!(
+                    target_client_id = resize_req.target_client_id,
+                    my_client_id,
+                    "Ignoring resize request for different client"
+                );
+                return Ok(NotificationResult::NoRedraw);
+            }
+
             #[allow(clippy::cast_possible_truncation)]
             let width = resize_req.width as u16;
             #[allow(clippy::cast_possible_truncation)]
             let height = resize_req.height as u16;
 
             if width > 0 && height > 0 {
-                tracing::debug!(width, height, "Resize request from CLI");
+                tracing::debug!(width, height, "Resize request");
                 let state = ctx.state_mut();
                 state.width = width;
                 state.height = height;

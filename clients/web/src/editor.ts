@@ -1062,8 +1062,31 @@ export class Editor {
         z-index: 10;
         box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
       `;
-      // Add tooltip with client name
-      el.title = remote.displayName;
+      // Add floating label with client name (#474)
+      const label = document.createElement("div");
+      label.className = "remote-cursor-label";
+      label.textContent =
+        remote.displayName.length > 16
+          ? remote.displayName.slice(0, 15) + "\u2026"
+          : remote.displayName;
+      label.style.cssText = `
+        position: absolute;
+        bottom: 100%;
+        left: 0;
+        background: ${cursorColor};
+        color: white;
+        font-size: 11px;
+        font-family: monospace;
+        padding: 1px 4px;
+        border-radius: 3px 3px 0 0;
+        white-space: nowrap;
+        pointer-events: none;
+        line-height: 14px;
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      `;
+      el.appendChild(label);
       container.appendChild(el);
     }
   }

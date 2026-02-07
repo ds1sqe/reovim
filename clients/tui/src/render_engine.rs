@@ -9,7 +9,13 @@
 //! This is a skeleton for the unified render engine. Full implementation
 //! will be migrated from `app.rs` incrementally.
 
-use {reovim_arch::Color, reovim_driver_display::Style};
+use {
+    reovim_arch::Color,
+    reovim_driver_display::{
+        Style,
+        ui::{display_width, truncate_end},
+    },
+};
 
 use crate::{LineNumberMode, SelectionState, TuiCoreState, render_backend::RenderBackend};
 
@@ -166,6 +172,7 @@ pub fn render_frame<B: RenderBackend>(
 
     // Render cursors (on top of selections)
     render_remote_cursors(backend, state, config.gutter_width, content_height);
+    render_remote_cursor_labels(backend, state, config.gutter_width, content_height);
     if config.render_self_cursor {
         render_self_cursor(backend, state, config.gutter_width, content_height);
     }
@@ -418,6 +425,82 @@ fn render_remote_cursors<B: RenderBackend>(
     }
 }
 
+/// Maximum display width for cursor label names.
+const MAX_LABEL_WIDTH: usize = 16;
+
+/// Prepare label text from a display name.
+///
+/// Returns a padded, truncated label string. Empty names show `" ? "`.
+fn label_text(display_name: &str) -> String {
+    if display_name.is_empty() {
+        return " ? ".to_string();
+    }
+    format!(" {} ", truncate_end(display_name, MAX_LABEL_WIDTH))
+}
+
+/// Render floating name labels for remote cursors.
+///
+/// Shows a colored tag with the client's display name near each remote
+/// cursor. Labels appear one line above the cursor, or one line below
+/// if the cursor is at line 0. Skipped if neither position is in viewport.
+#[allow(clippy::cast_possible_truncation)]
+fn render_remote_cursor_labels<B: RenderBackend>(
+    backend: &mut B,
+    state: &TuiCoreState,
+    gutter_width: u16,
+    content_height: u16,
+) {
+    let (width, _) = backend.size();
+
+    let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
+
+    for remote in state.other_clients.values() {
+        if remote.buffer_id != current_buffer_id {
+            continue;
+        }
+
+        let cursor_line = remote.cursor_line;
+
+        // Determine label y position: prefer above, fallback below
+        let label_y = if cursor_line > 0 {
+            (cursor_line - 1) as u16
+        } else if cursor_line + 1 < u64::from(content_height) {
+            (cursor_line + 1) as u16
+        } else {
+            continue; // No room (single-line viewport)
+        };
+
+        if label_y >= content_height {
+            continue;
+        }
+
+        let label = label_text(&remote.display_name);
+        let label_width = display_width(&label) as u16;
+
+        // Skip if terminal is too narrow for the label
+        if label_width + gutter_width > width {
+            continue;
+        }
+
+        // Clamp x position: start at cursor column, keep label within screen
+        let label_x = (remote.cursor_col as u16 + gutter_width)
+            .min(width.saturating_sub(label_width))
+            .max(gutter_width);
+
+        let label_color = client_color(remote.client_id);
+        let label_style = Style::default().bg(label_color).fg(Color::White);
+
+        // Use apply_style to overlay colored background without hiding buffer text.
+        // Characters underneath remain visible (white on colored bg).
+        for i in 0..label_width {
+            let x = label_x + i;
+            if x < width {
+                backend.apply_style(x, label_y, &label_style);
+            }
+        }
+    }
+}
+
 /// Render self cursor in the backend (for headless mode).
 #[allow(clippy::cast_possible_truncation)]
 fn render_self_cursor<B: RenderBackend>(
@@ -656,13 +739,9 @@ mod tests {
 
         // Entire line 1 and 2 should be highlighted (col 0..40).
         // Cursor is at (2, 0), so skip that exact cell.
+        // Label " Remote " (8 chars) renders on row 1 at col 0, overwriting selection bg.
         for row in 1..=2u16 {
-            let check_col = u16::from(row == 2); // avoid cursor at (2,0)
-            let cell = fb.get(check_col, row).unwrap();
-            assert_eq!(
-                cell.style.bg, expected_bg,
-                "row {row}, col {check_col} should have line selection bg"
-            );
+            // Use col 20 (safely past label region) to check selection bg
             let cell_mid = fb.get(20, row).unwrap();
             assert_eq!(
                 cell_mid.style.bg, expected_bg,
@@ -700,10 +779,14 @@ mod tests {
 
         // Columns 3..=7 on rows 0..=2 should be highlighted.
         // Cursor is at (2, 7), so skip that cell.
+        // Label " Remote " (8 chars) renders on row 1 at col 7, overwriting selection bg there.
         for row in 0..=2u16 {
             for col in 3..=7u16 {
                 if row == 2 && col == 7 {
                     continue; // cursor overwrites selection bg here
+                }
+                if row == 1 && col == 7 {
+                    continue; // label overwrites selection bg here
                 }
                 let cell = fb.get(col, row).unwrap();
                 assert_eq!(
@@ -822,5 +905,203 @@ mod tests {
         assert_eq!(cell_end.style.bg, expected_bg, "row 2 col 4 should be highlighted");
         let cell_after = fb.get(6, 2).unwrap();
         assert_ne!(cell_after.style.bg, expected_bg, "row 2 col 6 should not be highlighted");
+    }
+
+    // ── Cursor Label Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_remote_cursor_label_rendered() {
+        let mut fb = FrameBuffer::new(80, 24);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 2,
+            display_name: "alice".to_string(),
+            cursor_line: 3,
+            cursor_col: 5,
+            buffer_id: Some(100),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Label is a background overlay on row 2 (one above cursor line 3).
+        // Characters are preserved; only bg+fg change.
+        let expected_bg = Some(client_color(2));
+        let label_x = 5u16; // cursor_col
+        #[allow(clippy::cast_possible_truncation)]
+        let label_width = display_width(&label_text("alice")) as u16;
+
+        for i in 0..label_width {
+            let cell = fb.get(label_x + i, 2).unwrap();
+            assert_eq!(cell.style.bg, expected_bg, "col {} should have label bg", label_x + i);
+        }
+
+        // Cell before label should NOT have label bg
+        if label_x > 0 {
+            let before = fb.get(label_x - 1, 2).unwrap();
+            assert_ne!(before.style.bg, expected_bg, "cell before label should not have label bg");
+        }
+    }
+
+    #[test]
+    fn test_remote_cursor_label_at_line_zero() {
+        let mut fb = FrameBuffer::new(80, 24);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 3,
+            display_name: "bob".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(100),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Label bg should appear on row 1 (one below cursor line 0)
+        let expected_bg = Some(client_color(3));
+        #[allow(clippy::cast_possible_truncation)]
+        let label_width = display_width(&label_text("bob")) as u16;
+
+        for i in 0..label_width {
+            let cell = fb.get(i, 1).unwrap();
+            assert_eq!(cell.style.bg, expected_bg, "col {i} on row 1 should have label bg");
+        }
+    }
+
+    #[test]
+    fn test_remote_cursor_label_truncated() {
+        let mut fb = FrameBuffer::new(80, 24);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 4,
+            display_name: "very-long-username-that-exceeds-limit".to_string(),
+            cursor_line: 5,
+            cursor_col: 0,
+            buffer_id: Some(100),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Label bg width should be based on truncated name, not the full name.
+        let expected_bg = Some(client_color(4));
+        let truncated_label = label_text("very-long-username-that-exceeds-limit");
+        #[allow(clippy::cast_possible_truncation)]
+        let label_width = display_width(&truncated_label) as u16;
+
+        // Full name would be 39 chars; truncated should be <= MAX_LABEL_WIDTH + 2 + 3
+        assert!(label_width < 39, "Label should be truncated, got width {label_width}");
+
+        // Verify bg applied for the truncated label width
+        for i in 0..label_width {
+            let cell = fb.get(i, 4).unwrap();
+            assert_eq!(cell.style.bg, expected_bg, "col {i} should have label bg");
+        }
+    }
+
+    #[test]
+    fn test_remote_cursor_label_clamped_to_screen() {
+        let mut fb = FrameBuffer::new(30, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Cursor near right edge
+        state.add_remote_client(RemoteClient {
+            client_id: 5,
+            display_name: "charlie".to_string(),
+            cursor_line: 3,
+            cursor_col: 25,
+            buffer_id: Some(100),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Label bg should be visible (clamped to fit within 30 columns)
+        let expected_bg = Some(client_color(5));
+        #[allow(clippy::cast_possible_truncation)]
+        let label_width = display_width(&label_text("charlie")) as u16;
+
+        // Label clamped: starts at min(25, 30 - label_width), must end before col 30
+        let mut found_label_cells = 0u16;
+        for col in 0..30u16 {
+            if fb.get(col, 2).map(|c| c.style.bg) == Some(expected_bg) {
+                found_label_cells += 1;
+            }
+        }
+        assert_eq!(
+            found_label_cells, label_width,
+            "Should find exactly {label_width} label cells on row 2"
+        );
+    }
+
+    #[test]
+    fn test_remote_cursor_label_different_buffer_not_shown() {
+        let mut fb = FrameBuffer::new(80, 24);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 6,
+            display_name: "eve".to_string(),
+            cursor_line: 3,
+            cursor_col: 0,
+            buffer_id: Some(999), // Different buffer
+            mode: "NORMAL".to_string(),
+            selection: None,
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // No label bg should appear anywhere (client is in a different buffer)
+        let label_bg = Some(client_color(6));
+        for y in 0..23u16 {
+            for x in 0..80u16 {
+                let cell = fb.get(x, y).unwrap();
+                assert_ne!(
+                    cell.style.bg, label_bg,
+                    "No cell should have label bg at ({x}, {y}) for different-buffer client"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_label_text_helper() {
+        // Normal name
+        assert_eq!(label_text("alice"), " alice ");
+
+        // Empty name
+        assert_eq!(label_text(""), " ? ");
+
+        // Long name triggers truncation
+        let long = label_text("very-long-username-that-exceeds");
+        assert!(long.contains("..."), "Long name should be truncated with '...'");
+        assert!(long.starts_with(' '), "Label should have leading space");
+        assert!(long.ends_with(' '), "Label should have trailing space");
+
+        // Exact limit (16 chars)
+        assert_eq!(label_text("exactly16chars!!"), " exactly16chars!! ");
     }
 }
