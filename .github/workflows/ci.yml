@@ -5,6 +5,12 @@ on:
     branches: [develop]
   pull_request:
     branches: [develop]
+  workflow_dispatch:
+    inputs:
+      run_mcdc:
+        description: 'Run MC/DC coverage'
+        type: boolean
+        default: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -69,3 +75,89 @@ jobs:
         run: cargo test --workspace
       - name: Run doc tests
         run: cargo test --doc --workspace
+
+  coverage:
+    name: Coverage (branch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Build FFI modules
+        run: cargo +nightly build -p reovim-module-defaults --features dynamic
+      - name: Generate branch coverage
+        run: |
+          cargo +nightly llvm-cov --branch --workspace \
+            --exclude reovim-module-macros \
+            --exclude reovim-driver-ffi-python \
+            --exclude reovim-bench \
+            --exclude perf-report \
+            --exclude reovim-server \
+            --lcov --output-path lcov.info
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          flags: branch
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  coverage-mcdc:
+    name: Coverage (MC/DC)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Build FFI modules
+        run: cargo +nightly build -p reovim-module-defaults --features dynamic
+      - name: Generate MC/DC coverage
+        run: |
+          RUSTFLAGS="-Z coverage-options=condition" \
+          cargo +nightly llvm-cov --workspace \
+            --exclude reovim-module-macros \
+            --exclude reovim-driver-ffi-python \
+            --exclude reovim-bench \
+            --exclude perf-report \
+            --exclude reovim-server \
+            --lcov --output-path mcdc-lcov.info
+        continue-on-error: true
+      - name: Upload to Codecov
+        if: success()
+        uses: codecov/codecov-action@v5
+        with:
+          files: mcdc-lcov.info
+          flags: mcdc
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Generate HTML report
+        if: always()
+        run: |
+          RUSTFLAGS="-Z coverage-options=condition" \
+          cargo +nightly llvm-cov --workspace \
+            --exclude reovim-module-macros \
+            --exclude reovim-driver-ffi-python \
+            --exclude reovim-bench \
+            --exclude perf-report \
+            --exclude reovim-server \
+            --html --output-dir target/llvm-cov/mcdc-html || true
+      - name: Upload HTML artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcdc-coverage-report
+          path: target/llvm-cov/mcdc-html/
+          retention-days: 30

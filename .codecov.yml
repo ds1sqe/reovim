@@ -1,0 +1,30 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        informational: true
+    patch:
+      default:
+        target: 70%
+        informational: true
+
+ignore:
+  - "tools/**"
+  - "archive/**"
+  - "shared/protocol/src/gen/**"
+  - "**/build.rs"
+  - "shared/testing/**"
+  - "server/lib/drivers/ffi-python/**"
+  - "clients/web/**"
+
+comment:
+  layout: "header, diff, flags, files"
+  require_changes: true
+
+flags:
+  branch:
+    carryforward: true
+  mcdc:
+    carryforward: true

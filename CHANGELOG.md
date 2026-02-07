@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Code coverage infrastructure**: Added `scripts/coverage.sh` for local
+  coverage with four modes (`line`, `branch`, `mcdc`, `server`) using
+  `cargo-llvm-cov`. CI generates branch coverage on every PR and uploads to
+  Codecov. MC/DC coverage available via manual workflow dispatch. Codecov PR
+  annotations show coverage impact of changes (informational, non-blocking).
+  `reovim-server` is included in line mode but excluded from branch/MC/DC
+  due to LLVM bug [#119558](https://github.com/llvm/llvm-project/issues/119558)
+  (`getInstantiationGroups` SIGSEGV on branch coverage data from
+  `#[tonic::async_trait]` service implementations). Use `server` mode for
+  text-only branch coverage of the server crate.
+
 - **Floating cursor labels for remote clients (#474)**: TUI and Web clients now
   show a colored background overlay above each remote client's cursor, making it
   easy to identify who is editing where. TUI labels use `apply_style` to preserve
