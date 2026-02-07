@@ -172,7 +172,7 @@ def tmp_binary(tmp_path: Path) -> Path:
     Returns:
         Path to the fake binary
     """
-    binary = tmp_path / "reovim-new"
+    binary = tmp_path / "reovim"
     binary.write_text("#!/bin/sh\necho 'mock binary'")
     binary.chmod(0o755)
     return binary

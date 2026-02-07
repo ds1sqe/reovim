@@ -28,26 +28,26 @@ class TestBinaryInfo:
     def test_str_format(self):
         """String representation should include name, transport, and path."""
         info = BinaryInfo(
-            path=Path("/test/reovim-new"),
-            transport=Transport.GRPC,
-            name="release-new",
-        )
-
-        s = str(info)
-        assert "release-new" in s
-        assert "GRPC" in s
-        assert "/test/reovim-new" in s
-
-    def test_tcp_transport(self):
-        """Should handle TCP transport correctly."""
-        info = BinaryInfo(
             path=Path("/test/reovim"),
-            transport=Transport.TCP,
+            transport=Transport.GRPC,
             name="release",
         )
 
-        assert info.transport == Transport.TCP
-        assert "TCP" in str(info)
+        s = str(info)
+        assert "release" in s
+        assert "GRPC" in s
+        assert "/test/reovim" in s
+
+    def test_grpc_transport(self):
+        """Should handle GRPC transport correctly."""
+        info = BinaryInfo(
+            path=Path("/test/reovim"),
+            transport=Transport.GRPC,
+            name="release",
+        )
+
+        assert info.transport == Transport.GRPC
+        assert "GRPC" in str(info)
 
 
 class TestDiscoverBinary:
@@ -65,8 +65,8 @@ class TestDiscoverBinary:
             assert info.name == "env"
 
     def test_env_variable_grpc_detection(self, tmp_path: Path):
-        """Env var binary name 'reovim-new' should use GRPC transport."""
-        binary = tmp_path / "reovim-new"
+        """Env var binary name 'reovim' should use GRPC transport."""
+        binary = tmp_path / "reovim"
         binary.touch()
 
         with patch.dict(os.environ, {"REOVIM_BINARY": str(binary)}):
@@ -74,21 +74,11 @@ class TestDiscoverBinary:
 
             assert info.transport == Transport.GRPC
 
-    def test_env_variable_tcp_detection(self, tmp_path: Path):
-        """Env var binary name 'reovim' should use TCP transport."""
-        binary = tmp_path / "reovim"
-        binary.touch()
-
-        with patch.dict(os.environ, {"REOVIM_BINARY": str(binary)}):
-            info = discover_binary(tmp_path)
-
-            assert info.transport == Transport.TCP
-
     def test_env_variable_nonexistent_file(self, tmp_path: Path):
         """Non-existent env var path should fall through to next search."""
         # Create a valid binary in target/
         (tmp_path / "target" / "release").mkdir(parents=True)
-        valid_binary = tmp_path / "target" / "release" / "reovim-new"
+        valid_binary = tmp_path / "target" / "release" / "reovim"
         valid_binary.touch()
 
         with patch.dict(os.environ, {"REOVIM_BINARY": "/nonexistent/path"}):
@@ -97,27 +87,25 @@ class TestDiscoverBinary:
             # Should find the target/ binary instead
             assert info.path == valid_binary
 
-    def test_search_order_prefers_release_new(self, tmp_path: Path):
-        """Should prefer release/reovim-new over other options."""
+    def test_search_order_prefers_release(self, tmp_path: Path):
+        """Should prefer release/reovim over debug."""
         # Create both release and debug
         (tmp_path / "target" / "release").mkdir(parents=True)
         (tmp_path / "target" / "debug").mkdir(parents=True)
 
-        release_new = tmp_path / "target" / "release" / "reovim-new"
-        debug_new = tmp_path / "target" / "debug" / "reovim-new"
-        release_old = tmp_path / "target" / "release" / "reovim"
+        release_binary = tmp_path / "target" / "release" / "reovim"
+        debug_binary = tmp_path / "target" / "debug" / "reovim"
 
-        release_new.touch()
-        debug_new.touch()
-        release_old.touch()
+        release_binary.touch()
+        debug_binary.touch()
 
         with patch.dict(os.environ, {"REOVIM_BINARY": ""}, clear=False):
             with patch.dict(os.environ, {"REOVIM_BINARY": ""}):
                 os.environ.pop("REOVIM_BINARY", None)
                 info = discover_binary(tmp_path)
 
-                assert info.path == release_new
-                assert info.name == "release-new"
+                assert info.path == release_binary
+                assert info.name == "release"
 
     def test_not_found_raises_with_searched_paths(self, tmp_path: Path):
         """Should raise BinaryNotFoundError with list of searched paths."""
@@ -132,12 +120,12 @@ class TestDiscoverBinary:
                 assert len(err.searched) > 0
                 # Should have searched the standard locations
                 names = [name for name, _ in err.searched]
-                assert "release-new" in names
+                assert "release" in names
 
     def test_system_path_fallback(self, tmp_path: Path):
         """Should fall back to system PATH if target/ not found."""
         # Empty directory
-        system_binary = "/usr/local/bin/reovim-new"
+        system_binary = "/usr/local/bin/reovim"
 
         with patch.dict(os.environ, {}, clear=True):
             with patch("reovim.discovery.shutil.which", return_value=system_binary):
@@ -148,13 +136,13 @@ class TestDiscoverBinary:
 
     def test_directory_ignored(self, tmp_path: Path):
         """Should ignore directories with binary names."""
-        # Create a directory named reovim-new (not a file)
+        # Create a directory named reovim (not a file)
         (tmp_path / "target" / "release").mkdir(parents=True)
-        (tmp_path / "target" / "release" / "reovim-new").mkdir()
+        (tmp_path / "target" / "release" / "reovim").mkdir()
 
         # Create actual binary at different location
         (tmp_path / "target" / "debug").mkdir(parents=True)
-        actual_binary = tmp_path / "target" / "debug" / "reovim-new"
+        actual_binary = tmp_path / "target" / "debug" / "reovim"
         actual_binary.touch()
 
         with patch.dict(os.environ, {}, clear=True):
@@ -241,21 +229,12 @@ class TestBinarySearchOrder:
         """Search order should have entries."""
         assert len(BINARY_SEARCH_ORDER) > 0
 
-    def test_grpc_comes_first(self):
-        """GRPC binaries should be searched before TCP."""
-        grpc_indices = [
-            i
-            for i, (_, _, transport) in enumerate(BINARY_SEARCH_ORDER)
-            if transport == Transport.GRPC
-        ]
-        tcp_indices = [
-            i
-            for i, (_, _, transport) in enumerate(BINARY_SEARCH_ORDER)
-            if transport == Transport.TCP
-        ]
+    def test_all_grpc(self):
+        """All binaries should use GRPC transport."""
+        transports = [transport for _, _, transport in BINARY_SEARCH_ORDER]
 
-        # First GRPC should come before first TCP
-        assert min(grpc_indices) < min(tcp_indices)
+        # All entries should be GRPC
+        assert all(t == Transport.GRPC for t in transports)
 
     def test_release_before_debug(self):
         """Release builds should be searched before debug."""

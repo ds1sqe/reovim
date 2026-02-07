@@ -68,7 +68,7 @@ class Editor:
         if self.binary_path:
             from .discovery import Transport
 
-            transport = Transport.GRPC if "reovim-new" in self.binary_path.name else Transport.TCP
+            transport = Transport.GRPC
             self._binary = BinaryInfo(path=self.binary_path, transport=transport, name="explicit")
         else:
             self._binary = discover_binary(base_dir)

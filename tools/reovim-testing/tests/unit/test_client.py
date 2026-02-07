@@ -22,7 +22,7 @@ from reovim.errors import ServerError
 def mock_binary() -> BinaryInfo:
     """Create a mock binary info for testing."""
     return BinaryInfo(
-        path=Path("/usr/bin/reovim-new"),
+        path=Path("/usr/bin/reovim"),
         transport=Transport.GRPC,
         name="test",
     )
@@ -69,19 +69,14 @@ class TestBuildCommand:
         assert "127.0.0.1:50051" in cmd
         assert "--tcp" not in cmd
 
-    def test_tcp_transport(self):
-        """TCP transport should use --tcp flag."""
-        tcp_binary = BinaryInfo(
-            path=Path("/usr/bin/reovim"),
-            transport=Transport.TCP,
-            name="test-tcp",
-        )
-        client = Client(binary=tcp_binary, address="127.0.0.1:12345")
+    def test_grpc_address_format(self):
+        """GRPC transport should format address correctly."""
+        client = Client(binary=mock_binary(), address="127.0.0.1:12345")
 
         cmd = client._build_command("mode")
 
-        assert "--tcp" in cmd
-        assert "--grpc" not in cmd
+        assert "--grpc" in cmd
+        assert "127.0.0.1:12345" in cmd
 
     def test_command_includes_args(self, client: Client):
         """Should include all positional args."""

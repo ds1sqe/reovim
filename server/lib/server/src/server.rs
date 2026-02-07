@@ -9,6 +9,22 @@ use crate::{
     session::{Session, SessionId, SessionRegistry, SessionState},
 };
 
+#[cfg(feature = "grpc")]
+use {
+    crate::grpc::{
+        BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
+        NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
+        SyntaxServiceImpl,
+    },
+    reovim_protocol::v2::{
+        buffer_service_server::BufferServiceServer, editor_service_server::EditorServiceServer,
+        input_service_server::InputServiceServer, module_service_server::ModuleServiceServer,
+        notification_service_server::NotificationServiceServer,
+        presence_service_server::PresenceServiceServer, server_service_server::ServerServiceServer,
+        state_service_server::StateServiceServer, syntax_service_server::SyntaxServiceServer,
+    },
+};
+
 /// Session factory function type.
 ///
 /// Creates a `SessionState` for new sessions. This allows the runner to inject
@@ -157,7 +173,7 @@ impl Server {
             TransportMode::Tcp { port } => self.run_tcp(*port).await,
             #[cfg(unix)]
             TransportMode::UnixSocket { path } => self.run_unix(path).await,
-            TransportMode::Grpc { port } => self.run_grpc(*port).await,
+            TransportMode::Grpc { port } => self.run_grpc(*port, None, None).await,
         }
     }
 
@@ -197,26 +213,15 @@ impl Server {
     }
 
     /// Run with gRPC transport.
-    async fn run_grpc(&self, port: u16) -> std::io::Result<()> {
-        use {
-            crate::grpc::{
-                BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
-                NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
-                SyntaxServiceImpl,
-            },
-            reovim_protocol::v2::{
-                buffer_service_server::BufferServiceServer,
-                editor_service_server::EditorServiceServer,
-                input_service_server::InputServiceServer,
-                module_service_server::ModuleServiceServer,
-                notification_service_server::NotificationServiceServer,
-                presence_service_server::PresenceServiceServer,
-                server_service_server::ServerServiceServer,
-                state_service_server::StateServiceServer,
-                syntax_service_server::SyntaxServiceServer,
-            },
-        };
-
+    ///
+    /// When `shutdown` is `Some`, the server will stop when the future resolves.
+    /// When `port_tx` is `Some`, the bound port is sent before serving starts.
+    async fn run_grpc(
+        &self,
+        port: u16,
+        shutdown: Option<std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>>,
+        port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
+    ) -> std::io::Result<()> {
         // TODO: Make bind address configurable (currently 0.0.0.0 for dev testing)
         let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
             .parse()
@@ -229,6 +234,11 @@ impl Server {
         tracing::info!(address = %local_addr, "Starting gRPC server");
         // Output for test harness (expects exact format)
         eprintln!("Listening on 127.0.0.1:{}", local_addr.port());
+
+        // Report port to caller if requested (for integrated mode with OS-assigned port)
+        if let Some(tx) = port_tx {
+            let _ = tx.send(local_addr.port());
+        }
 
         let default_session_id = SessionId::new(&*self.config.default_session_name);
 
@@ -273,7 +283,7 @@ impl Server {
                 .expose_headers(Any);
 
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-            tonic::transport::Server::builder()
+            let router = tonic::transport::Server::builder()
                 .accept_http1(true) // Required for gRPC-Web
                 .layer(cors)
                 .layer(tonic_web::GrpcWebLayer::new())
@@ -285,16 +295,25 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
-                .add_service(PresenceServiceServer::new(presence_service))
-                .serve_with_incoming(incoming)
-                .await
-                .map_err(std::io::Error::other)
+                .add_service(PresenceServiceServer::new(presence_service));
+
+            if let Some(signal) = shutdown {
+                router
+                    .serve_with_incoming_shutdown(incoming, signal)
+                    .await
+                    .map_err(std::io::Error::other)
+            } else {
+                router
+                    .serve_with_incoming(incoming)
+                    .await
+                    .map_err(std::io::Error::other)
+            }
         }
 
         #[cfg(not(feature = "grpc-web"))]
         {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
-            tonic::transport::Server::builder()
+            let router = tonic::transport::Server::builder()
                 .add_service(BufferServiceServer::new(buffer_service))
                 .add_service(EditorServiceServer::new(editor_service))
                 .add_service(InputServiceServer::new(input_service))
@@ -303,11 +322,64 @@ impl Server {
                 .add_service(ServerServiceServer::new(server_service))
                 .add_service(NotificationServiceServer::new(notification_service))
                 .add_service(SyntaxServiceServer::new(syntax_service))
-                .add_service(PresenceServiceServer::new(presence_service))
-                .serve_with_incoming(incoming)
-                .await
-                .map_err(std::io::Error::other)
+                .add_service(PresenceServiceServer::new(presence_service));
+
+            if let Some(signal) = shutdown {
+                router
+                    .serve_with_incoming_shutdown(incoming, signal)
+                    .await
+                    .map_err(std::io::Error::other)
+            } else {
+                router
+                    .serve_with_incoming(incoming)
+                    .await
+                    .map_err(std::io::Error::other)
+            }
         }
+    }
+
+    /// Run the server until a shutdown signal is received.
+    ///
+    /// Similar to [`run()`](Self::run) but accepts a shutdown future and an optional
+    /// port sender. When the shutdown future resolves, the server performs a graceful
+    /// shutdown. The port sender reports the actual bound port (useful when binding
+    /// to port 0 for OS-assigned ports).
+    ///
+    /// Only gRPC transport is supported.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport fails to start or if the configured
+    /// transport is not gRPC.
+    pub async fn run_until(
+        &self,
+        shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+        port_tx: Option<tokio::sync::oneshot::Sender<u16>>,
+    ) -> std::io::Result<()> {
+        // Create the default session with module-initialized state
+        let session_state = self.create_session_state();
+        let default_session = Arc::new(Session::from_state(
+            SessionId::new(&*self.config.default_session_name),
+            session_state,
+        ));
+        self.sessions.insert(&default_session);
+
+        tracing::info!(
+            session = %self.config.default_session_name,
+            "Created default session"
+        );
+
+        let port = match &self.config.transport {
+            TransportMode::Grpc { port } => *port,
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "run_until() only supports gRPC transport",
+                ));
+            }
+        };
+
+        self.run_grpc(port, Some(Box::pin(shutdown)), port_tx).await
     }
 
     /// Get a reference to the session registry.

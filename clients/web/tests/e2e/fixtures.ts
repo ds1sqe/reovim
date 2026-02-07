@@ -18,10 +18,10 @@ import { setTimeout as delay } from "timers/promises";
 // Find the reovim binary - check for grpc-enabled binary
 function findReovimBinary(): string {
   const projectRoot = process.cwd().replace(/\/clients\/web$/, "");
-  // Use reovim-new (grpc-enabled) for web E2E tests
+  // Use reovim (grpc-enabled) for web E2E tests
   // The web client requires gRPC-Web transport
-  const releasePath = `${projectRoot}/target/release/reovim-new`;
-  const debugPath = `${projectRoot}/target/debug/reovim-new`;
+  const releasePath = `${projectRoot}/target/release/reovim`;
+  const debugPath = `${projectRoot}/target/debug/reovim`;
 
   // Allow override via environment variable
   // For CI, the binary should be built with: cargo build -p reovim-app --features grpc

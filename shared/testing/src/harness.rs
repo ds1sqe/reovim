@@ -60,7 +60,7 @@ fn binary_path() -> PathBuf {
         .expect("lib/testing should have parent")
         .parent()
         .expect("lib should have parent (workspace root)")
-        .join("target/debug/reovim-new")
+        .join("target/debug/reovim")
 }
 
 /// Get the workspace's target/debug directory for module loading.
@@ -312,8 +312,8 @@ mod tests {
     fn test_binary_path_ends_with_reovim() {
         let path = binary_path();
         assert!(
-            path.ends_with("target/debug/reovim-new"),
-            "Expected path ending with target/debug/reovim-new, got: {}",
+            path.ends_with("target/debug/reovim"),
+            "Expected path ending with target/debug/reovim, got: {}",
             path.display()
         );
     }

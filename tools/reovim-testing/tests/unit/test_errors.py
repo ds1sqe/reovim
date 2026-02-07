@@ -36,15 +36,15 @@ class TestBinaryNotFoundError:
     def test_message_includes_searched_paths(self):
         """Error message should list all searched locations."""
         searched = [
-            ("release-new", "/project/target/release/reovim-new"),
-            ("debug-new", "/project/target/debug/reovim-new"),
+            ("release", "/project/target/release/reovim"),
+            ("debug", "/project/target/debug/reovim"),
         ]
         err = BinaryNotFoundError(searched)
 
         msg = str(err)
-        assert "release-new" in msg
-        assert "/project/target/release/reovim-new" in msg
-        assert "debug-new" in msg
+        assert "release" in msg
+        assert "/project/target/release/reovim" in msg
+        assert "debug" in msg
 
     def test_message_includes_solutions(self):
         """Error message should include helpful solutions."""

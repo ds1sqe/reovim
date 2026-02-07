@@ -158,8 +158,8 @@ def main():
 
     except Exception as e:
         print(f"\nError: {e}")
-        print("\nMake sure reovim-new is built with gRPC:")
-        print("  cargo build --release -p reovim-bin --features grpc")
+        print("\nMake sure reovim is built with gRPC:")
+        print("  cargo build --release -p reovim-app")
         return 1
 
     return 0

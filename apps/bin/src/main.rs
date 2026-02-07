@@ -1,7 +1,26 @@
-//! Reovim - new architecture binary.
+//! Reovim - the main entry point binary.
 //!
-//! This is the new runner that uses `lib/server/` directly, implementing
-//! the server/client split from Epic #465.
+//! # Usage
+//!
+//! ```bash
+//! # Default: integrated mode (server + TUI in one process)
+//! reovim
+//!
+//! # Standalone server with gRPC transport
+//! reovim server --grpc 12540
+//!
+//! # Start with specific TCP port
+//! reovim server --tcp 12522
+//!
+//! # Start with Unix socket (Unix only)
+//! reovim server --socket /tmp/reovim.sock
+//!
+//! # Connect interactive TUI to existing server
+//! reovim tui --grpc 127.0.0.1:12540
+//!
+//! # Connect headless TUI (for scripting/testing)
+//! reovim tui --grpc 127.0.0.1:12540 --headless
+//! ```
 //!
 //! # Key Resolution Flow
 //!
@@ -11,28 +30,6 @@
 //! 3. The `ResolverRegistry` finds the appropriate mode resolver (e.g., `VimNormalResolver`)
 //! 4. The resolver returns a `ResolveResult` (execute, insert, transition, etc.)
 //! 5. The result is handled (command execution, mode push/pop, char insertion)
-//!
-//! # Usage
-//!
-//! ```bash
-//! # Default: start server with TCP fallback (ports 12540-12549)
-//! reovim-new
-//!
-//! # Start with specific TCP port
-//! reovim-new server --tcp 12522
-//!
-//! # Start with gRPC transport
-//! reovim-new server --grpc 12540
-//!
-//! # Start with Unix socket (Unix only)
-//! reovim-new server --socket /tmp/reovim.sock
-//!
-//! # Connect interactive TUI to running server
-//! reovim-new tui --grpc 127.0.0.1:12540
-//!
-//! # Connect headless TUI (for scripting/testing)
-//! reovim-new tui --grpc 127.0.0.1:12540 --headless
-//! ```
 
 mod bootstrap;
 
@@ -46,9 +43,9 @@ use {
     reovim_client_tui::{connect_headless, connect_interactive},
 };
 
-/// Reovim editor - new architecture.
+/// Reovim editor.
 #[derive(Parser)]
-#[command(name = "reovim-new")]
+#[command(name = "reovim")]
 #[command(version, about, long_about = None)]
 struct Cli {
     /// Subcommand to run.
@@ -360,14 +357,7 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             }
         }
 
-        None => {
-            // Default: start server with TCP fallback and modules
-            tracing::info!("Starting reovim server with default configuration and modules");
-            let config = ServerConfig::default();
-            let server =
-                Server::with_session_factory(config, Box::new(bootstrap::create_session_state));
-            server.run().await
-        }
+        None => run_integrated().await,
     }
 }
 
@@ -494,6 +484,81 @@ async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
         .map_err(|e| std::io::Error::other(e.to_string()));
 
     drop(app);
+    result
+}
+
+/// Run in integrated mode: server + interactive TUI in one process.
+///
+/// The server binds to an OS-assigned port, then the TUI connects to it.
+/// When the TUI exits (Ctrl-Q or `:q`), the server shuts down gracefully.
+/// Ctrl-C also stops the TUI, which then triggers server shutdown.
+async fn run_integrated() -> std::io::Result<()> {
+    tracing::info!("Starting reovim in integrated mode (server + TUI)");
+
+    // Shutdown channel: completing the future signals the server to stop
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+
+    // Port channel: server reports its OS-assigned port
+    let (port_tx, port_rx) = tokio::sync::oneshot::channel::<u16>();
+
+    // Configure server with OS-assigned port (port 0)
+    let config = ServerConfig {
+        transport: TransportMode::Grpc { port: 0 },
+        instance_name: "default".to_string(),
+        default_session_name: "main".to_string(),
+    };
+    let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state));
+
+    // Spawn server task
+    let server_task = tokio::spawn(async move {
+        let shutdown = async {
+            let _ = shutdown_rx.await;
+        };
+        server.run_until(shutdown, Some(port_tx)).await
+    });
+
+    // Wait for port with timeout
+    let port = tokio::time::timeout(std::time::Duration::from_secs(10), port_rx)
+        .await
+        .map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "Server failed to start within 10s")
+        })?
+        .map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "Server exited before reporting port",
+            )
+        })?;
+
+    let addr = format!("127.0.0.1:{port}");
+    tracing::info!("Server listening on {addr}, connecting TUI...");
+
+    // Connect interactive TUI
+    let (mut app, handle) = connect_interactive(&addr, None, None)
+        .await
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+
+    // Ctrl-C handler: gracefully stop TUI
+    let ctrl_c_handle = handle.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            ctrl_c_handle.stop().await;
+        }
+    });
+
+    // Run TUI (blocks until user quits or Ctrl-C)
+    let result = app
+        .run()
+        .await
+        .map_err(|e| std::io::Error::other(e.to_string()));
+    drop(app);
+
+    // Signal server shutdown
+    let _ = shutdown_tx.send(());
+
+    // Wait for server to finish (5s timeout)
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), server_task).await;
+
     result
 }
 

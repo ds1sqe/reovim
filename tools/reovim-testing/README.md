@@ -124,11 +124,9 @@ cargo build --release -p reovim-bin --features grpc
 The module auto-discovers binaries in this order:
 
 1. `REOVIM_BINARY` environment variable
-2. `./target/release/reovim-new` (gRPC, Phase 8)
-3. `./target/debug/reovim-new`
-4. `./target/release/reovim` (TCP, legacy)
-5. `./target/debug/reovim`
-6. System PATH
+2. `./target/release/reovim` (gRPC)
+3. `./target/debug/reovim`
+4. System PATH
 
 ## Architecture
 
@@ -149,7 +147,7 @@ Screen capture works via CLI→Server→TUI→Server→CLI relay:
 
 ```
 1. Editor.capture() calls Client.capture()
-2. Client runs: reovim-new cli capture --capture-format raw_ansi
+2. Client runs: reovim cli capture --capture-format raw_ansi
 3. CLI sends GetScreenContent RPC to Server
 4. Server sends capture_request notification to TUI
 5. TUI captures frame buffer, calls SubmitCaptureResponse RPC

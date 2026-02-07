@@ -125,6 +125,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **BREAKING: Renamed binary from `reovim-new` to `reovim` (#450)**: The binary produced
+  by `cargo build -p reovim-app` is now `reovim` instead of `reovim-new`. Updated all
+  references across test harness, Python testing framework, web client E2E fixtures,
+  and documentation. Discovery logic simplified: single binary with gRPC transport.
+
+- **Integrated mode: `cargo run` launches server + TUI (#450)**: Default behavior
+  (no subcommand) now starts a gRPC server on an OS-assigned port and connects an
+  interactive TUI in the same process. When TUI exits (Ctrl-Q or `:q`), the server
+  shuts down gracefully. Ctrl-C stops the TUI first, then the server. Standalone
+  `server` and `tui` subcommands remain unchanged. New `Server::run_until()` method
+  accepts a shutdown future and port reporter for controlled server lifecycle.
+
 - **Session struct refactoring with BootstrapState pattern (#488)**: Simplified driver-level
   `Session::new()` signature and introduced `BootstrapState` for test initialization.
   `Session::new(id)` now takes only `ClientId` (no mode parameter). Added

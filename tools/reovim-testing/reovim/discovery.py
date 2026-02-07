@@ -15,8 +15,8 @@ from .errors import BinaryNotFoundError
 class Transport(Enum):
     """Transport protocol for server communication."""
 
-    GRPC = auto()  # reovim-new (Phase 8)
-    TCP = auto()  # reovim (legacy)
+    GRPC = auto()  # reovim (gRPC transport)
+    TCP = auto()  # reserved for future TCP transport
 
 
 @dataclass
@@ -31,12 +31,10 @@ class BinaryInfo:
         return f"{self.name} ({self.transport.name}): {self.path}"
 
 
-# Search order: prefer new gRPC binary, fall back to legacy TCP
+# Search order: prefer release, then debug
 BINARY_SEARCH_ORDER: list[tuple[str, str, Transport]] = [
-    ("release-new", "target/release/reovim-new", Transport.GRPC),
-    ("debug-new", "target/debug/reovim-new", Transport.GRPC),
-    ("release", "target/release/reovim", Transport.TCP),
-    ("debug", "target/debug/reovim", Transport.TCP),
+    ("release", "target/release/reovim", Transport.GRPC),
+    ("debug", "target/debug/reovim", Transport.GRPC),
 ]
 
 
@@ -45,11 +43,9 @@ def discover_binary(base_dir: Path | None = None) -> BinaryInfo:
 
     Search order:
     1. REOVIM_BINARY environment variable
-    2. ./target/release/reovim-new (gRPC, Phase 8)
-    3. ./target/debug/reovim-new
-    4. ./target/release/reovim (TCP, legacy)
-    5. ./target/debug/reovim
-    6. System PATH (reovim-new, then reovim)
+    2. ./target/release/reovim
+    3. ./target/debug/reovim
+    4. System PATH (reovim)
 
     Args:
         base_dir: Base directory for relative paths (default: cwd)
@@ -71,8 +67,7 @@ def discover_binary(base_dir: Path | None = None) -> BinaryInfo:
         path = Path(env_binary)
         searched.append(("env:REOVIM_BINARY", str(path)))
         if path.exists() and path.is_file():
-            transport = Transport.GRPC if "reovim-new" in path.name else Transport.TCP
-            return BinaryInfo(path=path, transport=transport, name="env")
+            return BinaryInfo(path=path, transport=Transport.GRPC, name="env")
 
     # 2-5. Search in target directories
     for name, rel_path, transport in BINARY_SEARCH_ORDER:
@@ -81,12 +76,12 @@ def discover_binary(base_dir: Path | None = None) -> BinaryInfo:
         if path.exists() and path.is_file():
             return BinaryInfo(path=path, transport=transport, name=name)
 
-    # 6. System PATH
-    for bin_name, transport in [("reovim-new", Transport.GRPC), ("reovim", Transport.TCP)]:
+    # 4. System PATH
+    for bin_name in ["reovim"]:
         which = shutil.which(bin_name)
         searched.append((f"path:{bin_name}", which or "(not found)"))
         if which:
-            return BinaryInfo(path=Path(which), transport=transport, name=f"path:{bin_name}")
+            return BinaryInfo(path=Path(which), transport=Transport.GRPC, name=f"path:{bin_name}")
 
     raise BinaryNotFoundError(searched)
 

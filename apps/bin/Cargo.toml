@@ -10,7 +10,7 @@ repository.workspace = true
 homepage.workspace = true
 
 [[bin]]
-name = "reovim-new"
+name = "reovim"
 path = "src/main.rs"
 
 [features]

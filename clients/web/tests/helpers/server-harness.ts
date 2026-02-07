@@ -29,8 +29,8 @@ function findReovimBinary(): string {
   // Find workspace root from test file location
   // Path: clients/web/tests/helpers/server-harness.ts
   const workspaceRoot = join(__dirname, "..", "..", "..", "..");
-  const releasePath = join(workspaceRoot, "target", "release", "reovim-new");
-  const debugPath = join(workspaceRoot, "target", "debug", "reovim-new");
+  const releasePath = join(workspaceRoot, "target", "release", "reovim");
+  const debugPath = join(workspaceRoot, "target", "debug", "reovim");
 
   // Prefer debug build for local development
   const isCI = process.env["CI"] === "true";

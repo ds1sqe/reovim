@@ -20,7 +20,7 @@ import signal
 BINARY = os.path.join(
     os.path.dirname(__file__),
     "..", "..", "..",
-    "target", "release", "reovim-new"
+    "target", "release", "reovim"
 )
 
 if not os.path.exists(BINARY):
@@ -28,7 +28,7 @@ if not os.path.exists(BINARY):
     BINARY = os.path.join(
         os.path.dirname(__file__),
         "..", "..", "..",
-        "target", "debug", "reovim-new"
+        "target", "debug", "reovim"
     )
 
 def run_demo():
