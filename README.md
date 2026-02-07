@@ -1,6 +1,7 @@
 # reovim
 
 [![CI](https://github.com/ds1sqe/reovim/actions/workflows/ci.yml/badge.svg)](https://github.com/ds1sqe/reovim/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ds1sqe/reovim/branch/develop/graph/badge.svg)](https://codecov.io/gh/ds1sqe/reovim)
 [![Crates.io](https://img.shields.io/crates/v/reovim.svg)](https://crates.io/crates/reovim)
 
 A Rust-powered neovim-like text editor.

@@ -47,13 +47,37 @@ const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Default log directory for test logs
 const TEST_LOG_DIR: &str = "tmp/test-logs";
 
-/// Get path to the reovim binary
+/// Get path to the reovim binary.
+///
+/// Resolution order:
+/// 1. `REOVIM_TEST_BINARY` env var (explicit override)
+/// 2. Inferred from `std::env::current_exe()` — the test binary lives in
+///    `target/<target-dir>/debug/deps/`, so `../../reovim` gives the
+///    server binary. This works with any target directory including
+///    `cargo-llvm-cov`'s `target/llvm-cov-target/`.
+/// 3. Fallback to `{workspace}/target/debug/reovim` via `CARGO_MANIFEST_DIR`.
 fn binary_path() -> PathBuf {
     // Check for override (useful for testing release builds)
     if let Ok(path) = std::env::var("REOVIM_TEST_BINARY") {
         return PathBuf::from(path);
     }
 
+    // Infer from the running test binary's location.
+    // Test binaries live in `target/<dir>/debug/deps/test_name-hash`.
+    // The server binary is at `target/<dir>/debug/reovim`.
+    if let Ok(exe) = std::env::current_exe() {
+        let debug_dir = exe
+            .parent() // .../debug/deps/
+            .and_then(Path::parent); // .../debug/
+        if let Some(dir) = debug_dir {
+            let candidate = dir.join("reovim");
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+
+    // Fallback: compile-time workspace root
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest_dir)
         .parent()
@@ -63,14 +87,23 @@ fn binary_path() -> PathBuf {
         .join("target/debug/reovim")
 }
 
-/// Get the workspace's target/debug directory for module loading.
+/// Get the target/debug directory for module loading.
 ///
-/// Integration tests should use modules built in the current worktree,
-/// not globally installed modules from `~/.local/share/reovim/modules/`.
-///
-/// This is set as `REOVIM_MODULE_PATH` which is prepended to the search
-/// paths, ensuring worktree modules take priority over global ones.
+/// Uses the same target-dir detection as `binary_path()` so modules are
+/// loaded from the correct target directory (works under `cargo-llvm-cov`).
 fn workspace_module_dir() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        let debug_dir = exe
+            .parent() // .../debug/deps/
+            .and_then(Path::parent); // .../debug/
+        if let Some(dir) = debug_dir
+            && dir.exists()
+        {
+            return dir.to_path_buf();
+        }
+    }
+
+    // Fallback: compile-time workspace root
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest_dir)
         .parent()
@@ -293,11 +326,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_workspace_module_dir_ends_with_target_debug() {
+    fn test_workspace_module_dir_ends_with_debug() {
         let dir = workspace_module_dir();
+        // Under cargo-llvm-cov the target dir is target/llvm-cov-target/debug,
+        // under normal cargo it's target/debug.
         assert!(
-            dir.ends_with("target/debug"),
-            "Expected path ending with target/debug, got: {}",
+            dir.ends_with("debug"),
+            "Expected path ending with debug, got: {}",
             dir.display()
         );
     }
@@ -312,26 +347,31 @@ mod tests {
     fn test_binary_path_ends_with_reovim() {
         let path = binary_path();
         assert!(
-            path.ends_with("target/debug/reovim"),
-            "Expected path ending with target/debug/reovim, got: {}",
+            path.file_name().is_some_and(|n| n == "reovim"),
+            "Expected path ending with reovim, got: {}",
             path.display()
         );
     }
 
     #[test]
     fn test_binary_and_module_share_workspace_root() {
-        // Both binary_path() and workspace_module_dir() should resolve
-        // to paths under the same workspace root
+        // Both paths should be under the same workspace root.
+        // Under cargo-llvm-cov, binary may fall back to target/debug/ while
+        // modules resolve to target/llvm-cov-target/debug/ via current_exe().
         let binary = binary_path();
         let modules = workspace_module_dir();
 
-        let binary_parent = binary.parent().expect("binary should have parent");
+        let find_workspace = |p: &Path| {
+            p.ancestors()
+                .find(|a| a.join("Cargo.toml").exists())
+                .map(Path::to_path_buf)
+        };
+
+        let binary_ws = find_workspace(&binary);
+        let module_ws = find_workspace(&modules);
         assert_eq!(
-            binary_parent,
-            modules,
-            "Binary parent ({}) should equal module dir ({})",
-            binary_parent.display(),
-            modules.display()
+            binary_ws, module_ws,
+            "Binary workspace ({binary_ws:?}) should equal module workspace ({module_ws:?})"
         );
     }
 }
