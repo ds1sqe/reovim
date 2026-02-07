@@ -38,7 +38,7 @@ mod server;
 
 // Public API
 pub use {
-    app::{AppState, CmdlineBuffer},
+    app::AppState,
     config::{ServerConfig, TransportMode},
     registry::{
         CommandQuerySnapshot, CommandRegistry, KeyLookupResult, KeymapRegistry, ModeEntry,

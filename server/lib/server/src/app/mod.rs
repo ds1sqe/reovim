@@ -4,10 +4,6 @@
 //! core services (buffers, events, options); the server tracks runtime
 //! state like active buffer and mode stack.
 
-mod cmdline;
-
-pub use cmdline::CmdlineBuffer;
-
 use {
     reovim_arch::sync::RwLock,
     reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
@@ -58,9 +54,6 @@ pub struct AppState {
     /// Terminal height in rows.
     pub terminal_height: u16,
 
-    /// Command-line input buffer for `:`, `/`, and `?` commands.
-    pub cmdline: CmdlineBuffer,
-
     /// Per-session module extensions (Epic #385).
     pub extensions: ExtensionMap,
 }
@@ -77,7 +70,6 @@ impl AppState {
             running: true,
             terminal_width: 80,
             terminal_height: 24,
-            cmdline: CmdlineBuffer::new(),
             extensions: ExtensionMap::new(),
         }
     }
