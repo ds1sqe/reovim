@@ -763,6 +763,9 @@ async fn test_remote_cursor_empty_buffer() {
 }
 
 /// Test visual selection rendering across clients.
+///
+/// Verifies that when TUI 1 enters visual mode, TUI 2 renders the
+/// remote selection with a dimmed background color (ANSI 48;2;R;G;B).
 #[tokio::test]
 async fn test_remote_visual_selection() {
     let harness = TestServerHarness::spawn()
@@ -797,11 +800,15 @@ async fn test_remote_visual_selection() {
         .await
         .expect("TUI 2 capture failed during remote selection");
 
-    // Should contain ANSI codes (for selection highlighting)
-    assert!(
-        frame2.contains('\x1b') || frame2.contains('['),
-        "Frame should contain ANSI codes"
-    );
+    // Should contain ANSI escape codes (48;2; = RGB background)
+    assert!(frame2.contains('\x1b'), "Frame should contain ANSI escape codes");
+
+    // Verify content is still readable through the selection overlay
+    let plain = tui2
+        .capture("plain_text")
+        .await
+        .expect("TUI 2 plain capture failed");
+    assert!(plain.contains("Hello World"), "Content should be visible through selection");
 
     // Exit visual mode
     tui1.send_keys("<Esc>").await.ok();
@@ -810,7 +817,10 @@ async fn test_remote_visual_selection() {
     tui2.stop().await;
 }
 
-/// Test multiline visual selection.
+/// Test multiline visual selection (line mode).
+///
+/// Verifies that visual line mode selection across multiple lines
+/// renders correctly on the remote TUI without breaking content display.
 #[tokio::test]
 async fn test_remote_multiline_selection() {
     let harness = TestServerHarness::spawn()
@@ -839,16 +849,26 @@ async fn test_remote_multiline_selection() {
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    // TUI 2 should render the multiline selection
+    // TUI 2 should render the multiline selection with content visible
     let frame2 = tui2
         .capture("plain_text")
         .await
         .expect("TUI 2 capture failed during multiline selection");
 
-    // Verify content is visible (selection shouldn't break rendering)
+    // Verify content is visible through selection overlay
     assert!(frame2.contains("Line A"), "Line A should be visible");
     assert!(frame2.contains("Line B"), "Line B should be visible");
     assert!(frame2.contains("Line C"), "Line C should be visible");
+
+    // ANSI capture should contain escape codes for selection background
+    let ansi_frame = tui2
+        .capture("ansi")
+        .await
+        .expect("TUI 2 ANSI capture failed");
+    assert!(
+        ansi_frame.contains('\x1b'),
+        "ANSI frame should contain escape codes for selection"
+    );
 
     // Exit visual mode
     tui1.send_keys("<Esc>").await.ok();

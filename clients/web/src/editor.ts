@@ -16,6 +16,7 @@ import {
   interpretLayout,
   protoToLogicalLayout,
   allWindows,
+  focusedWindow,
   type WindowTree,
   type LogicalLayout,
   type ScreenPosition,
@@ -1029,16 +1030,13 @@ export class Editor {
     const lineNumberWidth = 48;
     const padding = 8;
 
-    // Determine current buffer ID
-    const currentBufferId = this.state.focusedWindowId
-      ? this.state.windowStates.get(this.state.focusedWindowId)
-        ? 0 // TODO: Track buffer ID per window
-        : 0
+    // Determine current buffer ID from the focused window's layout entry
+    const currentBufferId = this.state.layout
+      ? (focusedWindow(this.state.layout, this.state.focusedWindowId)?.buffer_id ?? 0)
       : 0;
 
     for (const [clientId, remote] of this.remoteClients) {
       // Only show cursors for clients viewing the same buffer
-      // TODO: Proper buffer ID tracking for multi-buffer comparison
       if (remote.bufferId !== currentBufferId && currentBufferId !== 0) continue;
 
       // Get per-client color from CBF-8 palette (Issue #474)

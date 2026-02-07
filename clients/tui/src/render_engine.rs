@@ -11,7 +11,7 @@
 
 use {reovim_arch::Color, reovim_driver_display::Style};
 
-use crate::{LineNumberMode, TuiCoreState, render_backend::RenderBackend};
+use crate::{LineNumberMode, SelectionState, TuiCoreState, render_backend::RenderBackend};
 
 /// Render configuration for a frame.
 ///
@@ -83,6 +83,51 @@ pub const fn client_color(client_id: u64) -> Color {
     CBF8_PALETTE[(client_id as usize) % CBF8_PALETTE.len()]
 }
 
+/// Dimmed CBF-8 palette for selection backgrounds.
+///
+/// Lower-intensity versions of the cursor palette, suitable for
+/// background overlays that don't obscure text.
+const CBF8_DIMMED: [Color; 8] = [
+    Color::Rgb { r: 0, g: 45, b: 70 }, // Blue
+    Color::Rgb { r: 75, g: 50, b: 0 }, // Orange
+    Color::Rgb {
+        r: 25,
+        g: 60,
+        b: 75,
+    }, // Sky blue
+    Color::Rgb { r: 0, g: 55, b: 35 }, // Green
+    Color::Rgb {
+        r: 70,
+        g: 65,
+        b: 20,
+    }, // Yellow
+    Color::Rgb { r: 70, g: 30, b: 0 }, // Vermilion
+    Color::Rgb {
+        r: 65,
+        g: 38,
+        b: 55,
+    }, // Pink
+    Color::Rgb {
+        r: 30,
+        g: 30,
+        b: 30,
+    }, // Dark grey (fallback)
+];
+
+/// Get a dimmed color for selection backgrounds.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub const fn dimmed_client_color(client_id: u64) -> Color {
+    CBF8_DIMMED[(client_id as usize) % CBF8_DIMMED.len()]
+}
+
+/// Local selection background color (subtle blue).
+const LOCAL_SELECTION_BG: Color = Color::Rgb {
+    r: 50,
+    g: 50,
+    b: 100,
+};
+
 /// Render a complete frame to the backend.
 ///
 /// This is the single entry point for all TUI rendering.
@@ -92,7 +137,9 @@ pub const fn client_color(client_id: u64) -> Color {
 ///
 /// This is a basic implementation that renders:
 /// - Buffer content (simple text, no syntax highlighting yet)
-/// - Remote cursors
+/// - Remote selections (dimmed background overlay)
+/// - Local selection (headless mode only)
+/// - Remote cursors (CBF-8 colorblind-friendly palette)
 /// - Self cursor (if `render_self_cursor` is true)
 /// - Statusline
 pub fn render_frame<B: RenderBackend>(
@@ -111,10 +158,14 @@ pub fn render_frame<B: RenderBackend>(
     // Render buffer content
     render_buffer_content(backend, state, config, content_height);
 
-    // Render remote cursors
-    render_remote_cursors(backend, state, config.gutter_width, content_height);
+    // Render selections (behind cursors — background overlay)
+    render_remote_selections(backend, state, config.gutter_width, content_height);
+    if config.render_self_cursor {
+        render_local_selection(backend, state, config.gutter_width, content_height);
+    }
 
-    // Render self cursor if needed (headless mode)
+    // Render cursors (on top of selections)
+    render_remote_cursors(backend, state, config.gutter_width, content_height);
     if config.render_self_cursor {
         render_self_cursor(backend, state, config.gutter_width, content_height);
     }
@@ -230,6 +281,109 @@ fn render_line_content<B: RenderBackend>(backend: &mut B, x: u16, y: u16, width:
     }
 }
 
+/// Render remote clients' visual selections.
+///
+/// Overlays dimmed background colors on selected ranges. Rendered before
+/// cursors so cursors appear on top.
+#[allow(clippy::cast_possible_truncation)]
+fn render_remote_selections<B: RenderBackend>(
+    backend: &mut B,
+    state: &TuiCoreState,
+    gutter_width: u16,
+    content_height: u16,
+) {
+    let (width, _) = backend.size();
+
+    // TODO(#494): Multi-window — iterate all windows with tiling layout
+    let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
+
+    for remote in state.other_clients.values() {
+        if remote.buffer_id != current_buffer_id {
+            continue;
+        }
+        let Some(sel) = &remote.selection else {
+            continue;
+        };
+
+        let sel_color = dimmed_client_color(remote.client_id);
+        render_selection_range(backend, sel, sel_color, gutter_width, content_height, width);
+    }
+}
+
+/// Render local client's visual selection (headless mode only).
+///
+/// Interactive TUI uses terminal-level selection highlighting via crossterm.
+#[allow(clippy::cast_possible_truncation)]
+fn render_local_selection<B: RenderBackend>(
+    backend: &mut B,
+    state: &TuiCoreState,
+    gutter_width: u16,
+    content_height: u16,
+) {
+    let (width, _) = backend.size();
+    let Some(sel) = state.window_selections.get(&state.focused_window_id) else {
+        return;
+    };
+
+    render_selection_range(backend, sel, LOCAL_SELECTION_BG, gutter_width, content_height, width);
+}
+
+/// Render a selection range with a background color overlay.
+///
+/// Handles three visual modes:
+/// - **char**: Contiguous character range (first/last line partial, middle lines full)
+/// - **line**: Entire lines highlighted
+/// - **block**: Rectangular column range on each line
+#[allow(clippy::cast_possible_truncation)]
+fn render_selection_range<B: RenderBackend>(
+    backend: &mut B,
+    sel: &SelectionState,
+    color: Color,
+    gutter_width: u16,
+    content_height: u16,
+    screen_width: u16,
+) {
+    let (start_line, start_col, end_line, end_col) = normalize_selection(sel);
+    let content_width = screen_width.saturating_sub(gutter_width);
+
+    for line in start_line..=end_line {
+        if line as u16 >= content_height {
+            break;
+        }
+
+        let (col_start, col_end) = match sel.mode.as_str() {
+            "line" => (0u16, content_width),
+            "block" => (start_col as u16, end_col as u16 + 1),
+            _ => {
+                // Char mode
+                if start_line == end_line {
+                    (start_col as u16, end_col as u16 + 1)
+                } else if line == start_line {
+                    (start_col as u16, content_width)
+                } else if line == end_line {
+                    (0, end_col as u16 + 1)
+                } else {
+                    (0, content_width)
+                }
+            }
+        };
+
+        let screen_y = line as u16;
+        for col in col_start..col_end.min(content_width) {
+            backend.overlay_bg(gutter_width + col, screen_y, color);
+        }
+    }
+}
+
+/// Normalize selection so start <= end.
+fn normalize_selection(sel: &SelectionState) -> (u64, u64, u64, u64) {
+    if (sel.start.line, sel.start.column) <= (sel.end.line, sel.end.column) {
+        (sel.start.line, sel.start.column, sel.end.line, sel.end.column)
+    } else {
+        (sel.end.line, sel.end.column, sel.start.line, sel.start.column)
+    }
+}
+
 /// Render remote client cursors.
 #[allow(clippy::cast_possible_truncation)]
 fn render_remote_cursors<B: RenderBackend>(
@@ -338,7 +492,43 @@ fn mode_style(mode: &str) -> Style {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_driver_display::FrameBuffer};
+    use {
+        super::*,
+        crate::{CursorPosition, RemoteClient},
+        reovim_driver_display::FrameBuffer,
+        reovim_protocol::v2::WindowInfo,
+    };
+
+    /// Helper: create a `WindowInfo` with a buffer.
+    fn window(id: u64, buffer_id: u64) -> WindowInfo {
+        WindowInfo {
+            window_id: id,
+            buffer_id: Some(buffer_id),
+            rect: None,
+            focused: true,
+        }
+    }
+
+    /// Helper: create a `SelectionState`.
+    fn selection(
+        start_line: u64,
+        start_col: u64,
+        end_line: u64,
+        end_col: u64,
+        mode: &str,
+    ) -> SelectionState {
+        SelectionState {
+            start: CursorPosition {
+                line: start_line,
+                column: start_col,
+            },
+            end: CursorPosition {
+                line: end_line,
+                column: end_col,
+            },
+            mode: mode.to_string(),
+        }
+    }
 
     #[test]
     fn test_client_color() {
@@ -349,6 +539,20 @@ mod tests {
 
         assert_ne!(c0, c1);
         assert_eq!(c0, c8);
+    }
+
+    #[test]
+    fn test_dimmed_client_color() {
+        let d0 = dimmed_client_color(0);
+        let d1 = dimmed_client_color(1);
+        let d8 = dimmed_client_color(8); // Should wrap to d0
+
+        assert_ne!(d0, d1);
+        assert_eq!(d0, d8);
+
+        // Dimmed color should differ from full-intensity color
+        let c0 = client_color(0);
+        assert_ne!(d0, c0);
     }
 
     #[test]
@@ -375,5 +579,248 @@ mod tests {
 
         let visual_style = mode_style("VISUAL");
         assert_eq!(visual_style.bg, Some(Color::Magenta));
+    }
+
+    #[test]
+    fn test_normalize_selection_already_ordered() {
+        let sel = selection(1, 5, 3, 10, "char");
+        let (sl, sc, el, ec) = normalize_selection(&sel);
+        assert_eq!((sl, sc, el, ec), (1, 5, 3, 10));
+    }
+
+    #[test]
+    fn test_normalize_selection_reversed() {
+        let sel = selection(5, 10, 2, 3, "char");
+        let (sl, sc, el, ec) = normalize_selection(&sel);
+        assert_eq!((sl, sc, el, ec), (2, 3, 5, 10));
+    }
+
+    #[test]
+    fn test_render_char_selection() {
+        // Render a char-mode selection from (0,2) to (0,5) on a single line.
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Add remote client in same buffer with a char selection
+        let remote = RemoteClient {
+            client_id: 2,
+            display_name: "Remote".to_string(),
+            cursor_line: 0,
+            cursor_col: 5,
+            buffer_id: Some(100),
+            mode: "VISUAL".to_string(),
+            selection: Some(selection(0, 2, 0, 5, "char")),
+        };
+        state.add_remote_client(remote);
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Columns 2..=4 should have dimmed selection bg.
+        // Column 5 is the cursor position — cursor overwrites selection bg.
+        let expected_bg = Some(dimmed_client_color(2));
+        for col in 2..=4u16 {
+            let cell = fb.get(col, 0).unwrap();
+            assert_eq!(cell.style.bg, expected_bg, "col {col} should have selection bg");
+        }
+
+        // Column 0 should NOT have selection bg
+        let before = fb.get(0, 0).unwrap();
+        assert_ne!(before.style.bg, expected_bg, "col 0 should not have selection bg");
+    }
+
+    #[test]
+    fn test_render_line_selection() {
+        // Render a line-mode selection spanning lines 1..=2.
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 3,
+            display_name: "Remote".to_string(),
+            cursor_line: 2,
+            cursor_col: 0,
+            buffer_id: Some(100),
+            mode: "VISUAL LINE".to_string(),
+            selection: Some(selection(1, 0, 2, 5, "line")),
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        let expected_bg = Some(dimmed_client_color(3));
+
+        // Entire line 1 and 2 should be highlighted (col 0..40).
+        // Cursor is at (2, 0), so skip that exact cell.
+        for row in 1..=2u16 {
+            let check_col = u16::from(row == 2); // avoid cursor at (2,0)
+            let cell = fb.get(check_col, row).unwrap();
+            assert_eq!(
+                cell.style.bg, expected_bg,
+                "row {row}, col {check_col} should have line selection bg"
+            );
+            let cell_mid = fb.get(20, row).unwrap();
+            assert_eq!(
+                cell_mid.style.bg, expected_bg,
+                "row {row}, col 20 should have line selection bg"
+            );
+        }
+
+        // Row 0 should NOT be highlighted
+        let above = fb.get(0, 0).unwrap();
+        assert_ne!(above.style.bg, expected_bg, "row 0 should not have selection bg");
+    }
+
+    #[test]
+    fn test_render_block_selection() {
+        // Render a block-mode selection: columns 3..=7 on lines 0..=2.
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 4,
+            display_name: "Remote".to_string(),
+            cursor_line: 2,
+            cursor_col: 7,
+            buffer_id: Some(100),
+            mode: "VISUAL BLOCK".to_string(),
+            selection: Some(selection(0, 3, 2, 7, "block")),
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        let expected_bg = Some(dimmed_client_color(4));
+
+        // Columns 3..=7 on rows 0..=2 should be highlighted.
+        // Cursor is at (2, 7), so skip that cell.
+        for row in 0..=2u16 {
+            for col in 3..=7u16 {
+                if row == 2 && col == 7 {
+                    continue; // cursor overwrites selection bg here
+                }
+                let cell = fb.get(col, row).unwrap();
+                assert_eq!(
+                    cell.style.bg, expected_bg,
+                    "row {row}, col {col} should have block selection bg"
+                );
+            }
+        }
+
+        // Column 2 on row 0 should NOT be highlighted
+        let before = fb.get(2, 0).unwrap();
+        assert_ne!(before.style.bg, expected_bg, "col 2 should not have block bg");
+
+        // Column 8 on row 0 should NOT be highlighted
+        let after = fb.get(8, 0).unwrap();
+        assert_ne!(after.style.bg, expected_bg, "col 8 should not have block bg");
+    }
+
+    #[test]
+    fn test_render_remote_selection_different_buffer() {
+        // Remote client in a different buffer — no selection rendered.
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 5,
+            display_name: "Remote".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(999), // Different buffer
+            mode: "VISUAL".to_string(),
+            selection: Some(selection(0, 0, 0, 10, "char")),
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // No selection background should appear — cells should have default bg
+        let wrong_bg = Some(dimmed_client_color(5));
+        for col in 0..=10u16 {
+            let cell = fb.get(col, 0).unwrap();
+            assert_ne!(
+                cell.style.bg, wrong_bg,
+                "col {col} should NOT have selection bg (different buffer)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_render_local_selection() {
+        // Local visual selection rendered with LOCAL_SELECTION_BG.
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state
+            .window_selections
+            .insert(1, selection(0, 3, 0, 8, "char"));
+
+        // Must enable render_self_cursor for local selection rendering
+        let config = RenderConfig {
+            render_self_cursor: true,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config);
+
+        let expected_bg = Some(LOCAL_SELECTION_BG);
+        for col in 3..=8u16 {
+            let cell = fb.get(col, 0).unwrap();
+            assert_eq!(cell.style.bg, expected_bg, "col {col} should have local selection bg");
+        }
+
+        // Column 2 should NOT have selection bg
+        let before = fb.get(2, 0).unwrap();
+        assert_ne!(before.style.bg, expected_bg, "col 2 should not have local selection bg");
+    }
+
+    #[test]
+    fn test_render_multiline_char_selection() {
+        // Multi-line char selection: first line partial start, middle full, last line partial end.
+        let mut fb = FrameBuffer::new(20, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        state.add_remote_client(RemoteClient {
+            client_id: 6,
+            display_name: "Remote".to_string(),
+            cursor_line: 2,
+            cursor_col: 5,
+            buffer_id: Some(100),
+            mode: "VISUAL".to_string(),
+            selection: Some(selection(0, 10, 2, 5, "char")),
+        });
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        let expected_bg = Some(dimmed_client_color(6));
+
+        // Row 0: columns 10..end should be highlighted (first line, from start_col)
+        let cell_before = fb.get(9, 0).unwrap();
+        assert_ne!(cell_before.style.bg, expected_bg, "row 0 col 9 should not be highlighted");
+        let cell_start = fb.get(10, 0).unwrap();
+        assert_eq!(cell_start.style.bg, expected_bg, "row 0 col 10 should be highlighted");
+
+        // Row 1: entire line should be highlighted (middle line)
+        let cell_mid = fb.get(0, 1).unwrap();
+        assert_eq!(cell_mid.style.bg, expected_bg, "row 1 col 0 should be highlighted");
+
+        // Row 2: columns 0..=5 should be highlighted (last line, up to end_col).
+        // Cursor at (2, 5), so check col 4 instead of col 5.
+        let cell_end = fb.get(4, 2).unwrap();
+        assert_eq!(cell_end.style.bg, expected_bg, "row 2 col 4 should be highlighted");
+        let cell_after = fb.get(6, 2).unwrap();
+        assert_ne!(cell_after.style.bg, expected_bg, "row 2 col 6 should not be highlighted");
     }
 }

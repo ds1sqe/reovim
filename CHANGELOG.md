@@ -83,14 +83,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **Multi-client presence rendering (#474)**: Implemented client-side rendering
   of remote clients' cursors and selections. CBF-8 colorblind-friendly palette
   in `shared/arch/src/palette.rs` provides 8 distinct colors (Wong 2011) with
-  deterministic assignment via `color_for_client(client_id)`. TUI client renders
-  remote cursors with `'▎'` character in per-client colors, remote selections
-  with dimmed background overlays. Web client renders CSS-positioned cursor bars
-  and selection backgrounds. New `Screen::overlay_bg()` method for non-destructive
-  selection rendering. Supports char/line/block visual modes. 5 palette tests.
-  Files: `shared/arch/src/palette.rs` (new), `clients/web/src/palette.ts` (new),
-  `clients/tui/src/app_v2.rs`, `clients/tui/lib/drivers/tui/src/screen.rs`,
-  `clients/web/src/editor.ts`.
+  deterministic assignment via `color_for_client(client_id)`. TUI render engine:
+  remote cursors with per-client colors, remote selections with dimmed CBF-8
+  background overlays, local selections with subtle blue background. Supports
+  all three visual modes (char, line, block). Z-ordered: selections render behind
+  cursors. Web client renders CSS-positioned cursor bars and selection backgrounds;
+  fixed buffer ID tracking via `focusedWindow()` layout lookup (was always 0).
+  New `Screen::overlay_bg()` for non-destructive background overlay. 12 render
+  engine unit tests, 34 integration tests pass. Files: `render_engine.rs` (6 new
+  functions), `shared/arch/src/palette.rs`, `clients/web/src/editor.ts`.
 
 ### Refactoring
 
