@@ -2289,6 +2289,7 @@ dependencies = [
  "async-stream",
  "futures",
  "parking_lot",
+ "rand",
  "reovim-arch",
  "reovim-client-cli",
  "reovim-driver-buffer",

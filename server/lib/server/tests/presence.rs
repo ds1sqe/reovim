@@ -156,11 +156,8 @@ async fn test_set_sync_mode_follow_missing_target() {
     let mut client = connect_presence(&addr, "test").await;
 
     // Try to set FOLLOW mode without target (sync_mode=1, no follow_target)
-    let client_id = client.client_id();
-    let result = client
-        .grpc()
-        .presence_set_sync_mode(client_id, 1, None)
-        .await;
+    // Identity resolved from session token (#483)
+    let result = client.grpc().presence_set_sync_mode(1, None).await;
 
     // Should fail with InvalidArgument
     assert!(result.is_err(), "FOLLOW without target should fail");
@@ -180,11 +177,8 @@ async fn test_set_sync_mode_follow_invalid_target() {
     let mut client = connect_presence(&addr, "test").await;
 
     // Try to follow a non-existent client (ID 9999)
-    let client_id = client.client_id();
-    let result = client
-        .grpc()
-        .presence_set_sync_mode(client_id, 1, Some(9999))
-        .await;
+    // Identity resolved from session token (#483)
+    let result = client.grpc().presence_set_sync_mode(1, Some(9999)).await;
 
     // Should fail with InvalidArgument
     assert!(result.is_err(), "FOLLOW with invalid target should fail");
@@ -271,15 +265,13 @@ async fn test_concurrent_join_leave() {
             let addr = addr.clone();
             tokio::spawn(async move {
                 let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
-                let resp = client
+                let _resp = client
                     .presence_join("test", &format!("client_{i}"))
                     .await
                     .expect("Failed to join");
                 tokio::time::sleep(Duration::from_millis(10)).await;
-                client
-                    .presence_leave(resp.client_id)
-                    .await
-                    .expect("Failed to leave");
+                // Identity resolved from session token (#483)
+                client.presence_leave().await.expect("Failed to leave");
             })
         })
         .collect();
@@ -332,10 +324,13 @@ async fn test_high_frequency_updates() {
 // Error Path Tests
 // ============================================================================
 
-/// Test leave for unknown client returns ok: false.
+/// Test leave without authentication fails (#483).
+///
+/// With token-based identity, `presence_leave()` requires a session token.
+/// Without joining first, there's no token, so the call should fail.
 #[tokio::test]
 #[allow(clippy::significant_drop_tightening)]
-async fn test_leave_unknown_client() {
+async fn test_leave_without_auth_fails() {
     let harness = TestServerHarness::spawn()
         .await
         .expect("Failed to spawn server");
@@ -343,18 +338,18 @@ async fn test_leave_unknown_client() {
 
     let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
 
-    // Leave with non-existent client ID
-    let response = client
-        .presence_leave(9999)
-        .await
-        .expect("Leave should not error");
-    assert!(!response.ok, "Leave unknown client should return ok=false");
+    // Leave without joining (no session token) should fail with Unauthenticated
+    let result = client.presence_leave().await;
+    assert!(result.is_err(), "Leave without authentication should fail");
 }
 
-/// Test update for unknown client returns error.
+/// Test update without authentication fails (#483).
+///
+/// With token-based identity, `presence_update()` requires a session token.
+/// Without joining first, there's no token, so the call should fail.
 #[tokio::test]
 #[allow(clippy::significant_drop_tightening)]
-async fn test_update_unknown_client() {
+async fn test_update_without_auth_fails() {
     let harness = TestServerHarness::spawn()
         .await
         .expect("Failed to spawn server");
@@ -362,12 +357,11 @@ async fn test_update_unknown_client() {
 
     let mut client = GrpcClient::connect(&addr).await.expect("Failed to connect");
 
-    // Update with non-existent client ID
-    // Note: cursor args removed (Phase 14, #471)
-    let result = client.presence_update(9999, None, None).await;
+    // Update without joining (no session token) should fail with Unauthenticated
+    let result = client.presence_update(None, None).await;
 
-    // Should fail with NotFound
-    assert!(result.is_err(), "Update unknown client should fail");
+    // Should fail with Unauthenticated
+    assert!(result.is_err(), "Update without authentication should fail");
 }
 
 // ============================================================================

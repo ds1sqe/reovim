@@ -43,9 +43,12 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{
-    Client, ClientId, ClientPresence, ClientRelation, Session, SessionId, SessionRegistry,
-    SyncMode, TransitionResult,
+use crate::{
+    grpc::auth::require_client_id,
+    session::{
+        Client, ClientId, ClientPresence, ClientRelation, Session, SessionId, SessionRegistry,
+        SyncMode, TokenRegistry, TransitionResult,
+    },
 };
 
 /// Get current Unix timestamp in milliseconds.
@@ -206,15 +209,22 @@ pub struct PresenceServiceImpl {
     sessions: Arc<SessionRegistry>,
     /// Default session ID to use when not specified.
     default_session_id: SessionId,
+    /// Token registry for session-based authentication (#483).
+    tokens: Arc<TokenRegistry>,
 }
 
 impl PresenceServiceImpl {
     /// Create a new `PresenceService` with access to the session registry.
     #[must_use]
-    pub const fn new(sessions: Arc<SessionRegistry>, default_session_id: SessionId) -> Self {
+    pub const fn new(
+        sessions: Arc<SessionRegistry>,
+        default_session_id: SessionId,
+        tokens: Arc<TokenRegistry>,
+    ) -> Self {
         Self {
             sessions,
             default_session_id,
+            tokens,
         }
     }
 
@@ -271,10 +281,14 @@ impl PresenceService for PresenceServiceImpl {
                 .collect()
         });
 
+        // Generate session token for this client (#483)
+        let token = self.tokens.register(client_id);
+
         Ok(Response::new(JoinResponse {
             client_id: client_id.as_usize() as u64,
             peers: proto_peers,
             peers_v2,
+            session_token: token.to_string(),
         }))
     }
 
@@ -285,9 +299,15 @@ impl PresenceService for PresenceServiceImpl {
         &self,
         request: Request<LeaveRequest>,
     ) -> Result<Response<LeaveResponse>, Status> {
-        let req = request.into_inner();
+        // #483 Phase 5: Token-only authentication
+        let token_client_id = request.extensions().get::<ClientId>().copied();
+        let _req = request.into_inner(); // LeaveRequest has no fields after #483
         let session = self.get_session()?;
-        let client_id = ClientId::new(req.client_id as usize);
+
+        let client_id = require_client_id(token_client_id)?;
+
+        // Revoke session token (#483)
+        self.tokens.revoke_by_client(client_id);
 
         // Remove from presence map
         if let Some(presence) = session.presence().leave(client_id) {
@@ -362,9 +382,13 @@ impl PresenceService for PresenceServiceImpl {
         &self,
         request: Request<UpdatePresenceRequest>,
     ) -> Result<Response<UpdatePresenceResponse>, Status> {
+        // #483 Phase 5: Token-only authentication
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
-        let client_id = ClientId::new(req.client_id as usize);
+
+        // #483 Phase 5: Token-only authentication
+        let client_id = require_client_id(token_client_id)?;
 
         // Update presence via closure
         // Note: cursor field removed from request (Phase 14, #471) - now tracked via CursorMoved
@@ -395,9 +419,13 @@ impl PresenceService for PresenceServiceImpl {
         &self,
         request: Request<SetSyncModeRequest>,
     ) -> Result<Response<SetSyncModeResponse>, Status> {
+        // #483 Phase 5: Token-only authentication
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
-        let client_id = ClientId::new(req.client_id as usize);
+
+        // #483 Phase 5: Token-only authentication
+        let client_id = require_client_id(token_client_id)?;
 
         // Parse sync mode
         let sync_mode = match ProtoSyncMode::try_from(req.mode) {
@@ -478,9 +506,13 @@ impl PresenceService for PresenceServiceImpl {
     ) -> Result<Response<SetRoleResponse>, Status> {
         use crate::session::ClientRelation;
 
-        let session = self.get_session()?;
+        // #483 Phase 5: Token-only authentication
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
-        let client_id = ClientId::new(req.client_id as usize);
+        let session = self.get_session()?;
+
+        // #483 Phase 5: Token-only authentication
+        let client_id = require_client_id(token_client_id)?;
 
         // Validate client exists
         if !session.has_client(client_id) {
@@ -555,9 +587,13 @@ impl PresenceService for PresenceServiceImpl {
         &self,
         request: Request<SetRelationRequest>,
     ) -> Result<Response<SetRelationResponse>, Status> {
-        let session = self.get_session()?;
+        // #483 Phase 5: Token-only authentication
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
-        let client_id = ClientId::new(req.client_id as usize);
+        let session = self.get_session()?;
+
+        // #483 Phase 5: Token-only authentication
+        let client_id = require_client_id(token_client_id)?;
 
         // Convert proto relation to internal relation
         let relation = req.relation.map(|r| {
@@ -600,7 +636,7 @@ impl PresenceService for PresenceServiceImpl {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::session::SessionToken};
 
     fn test_registry() -> Arc<SessionRegistry> {
         let registry = Arc::new(SessionRegistry::new());
@@ -609,10 +645,22 @@ mod tests {
         registry
     }
 
+    fn test_tokens() -> Arc<TokenRegistry> {
+        Arc::new(TokenRegistry::new())
+    }
+
+    /// Helper: build a request with token-authenticated `ClientId` in extensions.
+    fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
+        let mut request = Request::new(body);
+        request.extensions_mut().insert(client_id);
+        request
+    }
+
     #[tokio::test]
     async fn test_join_no_session() {
         let registry = Arc::new(SessionRegistry::new());
-        let service = PresenceServiceImpl::new(registry, SessionId::new("nonexistent"));
+        let service =
+            PresenceServiceImpl::new(registry, SessionId::new("nonexistent"), test_tokens());
 
         let request = Request::new(JoinRequest {
             client_type: "tui".to_string(),
@@ -628,7 +676,7 @@ mod tests {
     #[tokio::test]
     async fn test_join_success() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         let request = Request::new(JoinRequest {
             client_type: "tui".to_string(),
@@ -640,12 +688,15 @@ mod tests {
         let resp = response.unwrap().into_inner();
         assert!(resp.client_id > 0);
         assert!(resp.peers.is_empty()); // First client has no peers
+        // #483: Join now returns a session token
+        assert!(!resp.session_token.is_empty());
+        assert_eq!(resp.session_token.len(), 32); // 128-bit hex
     }
 
     #[tokio::test]
     async fn test_join_returns_peers() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         // First client joins
         let request1 = Request::new(JoinRequest {
@@ -670,7 +721,7 @@ mod tests {
     #[tokio::test]
     async fn test_leave_success() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         // Join first
         let join_req = Request::new(JoinRequest {
@@ -678,10 +729,10 @@ mod tests {
             display_name: "laptop".to_string(),
         });
         let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Then leave
-        let leave_req = Request::new(LeaveRequest { client_id });
+        // Then leave (token identifies client)
+        let leave_req = authed_request(LeaveRequest {}, cid);
         let response = service.leave(leave_req).await;
 
         assert!(response.is_ok());
@@ -691,9 +742,10 @@ mod tests {
     #[tokio::test]
     async fn test_leave_unknown_client() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        let request = Request::new(LeaveRequest { client_id: 999 });
+        // Authed as client 999, which doesn't exist
+        let request = authed_request(LeaveRequest {}, ClientId::new(999));
         let response = service.leave(request).await;
 
         assert!(response.is_ok());
@@ -703,7 +755,7 @@ mod tests {
     #[tokio::test]
     async fn test_update_presence_success() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         // Join first
         let join_req = Request::new(JoinRequest {
@@ -711,16 +763,17 @@ mod tests {
             display_name: "laptop".to_string(),
         });
         let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Update presence
-        // Note: cursor field removed (Phase 14, #471) - now tracked via CursorMoved
-        let update_req = Request::new(UpdatePresenceRequest {
-            client_id,
-            buffer_id: Some(42),
-            visible_lines: Some(LineRange { start: 5, end: 30 }),
-            mode: Some("INSERT".to_string()),
-        });
+        // Update presence (token identifies client)
+        let update_req = authed_request(
+            UpdatePresenceRequest {
+                buffer_id: Some(42),
+                visible_lines: Some(LineRange { start: 5, end: 30 }),
+                mode: Some("INSERT".to_string()),
+            },
+            cid,
+        );
         let response = service.update_presence(update_req).await;
 
         assert!(response.is_ok());
@@ -730,14 +783,16 @@ mod tests {
     #[tokio::test]
     async fn test_update_presence_unknown_client() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        let request = Request::new(UpdatePresenceRequest {
-            client_id: 999,
-            buffer_id: Some(42),
-            visible_lines: None,
-            mode: None,
-        });
+        let request = authed_request(
+            UpdatePresenceRequest {
+                buffer_id: Some(42),
+                visible_lines: None,
+                mode: None,
+            },
+            ClientId::new(999),
+        );
         let response = service.update_presence(request).await;
 
         assert!(response.is_err());
@@ -747,22 +802,25 @@ mod tests {
     #[tokio::test]
     async fn test_set_sync_mode_independent() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        // Join first
-        let join_req = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "laptop".to_string(),
-        });
-        let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "laptop".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Set sync mode
-        let request = Request::new(SetSyncModeRequest {
-            client_id,
-            mode: ProtoSyncMode::Independent as i32,
-            follow_target: None,
-        });
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Independent as i32,
+                follow_target: None,
+            },
+            cid,
+        );
         let response = service.set_sync_mode(request).await;
 
         assert!(response.is_ok());
@@ -772,22 +830,25 @@ mod tests {
     #[tokio::test]
     async fn test_set_sync_mode_present() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        // Join first
-        let join_req = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "laptop".to_string(),
-        });
-        let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "laptop".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Set sync mode to PRESENT
-        let request = Request::new(SetSyncModeRequest {
-            client_id,
-            mode: ProtoSyncMode::Present as i32,
-            follow_target: None,
-        });
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Present as i32,
+                follow_target: None,
+            },
+            cid,
+        );
         let response = service.set_sync_mode(request).await;
 
         assert!(response.is_ok());
@@ -797,30 +858,35 @@ mod tests {
     #[tokio::test]
     async fn test_set_sync_mode_follow_success() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        // Client 1 joins as presenter
-        let join_req1 = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "presenter".to_string(),
-        });
-        let join_resp1 = service.join(join_req1).await.unwrap().into_inner();
-        let presenter_id = join_resp1.client_id;
+        let resp1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "presenter".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let presenter_id = resp1.client_id;
 
-        // Client 2 joins and follows client 1
-        let join_req2 = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "follower".to_string(),
-        });
-        let join_resp2 = service.join(join_req2).await.unwrap().into_inner();
-        let follower_id = join_resp2.client_id;
+        let resp2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "follower".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let follower_cid = ClientId::new(resp2.client_id as usize);
 
-        // Set sync mode to FOLLOW
-        let request = Request::new(SetSyncModeRequest {
-            client_id: follower_id,
-            mode: ProtoSyncMode::Follow as i32,
-            follow_target: Some(presenter_id),
-        });
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Follow as i32,
+                follow_target: Some(presenter_id),
+            },
+            follower_cid,
+        );
         let response = service.set_sync_mode(request).await;
 
         assert!(response.is_ok());
@@ -830,22 +896,25 @@ mod tests {
     #[tokio::test]
     async fn test_set_sync_mode_follow_missing_target() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        // Join first
-        let join_req = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "laptop".to_string(),
-        });
-        let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "laptop".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Set FOLLOW mode without target
-        let request = Request::new(SetSyncModeRequest {
-            client_id,
-            mode: ProtoSyncMode::Follow as i32,
-            follow_target: None,
-        });
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Follow as i32,
+                follow_target: None,
+            },
+            cid,
+        );
         let response = service.set_sync_mode(request).await;
 
         assert!(response.is_err());
@@ -855,22 +924,25 @@ mod tests {
     #[tokio::test]
     async fn test_set_sync_mode_follow_invalid_target() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
-        // Join first
-        let join_req = Request::new(JoinRequest {
-            client_type: "tui".to_string(),
-            display_name: "laptop".to_string(),
-        });
-        let join_resp = service.join(join_req).await.unwrap().into_inner();
-        let client_id = join_resp.client_id;
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "laptop".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
 
-        // Set FOLLOW mode with non-existent target
-        let request = Request::new(SetSyncModeRequest {
-            client_id,
-            mode: ProtoSyncMode::Follow as i32,
-            follow_target: Some(9999),
-        });
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Follow as i32,
+                follow_target: Some(9999),
+            },
+            cid,
+        );
         let response = service.set_sync_mode(request).await;
 
         assert!(response.is_err());
@@ -880,7 +952,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_clients() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         // Initially empty
         let request = Request::new(ListClientsRequest {});
@@ -915,12 +987,96 @@ mod tests {
     #[tokio::test]
     async fn test_stream_presence_returns_stream() {
         let registry = test_registry();
-        let service = PresenceServiceImpl::new(registry, SessionId::new("test"));
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         let request = Request::new(StreamPresenceRequest {});
         let response = service.stream_presence(request).await;
 
         // Should successfully return a stream
         assert!(response.is_ok());
+    }
+
+    // ── Token lifecycle tests (#483) ──────────────────────────────────
+
+    #[tokio::test]
+    async fn test_join_returns_session_token() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service =
+            PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+
+        let resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        // Token is present and valid
+        assert_eq!(resp.session_token.len(), 32);
+        // Token resolves in the registry
+        let token = SessionToken::from(resp.session_token.as_str());
+        assert_eq!(tokens.resolve(&token), Some(ClientId::new(resp.client_id as usize)));
+    }
+
+    #[tokio::test]
+    async fn test_leave_revokes_token() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service =
+            PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+
+        // Join
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let token = SessionToken::from(join_resp.session_token.as_str());
+        assert!(tokens.resolve(&token).is_some());
+
+        // Leave (token identifies client)
+        let cid = ClientId::new(join_resp.client_id as usize);
+        service
+            .leave(authed_request(LeaveRequest {}, cid))
+            .await
+            .unwrap();
+
+        // Token is revoked
+        assert!(tokens.resolve(&token).is_none());
+        assert!(tokens.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_each_client_gets_unique_token() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service =
+            PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "a".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "cli".to_string(),
+                display_name: "b".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        assert_ne!(r1.session_token, r2.session_token);
+        assert_eq!(tokens.len(), 2);
     }
 }

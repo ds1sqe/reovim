@@ -71,17 +71,11 @@ pub enum OutputFormat {
 #[derive(Debug, Subcommand)]
 pub enum CliCommand {
     /// Send keys to the editor.
+    ///
+    /// Identity resolved from session token (#483).
     Keys {
         /// Keys in vim notation (e.g., "iHello<Esc>").
         keys: String,
-
-        /// Client ID to send keys as.
-        ///
-        /// If not specified, the CLI auto-joins and uses its own client ID.
-        /// Use this for multi-client testing where you need to control
-        /// which client makes edits (e.g., for per-client undo testing).
-        #[arg(long, short)]
-        client: Option<u64>,
     },
 
     /// Get current editor mode.
@@ -155,10 +149,9 @@ pub enum PresenceAction {
     },
 
     /// Leave the session.
-    Leave {
-        /// Client ID to remove.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Leave,
 
     /// List all connected clients.
     List,
@@ -167,10 +160,8 @@ pub enum PresenceAction {
     ///
     /// Note: cursor line/column removed (Phase 14, #471).
     /// Cursor is now tracked via `CursorMoved` notifications.
+    /// Identity resolved from session token (#483).
     Update {
-        /// Client ID making the update.
-        client_id: u64,
-
         /// Buffer ID to switch to.
         #[arg(long)]
         buffer: Option<u64>,
@@ -181,25 +172,22 @@ pub enum PresenceAction {
     },
 
     /// Set sync mode to follow another client.
+    ///
+    /// Identity resolved from session token (#483).
     Follow {
-        /// Client ID setting the mode.
-        client_id: u64,
-
         /// Target client ID to follow.
         target: u64,
     },
 
     /// Set sync mode to present (others can follow you).
-    Present {
-        /// Client ID to set as presenter.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Present,
 
     /// Set sync mode to independent (default).
-    Independent {
-        /// Client ID to set as independent.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Independent,
 }
 
 impl CliArgs {
@@ -212,10 +200,7 @@ impl CliArgs {
         let mut client = GrpcClient::connect(&self.grpc).await?;
 
         match &self.command {
-            CliCommand::Keys {
-                keys,
-                client: client_id,
-            } => commands::keys(&mut client, keys, *client_id, self.format).await,
+            CliCommand::Keys { keys } => commands::keys(&mut client, keys, self.format).await,
             CliCommand::Mode => commands::mode(&mut client, self.format).await,
             CliCommand::Cursor => commands::cursor(&mut client, self.format).await,
             CliCommand::Buffers => commands::buffers(&mut client, self.format).await,
@@ -233,41 +218,20 @@ impl CliArgs {
                 PresenceAction::Join { name, client_type } => {
                     commands::presence_join(&mut client, client_type, name, self.format).await
                 }
-                PresenceAction::Leave { client_id } => {
-                    commands::presence_leave(&mut client, *client_id, self.format).await
-                }
+                PresenceAction::Leave => commands::presence_leave(&mut client, self.format).await,
                 PresenceAction::List => commands::presence_list(&mut client, self.format).await,
-                PresenceAction::Update {
-                    client_id,
-                    buffer,
-                    mode,
-                } => {
-                    commands::presence_update(
-                        &mut client,
-                        *client_id,
-                        *buffer,
-                        mode.clone(),
-                        self.format,
-                    )
-                    .await
+                PresenceAction::Update { buffer, mode } => {
+                    commands::presence_update(&mut client, *buffer, mode.clone(), self.format).await
                 }
-                PresenceAction::Follow { client_id, target } => {
-                    commands::presence_set_sync_mode(
-                        &mut client,
-                        *client_id,
-                        1,
-                        Some(*target),
-                        self.format,
-                    )
-                    .await
-                }
-                PresenceAction::Present { client_id } => {
-                    commands::presence_set_sync_mode(&mut client, *client_id, 2, None, self.format)
+                PresenceAction::Follow { target } => {
+                    commands::presence_set_sync_mode(&mut client, 1, Some(*target), self.format)
                         .await
                 }
-                PresenceAction::Independent { client_id } => {
-                    commands::presence_set_sync_mode(&mut client, *client_id, 0, None, self.format)
-                        .await
+                PresenceAction::Present => {
+                    commands::presence_set_sync_mode(&mut client, 2, None, self.format).await
+                }
+                PresenceAction::Independent => {
+                    commands::presence_set_sync_mode(&mut client, 0, None, self.format).await
                 }
             },
         }
@@ -342,14 +306,11 @@ mod tests {
 
     #[test]
     fn test_cli_args_presence_leave() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "leave", "42"]);
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "leave"]);
         match &args.command {
-            CliCommand::Presence { action } => match action {
-                PresenceAction::Leave { client_id } => {
-                    assert_eq!(*client_id, 42);
-                }
-                _ => panic!("Expected Leave action"),
-            },
+            CliCommand::Presence { action } => {
+                assert!(matches!(action, PresenceAction::Leave));
+            }
             _ => panic!("Expected Presence command"),
         }
     }
@@ -367,11 +328,10 @@ mod tests {
 
     #[test]
     fn test_cli_args_presence_follow() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "follow", "1", "2"]);
+        let args = CliArgs::parse_from(["reovim-cli", "presence", "follow", "2"]);
         match &args.command {
             CliCommand::Presence { action } => match action {
-                PresenceAction::Follow { client_id, target } => {
-                    assert_eq!(*client_id, 1);
+                PresenceAction::Follow { target } => {
                     assert_eq!(*target, 2);
                 }
                 _ => panic!("Expected Follow action"),

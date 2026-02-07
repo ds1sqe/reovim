@@ -34,7 +34,7 @@ use {
         presence_service_client::PresenceServiceClient, server_service_client::ServerServiceClient,
         state_service_client::StateServiceClient, syntax_service_client::SyntaxServiceClient,
     },
-    tonic::{Code, Streaming, transport::Channel},
+    tonic::{Code, Request, Streaming, transport::Channel},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +139,11 @@ pub struct TuiGrpcClient {
     module: ModuleServiceClient<Channel>,
     syntax: SyntaxServiceClient<Channel>,
     presence: PresenceServiceClient<Channel>,
+    /// Session token for token-based authentication (#483).
+    ///
+    /// Received from `Join()` response, sent as `x-reovim-token` metadata
+    /// header on every subsequent gRPC request.
+    session_token: Option<String>,
 }
 
 impl TuiGrpcClient {
@@ -168,7 +173,23 @@ impl TuiGrpcClient {
             module: ModuleServiceClient::new(channel.clone()),
             syntax: SyntaxServiceClient::new(channel.clone()),
             presence: PresenceServiceClient::new(channel),
+            session_token: None,
         })
+    }
+
+    /// Wrap a proto message in a `tonic::Request` with session token metadata (#483).
+    ///
+    /// If a session token has been stored (from `Join()`), injects it as the
+    /// `x-reovim-token` gRPC metadata header. The server interceptor resolves
+    /// this token to the caller's `ClientId`.
+    fn make_request<T>(&self, body: T) -> Request<T> {
+        let mut request = Request::new(body);
+        if let Some(ref token) = self.session_token {
+            request
+                .metadata_mut()
+                .insert("x-reovim-token", token.parse().expect("session token is valid ASCII"));
+        }
+        request
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -185,10 +206,9 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, TuiGrpcError> {
-        let request = SendKeysRequest {
+        let request = self.make_request(SendKeysRequest {
             keys: keys.to_string(),
-            client_id: 0, // Default client ID for backwards compatibility
-        };
+        });
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
     }
@@ -203,8 +223,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, TuiGrpcError> {
-        // Per-client state (#471): client_id = 0 means use shared mode (backward compat)
-        let request = GetModeRequest { client_id: 0 };
+        let request = self.make_request(GetModeRequest { client_id: 0 });
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -222,7 +241,7 @@ impl TuiGrpcClient {
         &mut self,
         client_id: u64,
     ) -> Result<GetModeResponse, TuiGrpcError> {
-        let request = GetModeRequest { client_id };
+        let request = self.make_request(GetModeRequest { client_id });
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -240,11 +259,10 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetCursorResponse, TuiGrpcError> {
-        // Per-client state (#471): client_id = 0 means use shared cursor (backward compat)
-        let request = GetCursorRequest {
+        let request = self.make_request(GetCursorRequest {
             window_id,
             client_id: 0,
-        };
+        });
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -263,10 +281,10 @@ impl TuiGrpcClient {
         window_id: Option<u64>,
         client_id: u64,
     ) -> Result<GetCursorResponse, TuiGrpcError> {
-        let request = GetCursorRequest {
+        let request = self.make_request(GetCursorRequest {
             window_id,
             client_id,
-        };
+        });
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -365,7 +383,7 @@ impl TuiGrpcClient {
         &mut self,
         client_id: u64,
     ) -> Result<GetLayoutResponse, TuiGrpcError> {
-        let request = GetLayoutRequest { client_id };
+        let request = self.make_request(GetLayoutRequest { client_id });
         let response = self.state.get_layout(request).await?;
         Ok(response.into_inner())
     }
@@ -380,7 +398,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn list_buffers(&mut self) -> Result<ListBuffersResponse, TuiGrpcError> {
-        let request = ListBuffersRequest {};
+        let request = self.make_request(ListBuffersRequest {});
         let response = self.buffer.list(request).await?;
         Ok(response.into_inner())
     }
@@ -402,11 +420,11 @@ impl TuiGrpcClient {
         start_line: Option<u64>,
         end_line: Option<u64>,
     ) -> Result<GetRawContentResponse, TuiGrpcError> {
-        let request = GetRawContentRequest {
+        let request = self.make_request(GetRawContentRequest {
             buffer_id,
             start_line,
             end_line,
-        };
+        });
         let response = self.buffer.get_raw_content(request).await?;
         Ok(response.into_inner())
     }
@@ -430,7 +448,7 @@ impl TuiGrpcClient {
         &mut self,
         event_types: Vec<String>,
     ) -> Result<Streaming<Notification>, TuiGrpcError> {
-        let request = SubscribeRequest { event_types };
+        let request = self.make_request(SubscribeRequest { event_types });
         let response = self.notification.subscribe(request).await?;
         Ok(response.into_inner())
     }
@@ -456,7 +474,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn ping(&mut self) -> Result<PingResponse, TuiGrpcError> {
-        let request = PingRequest {};
+        let request = self.make_request(PingRequest {});
         let response = self.server.ping(request).await?;
         Ok(response.into_inner())
     }
@@ -467,7 +485,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn info(&mut self) -> Result<InfoResponse, TuiGrpcError> {
-        let request = InfoRequest {};
+        let request = self.make_request(InfoRequest {});
         let response = self.server.info(request).await?;
         Ok(response.into_inner())
     }
@@ -482,7 +500,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn kill(&mut self, force: bool) -> Result<KillResponse, TuiGrpcError> {
-        let request = KillRequest { force };
+        let request = self.make_request(KillRequest { force });
         let response = self.server.kill(request).await?;
         Ok(response.into_inner())
     }
@@ -506,7 +524,7 @@ impl TuiGrpcClient {
         width: u64,
         height: u64,
     ) -> Result<ResizeResponse, TuiGrpcError> {
-        let request = ResizeRequest { width, height };
+        let request = self.make_request(ResizeRequest { width, height });
         let response = self.editor.resize(request).await?;
         Ok(response.into_inner())
     }
@@ -521,7 +539,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn quit(&mut self, force: bool) -> Result<QuitResponse, TuiGrpcError> {
-        let request = QuitRequest { force };
+        let request = self.make_request(QuitRequest { force });
         let response = self.editor.quit(request).await?;
         Ok(response.into_inner())
     }
@@ -539,7 +557,7 @@ impl TuiGrpcClient {
         &mut self,
         buffer_id: u64,
     ) -> Result<SetActiveBufferResponse, TuiGrpcError> {
-        let request = SetActiveBufferRequest { buffer_id };
+        let request = self.make_request(SetActiveBufferRequest { buffer_id });
         let response = self.editor.set_active_buffer(request).await?;
         Ok(response.into_inner())
     }
@@ -550,7 +568,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_active_buffer(&mut self) -> Result<GetActiveBufferResponse, TuiGrpcError> {
-        let request = GetActiveBufferRequest {};
+        let request = self.make_request(GetActiveBufferRequest {});
         let response = self.editor.get_active_buffer(request).await?;
         Ok(response.into_inner())
     }
@@ -565,7 +583,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_layout(&mut self) -> Result<GetLayoutResponse, TuiGrpcError> {
-        let request = GetLayoutRequest { client_id: 0 };
+        let request = self.make_request(GetLayoutRequest { client_id: 0 });
         let response = self.state.get_layout(request).await?;
         Ok(response.into_inner())
     }
@@ -583,7 +601,7 @@ impl TuiGrpcClient {
         &mut self,
         names: Vec<String>,
     ) -> Result<GetOptionsResponse, TuiGrpcError> {
-        let request = GetOptionsRequest { names };
+        let request = self.make_request(GetOptionsRequest { names });
         let response = self.state.get_options(request).await?;
         Ok(response.into_inner())
     }
@@ -601,10 +619,10 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetSelectionResponse, TuiGrpcError> {
-        let request = GetSelectionRequest {
+        let request = self.make_request(GetSelectionRequest {
             window_id,
             client_id: 0,
-        };
+        });
         let response = self.state.get_selection(request).await?;
         Ok(response.into_inner())
     }
@@ -622,10 +640,10 @@ impl TuiGrpcClient {
         &mut self,
         window_id: Option<u64>,
     ) -> Result<GetVisibleLinesResponse, TuiGrpcError> {
-        let request = GetVisibleLinesRequest {
+        let request = self.make_request(GetVisibleLinesRequest {
             window_id,
             client_id: 0,
-        };
+        });
         let response = self.state.get_visible_lines(request).await?;
         Ok(response.into_inner())
     }
@@ -653,13 +671,13 @@ impl TuiGrpcClient {
         format: &str,
         content: String,
     ) -> Result<SubmitCaptureResponseReply, TuiGrpcError> {
-        let request = SubmitCaptureRequest {
+        let request = self.make_request(SubmitCaptureRequest {
             request_id,
             width,
             height,
             format: format.to_string(),
             content,
-        };
+        });
         let response = self.state.submit_capture_response(request).await?;
         Ok(response.into_inner())
     }
@@ -678,9 +696,9 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn open_file(&mut self, path: &str) -> Result<OpenFileResponse, TuiGrpcError> {
-        let request = OpenFileRequest {
+        let request = self.make_request(OpenFileRequest {
             path: path.to_string(),
-        };
+        });
         let response = self.buffer.open_file(request).await?;
         Ok(response.into_inner())
     }
@@ -700,7 +718,7 @@ impl TuiGrpcClient {
         buffer_id: Option<u64>,
         path: Option<String>,
     ) -> Result<WriteFileResponse, TuiGrpcError> {
-        let request = WriteFileRequest { buffer_id, path };
+        let request = self.make_request(WriteFileRequest { buffer_id, path });
         let response = self.buffer.write_file(request).await?;
         Ok(response.into_inner())
     }
@@ -715,7 +733,7 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn list_modules(&mut self) -> Result<ListModulesResponse, TuiGrpcError> {
-        let request = ListModulesRequest {};
+        let request = self.make_request(ListModulesRequest {});
         let response = self.module.list(request).await?;
         Ok(response.into_inner())
     }
@@ -743,11 +761,11 @@ impl TuiGrpcClient {
         start_line: Option<u64>,
         end_line: Option<u64>,
     ) -> Result<GetTokensResponse, TuiGrpcError> {
-        let request = GetTokensRequest {
+        let request = self.make_request(GetTokensRequest {
             buffer_id,
             start_line,
             end_line,
-        };
+        });
         let response = self.syntax.get_tokens(request).await?;
         Ok(response.into_inner())
     }
@@ -767,7 +785,7 @@ impl TuiGrpcClient {
         &mut self,
         buffer_id: u64,
     ) -> Result<Streaming<TokenUpdate>, TuiGrpcError> {
-        let request = StreamTokensRequest { buffer_id };
+        let request = self.make_request(StreamTokensRequest { buffer_id });
         let response = self.syntax.stream_tokens(request).await?;
         Ok(response.into_inner())
     }
@@ -802,23 +820,24 @@ impl TuiGrpcClient {
             client_type: client_type.to_string(),
             display_name: display_name.to_string(),
         };
-        let response = self.presence.join(request).await?;
-        Ok(response.into_inner())
+        let response = self.presence.join(request).await?.into_inner();
+        // Store session token for subsequent requests (#483)
+        if !response.session_token.is_empty() {
+            self.session_token = Some(response.session_token.clone());
+        }
+        Ok(response)
     }
 
     /// Leave the presence session.
     ///
     /// Called on graceful disconnect to notify other clients.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_id` - The client ID to remove.
+    /// The server identifies the caller from the session token (#483).
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
-    pub async fn presence_leave(&mut self, client_id: u64) -> Result<LeaveResponse, TuiGrpcError> {
-        let request = LeaveRequest { client_id };
+    pub async fn presence_leave(&mut self) -> Result<LeaveResponse, TuiGrpcError> {
+        let request = self.make_request(LeaveRequest {});
         let response = self.presence.leave(request).await?;
         Ok(response.into_inner())
     }
@@ -829,35 +848,8 @@ impl TuiGrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn presence_list(&mut self) -> Result<ListClientsResponse, TuiGrpcError> {
-        let request = ListClientsRequest {};
+        let request = self.make_request(ListClientsRequest {});
         let response = self.presence.list_clients(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Send keys to the editor with explicit client ID.
-    ///
-    /// This is the preferred method for sending keys. It ensures each client's
-    /// input is routed to their own state (cursor, mode, etc.) rather than
-    /// sharing state with all other clients.
-    ///
-    /// # Arguments
-    ///
-    /// * `keys` - Keys in vim notation (e.g., `iHello\<Esc\>`).
-    /// * `client_id` - The client ID from `presence_join()`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn send_keys_with_client(
-        &mut self,
-        keys: &str,
-        client_id: u64,
-    ) -> Result<SendKeysResponse, TuiGrpcError> {
-        let request = SendKeysRequest {
-            keys: keys.to_string(),
-            client_id,
-        };
-        let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
     }
 }

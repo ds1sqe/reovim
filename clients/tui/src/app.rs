@@ -532,12 +532,9 @@ impl<O: TuiOutput> TuiApp<O> {
                     return Ok(());
                 }
 
-                // Send vim notation to server with client ID
+                // Send vim notation to server (identity from token, #483)
                 if !key_event.vim_notation.is_empty() {
-                    let result = self
-                        .client
-                        .send_keys_with_client(&key_event.vim_notation, self.state.my_client_id)
-                        .await;
+                    let result = self.client.send_keys(&key_event.vim_notation).await;
                     if let Err(e) = result {
                         self.state.last_error = Some(format!("Send keys failed: {e}"));
                     }
@@ -557,10 +554,7 @@ impl<O: TuiOutput> TuiApp<O> {
     async fn handle_control(&mut self, request: ControlRequest) -> Result<(), TuiAppError> {
         match request {
             ControlRequest::SendKeys { keys, response } => {
-                let result = self
-                    .client
-                    .send_keys_with_client(&keys, self.state.my_client_id)
-                    .await;
+                let result = self.client.send_keys(&keys).await;
                 let _ = response.send(result.is_ok_and(|r| r.ok));
             }
             ControlRequest::Capture { format, response } => {

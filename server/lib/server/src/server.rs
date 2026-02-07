@@ -6,13 +6,13 @@ use reovim_kernel::api::v1::ServiceRegistry;
 
 use crate::{
     ServerConfig, TransportMode,
-    session::{Session, SessionId, SessionRegistry, SessionState},
+    session::{Session, SessionId, SessionRegistry, SessionState, TokenRegistry},
 };
 
 #[cfg(feature = "grpc")]
 use {
     crate::grpc::{
-        BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
+        AuthInterceptor, BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
         NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
         SyntaxServiceImpl,
     },
@@ -41,6 +41,12 @@ pub struct Server {
     /// Registry of active sessions.
     sessions: Arc<SessionRegistry>,
 
+    /// Token registry for session-based authentication (#483).
+    ///
+    /// Maps session tokens to client IDs. Shared with the gRPC interceptor
+    /// and presence service.
+    tokens: Arc<TokenRegistry>,
+
     /// Optional service registry populated by modules.
     ///
     /// When set, sessions created by the server will use services from this registry
@@ -68,6 +74,7 @@ impl Server {
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
+            tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: None,
         }
@@ -99,6 +106,7 @@ impl Server {
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
+            tokens: Arc::new(TokenRegistry::new()),
             services: Some(services),
             session_factory: None,
         }
@@ -131,6 +139,7 @@ impl Server {
         Self {
             config,
             sessions: Arc::new(SessionRegistry::new()),
+            tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: Some(factory),
         }
@@ -216,6 +225,7 @@ impl Server {
     ///
     /// When `shutdown` is `Some`, the server will stop when the future resolves.
     /// When `port_tx` is `Some`, the bound port is sent before serving starts.
+    #[allow(clippy::too_many_lines)] // Service wiring is inherently verbose
     async fn run_grpc(
         &self,
         port: u16,
@@ -242,6 +252,9 @@ impl Server {
 
         let default_session_id = SessionId::new(&*self.config.default_session_name);
 
+        // Auth interceptor: resolves x-reovim-token → ClientId (#483)
+        let interceptor = AuthInterceptor::new(Arc::clone(&self.tokens));
+
         // Create all gRPC services
         let buffer_service =
             BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
@@ -253,8 +266,11 @@ impl Server {
             StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
         let server_service =
             ServerServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
-        let notification_service =
-            NotificationServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let notification_service = NotificationServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&self.tokens),
+        );
 
         // ModuleService is a stub - full implementation is in runner
         let module_service = ModuleServiceImpl::new();
@@ -264,8 +280,11 @@ impl Server {
             SyntaxServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
 
         // PresenceService for multi-client awareness (Phase 14)
-        let presence_service =
-            PresenceServiceImpl::new(Arc::clone(&self.sessions), default_session_id);
+        let presence_service = PresenceServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id,
+            Arc::clone(&self.tokens),
+        );
 
         // Build gRPC server with optional gRPC-Web support
         #[cfg(feature = "grpc-web")]
@@ -283,19 +302,23 @@ impl Server {
                 .expose_headers(Any);
 
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            let i = &interceptor;
             let router = tonic::transport::Server::builder()
                 .accept_http1(true) // Required for gRPC-Web
                 .layer(cors)
                 .layer(tonic_web::GrpcWebLayer::new())
-                .add_service(BufferServiceServer::new(buffer_service))
-                .add_service(EditorServiceServer::new(editor_service))
-                .add_service(InputServiceServer::new(input_service))
-                .add_service(ModuleServiceServer::new(module_service))
-                .add_service(StateServiceServer::new(state_service))
-                .add_service(ServerServiceServer::new(server_service))
-                .add_service(NotificationServiceServer::new(notification_service))
-                .add_service(SyntaxServiceServer::new(syntax_service))
-                .add_service(PresenceServiceServer::new(presence_service));
+                .add_service(BufferServiceServer::with_interceptor(buffer_service, i.clone()))
+                .add_service(EditorServiceServer::with_interceptor(editor_service, i.clone()))
+                .add_service(InputServiceServer::with_interceptor(input_service, i.clone()))
+                .add_service(ModuleServiceServer::with_interceptor(module_service, i.clone()))
+                .add_service(StateServiceServer::with_interceptor(state_service, i.clone()))
+                .add_service(ServerServiceServer::with_interceptor(server_service, i.clone()))
+                .add_service(NotificationServiceServer::with_interceptor(
+                    notification_service,
+                    i.clone(),
+                ))
+                .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
+                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -313,16 +336,20 @@ impl Server {
         #[cfg(not(feature = "grpc-web"))]
         {
             let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
+            let i = &interceptor;
             let router = tonic::transport::Server::builder()
-                .add_service(BufferServiceServer::new(buffer_service))
-                .add_service(EditorServiceServer::new(editor_service))
-                .add_service(InputServiceServer::new(input_service))
-                .add_service(ModuleServiceServer::new(module_service))
-                .add_service(StateServiceServer::new(state_service))
-                .add_service(ServerServiceServer::new(server_service))
-                .add_service(NotificationServiceServer::new(notification_service))
-                .add_service(SyntaxServiceServer::new(syntax_service))
-                .add_service(PresenceServiceServer::new(presence_service));
+                .add_service(BufferServiceServer::with_interceptor(buffer_service, i.clone()))
+                .add_service(EditorServiceServer::with_interceptor(editor_service, i.clone()))
+                .add_service(InputServiceServer::with_interceptor(input_service, i.clone()))
+                .add_service(ModuleServiceServer::with_interceptor(module_service, i.clone()))
+                .add_service(StateServiceServer::with_interceptor(state_service, i.clone()))
+                .add_service(ServerServiceServer::with_interceptor(server_service, i.clone()))
+                .add_service(NotificationServiceServer::with_interceptor(
+                    notification_service,
+                    i.clone(),
+                ))
+                .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
+                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router

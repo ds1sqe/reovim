@@ -4,6 +4,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.4-dev
 
+### Security
+
+- **Connection-bound client identity (#483)**: Replaced self-reported `client_id`
+  request fields with server-side token-based authentication. `Join()` returns a
+  `session_token`; clients send it via `x-reovim-token` metadata header; the
+  `AuthInterceptor` resolves tokens to `ClientId` server-side. Caller-identity
+  RPCs (`send_keys`, `leave`, `update_presence`, `set_sync_mode`) now require
+  token authentication — the body `client_id` field is removed and reserved.
+  State-query RPCs (`get_mode`, `get_cursor`, `get_layout`) use the token for
+  caller authentication while the body `client_id` selects the target (0 = self).
+
 ### Removed
 
 - **Dead `CmdlineBuffer` from `AppState` (#452)**: Removed unused `CmdlineBuffer`

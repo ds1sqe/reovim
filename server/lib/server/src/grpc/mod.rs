@@ -14,6 +14,7 @@
 //!
 //! See `docs/architecture/server-client-split.md` for details.
 
+pub mod auth;
 mod buffer;
 mod debug;
 mod editor;
@@ -27,8 +28,8 @@ mod state;
 mod syntax;
 
 pub use {
-    buffer::BufferServiceImpl, debug::DebugServiceImpl, editor::EditorServiceImpl,
-    input::InputServiceImpl, module::ModuleServiceImpl, notification::NotificationServiceImpl,
-    presence::PresenceServiceImpl, server_service::ServerServiceImpl, state::StateServiceImpl,
-    syntax::SyntaxServiceImpl,
+    auth::AuthInterceptor, buffer::BufferServiceImpl, debug::DebugServiceImpl,
+    editor::EditorServiceImpl, input::InputServiceImpl, module::ModuleServiceImpl,
+    notification::NotificationServiceImpl, presence::PresenceServiceImpl,
+    server_service::ServerServiceImpl, state::StateServiceImpl, syntax::SyntaxServiceImpl,
 };

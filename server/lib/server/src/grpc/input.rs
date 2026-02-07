@@ -33,7 +33,7 @@ use {
 };
 
 use crate::{
-    grpc::notification_builder,
+    grpc::{auth::require_client_id, notification_builder},
     session::{ClientEventType, ClientId, ClientRingBuffer, Session, SessionId, SessionRegistry},
 };
 
@@ -87,23 +87,18 @@ impl InputService for InputServiceImpl {
         &self,
         request: Request<SendKeysRequest>,
     ) -> Result<Response<SendKeysResponse>, Status> {
+        // #483 Phase 5: Token-only authentication (no body fallback)
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
+        let client_id = require_client_id(token_client_id)?;
 
-        // Phase 11.2: Per-client input routing
-        // Extract client_id from request (required field - clients must identify themselves)
-        #[allow(clippy::cast_possible_truncation)]
-        let client_id = ClientId::new(req.client_id as usize);
-
-        // Ensure client exists in session (creates as Owner if new)
+        // #483: Client must exist (created via Join()); auto-join removed
         if !session.has_client(client_id) {
-            session.add_client(client_id);
-            tracing::debug!(%client_id, "Created new client as Owner");
+            return Err(Status::failed_precondition(format!(
+                "Client {client_id} not found — call Join() before sending keys"
+            )));
         }
 
         // Check client relation for input routing
@@ -203,7 +198,7 @@ impl InputService for InputServiceImpl {
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
         if accumulated_changes.has_changes() {
-            Self::emit_notifications(&session, &accumulated_changes, req.client_id);
+            Self::emit_notifications(&session, &accumulated_changes, client_id.as_usize() as u64);
         }
 
         // Return result
@@ -560,16 +555,25 @@ mod tests {
         registry
     }
 
+    /// Helper: build a request with token-authenticated `ClientId` in extensions.
+    fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
+        let mut request = Request::new(body);
+        request.extensions_mut().insert(client_id);
+        request
+    }
+
     #[tokio::test]
     #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
     async fn test_send_keys_valid_notation() {
         let registry = test_registry();
         let service = InputServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(SendKeysRequest {
-            keys: "abc".to_string(),
-            client_id: 1,
-        });
+        let request = authed_request(
+            SendKeysRequest {
+                keys: "abc".to_string(),
+            },
+            ClientId::new(1),
+        );
         let response = service.send_keys(request).await;
 
         // Should parse successfully, but may not execute without active buffer
@@ -579,12 +583,19 @@ mod tests {
     #[tokio::test]
     async fn test_send_keys_invalid_notation() {
         let registry = test_registry();
+        // Client must exist (created via Join() in production)
+        registry
+            .get(&SessionId::new("test"))
+            .unwrap()
+            .add_client(ClientId::new(1));
         let service = InputServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(SendKeysRequest {
-            keys: "<Ctrl".to_string(), // Unclosed angle bracket
-            client_id: 1,
-        });
+        let request = authed_request(
+            SendKeysRequest {
+                keys: "<Ctrl".to_string(),
+            },
+            ClientId::new(1),
+        );
         let response = service.send_keys(request).await;
 
         assert!(response.is_err());
@@ -598,10 +609,12 @@ mod tests {
         let registry = test_registry();
         let service = InputServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(SendKeysRequest {
-            keys: "<Esc>".to_string(),
-            client_id: 1,
-        });
+        let request = authed_request(
+            SendKeysRequest {
+                keys: "<Esc>".to_string(),
+            },
+            ClientId::new(1),
+        );
         let response = service.send_keys(request).await;
 
         // Should parse but not handle (non-character key)
@@ -616,10 +629,12 @@ mod tests {
         let registry = test_registry();
         let service = InputServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(SendKeysRequest {
-            keys: "<C-w>".to_string(),
-            client_id: 1,
-        });
+        let request = authed_request(
+            SendKeysRequest {
+                keys: "<C-w>".to_string(),
+            },
+            ClientId::new(1),
+        );
         let response = service.send_keys(request).await;
 
         // Should parse but not handle (modifier key)
@@ -634,14 +649,31 @@ mod tests {
         // No session inserted
         let service = InputServiceImpl::new(registry, SessionId::new("nonexistent"));
 
-        let request = Request::new(SendKeysRequest {
-            keys: "a".to_string(),
-            client_id: 1,
-        });
+        let request = authed_request(
+            SendKeysRequest {
+                keys: "a".to_string(),
+            },
+            ClientId::new(1),
+        );
         let response = service.send_keys(request).await;
 
         assert!(response.is_err());
         let status = response.unwrap_err();
         assert_eq!(status.code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_send_keys_rejects_unauthenticated() {
+        let registry = test_registry();
+        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+
+        // No ClientId in extensions — should be rejected
+        let request = Request::new(SendKeysRequest {
+            keys: "a".to_string(),
+        });
+        let response = service.send_keys(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 }

@@ -21,16 +21,10 @@ use crate::{GrpcClient, GrpcClientError, OutputFormat};
 pub async fn keys(
     client: &mut GrpcClient,
     keys: &str,
-    client_id: Option<u64>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = if let Some(id) = client_id {
-        // Use specified client ID for multi-client testing (#471)
-        client.send_keys_with_client(keys, id).await?
-    } else {
-        // Auto-join and use default client ID
-        client.send_keys(keys).await?
-    };
+    // Identity resolved from session token (#483)
+    let response = client.send_keys(keys).await?;
 
     let status_str = match response.status {
         1 => "executed",
@@ -440,10 +434,10 @@ pub async fn presence_join(
 /// Returns an error if the gRPC call fails.
 pub async fn presence_leave(
     client: &mut GrpcClient,
-    client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.presence_leave(client_id).await?;
+    // Identity resolved from session token (#483)
+    let response = client.presence_leave().await?;
 
     match format {
         OutputFormat::Plain => {
@@ -523,12 +517,12 @@ pub async fn presence_list(
 /// Returns an error if the gRPC call fails.
 pub async fn presence_update(
     client: &mut GrpcClient,
-    client_id: u64,
     buffer_id: Option<u64>,
     mode: Option<String>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.presence_update(client_id, buffer_id, mode).await?;
+    // Identity resolved from session token (#483)
+    let response = client.presence_update(buffer_id, mode).await?;
 
     match format {
         OutputFormat::Plain => {
@@ -556,13 +550,13 @@ pub async fn presence_update(
 /// Returns an error if the gRPC call fails.
 pub async fn presence_set_sync_mode(
     client: &mut GrpcClient,
-    client_id: u64,
     sync_mode: i32,
     follow_target: Option<u64>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
+    // Identity resolved from session token (#483)
     let response = client
-        .presence_set_sync_mode(client_id, sync_mode, follow_target)
+        .presence_set_sync_mode(sync_mode, follow_target)
         .await?;
 
     let mode_str = match sync_mode {

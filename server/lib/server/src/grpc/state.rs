@@ -21,8 +21,12 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{
-    CaptureResult, ClientEventType, ClientId, Session, SessionId, SessionRegistry, wait_for_capture,
+use crate::{
+    grpc::auth::resolve_target_client_id,
+    session::{
+        CaptureResult, ClientEventType, ClientId, Session, SessionId, SessionRegistry,
+        wait_for_capture,
+    },
 };
 
 /// Convert a driver-layer `Window` to a proto `WindowLeaf`.
@@ -86,22 +90,18 @@ impl StateService for StateServiceImpl {
     ///
     /// # Errors
     ///
-    /// - `InvalidArgument`: `client_id=0` is reserved (like PID 1)
+    /// - `Unauthenticated`: No session token (#483)
     /// - `NotFound`: Client with given ID not found in session
-    #[allow(clippy::cast_possible_truncation)]
     async fn get_mode(
         &self,
         request: Request<GetModeRequest>,
     ) -> Result<Response<GetModeResponse>, Status> {
+        // #483 Phase 5: Token for auth, body client_id for targeting
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
-
-        let client_id = ClientId::new(req.client_id as usize);
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client mode lookup - now required (no fallback to shared state)
         let mode = session.client_current_mode(client_id).ok_or_else(|| {
@@ -141,15 +141,12 @@ impl StateService for StateServiceImpl {
         &self,
         request: Request<GetCursorRequest>,
     ) -> Result<Response<GetCursorResponse>, Status> {
+        // #483 Phase 5: Token for auth, body client_id for targeting
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
-
-        let client_id = ClientId::new(req.client_id as usize);
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
         let state = session.client_state(client_id).ok_or_else(|| {
@@ -216,15 +213,12 @@ impl StateService for StateServiceImpl {
         &self,
         request: Request<GetLayoutRequest>,
     ) -> Result<Response<GetLayoutResponse>, Status> {
+        // #483 Phase 5: Token for auth, body client_id for targeting
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
-
-        let client_id = ClientId::new(req.client_id as usize);
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
         let state = session.client_state(client_id).ok_or_else(|| {
@@ -299,16 +293,13 @@ impl StateService for StateServiceImpl {
         &self,
         request: Request<GetVisibleLinesRequest>,
     ) -> Result<Response<GetVisibleLinesResponse>, Status> {
+        // #483 Phase 5: Token for auth, body client_id for targeting
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let requested_window_id = req.window_id;
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
-
-        let client_id = ClientId::new(req.client_id as usize);
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
         let state = session.client_state(client_id).ok_or_else(|| {
@@ -359,15 +350,12 @@ impl StateService for StateServiceImpl {
     ) -> Result<Response<GetSelectionResponse>, Status> {
         use reovim_protocol::v2::Selection;
 
+        // #483 Phase 5: Token for auth, body client_id for targeting
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        // Phase #479: Reject reserved client_id=0 (like PID 1)
-        if req.client_id == 0 {
-            return Err(Status::invalid_argument("client_id=0 is reserved"));
-        }
-
-        let client_id = ClientId::new(req.client_id as usize);
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
         // Per-client state lookup - now required (no fallback to shared state)
         let state = session.client_state(client_id).ok_or_else(|| {
@@ -644,6 +632,13 @@ mod tests {
         (registry, session)
     }
 
+    /// Helper: build a request with token-authenticated `ClientId` in extensions.
+    fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
+        let mut request = Request::new(body);
+        request.extensions_mut().insert(client_id);
+        request
+    }
+
     #[tokio::test]
     async fn test_get_mode_returns_current_mode() {
         let (registry, session) = test_registry_with_session();
@@ -652,7 +647,7 @@ mod tests {
         // Create a client first (client_id=1)
         session.add_client(ClientId::new(1));
 
-        let request = Request::new(GetModeRequest { client_id: 1 });
+        let request = authed_request(GetModeRequest { client_id: 1 }, ClientId::new(1));
         let response = service.get_mode(request).await;
 
         assert!(response.is_ok());
@@ -664,16 +659,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_mode_rejects_client_id_zero() {
+    async fn test_get_mode_rejects_unauthenticated() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        // client_id=0 is reserved (like PID 1)
+        // No token in extensions → Unauthenticated (#483)
         let request = Request::new(GetModeRequest { client_id: 0 });
         let response = service.get_mode(request).await;
 
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 
     #[tokio::test]
@@ -682,7 +677,8 @@ mod tests {
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Non-existent client should return NotFound
-        let request = Request::new(GetModeRequest { client_id: 999 });
+        // Authenticated as client 999, targeting self (client_id=999 in body)
+        let request = authed_request(GetModeRequest { client_id: 999 }, ClientId::new(999));
         let response = service.get_mode(request).await;
 
         assert!(response.is_err());
@@ -690,11 +686,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_cursor_rejects_client_id_zero() {
+    async fn test_get_cursor_rejects_unauthenticated() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        // client_id=0 is reserved (like PID 1)
+        // No token in extensions → Unauthenticated (#483)
         let request = Request::new(GetCursorRequest {
             window_id: None,
             client_id: 0,
@@ -702,7 +698,7 @@ mod tests {
         let response = service.get_cursor(request).await;
 
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 
     #[tokio::test]
@@ -713,10 +709,13 @@ mod tests {
         // Create a client but don't add any windows
         session.add_client(ClientId::new(1));
 
-        let request = Request::new(GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetCursorRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_cursor(request).await;
 
         // Client exists but no active window = NotFound
@@ -740,10 +739,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetCursorRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_cursor(request).await;
 
         assert!(response.is_ok());
@@ -767,16 +769,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_layout_rejects_client_id_zero() {
+    async fn test_get_layout_rejects_unauthenticated() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        // client_id=0 is reserved (like PID 1)
+        // No token in extensions → Unauthenticated (#483)
         let request = Request::new(GetLayoutRequest { client_id: 0 });
         let response = service.get_layout(request).await;
 
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 
     #[tokio::test]
@@ -788,7 +790,7 @@ mod tests {
         // Create a client
         session.add_client(ClientId::new(1));
 
-        let request = Request::new(GetLayoutRequest { client_id: 1 });
+        let request = authed_request(GetLayoutRequest { client_id: 1 }, ClientId::new(1));
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
@@ -815,7 +817,7 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetLayoutRequest { client_id: 1 });
+        let request = authed_request(GetLayoutRequest { client_id: 1 }, ClientId::new(1));
         let response = service.get_layout(request).await;
 
         assert!(response.is_ok());
@@ -837,11 +839,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_visible_lines_rejects_client_id_zero() {
+    async fn test_get_visible_lines_rejects_unauthenticated() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        // client_id=0 is reserved (like PID 1)
+        // No token in extensions → Unauthenticated (#483)
         let request = Request::new(GetVisibleLinesRequest {
             window_id: None,
             client_id: 0,
@@ -849,7 +851,7 @@ mod tests {
         let response = service.get_visible_lines(request).await;
 
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 
     #[tokio::test]
@@ -860,10 +862,13 @@ mod tests {
 
         session.add_client(ClientId::new(1));
 
-        let request = Request::new(GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetVisibleLinesRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_visible_lines(request).await;
 
         // Client exists but no window = NotFound
@@ -887,10 +892,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetVisibleLinesRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_visible_lines(request).await;
 
         assert!(response.is_ok());
@@ -929,10 +937,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetVisibleLinesRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetVisibleLinesRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_visible_lines(request).await;
 
         assert!(response.is_ok());
@@ -1035,11 +1046,11 @@ mod tests {
     // Phase 9.1: GetSelection RPC tests
 
     #[tokio::test]
-    async fn test_get_selection_rejects_client_id_zero() {
+    async fn test_get_selection_rejects_unauthenticated() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        // client_id=0 is reserved (like PID 1)
+        // No token in extensions → Unauthenticated (#483)
         let request = Request::new(GetSelectionRequest {
             window_id: None,
             client_id: 0,
@@ -1047,7 +1058,7 @@ mod tests {
         let response = service.get_selection(request).await;
 
         assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+        assert_eq!(response.unwrap_err().code(), tonic::Code::Unauthenticated);
     }
 
     #[tokio::test]
@@ -1066,10 +1077,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1087,10 +1101,13 @@ mod tests {
 
         session.add_client(ClientId::new(1));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         // Client exists but no active window = NotFound
@@ -1132,10 +1149,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1185,10 +1205,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1231,10 +1254,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1277,10 +1303,13 @@ mod tests {
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_selection(request).await;
 
         assert!(response.is_ok());
@@ -1317,7 +1346,7 @@ mod tests {
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query with client_id = 42 should return INSERT mode
-        let request = Request::new(GetModeRequest { client_id: 42 });
+        let request = authed_request(GetModeRequest { client_id: 42 }, ClientId::new(42));
         let response = service.get_mode(request).await;
 
         assert!(response.is_ok());
@@ -1371,20 +1400,26 @@ mod tests {
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query Client A's cursor
-        let request = Request::new(GetCursorRequest {
-            window_id: None,
-            client_id: 1,
-        });
+        let request = authed_request(
+            GetCursorRequest {
+                window_id: None,
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_cursor(request).await.unwrap().into_inner();
         let pos = response.position.unwrap();
         assert_eq!(pos.line, 3, "Client A gRPC cursor line");
         assert_eq!(pos.column, 5, "Client A gRPC cursor column");
 
         // Query Client B's cursor - should be independent
-        let request = Request::new(GetCursorRequest {
-            window_id: None,
-            client_id: 2,
-        });
+        let request = authed_request(
+            GetCursorRequest {
+                window_id: None,
+                client_id: 2,
+            },
+            ClientId::new(2),
+        );
         let response = service.get_cursor(request).await.unwrap().into_inner();
         let pos = response.position.unwrap();
         assert_eq!(pos.line, 0, "Client B gRPC cursor line");
@@ -1417,13 +1452,13 @@ mod tests {
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query Client A's mode - should be INSERT
-        let request = Request::new(GetModeRequest { client_id: 10 });
+        let request = authed_request(GetModeRequest { client_id: 10 }, ClientId::new(10));
         let response = service.get_mode(request).await.unwrap().into_inner();
         assert_eq!(response.name, "insert", "Client A gRPC mode");
         assert!(response.is_insert, "Client A should be in insert mode");
 
         // Query Client B's mode - should still be NORMAL
-        let request = Request::new(GetModeRequest { client_id: 20 });
+        let request = authed_request(GetModeRequest { client_id: 20 }, ClientId::new(20));
         let response = service.get_mode(request).await.unwrap().into_inner();
         assert_eq!(response.name, "normal", "Client B gRPC mode");
         assert!(!response.is_insert, "Client B should NOT be in insert mode");
@@ -1456,7 +1491,7 @@ mod tests {
         // Verify via gRPC with client_id
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetLayoutRequest { client_id: 100 });
+        let request = authed_request(GetLayoutRequest { client_id: 100 }, ClientId::new(100));
         let response = service.get_layout(request).await.unwrap().into_inner();
 
         // Should get per-client layout with the modified viewport
@@ -1517,19 +1552,25 @@ mod tests {
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query Client A's selection - should have selection
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 50,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 50,
+            },
+            ClientId::new(50),
+        );
         let response = service.get_selection(request).await.unwrap().into_inner();
         assert!(response.has_selection, "Client A should have selection");
         assert_eq!(response.visual_mode, Some("char".to_string()), "Client A selection mode");
 
         // Query Client B's selection - should have NO selection
-        let request = Request::new(GetSelectionRequest {
-            window_id: None,
-            client_id: 60,
-        });
+        let request = authed_request(
+            GetSelectionRequest {
+                window_id: None,
+                client_id: 60,
+            },
+            ClientId::new(60),
+        );
         let response = service.get_selection(request).await.unwrap().into_inner();
         assert!(!response.has_selection, "Client B should NOT have selection");
     }

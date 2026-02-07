@@ -242,12 +242,17 @@ message JoinResponse {
 
   // Currently connected peers with unified ClientInfo (#480).
   repeated ClientInfo peers_v2 = 3;
+
+  // Session token for authenticating subsequent requests (#483).
+  // Send as gRPC metadata header: x-reovim-token: <value>
+  string session_token = 4;
 }
 
 // Leave request - client announces departure.
+// #483 Phase 5: caller identity from x-reovim-token header.
 message LeaveRequest {
-  // Client ID to remove.
-  uint64 client_id = 1;
+  reserved 1;
+  reserved "client_id";
 }
 
 // Leave response.
@@ -262,16 +267,13 @@ message StreamPresenceRequest {
 }
 
 // Update presence request - client updates its state.
+// #483 Phase 5: caller identity from x-reovim-token header.
 message UpdatePresenceRequest {
-  // Client ID making the update.
-  uint64 client_id = 1;
+  reserved 1, 3;
+  reserved "client_id", "cursor";
 
   // New buffer ID (optional, only if changed).
   optional uint64 buffer_id = 2;
-
-  // Field 3 removed: cursor now tracked via CursorMovedPayload with client_id
-  reserved 3;
-  reserved "cursor";
 
   // New visible line range (optional, only if changed).
   optional LineRange visible_lines = 4;
@@ -287,9 +289,10 @@ message UpdatePresenceResponse {
 }
 
 // Set sync mode request.
+// #483 Phase 5: caller identity from x-reovim-token header.
 message SetSyncModeRequest {
-  // Client ID setting the mode.
-  uint64 client_id = 1;
+  reserved 1;
+  reserved "client_id";
 
   // New sync mode.
   SyncMode mode = 2;
@@ -320,9 +323,10 @@ message ListClientsResponse {
 }
 
 // Set role request (Phase 11.2, Epic #465).
+// #483 Phase 5: caller identity from x-reovim-token header.
 message SetRoleRequest {
-  // Client ID to set role for.
-  uint64 client_id = 1;
+  reserved 1;
+  reserved "client_id";
 
   // New role.
   ClientRole role = 2;
@@ -341,9 +345,10 @@ message SetRoleResponse {
 }
 
 // Set relation request (#480 Client Architecture Unification).
+// #483 Phase 5: caller identity from x-reovim-token header.
 message SetRelationRequest {
-  // Client ID to set relation for.
-  uint64 client_id = 1;
+  reserved 1;
+  reserved "client_id";
 
   // New relation. Absent = independent.
   optional ClientRelation relation = 2;

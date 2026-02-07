@@ -43,7 +43,7 @@ use {
         server_service_client::ServerServiceClient,
         state_service_client::StateServiceClient,
     },
-    tonic::transport::Channel,
+    tonic::{Request, transport::Channel},
 };
 
 /// Error type for gRPC client operations.
@@ -98,6 +98,11 @@ pub struct GrpcClient {
     address: String,
     /// Client ID assigned by server (None until joined).
     client_id: Option<u64>,
+    /// Session token for token-based authentication (#483).
+    ///
+    /// Received from `Join()` response, sent as `x-reovim-token` metadata
+    /// header on every subsequent gRPC request.
+    session_token: Option<String>,
 }
 
 impl GrpcClient {
@@ -127,7 +132,23 @@ impl GrpcClient {
             debug: DebugServiceClient::new(channel),
             address: addr.to_string(),
             client_id: None,
+            session_token: None,
         })
+    }
+
+    /// Wrap a proto message in a `tonic::Request` with session token metadata (#483).
+    ///
+    /// If a session token has been stored (from `Join()`), injects it as the
+    /// `x-reovim-token` gRPC metadata header. The server interceptor resolves
+    /// this token to the caller's `ClientId`.
+    fn make_request<T>(&self, body: T) -> Request<T> {
+        let mut request = Request::new(body);
+        if let Some(ref token) = self.session_token {
+            request
+                .metadata_mut()
+                .insert("x-reovim-token", token.parse().expect("session token is valid ASCII"));
+        }
+        request
     }
 
     /// Ensure the client has joined the presence session.
@@ -229,34 +250,10 @@ impl GrpcClient {
     /// The client auto-joins the presence session on first call.
     /// Panics if joining fails or if the server returns a fatal error.
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
-        let client_id = self.ensure_joined().await;
-        let request = SendKeysRequest {
+        self.ensure_joined().await;
+        let request = self.make_request(SendKeysRequest {
             keys: keys.to_string(),
-            client_id,
-        };
-        let response = self.input.send_keys(request).await?;
-        Ok(response.into_inner())
-    }
-
-    /// Send keys to the editor with a specific client ID.
-    ///
-    /// # Per-client state (#471): Per-client input routing
-    ///
-    /// Keys are processed using the specified client's per-client mode stack,
-    /// enabling multi-client mode isolation.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the gRPC call fails.
-    pub async fn send_keys_with_client(
-        &mut self,
-        keys: &str,
-        client_id: u64,
-    ) -> Result<SendKeysResponse, GrpcClientError> {
-        let request = SendKeysRequest {
-            keys: keys.to_string(),
-            client_id,
-        };
+        });
         let response = self.input.send_keys(request).await?;
         Ok(response.into_inner())
     }
@@ -271,8 +268,8 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
-        let client_id = self.ensure_joined().await;
-        let request = GetModeRequest { client_id };
+        self.ensure_joined().await;
+        let request = self.make_request(GetModeRequest { client_id: 0 });
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -290,7 +287,7 @@ impl GrpcClient {
         &mut self,
         client_id: u64,
     ) -> Result<GetModeResponse, GrpcClientError> {
-        let request = GetModeRequest { client_id };
+        let request = self.make_request(GetModeRequest { client_id });
         let response = self.state.get_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -305,11 +302,11 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
-        let client_id = self.ensure_joined().await;
-        let request = GetCursorRequest {
+        self.ensure_joined().await;
+        let request = self.make_request(GetCursorRequest {
             window_id: None,
-            client_id,
-        };
+            client_id: 0,
+        });
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -327,10 +324,10 @@ impl GrpcClient {
         &mut self,
         client_id: u64,
     ) -> Result<GetCursorResponse, GrpcClientError> {
-        let request = GetCursorRequest {
+        let request = self.make_request(GetCursorRequest {
             window_id: None,
             client_id,
-        };
+        });
         let response = self.state.get_cursor(request).await?;
         Ok(response.into_inner())
     }
@@ -341,7 +338,7 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn list_buffers(&mut self) -> Result<ListBuffersResponse, GrpcClientError> {
-        let request = ListBuffersRequest {};
+        let request = self.make_request(ListBuffersRequest {});
         let response = self.buffer.list(request).await?;
         Ok(response.into_inner())
     }
@@ -359,11 +356,11 @@ impl GrpcClient {
         &mut self,
         buffer_id: Option<u64>,
     ) -> Result<GetRawContentResponse, GrpcClientError> {
-        let request = GetRawContentRequest {
+        let request = self.make_request(GetRawContentRequest {
             buffer_id,
             start_line: None,
             end_line: None,
-        };
+        });
         let response = self.buffer.get_raw_content(request).await?;
         Ok(response.into_inner())
     }
@@ -374,7 +371,7 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn ping(&mut self) -> Result<PingResponse, GrpcClientError> {
-        let request = PingRequest {};
+        let request = self.make_request(PingRequest {});
         let response = self.server.ping(request).await?;
         Ok(response.into_inner())
     }
@@ -385,7 +382,7 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn info(&mut self) -> Result<InfoResponse, GrpcClientError> {
-        let request = InfoRequest {};
+        let request = self.make_request(InfoRequest {});
         let response = self.server.info(request).await?;
         Ok(response.into_inner())
     }
@@ -403,7 +400,7 @@ impl GrpcClient {
         &mut self,
         names: Vec<String>,
     ) -> Result<GetRegistersResponse, GrpcClientError> {
-        let request = GetRegistersRequest { names };
+        let request = self.make_request(GetRegistersRequest { names });
         let response = self.state.get_registers(request).await?;
         Ok(response.into_inner())
     }
@@ -425,10 +422,11 @@ impl GrpcClient {
         client_id: u64,
         format: &str,
     ) -> Result<GetScreenContentResponse, GrpcClientError> {
-        let request = GetScreenContentRequest {
+        // client_id here is a TARGET (which TUI to capture), not caller identity
+        let request = self.make_request(GetScreenContentRequest {
             client_id,
             format: format.to_string(),
-        };
+        });
         let response = self.state.get_screen_content(request).await?;
         Ok(response.into_inner())
     }
@@ -462,28 +460,24 @@ impl GrpcClient {
             client_type: client_type.to_string(),
             display_name: display_name.to_string(),
         };
-        let response = self.presence.join(request).await?;
-        Ok(response.into_inner())
+        let response = self.presence.join(request).await?.into_inner();
+        // Store client ID and session token for subsequent requests (#483)
+        self.client_id = Some(response.client_id);
+        if !response.session_token.is_empty() {
+            self.session_token = Some(response.session_token.clone());
+        }
+        Ok(response)
     }
 
     /// Leave the presence session.
     ///
-    /// # Arguments
-    ///
-    /// * `client_id` - The client ID to remove.
-    ///
-    /// # Returns
-    ///
-    /// The response indicating success or failure.
+    /// # Phase 5 (#483): Token identifies the client — no `client_id` parameter.
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
-    pub async fn presence_leave(
-        &mut self,
-        client_id: u64,
-    ) -> Result<LeaveResponse, GrpcClientError> {
-        let request = LeaveRequest { client_id };
+    pub async fn presence_leave(&mut self) -> Result<LeaveResponse, GrpcClientError> {
+        let request = self.make_request(LeaveRequest {});
         let response = self.presence.leave(request).await?;
         Ok(response.into_inner())
     }
@@ -498,63 +492,48 @@ impl GrpcClient {
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn presence_list(&mut self) -> Result<ListClientsResponse, GrpcClientError> {
-        let request = ListClientsRequest {};
+        let request = self.make_request(ListClientsRequest {});
         let response = self.presence.list_clients(request).await?;
         Ok(response.into_inner())
     }
 
     /// Update this client's presence state.
     ///
-    /// # Arguments
-    ///
-    /// * `client_id` - The client ID making the update.
-    /// * `buffer_id` - Optional new buffer ID.
-    /// * `mode` - Optional mode name.
-    ///
-    /// Note: `cursor_line`/`cursor_column` removed (Phase 14, #471).
-    /// Cursor is now tracked via `CursorMoved` notifications with `client_id`.
+    /// # Phase 5 (#483): Token identifies the client — no `client_id` parameter.
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn presence_update(
         &mut self,
-        client_id: u64,
         buffer_id: Option<u64>,
         mode: Option<String>,
     ) -> Result<UpdatePresenceResponse, GrpcClientError> {
-        let request = UpdatePresenceRequest {
-            client_id,
+        let request = self.make_request(UpdatePresenceRequest {
             buffer_id,
             visible_lines: None,
             mode,
-        };
+        });
         let response = self.presence.update_presence(request).await?;
         Ok(response.into_inner())
     }
 
     /// Set sync mode for this client.
     ///
-    /// # Arguments
-    ///
-    /// * `client_id` - The client ID setting the mode.
-    /// * `sync_mode` - The sync mode (0 = Independent, 1 = Follow, 2 = Present).
-    /// * `follow_target` - Target client ID when mode is Follow.
+    /// # Phase 5 (#483): Token identifies the client — no `client_id` parameter.
     ///
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
     pub async fn presence_set_sync_mode(
         &mut self,
-        client_id: u64,
         sync_mode: i32,
         follow_target: Option<u64>,
     ) -> Result<SetSyncModeResponse, GrpcClientError> {
-        let request = SetSyncModeRequest {
-            client_id,
+        let request = self.make_request(SetSyncModeRequest {
             mode: sync_mode,
             follow_target,
-        };
+        });
         let response = self.presence.set_sync_mode(request).await?;
         Ok(response.into_inner())
     }
@@ -586,12 +565,12 @@ impl GrpcClient {
         target: Option<String>,
         grep: Option<String>,
     ) -> Result<LogTailResponse, GrpcClientError> {
-        let request = LogTailRequest {
+        let request = self.make_request(LogTailRequest {
             count,
             level,
             target,
             grep,
-        };
+        });
         let response = self.debug.log_tail(request).await?;
         Ok(response.into_inner())
     }

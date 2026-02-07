@@ -2,42 +2,143 @@
 //!
 //! Provides server-to-client streaming for real-time notifications.
 //! Uses gRPC server streaming to push state changes to connected clients.
+//!
+//! # Auto-Cleanup on Disconnect (#483 Phase 4)
+//!
+//! The notification stream acts as the client's heartbeat. When the stream
+//! is dropped (client disconnect, crash, or network failure), a
+//! [`CleanupStream`] wrapper triggers automatic cleanup:
+//!
+//! 1. Revoke the client's session token
+//! 2. Remove from presence map
+//! 3. Remove from client map (dumps ring buffer for diagnostics)
+//! 4. Emit `presence_left` notification to remaining peers
 
 // `Status` is tonic's standard error type - size is inherent to the library
 #![allow(clippy::result_large_err)]
+// gRPC protocol uses u64 for IDs; internally we use usize. Equivalent on 64-bit.
+#![allow(clippy::cast_possible_truncation)]
 
-use std::{pin::Pin, sync::Arc};
+use std::{
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+    time::SystemTime,
+};
 
 use {
     futures::Stream,
     reovim_protocol::v2::{
-        Notification, SubscribeRequest, notification_service_server::NotificationService,
+        Notification, SubscribeRequest, notification::Payload,
+        notification_service_server::NotificationService,
     },
     tokio_stream::wrappers::{BroadcastStream, errors::BroadcastStreamRecvError},
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry};
+use crate::session::{ClientId, Session, SessionId, SessionRegistry, TokenRegistry};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CleanupStream (#483 Phase 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A stream wrapper that triggers client cleanup when dropped.
+///
+/// When a notification stream is dropped (client disconnect), the `Drop` impl
+/// runs the cleanup closure which revokes the token, removes the client from
+/// the session, and emits a `presence_left` notification.
+///
+/// All cleanup operations are idempotent — if the client already called
+/// `Leave()` explicitly, the cleanup closure is a no-op.
+struct CleanupStream {
+    inner: Pin<Box<dyn Stream<Item = Result<Notification, Status>> + Send>>,
+    cleanup: Option<Box<dyn FnOnce() + Send>>,
+}
+
+impl CleanupStream {
+    fn new(
+        inner: Pin<Box<dyn Stream<Item = Result<Notification, Status>> + Send>>,
+        cleanup: impl FnOnce() + Send + 'static,
+    ) -> Self {
+        Self {
+            inner,
+            cleanup: Some(Box::new(cleanup)),
+        }
+    }
+}
+
+impl Stream for CleanupStream {
+    type Item = Result<Notification, Status>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        self.inner.as_mut().poll_next(cx)
+    }
+}
+
+impl Drop for CleanupStream {
+    fn drop(&mut self) {
+        if let Some(cleanup) = self.cleanup.take() {
+            cleanup();
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Build `presence_left` notification for auto-cleanup.
+fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> Notification {
+    use reovim_protocol::v2::PresenceLeftPayload;
+
+    let timestamp_ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("system time before UNIX_EPOCH")
+        .as_millis() as u64;
+
+    Notification {
+        event_type: "presence_left".to_string(),
+        timestamp_ms,
+        payload: Some(Payload::PresenceLeft(PresenceLeftPayload {
+            client_id: client_id.as_usize() as u64,
+            display_name: display_name.to_string(),
+        })),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NotificationServiceImpl
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// gRPC `NotificationService` implementation.
 ///
 /// Provides server-to-client streaming for real-time notifications.
 /// Clients subscribe to receive state changes (mode, cursor, buffer, etc.)
 /// as they happen.
+///
+/// When the stream is dropped, automatic client cleanup is triggered
+/// via [`CleanupStream`] (#483 Phase 4).
 pub struct NotificationServiceImpl {
     /// Shared session registry.
     sessions: Arc<SessionRegistry>,
     /// Default session ID to use when not specified.
     default_session_id: SessionId,
+    /// Token registry for cleanup on disconnect (#483).
+    tokens: Arc<TokenRegistry>,
 }
 
 impl NotificationServiceImpl {
     /// Create a new `NotificationService` with access to the session registry.
     #[must_use]
-    pub const fn new(sessions: Arc<SessionRegistry>, default_session_id: SessionId) -> Self {
+    pub const fn new(
+        sessions: Arc<SessionRegistry>,
+        default_session_id: SessionId,
+        tokens: Arc<TokenRegistry>,
+    ) -> Self {
         Self {
             sessions,
             default_session_id,
+            tokens,
         }
     }
 
@@ -60,17 +161,24 @@ impl NotificationService for NotificationServiceImpl {
     /// Returns a stream of notifications for state changes. Clients can
     /// optionally filter by event types.
     ///
-    /// # Arguments
+    /// # Auto-Cleanup (#483 Phase 4)
     ///
-    /// * `request` - Contains optional event type filters
+    /// If the subscribing client has a token-authenticated identity (from
+    /// `x-reovim-token` header), the stream is wrapped in a [`CleanupStream`]
+    /// that automatically cleans up the client on disconnect:
     ///
-    /// # Returns
+    /// 1. Revoke session token
+    /// 2. Remove from presence map (emit `presence_left`)
+    /// 3. Remove from client map (dump ring buffer)
     ///
-    /// A streaming response of notifications until the client disconnects.
+    /// Clients without token authentication (backward compat) get the stream
+    /// without auto-cleanup — they must call `Leave()` explicitly.
     async fn subscribe(
         &self,
         request: Request<SubscribeRequest>,
     ) -> Result<Response<Self::SubscribeStream>, Status> {
+        // #483: Extract token-authenticated ClientId before into_inner()
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
@@ -102,7 +210,37 @@ impl NotificationService for NotificationServiceImpl {
             }
         };
 
-        Ok(Response::new(Box::pin(output_stream)))
+        // #483 Phase 4: Wrap stream with cleanup guard if client is authenticated
+        if let Some(cid) = client_id {
+            let cleanup_session = Arc::clone(&session);
+            let cleanup_tokens = Arc::clone(&self.tokens);
+
+            let guarded = CleanupStream::new(Box::pin(output_stream), move || {
+                tracing::info!(
+                    client_id = cid.as_usize(),
+                    "Notification stream dropped — auto-cleanup"
+                );
+
+                // 1. Revoke session token
+                cleanup_tokens.revoke_by_client(cid);
+
+                // 2. Remove from presence map and emit notification
+                if let Some(presence) = cleanup_session.presence().leave(cid) {
+                    cleanup_session.emit_notification(build_presence_left_notification(
+                        cid,
+                        &presence.display_name,
+                    ));
+                }
+
+                // 3. Remove from client map (dumps ring buffer for diagnostics)
+                cleanup_session.remove_client(cid);
+            });
+
+            Ok(Response::new(Box::pin(guarded)))
+        } else {
+            // No token — backward compat, no auto-cleanup
+            Ok(Response::new(Box::pin(output_stream)))
+        }
     }
 }
 
@@ -117,10 +255,15 @@ mod tests {
         registry
     }
 
+    fn test_tokens() -> Arc<TokenRegistry> {
+        Arc::new(TokenRegistry::new())
+    }
+
     #[tokio::test]
     async fn test_subscribe_no_session() {
         let registry = Arc::new(SessionRegistry::new());
-        let service = NotificationServiceImpl::new(registry, SessionId::new("nonexistent"));
+        let service =
+            NotificationServiceImpl::new(registry, SessionId::new("nonexistent"), test_tokens());
 
         let request = Request::new(SubscribeRequest {
             event_types: vec![],
@@ -135,7 +278,7 @@ mod tests {
     #[tokio::test]
     async fn test_subscribe_returns_stream() {
         let registry = test_registry();
-        let service = NotificationServiceImpl::new(registry, SessionId::new("test"));
+        let service = NotificationServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         let request = Request::new(SubscribeRequest {
             event_types: vec![],
@@ -149,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn test_subscribe_with_filter() {
         let registry = test_registry();
-        let service = NotificationServiceImpl::new(registry, SessionId::new("test"));
+        let service = NotificationServiceImpl::new(registry, SessionId::new("test"), test_tokens());
 
         let request = Request::new(SubscribeRequest {
             event_types: vec!["mode_changed".to_string()],
@@ -157,5 +300,173 @@ mod tests {
         let response = service.subscribe(request).await;
 
         assert!(response.is_ok());
+    }
+
+    // ── Auto-cleanup tests (#483 Phase 4) ────────────────────────────
+
+    #[tokio::test]
+    async fn test_stream_drop_revokes_token() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service = NotificationServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("test"),
+            Arc::clone(&tokens),
+        );
+
+        // Simulate a joined client with a token
+        let client_id = registry.next_client_id();
+        let token = tokens.register(client_id);
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        session.add_client(client_id);
+
+        // Subscribe with token in extensions
+        let mut request = Request::new(SubscribeRequest {
+            event_types: vec![],
+        });
+        request.extensions_mut().insert(client_id);
+        let response = service.subscribe(request).await.unwrap();
+
+        // Token is still valid while stream is alive
+        assert!(tokens.resolve(&token).is_some());
+
+        // Drop the stream — should trigger cleanup
+        drop(response);
+
+        // Token should be revoked
+        assert!(tokens.resolve(&token).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_stream_drop_removes_client() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service = NotificationServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("test"),
+            Arc::clone(&tokens),
+        );
+
+        let client_id = registry.next_client_id();
+        tokens.register(client_id);
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        session.add_client(client_id);
+
+        // Subscribe with token
+        let mut request = Request::new(SubscribeRequest {
+            event_types: vec![],
+        });
+        request.extensions_mut().insert(client_id);
+        let response = service.subscribe(request).await.unwrap();
+
+        assert!(session.has_client(client_id));
+
+        // Drop stream → auto-cleanup
+        drop(response);
+
+        assert!(!session.has_client(client_id));
+    }
+
+    #[tokio::test]
+    async fn test_stream_drop_removes_from_presence() {
+        use crate::session::ClientPresence;
+
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service = NotificationServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("test"),
+            Arc::clone(&tokens),
+        );
+
+        let client_id = registry.next_client_id();
+        tokens.register(client_id);
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        session.add_client(client_id);
+        session
+            .presence()
+            .join(ClientPresence::new(client_id, "test", "cleanup-test"));
+
+        // Subscribe with token
+        let mut request = Request::new(SubscribeRequest {
+            event_types: vec![],
+        });
+        request.extensions_mut().insert(client_id);
+        let response = service.subscribe(request).await.unwrap();
+
+        assert!(session.presence().contains(client_id));
+
+        // Drop stream → auto-cleanup
+        drop(response);
+
+        assert!(!session.presence().contains(client_id));
+    }
+
+    #[tokio::test]
+    async fn test_stream_drop_without_token_no_cleanup() {
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service = NotificationServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("test"),
+            Arc::clone(&tokens),
+        );
+
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        let client_id = ClientId::new(99);
+        session.add_client(client_id);
+
+        // Subscribe WITHOUT token in extensions (backward compat)
+        let request = Request::new(SubscribeRequest {
+            event_types: vec![],
+        });
+        let response = service.subscribe(request).await.unwrap();
+
+        // Drop stream — should NOT cleanup (no token identity)
+        drop(response);
+
+        // Client should still be present
+        assert!(session.has_client(client_id));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_idempotent_with_explicit_leave() {
+        use crate::session::ClientPresence;
+
+        let tokens = test_tokens();
+        let registry = test_registry();
+        let service = NotificationServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("test"),
+            Arc::clone(&tokens),
+        );
+
+        let client_id = registry.next_client_id();
+        tokens.register(client_id);
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        session.add_client(client_id);
+        session
+            .presence()
+            .join(ClientPresence::new(client_id, "test", "idem-test"));
+
+        // Subscribe with token
+        let mut request = Request::new(SubscribeRequest {
+            event_types: vec![],
+        });
+        request.extensions_mut().insert(client_id);
+        let response = service.subscribe(request).await.unwrap();
+
+        // Simulate explicit Leave() before stream drop
+        tokens.revoke_by_client(client_id);
+        session.presence().leave(client_id);
+        session.remove_client(client_id);
+
+        // Drop stream — cleanup closure runs but all ops are no-ops
+        drop(response); // Should not panic
+
+        // Everything already cleaned up
+        assert!(!session.has_client(client_id));
+        assert!(!session.presence().contains(client_id));
+        assert!(tokens.is_empty());
     }
 }

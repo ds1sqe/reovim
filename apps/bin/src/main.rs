@@ -132,12 +132,11 @@ enum CliOutputFormat {
 #[derive(Debug, Subcommand)]
 enum CliSubcommand {
     /// Send keys to the editor.
+    ///
+    /// Identity resolved from session token (#483).
     Keys {
         /// Keys in vim notation.
         keys: String,
-        /// Client ID for multi-client undo testing (#471).
-        #[arg(long, short)]
-        client: Option<u64>,
     },
     /// Get current editor mode.
     Mode,
@@ -199,19 +198,17 @@ enum PresenceAction {
         client_type: String,
     },
     /// Leave the session.
-    Leave {
-        /// Client ID to remove.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Leave,
     /// List all connected clients.
     List,
     /// Update presence state.
     ///
     /// Note: cursor line/column removed (Phase 14, #471).
     /// Cursor is now tracked via `CursorMoved` notifications.
+    /// Identity resolved from session token (#483).
     Update {
-        /// Client ID making the update.
-        client_id: u64,
         /// Buffer ID to switch to.
         #[arg(long)]
         buffer: Option<u64>,
@@ -220,22 +217,20 @@ enum PresenceAction {
         mode: Option<String>,
     },
     /// Set sync mode to follow another client.
+    ///
+    /// Identity resolved from session token (#483).
     Follow {
-        /// Client ID setting the mode.
-        client_id: u64,
         /// Target client ID to follow.
         target: u64,
     },
     /// Set sync mode to present (others can follow you).
-    Present {
-        /// Client ID to set as presenter.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Present,
     /// Set sync mode to independent.
-    Independent {
-        /// Client ID to set as independent.
-        client_id: u64,
-    },
+    ///
+    /// Identity resolved from session token (#483).
+    Independent,
 }
 
 fn main() -> std::io::Result<()> {
@@ -379,10 +374,7 @@ async fn run_cli(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
     let result: Result<String, GrpcClientError> = match command {
-        CliSubcommand::Keys {
-            keys,
-            client: client_id,
-        } => commands::keys(&mut client, &keys, client_id, output_format).await,
+        CliSubcommand::Keys { keys } => commands::keys(&mut client, &keys, output_format).await,
         CliSubcommand::Mode => commands::mode(&mut client, output_format).await,
         CliSubcommand::Cursor => commands::cursor(&mut client, output_format).await,
         CliSubcommand::Buffers => commands::buffers(&mut client, output_format).await,
@@ -406,34 +398,19 @@ async fn run_cli(
             PresenceAction::Join { name, client_type } => {
                 commands::presence_join(&mut client, &client_type, &name, output_format).await
             }
-            PresenceAction::Leave { client_id } => {
-                commands::presence_leave(&mut client, client_id, output_format).await
-            }
+            PresenceAction::Leave => commands::presence_leave(&mut client, output_format).await,
             PresenceAction::List => commands::presence_list(&mut client, output_format).await,
-            PresenceAction::Update {
-                client_id,
-                buffer,
-                mode,
-            } => {
-                commands::presence_update(&mut client, client_id, buffer, mode, output_format).await
+            PresenceAction::Update { buffer, mode } => {
+                commands::presence_update(&mut client, buffer, mode, output_format).await
             }
-            PresenceAction::Follow { client_id, target } => {
-                commands::presence_set_sync_mode(
-                    &mut client,
-                    client_id,
-                    1,
-                    Some(target),
-                    output_format,
-                )
-                .await
+            PresenceAction::Follow { target } => {
+                commands::presence_set_sync_mode(&mut client, 1, Some(target), output_format).await
             }
-            PresenceAction::Present { client_id } => {
-                commands::presence_set_sync_mode(&mut client, client_id, 2, None, output_format)
-                    .await
+            PresenceAction::Present => {
+                commands::presence_set_sync_mode(&mut client, 2, None, output_format).await
             }
-            PresenceAction::Independent { client_id } => {
-                commands::presence_set_sync_mode(&mut client, client_id, 0, None, output_format)
-                    .await
+            PresenceAction::Independent => {
+                commands::presence_set_sync_mode(&mut client, 0, None, output_format).await
             }
         },
     };

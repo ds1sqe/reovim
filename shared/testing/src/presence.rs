@@ -72,9 +72,10 @@ impl PresenceTestClient {
     ///
     /// Unregisters this client from the server. Safe to call multiple times.
     pub async fn leave(&mut self) -> Result<(), String> {
-        if let Some(id) = self.client_id.take() {
+        if self.client_id.take().is_some() {
+            // Identity resolved from session token (#483)
             self.client
-                .presence_leave(id)
+                .presence_leave()
                 .await
                 .map_err(|e| format!("Leave failed: {e}"))?;
         }
@@ -118,9 +119,9 @@ impl PresenceTestClient {
 
     /// Update buffer ID.
     pub async fn update_buffer(&mut self, buffer_id: u64) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .presence_update(id, Some(buffer_id), None)
+            .presence_update(Some(buffer_id), None)
             .await
             .map_err(|e| format!("Update buffer failed: {e}"))?;
         Ok(())
@@ -128,9 +129,9 @@ impl PresenceTestClient {
 
     /// Update mode.
     pub async fn update_mode(&mut self, mode: &str) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .presence_update(id, None, Some(mode.to_string()))
+            .presence_update(None, Some(mode.to_string()))
             .await
             .map_err(|e| format!("Update mode failed: {e}"))?;
         Ok(())
@@ -138,9 +139,9 @@ impl PresenceTestClient {
 
     /// Set follow mode (sync mode = 1).
     pub async fn follow(&mut self, target_id: u64) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .presence_set_sync_mode(id, 1, Some(target_id))
+            .presence_set_sync_mode(1, Some(target_id))
             .await
             .map_err(|e| format!("Set follow mode failed: {e}"))?;
         Ok(())
@@ -148,9 +149,9 @@ impl PresenceTestClient {
 
     /// Set present mode (sync mode = 2).
     pub async fn present(&mut self) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .presence_set_sync_mode(id, 2, None)
+            .presence_set_sync_mode(2, None)
             .await
             .map_err(|e| format!("Set present mode failed: {e}"))?;
         Ok(())
@@ -158,9 +159,9 @@ impl PresenceTestClient {
 
     /// Set independent mode (sync mode = 0).
     pub async fn independent(&mut self) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .presence_set_sync_mode(id, 0, None)
+            .presence_set_sync_mode(0, None)
             .await
             .map_err(|e| format!("Set independent mode failed: {e}"))?;
         Ok(())
@@ -208,9 +209,9 @@ impl PresenceTestClient {
     /// Keys are processed using this client's per-client mode stack,
     /// enabling multi-client mode isolation.
     pub async fn send_keys(&mut self, keys: &str) -> Result<(), String> {
-        let id = self.client_id();
+        // Identity resolved from session token (#483)
         self.client
-            .send_keys_with_client(keys, id)
+            .send_keys(keys)
             .await
             .map_err(|e| format!("Send keys failed: {e}"))?;
         Ok(())

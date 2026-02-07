@@ -24,6 +24,7 @@ pub mod ring_buffer;
 mod session;
 mod state;
 mod syntax_state;
+pub mod token_registry;
 
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
@@ -39,4 +40,5 @@ pub use {
     session::Session,
     state::SessionState,
     syntax_state::SyntaxSessionState,
+    token_registry::{SessionToken, TokenRegistry},
 };

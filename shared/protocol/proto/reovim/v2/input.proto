@@ -12,10 +12,10 @@ message SendKeysRequest {
   // Keys in vim notation (e.g., "iHello<Esc>", "<C-w>h").
   string keys = 1;
 
-  // Client ID sending the keys (Phase 11.2, Epic #465).
-  // Used for per-client input routing based on client role (Owner/Follow/Share).
-  // Required: clients must identify themselves (Phase 14, #471).
-  uint64 client_id = 2;
+  // #483 Phase 5: client_id removed — caller identity comes from
+  // x-reovim-token header (resolved by AuthInterceptor).
+  reserved 2;
+  reserved "client_id";
 }
 
 message SendKeysResponse {
