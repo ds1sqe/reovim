@@ -200,6 +200,63 @@ async fn test_independent_editing() {
         .await;
 }
 
+/// Test that undo correctly adjusts positions when edits are position-dependent (#495).
+///
+/// This verifies the OT-lite transformation: when Client 0 makes an edit and
+/// Client 1 then inserts text BEFORE Client 0's edit position, Client 0's undo
+/// must transform inverse edit positions to account for Client 1's text shift,
+/// removing only Client 0's text.
+///
+/// Without OT-lite, the inverse Delete would use the original position (0,0),
+/// deleting Client 1's "BBBB" instead of Client 0's "AAAA".
+#[tokio::test]
+async fn test_undo_with_dependent_edits() {
+    MultiClientPresenceTest::with_clients(2)
+        .await
+        .run(|mut clients| async move {
+            // Client 0 types "AAAA" at position (0,0)
+            clients[0]
+                .send_keys("iAAAA<Esc>")
+                .await
+                .expect("client 0 types AAAA");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // Client 1 inserts "BBBB" at position 0 (before Client 0's text)
+            // Use 0i to explicitly go to column 0 before entering insert mode
+            clients[1]
+                .send_keys("0iBBBB<Esc>")
+                .await
+                .expect("client 1 types BBBB");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // Buffer should contain both BBBB and AAAA
+            let content_before = clients[0]
+                .get_buffer()
+                .await
+                .expect("get buffer before undo");
+            assert!(
+                content_before.contains("BBBB") && content_before.contains("AAAA"),
+                "Buffer should contain both BBBB and AAAA, got: '{content_before}'"
+            );
+
+            // Client 0 undoes — OT-lite transforms the inverse position
+            // from (0,0) to (0,4), correctly targeting "AAAA" not "BBBB"
+            clients[0].send_keys("u").await.expect("client 0 undo");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // Buffer should contain only "BBBB" (Client 0's AAAA was removed)
+            let content_after = clients[0]
+                .get_buffer()
+                .await
+                .expect("get buffer after undo");
+            assert!(
+                content_after.contains("BBBB") && !content_after.contains("AAAA"),
+                "After OT-lite undo: should contain 'BBBB' but not 'AAAA', got: '{content_after}'"
+            );
+        })
+        .await;
+}
+
 /// Test that undo is isolated per-client (#471).
 ///
 /// When Client 0 makes edits and Client 1 makes edits, then Client 0

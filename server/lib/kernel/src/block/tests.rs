@@ -805,6 +805,240 @@ mod undo_tree_tests {
     }
 }
 
+// === edits_since Tests (#495) ===
+
+mod edits_since_tests {
+    use {super::*, crate::block::EditOrigin};
+
+    #[test]
+    fn test_edits_since_same_as_current() {
+        let mut tree = UndoTree::new();
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "AAA")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+            EditOrigin::Client(0),
+        );
+
+        // from_idx == current → empty vec
+        let edits = tree.edits_since(tree.current_index()).unwrap();
+        assert!(edits.is_empty());
+    }
+
+    #[test]
+    fn test_edits_since_one_step() {
+        let mut tree = UndoTree::new();
+
+        // Node 1: Client A inserts "AAA"
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "AAA")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+            EditOrigin::Client(0),
+        );
+
+        // Node 2: Client B inserts "BBB"
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 3), "BBB")],
+            Position::new(0, 3),
+            Position::new(0, 6),
+            EditOrigin::Client(1),
+        );
+
+        // Edits since node 1 (current is node 2)
+        let edits = tree.edits_since(1).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].text(), "BBB");
+        assert!(edits[0].is_insert());
+    }
+
+    #[test]
+    fn test_edits_since_multiple_steps() {
+        let mut tree = UndoTree::new();
+
+        // Node 1: Client A
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "A1")],
+            Position::new(0, 0),
+            Position::new(0, 2),
+            EditOrigin::Client(0),
+        );
+
+        // Node 2: Client B
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 2), "B1")],
+            Position::new(0, 2),
+            Position::new(0, 4),
+            EditOrigin::Client(1),
+        );
+
+        // Node 3: Client C
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 4), "C1")],
+            Position::new(0, 4),
+            Position::new(0, 6),
+            EditOrigin::Client(2),
+        );
+
+        // Edits since node 1 → should include nodes 2 and 3 in order
+        let edits = tree.edits_since(1).unwrap();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].text(), "B1"); // forward order: B first
+        assert_eq!(edits[1].text(), "C1"); // then C
+    }
+
+    #[test]
+    fn test_edits_since_not_ancestor() {
+        let mut tree = UndoTree::new();
+
+        // Create branching: root → A → B
+        //                          ↘ C (current)
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(0),
+        );
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(1),
+        );
+
+        // B is node 2, undo back to A
+        tree.undo();
+
+        // Push C (creates branch)
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(2),
+        );
+
+        // Current is C (node 3). B (node 2) is NOT an ancestor of C.
+        assert!(tree.edits_since(2).is_none());
+    }
+
+    #[test]
+    fn test_edits_since_with_branches() {
+        let mut tree = UndoTree::new();
+
+        // root → A → B → C
+        //           ↘ D (branch)
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(0),
+        );
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(1),
+        );
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 2), "C")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+            EditOrigin::Client(2),
+        );
+
+        // Now undo to A and create branch D
+        tree.undo(); // at B
+        tree.undo(); // at A
+
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 1), "D")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(3),
+        );
+
+        // Current is D. edits_since(A) should be just D's edits.
+        // A is node 1.
+        let edits = tree.edits_since(1).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].text(), "D");
+
+        // edits_since(root) should be A + D in order
+        let edits = tree.edits_since(0).unwrap();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].text(), "A");
+        assert_eq!(edits[1].text(), "D");
+    }
+
+    #[test]
+    fn test_edits_since_out_of_bounds() {
+        let tree = UndoTree::new();
+        assert!(tree.edits_since(999).is_none());
+    }
+
+    #[test]
+    fn test_edits_since_batched_node() {
+        let mut tree = UndoTree::new();
+
+        // Node 1: Client A
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "X")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(0),
+        );
+
+        // Node 2: Client B with BATCHED edits (2 edits in one node)
+        tree.push_with_origin(
+            vec![
+                Edit::insert(Position::new(0, 1), "AA"),
+                Edit::insert(Position::new(0, 3), "BB"),
+            ],
+            Position::new(0, 1),
+            Position::new(0, 5),
+            EditOrigin::Client(1),
+        );
+
+        // Edits since node 1 should include BOTH of node 2's edits
+        let edits = tree.edits_since(1).unwrap();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].text(), "AA");
+        assert_eq!(edits[1].text(), "BB");
+    }
+
+    #[test]
+    fn test_edits_since_skips_empty() {
+        let mut tree = UndoTree::new();
+
+        // Node 1
+        tree.push_with_origin(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+            EditOrigin::Client(0),
+        );
+
+        // Node 2 with an empty edit mixed in
+        tree.push_with_origin(
+            vec![
+                Edit::insert(Position::new(0, 1), ""),
+                Edit::insert(Position::new(0, 1), "B"),
+            ],
+            Position::new(0, 1),
+            Position::new(0, 2),
+            EditOrigin::Client(1),
+        );
+
+        let edits = tree.edits_since(1).unwrap();
+        assert_eq!(edits.len(), 1); // empty edit skipped
+        assert_eq!(edits[0].text(), "B");
+    }
+}
+
 // === History Tests ===
 
 mod history_tests {

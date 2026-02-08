@@ -16,7 +16,9 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_undo::{UndoPersistError, UndoProvider},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, Edit, EditOrigin, Position, UndoResult, UndoTree},
+    reovim_kernel::api::v1::{
+        BufferId, Edit, EditOrigin, Position, UndoResult, UndoTree, transform_position,
+    },
     reovim_protocol::v1::undo::{UndoFileError, UndoFileFormat, from_undo_tree, to_undo_tree},
     std::collections::HashMap,
 };
@@ -378,11 +380,30 @@ impl UndoProvider for UndoRegistry {
 
             // Check if this node was made by the client
             if node.origin() == target_origin {
-                // Found a node to undo - compute inverse edits
-                let result = UndoResult {
-                    edits: node.edits().iter().rev().map(Edit::inverse).collect(),
-                    cursor: node.cursor_before(),
+                // Found target node — compute raw inverse edits
+                let inverse_edits: Vec<Edit> =
+                    node.edits().iter().rev().map(Edit::inverse).collect();
+                let cursor = node.cursor_before();
+
+                // Transform through intervening edits (OT-lite, #495)
+                let (edits, cursor) = match tree.edits_since(cursor_pos) {
+                    Some(intervening) if !intervening.is_empty() => {
+                        transform_through_intervening(&intervening, inverse_edits, cursor)
+                    }
+                    Some(_) => (inverse_edits, cursor),
+                    None => {
+                        // Target is not ancestor of current (pruned tree?)
+                        // Graceful degradation: use raw inverse
+                        tracing::warn!(
+                            "edits_since({}) returned None for buffer {:?}, using raw inverse",
+                            cursor_pos,
+                            buffer_id,
+                        );
+                        (inverse_edits, cursor)
+                    }
                 };
+
+                let result = UndoResult { edits, cursor };
 
                 // Update client's cursor to parent
                 drop(trees);
@@ -484,6 +505,23 @@ impl UndoProvider for UndoRegistry {
         let key = (buffer_id, client_id);
         self.client_cursors.write().remove(&key);
     }
+}
+
+/// Transform inverse edits and cursor through intervening edits.
+///
+/// This is the core OT-lite algorithm (#495): given raw inverse edits from
+/// an undo target and the edits that happened since that target, produce
+/// adjusted inverse edits that apply correctly to the current buffer state.
+fn transform_through_intervening(
+    intervening: &[&Edit],
+    mut inverse_edits: Vec<Edit>,
+    mut cursor: Position,
+) -> (Vec<Edit>, Position) {
+    for ie in intervening {
+        inverse_edits = inverse_edits.iter().map(|inv| inv.transform(ie)).collect();
+        cursor = transform_position(cursor, ie);
+    }
+    (inverse_edits, cursor)
 }
 
 /// Find the next node to redo for a specific client.
@@ -953,6 +991,306 @@ mod tests {
                 .client_cursors
                 .read()
                 .contains_key(&(buffer_id, client_id))
+        );
+    }
+
+    // ========================================================================
+    // OT-Lite Transformation Tests (#495)
+    // ========================================================================
+
+    #[test]
+    fn test_undo_for_client_transforms_same_line_insert() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A inserts "AAA" at (0,5)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 5), "AAA")],
+            Position::new(0, 5),
+            Position::new(0, 8),
+        );
+
+        // Client B inserts "BBB" at (0,0) — shifts A's text right by 3
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 0), "BBB")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Client A undoes — inverse Delete "AAA" should be at (0,8), not (0,5)
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits.len(), 1);
+        assert!(result.edits[0].is_delete());
+        assert_eq!(result.edits[0].text(), "AAA");
+        assert_eq!(result.edits[0].position(), Position::new(0, 8));
+    }
+
+    #[test]
+    fn test_undo_for_client_transforms_multiline_insert() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A inserts "AAA" at (0,0)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 0), "AAA")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Client B inserts a multiline text "BB\nCC" at (0,3)
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 3), "BB\nCC")],
+            Position::new(0, 3),
+            Position::new(1, 2),
+        );
+
+        // Client A undoes — inverse Delete "AAA" at (0,0) is before B's insert (0,3),
+        // so no shift needed. Position stays (0,0).
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits[0].position(), Position::new(0, 0));
+        assert_eq!(result.edits[0].text(), "AAA");
+    }
+
+    #[test]
+    fn test_undo_for_client_no_intervening_edits() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+
+        // Client A makes a single edit — no other clients
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 0), "AAA")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Undo with no intervening edits — should work exactly like Phase 2
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits.len(), 1);
+        assert!(result.edits[0].is_delete());
+        assert_eq!(result.edits[0].text(), "AAA");
+        assert_eq!(result.edits[0].position(), Position::new(0, 0));
+        assert_eq!(result.cursor, Position::new(0, 0));
+    }
+
+    #[test]
+    fn test_undo_for_client_transforms_delete() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A inserts "AAA" at (0,5)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 5), "AAA")],
+            Position::new(0, 5),
+            Position::new(0, 8),
+        );
+
+        // Client B deletes "XX" at (0,0) — shifts A's text left by 2
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::delete(Position::new(0, 0), "XX")],
+            Position::new(0, 0),
+            Position::new(0, 0),
+        );
+
+        // Client A undoes — inverse Delete "AAA" should be at (0,3), not (0,5)
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits[0].position(), Position::new(0, 3));
+        assert_eq!(result.edits[0].text(), "AAA");
+    }
+
+    #[test]
+    fn test_undo_for_client_multiple_intervening_edits() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+        let client_c = 3_usize;
+
+        // Client A inserts "AAA" at (0,0)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 0), "AAA")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Client B inserts "B1" at (0,0) — shifts A's text right by 2
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 0), "B1")],
+            Position::new(0, 0),
+            Position::new(0, 2),
+        );
+
+        // Client C inserts "C1" at (0,0) — shifts A's text right by another 2
+        registry.record_for_client(
+            buffer_id,
+            client_c,
+            vec![Edit::insert(Position::new(0, 0), "C1")],
+            Position::new(0, 0),
+            Position::new(0, 2),
+        );
+
+        // Client A undoes — inverse Delete "AAA" at (0,0) → (0,4) after two shifts
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits[0].position(), Position::new(0, 4));
+        assert_eq!(result.edits[0].text(), "AAA");
+    }
+
+    #[test]
+    fn test_undo_for_client_cursor_position_transformed() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A inserts "AAA" at (0,5), cursor_before=(0,5)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 5), "AAA")],
+            Position::new(0, 5),
+            Position::new(0, 8),
+        );
+
+        // Client B inserts "BBB" at (0,0) — shifts cursor right by 3
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 0), "BBB")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Client A undoes — cursor should be transformed from (0,5) to (0,8)
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.cursor, Position::new(0, 8));
+    }
+
+    #[test]
+    fn test_undo_for_client_batch_edits_in_intervening_node() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A inserts "X" at (0,5)
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 5), "X")],
+            Position::new(0, 5),
+            Position::new(0, 6),
+        );
+
+        // Client B batches two edits at (0,0) and (0,2):
+        // First "AA" at (0,0), then "BB" at (0,2)
+        // Total shift: +4
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![
+                Edit::insert(Position::new(0, 0), "AA"),
+                Edit::insert(Position::new(0, 2), "BB"),
+            ],
+            Position::new(0, 0),
+            Position::new(0, 4),
+        );
+
+        // Client A undoes — inverse Delete "X" at (0,5) → (0,9) after both batch shifts
+        let result = registry.undo_for_client(buffer_id, client_a).unwrap();
+        assert_eq!(result.edits[0].position(), Position::new(0, 9));
+        assert_eq!(result.edits[0].text(), "X");
+    }
+
+    /// Simulate the exact insert-mode batching scenario from the integration test.
+    ///
+    /// Client 0 types "iAAAA<Esc>" → batch of 4 char inserts at (0,0)-(0,3)
+    /// Client 1 types "0iBBBB<Esc>" → batch of 4 char inserts at (0,0)-(0,3)
+    /// Client 0 undoes → should remove AAAA (now at col 4-7), not BBBB (at col 0-3)
+    #[test]
+    fn test_undo_for_client_batched_insert_mode_scenario() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Client 0 enters insert mode: begin_batch
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // Client 0 types 'A' 4 times
+        for col in 0..4_usize {
+            registry.record_for_client(
+                buffer_id,
+                0,
+                vec![Edit::insert(Position::new(0, col), "A")],
+                Position::new(0, col),
+                Position::new(0, col + 1),
+            );
+        }
+
+        // Client 0 exits insert mode: end_batch
+        registry.end_batch(buffer_id, Position::new(0, 4));
+
+        // Client 1 enters insert mode: begin_batch
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // Client 1 types 'B' 4 times (at position 0, before AAAA)
+        for col in 0..4_usize {
+            registry.record_for_client(
+                buffer_id,
+                1,
+                vec![Edit::insert(Position::new(0, col), "B")],
+                Position::new(0, col),
+                Position::new(0, col + 1),
+            );
+        }
+
+        // Client 1 exits insert mode: end_batch
+        registry.end_batch(buffer_id, Position::new(0, 4));
+
+        // Client 0 undoes — OT-lite should transform the inverse edits
+        // from col 0-3 to col 4-7 (shifted by Client 1's 4 char inserts)
+        let result = registry.undo_for_client(buffer_id, 0);
+        assert!(result.is_some(), "undo_for_client should return Some");
+
+        let result = result.unwrap();
+
+        // All inverse edits should be Delete operations targeting the shifted positions
+        assert_eq!(result.edits.len(), 4, "Should have 4 inverse edits");
+        for edit in &result.edits {
+            assert!(edit.is_delete(), "Each inverse edit should be Delete: {edit:?}");
+            assert_eq!(edit.text(), "A", "Each delete should remove 'A': {edit:?}");
+        }
+
+        // After OT transformation, the positions should be shifted right by 4
+        // Original inverse: Delete at (0,3), (0,2), (0,1), (0,0)
+        // After transforming through 4 inserts at (0,0)-(0,3):
+        // Should be Delete at (0,7), (0,6), (0,5), (0,4)
+        let positions: Vec<usize> = result.edits.iter().map(|e| e.position().column).collect();
+        assert!(
+            positions.iter().all(|&col| col >= 4),
+            "All delete positions should be >= 4 (shifted past BBBB), got: {positions:?}"
         );
     }
 

@@ -43,7 +43,10 @@ pub use super::context::{KernelContext, ModuleContext};
 // Memory Management (mm/)
 // ============================================================================
 
-pub use crate::mm::{Buffer, BufferId, Cursor, Edit, Position, WindowId};
+pub use crate::mm::{
+    Buffer, BufferId, Cursor, Edit, Position, TextDimensions, WindowId, delete_end,
+    text_dimensions, transform_position,
+};
 
 // Selection types
 pub use crate::mm::{Selection, SelectionMode};
