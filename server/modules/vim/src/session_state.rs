@@ -494,6 +494,7 @@ impl LastFind {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use reovim_kernel::api::v1::Position;
 
@@ -728,5 +729,636 @@ mod tests {
         // Saturating sub - doesn't go negative
         state.exit_macro_playback();
         assert_eq!(state.macro_playback_depth, 0);
+    }
+
+    // ========================================================================
+    // PendingMotion tests
+    // ========================================================================
+
+    #[test]
+    fn test_pending_motion_new() {
+        let motion = PendingMotion::new(true, false, true);
+        assert!(motion.linewise);
+        assert!(!motion.inclusive);
+        assert!(motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_characterwise() {
+        let motion = PendingMotion::characterwise();
+        assert!(!motion.linewise);
+        assert!(!motion.inclusive);
+        assert!(!motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_characterwise_inclusive() {
+        let motion = PendingMotion::characterwise_inclusive();
+        assert!(!motion.linewise);
+        assert!(motion.inclusive);
+        assert!(!motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_linewise() {
+        let motion = PendingMotion::linewise();
+        assert!(motion.linewise);
+        assert!(!motion.inclusive);
+        assert!(!motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_word_forward() {
+        let motion = PendingMotion::word_forward();
+        assert!(!motion.linewise);
+        assert!(!motion.inclusive);
+        assert!(motion.word_forward);
+    }
+
+    // ========================================================================
+    // PendingCharOp additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_pending_char_op_is_find() {
+        assert!(PendingCharOp::FindForward.is_find());
+        assert!(PendingCharOp::FindBackward.is_find());
+        assert!(!PendingCharOp::TillForward.is_find());
+        assert!(!PendingCharOp::TillBackward.is_find());
+        assert!(!PendingCharOp::Replace.is_find());
+    }
+
+    #[test]
+    fn test_pending_char_op_is_till() {
+        assert!(!PendingCharOp::FindForward.is_till());
+        assert!(!PendingCharOp::FindBackward.is_till());
+        assert!(PendingCharOp::TillForward.is_till());
+        assert!(PendingCharOp::TillBackward.is_till());
+        assert!(!PendingCharOp::Replace.is_till());
+    }
+
+    #[test]
+    fn test_pending_char_op_is_motion() {
+        assert!(PendingCharOp::FindForward.is_motion());
+        assert!(PendingCharOp::FindBackward.is_motion());
+        assert!(PendingCharOp::TillForward.is_motion());
+        assert!(PendingCharOp::TillBackward.is_motion());
+        assert!(!PendingCharOp::Replace.is_motion());
+    }
+
+    #[test]
+    fn test_pending_char_op_is_forward() {
+        assert!(PendingCharOp::FindForward.is_forward());
+        assert!(PendingCharOp::TillForward.is_forward());
+        assert!(!PendingCharOp::FindBackward.is_forward());
+        assert!(!PendingCharOp::TillBackward.is_forward());
+        assert!(!PendingCharOp::Replace.is_forward());
+    }
+
+    #[test]
+    fn test_pending_char_op_equality() {
+        assert_eq!(PendingCharOp::FindForward, PendingCharOp::FindForward);
+        assert_ne!(PendingCharOp::FindForward, PendingCharOp::FindBackward);
+    }
+
+    // ========================================================================
+    // LastFind additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_last_find_new() {
+        let find = LastFind::new('a', PendingCharOp::FindForward);
+        assert_eq!(find.char, 'a');
+        assert_eq!(find.op, PendingCharOp::FindForward);
+    }
+
+    #[test]
+    fn test_last_find_reversed_find_forward() {
+        let find = LastFind::new('x', PendingCharOp::FindForward);
+        let rev = find.reversed();
+        assert_eq!(rev.char, 'x');
+        assert_eq!(rev.op, PendingCharOp::FindBackward);
+    }
+
+    #[test]
+    fn test_last_find_reversed_find_backward() {
+        let find = LastFind::new('y', PendingCharOp::FindBackward);
+        let rev = find.reversed();
+        assert_eq!(rev.char, 'y');
+        assert_eq!(rev.op, PendingCharOp::FindForward);
+    }
+
+    #[test]
+    fn test_last_find_reversed_till_forward() {
+        let find = LastFind::new('z', PendingCharOp::TillForward);
+        let rev = find.reversed();
+        assert_eq!(rev.char, 'z');
+        assert_eq!(rev.op, PendingCharOp::TillBackward);
+    }
+
+    #[test]
+    fn test_last_find_reversed_till_backward() {
+        let find = LastFind::new('w', PendingCharOp::TillBackward);
+        let rev = find.reversed();
+        assert_eq!(rev.char, 'w');
+        assert_eq!(rev.op, PendingCharOp::TillForward);
+    }
+
+    #[test]
+    fn test_last_find_reversed_replace() {
+        // Replace doesn't have a direction to reverse
+        let find = LastFind::new('r', PendingCharOp::Replace);
+        let rev = find.reversed();
+        assert_eq!(rev.char, 'r');
+        assert_eq!(rev.op, PendingCharOp::Replace);
+    }
+
+    #[test]
+    fn test_last_find_double_reversed() {
+        let find = LastFind::new('x', PendingCharOp::FindForward);
+        let double_rev = find.reversed().reversed();
+        assert_eq!(double_rev.char, 'x');
+        assert_eq!(double_rev.op, PendingCharOp::FindForward);
+    }
+
+    // ========================================================================
+    // ChangeType and LastChange tests (Epic #465)
+    // ========================================================================
+
+    #[test]
+    fn test_change_type_operator_motion() {
+        let ct = ChangeType::OperatorMotion {
+            operator: OperatorType::Delete,
+            linewise: false,
+        };
+        assert!(matches!(ct, ChangeType::OperatorMotion { .. }));
+    }
+
+    #[test]
+    fn test_change_type_operator_text_object() {
+        let ct = ChangeType::OperatorTextObject {
+            operator: OperatorType::Change,
+            linewise: true,
+        };
+        assert!(matches!(ct, ChangeType::OperatorTextObject { .. }));
+    }
+
+    #[test]
+    fn test_change_type_insert() {
+        let ct = ChangeType::Insert {
+            text: "hello".to_string(),
+        };
+        match ct {
+            ChangeType::Insert { text } => assert_eq!(text, "hello"),
+            _ => panic!("Expected Insert variant"),
+        }
+    }
+
+    #[test]
+    fn test_operator_type_variants() {
+        assert_eq!(OperatorType::Delete, OperatorType::Delete);
+        assert_ne!(OperatorType::Delete, OperatorType::Yank);
+        assert_ne!(OperatorType::Yank, OperatorType::Change);
+    }
+
+    #[test]
+    fn test_last_change_with_all_fields() {
+        let lc = LastChange {
+            change_type: ChangeType::OperatorMotion {
+                operator: OperatorType::Delete,
+                linewise: true,
+            },
+            count: Some(5),
+            register: Some('a'),
+        };
+        assert_eq!(lc.count, Some(5));
+        assert_eq!(lc.register, Some('a'));
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_last_change_clone() {
+        let lc = LastChange {
+            change_type: ChangeType::Insert {
+                text: "test".to_string(),
+            },
+            count: Some(2),
+            register: None,
+        };
+        let cloned = lc.clone();
+        assert_eq!(cloned.count, Some(2));
+        match cloned.change_type {
+            ChangeType::Insert { text } => assert_eq!(text, "test"),
+            _ => panic!("Expected Insert"),
+        }
+    }
+
+    // ========================================================================
+    // VimSessionState additional tests
+    // ========================================================================
+
+    #[test]
+    fn test_vim_session_state_is_pending_with_pending_char() {
+        let mut state = VimSessionState::default();
+        state.pending_char = Some(PendingCharOp::FindForward);
+        assert!(state.is_pending());
+    }
+
+    #[test]
+    fn test_vim_session_state_is_pending_with_register() {
+        let mut state = VimSessionState::default();
+        state.pending_register = Some('a');
+        assert!(state.is_pending());
+    }
+
+    #[test]
+    fn test_vim_session_state_take_register() {
+        let mut state = VimSessionState::default();
+        assert!(state.take_register().is_none());
+
+        state.pending_register = Some('x');
+        assert_eq!(state.take_register(), Some('x'));
+        assert!(state.pending_register.is_none());
+    }
+
+    #[test]
+    fn test_vim_session_state_clear_pending_preserves_last_change() {
+        let mut state = VimSessionState::default();
+        state.last_change = Some(LastChange {
+            change_type: ChangeType::Insert {
+                text: "test".to_string(),
+            },
+            count: None,
+            register: None,
+        });
+        state.pending_count = Some(5);
+        state.pending_register = Some('a');
+        state.pending_char = Some(PendingCharOp::FindForward);
+        state.pending_motion = Some(PendingMotion::characterwise());
+        state.pending_textobj_range =
+            Some(TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5)));
+
+        state.clear_pending();
+
+        // These should be cleared
+        assert!(state.pending_count.is_none());
+        assert!(state.pending_register.is_none());
+        assert!(state.pending_char.is_none());
+        assert!(state.pending_motion.is_none());
+        assert!(state.pending_textobj_range.is_none());
+        // But last_change should be preserved
+        assert!(state.last_change.is_some());
+    }
+
+    #[test]
+    fn test_vim_session_state_insert_buffer() {
+        let mut state = VimSessionState::default();
+        assert!(state.insert_buffer.is_empty());
+
+        state.insert_buffer.push('h');
+        state.insert_buffer.push('i');
+        assert_eq!(state.insert_buffer, "hi");
+    }
+
+    #[test]
+    fn test_vim_session_state_max_macro_depth() {
+        assert_eq!(MAX_MACRO_DEPTH, 16);
+    }
+
+    #[test]
+    fn test_vim_session_state_is_macro_depth_exceeded_at_zero() {
+        let state = VimSessionState::default();
+        assert!(!state.is_macro_depth_exceeded());
+    }
+
+    #[test]
+    fn test_vim_session_state_is_macro_depth_exceeded_at_max() {
+        let mut state = VimSessionState::default();
+        state.macro_playback_depth = MAX_MACRO_DEPTH;
+        assert!(state.is_macro_depth_exceeded());
+    }
+
+    #[test]
+    fn test_vim_session_state_last_macro_register() {
+        let mut state = VimSessionState::default();
+        assert!(state.last_macro_register.is_none());
+
+        state.last_macro_register = Some('q');
+        assert_eq!(state.last_macro_register, Some('q'));
+    }
+
+    #[test]
+    fn test_pending_motion_debug() {
+        let motion = PendingMotion::characterwise();
+        let debug = format!("{motion:?}");
+        assert!(debug.contains("PendingMotion"));
+    }
+
+    #[test]
+    fn test_pending_char_op_debug() {
+        let op = PendingCharOp::FindForward;
+        let debug = format!("{op:?}");
+        assert!(debug.contains("FindForward"));
+    }
+
+    #[test]
+    fn test_last_find_debug() {
+        let find = LastFind::new('x', PendingCharOp::TillForward);
+        let debug = format!("{find:?}");
+        assert!(debug.contains("LastFind"));
+    }
+
+    #[test]
+    fn test_change_type_debug() {
+        let ct = ChangeType::Insert {
+            text: "test".to_string(),
+        };
+        let debug = format!("{ct:?}");
+        assert!(debug.contains("Insert"));
+    }
+
+    #[test]
+    fn test_vim_session_state_debug() {
+        let state = VimSessionState::default();
+        let debug = format!("{state:?}");
+        assert!(debug.contains("VimSessionState"));
+    }
+
+    #[test]
+    fn test_session_extension_create() {
+        let state = <VimSessionState as reovim_driver_session::SessionExtension>::create();
+        assert!(!state.is_pending());
+        assert!(!state.is_recording());
+        assert!(!state.is_macro_depth_exceeded());
+    }
+
+    // ========================================================================
+    // Additional VimSessionState tests
+    // ========================================================================
+
+    #[test]
+    fn test_vim_session_state_clear_pending_does_not_clear_insert_buffer() {
+        let mut state = VimSessionState::default();
+        state.insert_buffer.push_str("hello");
+        state.pending_count = Some(5);
+
+        state.clear_pending();
+
+        assert!(state.pending_count.is_none());
+        // insert_buffer is NOT cleared by clear_pending
+        assert_eq!(state.insert_buffer, "hello");
+    }
+
+    #[test]
+    fn test_vim_session_state_take_count_default_is_one() {
+        let mut state = VimSessionState::default();
+        // No pending count
+        assert_eq!(state.take_count(), 1);
+    }
+
+    #[test]
+    fn test_vim_session_state_take_count_clears() {
+        let mut state = VimSessionState::default();
+        state.pending_count = Some(42);
+        assert_eq!(state.take_count(), 42);
+        assert!(state.pending_count.is_none());
+        // Second call should return default
+        assert_eq!(state.take_count(), 1);
+    }
+
+    #[test]
+    fn test_vim_session_state_take_register_clears() {
+        let mut state = VimSessionState::default();
+        state.pending_register = Some('z');
+        assert_eq!(state.take_register(), Some('z'));
+        assert!(state.pending_register.is_none());
+        assert_eq!(state.take_register(), None);
+    }
+
+    #[test]
+    fn test_vim_session_state_is_pending_with_all_set() {
+        let mut state = VimSessionState::default();
+        state.pending_char = Some(PendingCharOp::TillForward);
+        state.pending_count = Some(3);
+        state.pending_register = Some('a');
+        assert!(state.is_pending());
+    }
+
+    #[test]
+    fn test_vim_session_state_clear_pending_clears_all() {
+        let mut state = VimSessionState::default();
+        state.pending_char = Some(PendingCharOp::FindForward);
+        state.pending_count = Some(5);
+        state.pending_register = Some('x');
+        state.pending_motion = Some(PendingMotion::linewise());
+        state.pending_textobj_range =
+            Some(TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5)));
+
+        state.clear_pending();
+
+        assert!(!state.is_pending());
+        assert!(state.pending_char.is_none());
+        assert!(state.pending_count.is_none());
+        assert!(state.pending_register.is_none());
+        assert!(state.pending_motion.is_none());
+        assert!(state.pending_textobj_range.is_none());
+    }
+
+    #[test]
+    fn test_vim_session_state_recording_lifecycle() {
+        let mut state = VimSessionState::default();
+
+        // Start
+        assert!(state.start_recording('a'));
+        assert!(state.is_recording());
+
+        // Record keys
+        state.record_key(key('d'));
+        state.record_key(key('w'));
+        assert_eq!(state.recording_keys.len(), 2);
+
+        // Stop
+        let result = state.stop_recording();
+        assert!(result.is_some());
+        let (reg, keys) = result.unwrap();
+        assert_eq!(reg, 'a');
+        assert_eq!(keys.len(), 2);
+
+        // Verify state is clean
+        assert!(!state.is_recording());
+        assert!(state.recording_keys.is_empty());
+    }
+
+    #[test]
+    fn test_vim_session_state_macro_playback_lifecycle() {
+        let mut state = VimSessionState::default();
+
+        // Enter
+        assert!(state.enter_macro_playback());
+        assert_eq!(state.macro_playback_depth, 1);
+
+        // Enter again
+        assert!(state.enter_macro_playback());
+        assert_eq!(state.macro_playback_depth, 2);
+
+        // Exit
+        state.exit_macro_playback();
+        assert_eq!(state.macro_playback_depth, 1);
+
+        state.exit_macro_playback();
+        assert_eq!(state.macro_playback_depth, 0);
+    }
+
+    #[test]
+    fn test_vim_session_state_start_recording_boundary_chars() {
+        let mut state = VimSessionState::default();
+
+        // 'a' is valid
+        assert!(state.start_recording('a'));
+        state.stop_recording();
+
+        // 'z' is valid
+        assert!(state.start_recording('z'));
+        state.stop_recording();
+
+        // Just before 'a' is invalid
+        assert!(!state.start_recording('`'));
+
+        // Just after 'z' is invalid
+        assert!(!state.start_recording('{'));
+    }
+
+    #[test]
+    fn test_pending_motion_clone() {
+        let motion = PendingMotion::characterwise_inclusive();
+        let cloned = motion;
+        assert_eq!(cloned.inclusive, motion.inclusive);
+        assert_eq!(cloned.linewise, motion.linewise);
+        assert_eq!(cloned.word_forward, motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_all_flags_set() {
+        let motion = PendingMotion::new(true, true, true);
+        assert!(motion.linewise);
+        assert!(motion.inclusive);
+        assert!(motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_motion_all_flags_unset() {
+        let motion = PendingMotion::new(false, false, false);
+        assert!(!motion.linewise);
+        assert!(!motion.inclusive);
+        assert!(!motion.word_forward);
+    }
+
+    #[test]
+    fn test_pending_char_op_clone_copy() {
+        let op = PendingCharOp::TillBackward;
+        let copied = op;
+        assert_eq!(copied, op);
+    }
+
+    #[test]
+    fn test_last_find_with_unicode_char() {
+        let find = LastFind::new('\u{00e9}', PendingCharOp::FindForward); // e with accent
+        assert_eq!(find.char, '\u{00e9}');
+        let rev = find.reversed();
+        assert_eq!(rev.char, '\u{00e9}');
+        assert_eq!(rev.op, PendingCharOp::FindBackward);
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_change_type_clone() {
+        let ct = ChangeType::OperatorMotion {
+            operator: OperatorType::Yank,
+            linewise: true,
+        };
+        let cloned = ct.clone();
+        assert!(matches!(
+            cloned,
+            ChangeType::OperatorMotion {
+                operator: OperatorType::Yank,
+                linewise: true,
+            }
+        ));
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_change_type_insert_clone() {
+        let ct = ChangeType::Insert {
+            text: "some text".to_string(),
+        };
+        let cloned = ct.clone();
+        match cloned {
+            ChangeType::Insert { text } => assert_eq!(text, "some text"),
+            _ => panic!("Expected Insert"),
+        }
+    }
+
+    #[test]
+    fn test_operator_type_debug() {
+        let d = format!("{:?}", OperatorType::Delete);
+        assert!(d.contains("Delete"));
+        let y = format!("{:?}", OperatorType::Yank);
+        assert!(y.contains("Yank"));
+        let c = format!("{:?}", OperatorType::Change);
+        assert!(c.contains("Change"));
+    }
+
+    #[test]
+    fn test_operator_type_clone_copy() {
+        let op = OperatorType::Delete;
+        let copied = op;
+        assert_eq!(copied, OperatorType::Delete);
+    }
+
+    #[test]
+    fn test_last_change_no_count_no_register() {
+        let lc = LastChange {
+            change_type: ChangeType::Insert {
+                text: "x".to_string(),
+            },
+            count: None,
+            register: None,
+        };
+        assert!(lc.count.is_none());
+        assert!(lc.register.is_none());
+    }
+
+    #[test]
+    fn test_last_change_debug() {
+        let lc = LastChange {
+            change_type: ChangeType::OperatorTextObject {
+                operator: OperatorType::Change,
+                linewise: false,
+            },
+            count: Some(1),
+            register: Some('a'),
+        };
+        let debug = format!("{lc:?}");
+        assert!(debug.contains("LastChange"));
+        assert!(debug.contains("OperatorTextObject"));
+    }
+
+    #[test]
+    fn test_textobj_range_characterwise_fields() {
+        let range = TextObjRange::characterwise(Position::new(1, 5), Position::new(3, 10));
+        assert_eq!(range.start.line, 1);
+        assert_eq!(range.start.column, 5);
+        assert_eq!(range.end.line, 3);
+        assert_eq!(range.end.column, 10);
+        assert!(!range.is_linewise);
+    }
+
+    #[test]
+    fn test_textobj_range_linewise_fields() {
+        let range = TextObjRange::linewise(Position::new(2, 0), Position::new(5, 0));
+        assert_eq!(range.start.line, 2);
+        assert_eq!(range.end.line, 5);
+        assert!(range.is_linewise);
     }
 }

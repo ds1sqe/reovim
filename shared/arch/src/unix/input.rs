@@ -55,4 +55,21 @@ mod tests {
         // but should not panic
         let _ = result;
     }
+
+    #[test]
+    fn test_input_source_default() {
+        fn assert_default<T: Default>() {}
+        assert_default::<UnixInputSource>();
+    }
+
+    #[test]
+    fn test_input_source_drain_empty() {
+        let mut source = UnixInputSource::new();
+        // drain() is the default method on InputSource trait
+        // In CI, there should be no pending events, so drain returns empty
+        let events = source.drain();
+        // We can only assert it doesn't panic; events may or may not be empty
+        // depending on the test environment
+        let _ = events;
+    }
 }

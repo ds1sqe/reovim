@@ -298,6 +298,8 @@ mod tests {
 
     use super::*;
 
+    // === ExDispatchContext tests ===
+
     #[test]
     fn test_ex_dispatch_context_default() {
         let ctx = ExDispatchContext::default();
@@ -307,10 +309,65 @@ mod tests {
     }
 
     #[test]
+    fn test_ex_dispatch_context_new() {
+        let ctx = ExDispatchContext::new(None, None);
+        assert!(ctx.buffer_id.is_none());
+        assert!(ctx.window_id.is_none());
+        assert!(!ctx.bang);
+    }
+
+    #[test]
+    fn test_ex_dispatch_context_new_with_buffer() {
+        let ctx = ExDispatchContext::new(Some(BufferId::from_raw(5)), None);
+        assert_eq!(ctx.buffer_id, Some(BufferId::from_raw(5)));
+        assert!(ctx.window_id.is_none());
+    }
+
+    #[test]
+    fn test_ex_dispatch_context_new_with_window() {
+        let ctx = ExDispatchContext::new(None, Some(WindowId::from_raw(3)));
+        assert!(ctx.buffer_id.is_none());
+        assert_eq!(ctx.window_id, Some(WindowId::from_raw(3)));
+    }
+
+    #[test]
+    fn test_ex_dispatch_context_new_with_both() {
+        let ctx = ExDispatchContext::new(Some(BufferId::from_raw(1)), Some(WindowId::from_raw(2)));
+        assert_eq!(ctx.buffer_id, Some(BufferId::from_raw(1)));
+        assert_eq!(ctx.window_id, Some(WindowId::from_raw(2)));
+    }
+
+    #[test]
     fn test_ex_dispatch_context_with_bang() {
         let ctx = ExDispatchContext::default().with_bang(true);
         assert!(ctx.bang);
     }
+
+    #[test]
+    fn test_ex_dispatch_context_with_bang_false() {
+        let ctx = ExDispatchContext::default().with_bang(false);
+        assert!(!ctx.bang);
+    }
+
+    #[test]
+    fn test_ex_dispatch_context_clone() {
+        let ctx = ExDispatchContext::new(Some(BufferId::from_raw(1)), Some(WindowId::from_raw(2)))
+            .with_bang(true);
+        #[allow(clippy::redundant_clone)]
+        let cloned = ctx.clone();
+        assert_eq!(cloned.buffer_id, Some(BufferId::from_raw(1)));
+        assert_eq!(cloned.window_id, Some(WindowId::from_raw(2)));
+        assert!(cloned.bang);
+    }
+
+    #[test]
+    fn test_ex_dispatch_context_debug() {
+        let ctx = ExDispatchContext::default();
+        let debug_str = format!("{ctx:?}");
+        assert!(debug_str.contains("ExDispatchContext"));
+    }
+
+    // === ExCommandResult tests ===
 
     #[test]
     fn test_ex_command_result_variants() {
@@ -324,10 +381,58 @@ mod tests {
     }
 
     #[test]
+    fn test_ex_command_result_equality() {
+        assert_eq!(ExCommandResult::Success, ExCommandResult::Success);
+        assert_eq!(
+            ExCommandResult::NotFound("x".to_string()),
+            ExCommandResult::NotFound("x".to_string())
+        );
+        assert_eq!(
+            ExCommandResult::Error("y".to_string()),
+            ExCommandResult::Error("y".to_string())
+        );
+
+        assert_ne!(ExCommandResult::Success, ExCommandResult::Error("e".to_string()));
+        assert_ne!(
+            ExCommandResult::NotFound("a".to_string()),
+            ExCommandResult::NotFound("b".to_string())
+        );
+    }
+
+    #[test]
+    fn test_ex_command_result_clone() {
+        let results = [
+            ExCommandResult::Success,
+            ExCommandResult::NotFound("cmd".to_string()),
+            ExCommandResult::Error("err".to_string()),
+        ];
+        for result in &results {
+            let cloned = result.clone();
+            assert_eq!(result, &cloned);
+        }
+    }
+
+    #[test]
+    fn test_ex_command_result_debug() {
+        let debug_str = format!("{:?}", ExCommandResult::Success);
+        assert_eq!(debug_str, "Success");
+
+        let debug_str = format!("{:?}", ExCommandResult::NotFound("foo".to_string()));
+        assert!(debug_str.contains("NotFound"));
+        assert!(debug_str.contains("foo"));
+
+        let debug_str = format!("{:?}", ExCommandResult::Error("bar".to_string()));
+        assert!(debug_str.contains("Error"));
+        assert!(debug_str.contains("bar"));
+    }
+
+    #[test]
     fn test_ex_command_dispatcher_object_safe() {
         fn _accepts_ref(_: &dyn ExCommandDispatcher) {}
         fn _accepts_box(_: Box<dyn ExCommandDispatcher>) {}
     }
+
+    // === Test helpers ===
 
     struct TestExCommand {
         id: &'static str,
@@ -363,9 +468,18 @@ mod tests {
         Err(ExCommandError::ExecutionFailed("test error".to_string()))
     }
 
+    // === ExCommandRegistry tests ===
+
     #[test]
     fn test_registry_new() {
         let registry = ExCommandRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = ExCommandRegistry::default();
         assert!(registry.is_empty());
         assert_eq!(registry.len(), 0);
     }
@@ -395,6 +509,98 @@ mod tests {
     }
 
     #[test]
+    fn test_registry_from_handlers_empty() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![];
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_get() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w", "write"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        assert!(registry.get("w").is_some());
+        assert!(registry.get("write").is_some());
+        assert!(registry.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_registry_get_handler_metadata() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w", "write"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let handler = registry.get("w").unwrap();
+        assert_eq!(handler.id(), "write");
+        assert_eq!(handler.names(), &["w", "write"]);
+    }
+
+    #[test]
+    fn test_registry_len_counts_unique_handlers() {
+        // Two names pointing to one handler should count as 1
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w", "write"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        assert_eq!(registry.len(), 1); // One unique handler despite two names
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_registry_is_empty_false_after_add() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "test",
+            names: &["t"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_registry_debug() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w", "write"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains("ExCommandRegistry"));
+        assert!(debug_str.contains("handler_count"));
+    }
+
+    #[test]
+    fn test_registry_debug_empty() {
+        let registry = ExCommandRegistry::new();
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains("ExCommandRegistry"));
+    }
+
+    #[test]
+    fn test_registry_service_impl() {
+        fn accepts_service(_: &dyn Service) {}
+        let registry = ExCommandRegistry::new();
+        accepts_service(&registry);
+    }
+
+    // === Dispatch tests ===
+
+    #[test]
     fn test_dispatch_success() {
         let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
             id: "test",
@@ -420,7 +626,21 @@ mod tests {
         let ctx = ExDispatchContext::default();
 
         let result = registry.dispatch("unknown", &kernel, &ctx);
-        assert!(matches!(result, ExCommandResult::NotFound(_)));
+        assert_eq!(result, ExCommandResult::NotFound("unknown".to_string()));
+    }
+
+    #[test]
+    fn test_dispatch_not_found_contains_name() {
+        let registry = ExCommandRegistry::new();
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+
+        let result = registry.dispatch("foobar", &kernel, &ctx);
+        if let ExCommandResult::NotFound(name) = result {
+            assert_eq!(name, "foobar");
+        } else {
+            panic!("Expected NotFound");
+        }
     }
 
     #[test]
@@ -436,7 +656,11 @@ mod tests {
         let ctx = ExDispatchContext::default();
 
         let result = registry.dispatch("fail", &kernel, &ctx);
-        assert!(matches!(result, ExCommandResult::Error(_)));
+        if let ExCommandResult::Error(msg) = result {
+            assert!(msg.contains("test error"));
+        } else {
+            panic!("Expected Error");
+        }
     }
 
     #[test]
@@ -457,6 +681,22 @@ mod tests {
     }
 
     #[test]
+    fn test_dispatch_with_context_bang() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "quit",
+            names: &["q"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default().with_bang(true);
+
+        let result = registry.dispatch("q", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
     fn test_dispatch_empty_cmdline() {
         let registry = ExCommandRegistry::new();
         let kernel = KernelContext::default();
@@ -470,6 +710,99 @@ mod tests {
     }
 
     #[test]
+    fn test_dispatch_with_leading_trailing_whitespace() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "test",
+            names: &["t"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+
+        let result = registry.dispatch("  t  ", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
+    fn test_dispatch_with_args() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+
+        let result = registry.dispatch("w filename.txt", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
+    fn test_dispatch_with_multiple_args() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "test",
+            names: &["t"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+
+        let result = registry.dispatch("t arg1 arg2 arg3", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
+    fn test_dispatch_with_buffer_context() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "test",
+            names: &["t"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::new(Some(BufferId::from_raw(5)), None);
+
+        let result = registry.dispatch("t", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
+    fn test_dispatch_with_window_context() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "test",
+            names: &["t"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::new(None, Some(WindowId::from_raw(3)));
+
+        let result = registry.dispatch("t", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[test]
+    fn test_dispatch_bang_not_found_strips_bang() {
+        let registry = ExCommandRegistry::new();
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+
+        // "unknown!" should strip the bang and report "unknown" as not found
+        let result = registry.dispatch("unknown!", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::NotFound("unknown".to_string()));
+    }
+
+    // === list_commands tests ===
+
+    #[test]
     fn test_list_commands() {
         let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
             id: "write",
@@ -481,5 +814,88 @@ mod tests {
         let commands = registry.list_commands();
         assert!(commands.contains(&"w"));
         assert!(commands.contains(&"write"));
+    }
+
+    #[test]
+    fn test_list_commands_empty() {
+        let registry = ExCommandRegistry::new();
+        let commands = registry.list_commands();
+        assert!(commands.is_empty());
+    }
+
+    #[test]
+    fn test_list_commands_multiple_handlers() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![
+            Arc::new(TestExCommand {
+                id: "write",
+                names: &["w", "write"],
+                execute_fn: success_cmd,
+            }),
+            Arc::new(TestExCommand {
+                id: "quit",
+                names: &["q"],
+                execute_fn: success_cmd,
+            }),
+        ];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let commands = registry.list_commands();
+        assert_eq!(commands.len(), 3);
+        assert!(commands.contains(&"w"));
+        assert!(commands.contains(&"write"));
+        assert!(commands.contains(&"q"));
+    }
+
+    // === has_command tests ===
+
+    #[test]
+    fn test_has_command() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "write",
+            names: &["w", "write"],
+            execute_fn: success_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        assert!(registry.has_command("w"));
+        assert!(registry.has_command("write"));
+        assert!(!registry.has_command("x"));
+        assert!(!registry.has_command(""));
+    }
+
+    #[test]
+    fn test_dispatch_with_vfs_in_service_registry() {
+        use reovim_driver_vfs::{MockVfs, VfsInstance};
+
+        // Create a command that verifies VFS is available in the context
+        fn vfs_check_cmd(
+            ctx: &mut ExCommandContext<'_>,
+            _args: &[&str],
+        ) -> Result<(), ExCommandError> {
+            if ctx.vfs().is_some() {
+                Ok(())
+            } else {
+                Err(ExCommandError::ExecutionFailed("VFS not available".to_string()))
+            }
+        }
+
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "check-vfs",
+            names: &["vfscheck"],
+            execute_fn: vfs_check_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+
+        // Create kernel with VFS registered in ServiceRegistry
+        let kernel = KernelContext::default();
+        let mock_vfs = MockVfs::new();
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(mock_vfs);
+        let vfs_instance = Arc::new(VfsInstance::new(vfs));
+        kernel.services.register(vfs_instance);
+
+        let ctx = ExDispatchContext::default();
+        let result = registry.dispatch("vfscheck", &kernel, &ctx);
+        assert_eq!(result, ExCommandResult::Success);
     }
 }

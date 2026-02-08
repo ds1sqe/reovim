@@ -588,4 +588,57 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<Task>();
     }
+
+    // === Coverage: TaskId Default impl ===
+
+    #[test]
+    fn test_task_id_default() {
+        let id = TaskId::default();
+        assert!(id.as_u64() > 0);
+    }
+
+    // === Coverage: execute on cancelled task (work is None) ===
+
+    #[test]
+    fn test_task_execute_cancelled_returns_err() {
+        let mut task = Task::new(|| {});
+        task.cancel();
+        let result = task.execute();
+        assert!(result.is_err());
+    }
+
+    // === Coverage: TaskState Debug/Clone ===
+
+    #[test]
+    fn test_task_state_debug_clone() {
+        let state = TaskState::Running;
+        let cloned = state;
+        assert_eq!(cloned, TaskState::Running);
+        let debug = format!("{state:?}");
+        assert!(debug.contains("Running"));
+    }
+
+    // === Coverage: Priority hash ===
+
+    #[test]
+    fn test_priority_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Priority::HIGH);
+        set.insert(Priority::LOW);
+        assert!(set.contains(&Priority::HIGH));
+        assert!(!set.contains(&Priority::NORMAL));
+    }
+
+    // === Coverage: TaskState Hash ===
+
+    #[test]
+    fn test_task_state_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(TaskState::Pending);
+        set.insert(TaskState::Completed);
+        assert!(set.contains(&TaskState::Pending));
+        assert!(!set.contains(&TaskState::Running));
+    }
 }

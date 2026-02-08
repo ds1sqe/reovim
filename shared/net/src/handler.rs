@@ -65,13 +65,8 @@ impl RpcResult {
 
 /// Context provided to RPC handlers for accessing runtime state.
 ///
-/// This is a minimal context struct. Concrete implementations in
-/// `lib/core` provide richer context with access to plugin state,
-/// mode state, and buffer information.
-///
-/// Note: The actual context type used by handlers is defined in
-/// `lib/core/src/rpc/handler.rs` and includes references to
-/// `PluginStateRegistry`, `ModeState`, and `active_buffer_id`.
+/// This is the context struct for RPC handlers. It provides
+/// access to runtime state needed for handler execution.
 pub struct RpcHandlerContext {
     /// Active buffer ID.
     pub active_buffer_id: BufferId,
@@ -203,5 +198,189 @@ mod tests {
     fn test_handler_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<TestHandler>();
+    }
+
+    #[test]
+    fn test_rpc_handler_context_new() {
+        let ctx = RpcHandlerContext::new(BufferId::from_raw(42));
+        assert_eq!(ctx.active_buffer_id(), BufferId::from_raw(42));
+    }
+
+    #[test]
+    fn test_rpc_handler_context_active_buffer_id() {
+        let ctx = RpcHandlerContext::new(BufferId::from_raw(0));
+        assert_eq!(ctx.active_buffer_id(), BufferId::from_raw(0));
+
+        let ctx2 = RpcHandlerContext::new(BufferId::from_raw(99));
+        assert_eq!(ctx2.active_buffer_id(), BufferId::from_raw(99));
+    }
+
+    #[test]
+    fn test_handler_default_description() {
+        struct NoDescHandler;
+        impl RpcHandler for NoDescHandler {
+            fn method(&self) -> &'static str {
+                "test/no_desc"
+            }
+            fn handle(&self, _params: &Value, _ctx: &RpcHandlerContext) -> RpcResult {
+                RpcResult::ok()
+            }
+            // description() not overridden - uses default
+        }
+
+        let handler = NoDescHandler;
+        assert_eq!(handler.description(), "No description available");
+    }
+
+    #[test]
+    fn test_rpc_result_success_value() {
+        let result = RpcResult::success(serde_json::json!({"key": "val"}));
+        match result {
+            RpcResult::Success(v) => assert_eq!(v["key"], "val"),
+            RpcResult::Error { .. } => panic!("Expected Success"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_ok_content() {
+        let result = RpcResult::ok();
+        match result {
+            RpcResult::Success(v) => {
+                assert_eq!(v["ok"], true);
+            }
+            RpcResult::Error { .. } => panic!("Expected Success"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_error_content() {
+        let result = RpcResult::error(-32000, "custom");
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, -32000);
+                assert_eq!(message, "custom");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_invalid_params_content() {
+        let result = RpcResult::invalid_params("field 'x' missing");
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, crate::INVALID_PARAMS);
+                assert_eq!(message, "field 'x' missing");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_internal_error_content() {
+        let result = RpcResult::internal_error("panic in handler");
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, crate::INTERNAL_ERROR);
+                assert_eq!(message, "panic in handler");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_debug() {
+        let success = RpcResult::success(serde_json::json!(1));
+        let debug_str = format!("{success:?}");
+        assert!(debug_str.contains("Success"));
+
+        let error = RpcResult::error(-1, "err");
+        let debug_str = format!("{error:?}");
+        assert!(debug_str.contains("Error"));
+    }
+
+    #[test]
+    fn test_handler_handle_returns_echo() {
+        let handler = TestHandler;
+        let ctx = RpcHandlerContext::new(BufferId::from_raw(0));
+        let params = serde_json::json!({"echo": "test"});
+        let result = handler.handle(&params, &ctx);
+        match result {
+            RpcResult::Success(v) => assert_eq!(v["echo"], "test"),
+            RpcResult::Error { .. } => panic!("Expected Success"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_error_string_conversion() {
+        // Test Into<String> conversion for error message
+        let result = RpcResult::error(-100, String::from("owned string"));
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, -100);
+                assert_eq!(message, "owned string");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_invalid_params_string_conversion() {
+        let result = RpcResult::invalid_params(String::from("owned message"));
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, crate::INVALID_PARAMS);
+                assert_eq!(message, "owned message");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_internal_error_string_conversion() {
+        let result = RpcResult::internal_error(String::from("owned internal"));
+        match result {
+            RpcResult::Error { code, message } => {
+                assert_eq!(code, crate::INTERNAL_ERROR);
+                assert_eq!(message, "owned internal");
+            }
+            RpcResult::Success(_) => panic!("Expected Error"),
+        }
+    }
+
+    #[test]
+    fn test_handler_debug_format() {
+        let handler: &dyn RpcHandler = &TestHandler;
+        let debug = format!("{handler:?}");
+        assert_eq!(debug, "RpcHandler(test/echo)");
+    }
+
+    #[test]
+    fn test_rpc_handler_context_field_access() {
+        let buf_id = BufferId::from_raw(12345);
+        let ctx = RpcHandlerContext::new(buf_id);
+        assert_eq!(ctx.active_buffer_id, buf_id);
+        assert_eq!(ctx.active_buffer_id(), buf_id);
+    }
+
+    #[test]
+    fn test_rpc_result_success_with_null() {
+        let result = RpcResult::success(serde_json::Value::Null);
+        match result {
+            RpcResult::Success(v) => assert!(v.is_null()),
+            RpcResult::Error { .. } => panic!("Expected Success"),
+        }
+    }
+
+    #[test]
+    fn test_rpc_result_success_with_array() {
+        let result = RpcResult::success(serde_json::json!([1, 2, 3]));
+        match result {
+            RpcResult::Success(v) => {
+                assert!(v.is_array());
+                assert_eq!(v.as_array().unwrap().len(), 3);
+            }
+            RpcResult::Error { .. } => panic!("Expected Success"),
+        }
     }
 }

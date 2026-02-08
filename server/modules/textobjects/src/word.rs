@@ -762,4 +762,416 @@ mod tests {
             );
         }
     }
+
+    // =========================================================================
+    // Additional coverage tests
+    // =========================================================================
+
+    fn visual_line_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "visual-line")
+    }
+
+    fn visual_block_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "visual-block")
+    }
+
+    #[test]
+    fn test_inner_word_visual_line_mode_sets_line_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_inner_word_visual_block_mode_sets_block_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_a_word_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world foo");
+        let mut state = TestState::with_window(buffer_id, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_a_word_visual_mode_sets_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world foo");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_inner_word_big_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut state = TestState::with_window(buffer_id, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_word_big_visual_mode_sets_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_a_word_big_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut state = TestState::with_window(buffer_id, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_a_word_big_visual_mode_sets_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello-world foo");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_inner_word_with_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world foo bar");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_a_word_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_word_big_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = InnerWordBig.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_a_word_big_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = AWordBig.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_a_word_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_word_big_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = InnerWordBig.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_a_word_big_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AWordBig.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_descriptions() {
+        assert_eq!(InnerWord.description(), "Inner word text object");
+        assert_eq!(AWord.description(), "A word text object (including whitespace)");
+        assert_eq!(InnerWordBig.description(), "Inner WORD text object");
+        assert_eq!(AWordBig.description(), "A WORD text object (including whitespace)");
+    }
+
+    #[test]
+    fn test_a_word_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_word_big_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_a_word_big_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWordBig.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_word_at_end_of_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into(); // at 'o'
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_a_word_at_end_of_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_a_word_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_a_word_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, reovim_driver_session::api::SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_multiline_word() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello\nworld\nfoo");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(1, 2).into(); // 'r' in world
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerWord.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
 }

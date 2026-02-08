@@ -202,4 +202,50 @@ mod tests {
         assert!(driver.folds().is_empty());
         assert_eq!(driver.indent_for(0), None);
     }
+
+    #[test]
+    fn test_syntax_driver_update() {
+        let mut driver = TestDriver::new("test");
+        driver.parse("initial");
+        assert!(driver.is_parsed());
+
+        let edit = SyntaxEdit::insert(0, 0, 0, 10, 0, 10);
+        driver.update("updated content", &edit);
+        // Still parsed after update
+        assert!(driver.is_parsed());
+    }
+
+    #[test]
+    fn test_syntax_driver_highlights_before_parse() {
+        let driver = TestDriver::new("test");
+
+        // Before parsing, should return empty
+        let highlights = driver.highlights(0..100);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_syntax_driver_highlights_after_parse() {
+        let mut driver = TestDriver::new("test");
+        driver.parse("some content");
+
+        let highlights = driver.highlights(5..15);
+        assert_eq!(highlights.len(), 1);
+        assert_eq!(highlights[0].start_byte, 5);
+        assert_eq!(highlights[0].end_byte, 15);
+    }
+
+    #[test]
+    fn test_syntax_driver_is_object_safe() {
+        fn _accepts_ref(_: &dyn SyntaxDriver) {}
+        fn _accepts_box(_: Box<dyn SyntaxDriver>) {}
+    }
+
+    #[test]
+    fn test_syntax_driver_indent_for_multiple_lines() {
+        let driver = TestDriver::new("test");
+        assert_eq!(driver.indent_for(0), None);
+        assert_eq!(driver.indent_for(100), None);
+        assert_eq!(driver.indent_for(usize::MAX), None);
+    }
 }

@@ -313,4 +313,36 @@ mod tests {
         logger.log(&record);
         logger.flush();
     }
+
+    // ========== __log function ==========
+
+    #[test]
+    fn test_log_internal() {
+        // __log should not panic even with default NopLogger
+        __log(
+            Level::Info,
+            "test::module",
+            "test_file.rs",
+            42,
+            format_args!("hello {}", "world"),
+        );
+    }
+
+    // ========== flush function ==========
+
+    #[test]
+    fn test_flush() {
+        // flush should not panic with NopLogger
+        flush();
+    }
+
+    // ========== SetLoggerError as Error ==========
+
+    #[test]
+    fn test_set_logger_error_is_error() {
+        let err = SetLoggerError;
+        // Test std::error::Error impl
+        let _: &dyn std::error::Error = &err;
+        assert!(err.source().is_none());
+    }
 }

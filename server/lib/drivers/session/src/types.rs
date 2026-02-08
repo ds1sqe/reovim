@@ -1119,14 +1119,6 @@ mod tests {
     }
 
     #[test]
-    fn test_textobj_range_characterwise() {
-        let range = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
-        assert_eq!(range.start, Position::new(0, 0));
-        assert_eq!(range.end, Position::new(0, 5));
-        assert!(!range.is_linewise);
-    }
-
-    #[test]
     fn test_textobj_range_linewise() {
         let range = TextObjRange::linewise(Position::new(1, 0), Position::new(3, 0));
         assert_eq!(range.start, Position::new(1, 0));
@@ -1230,5 +1222,402 @@ mod tests {
         let shared = SessionShared::new(mode.clone());
 
         assert_eq!(shared.home_mode(), &mode);
+    }
+
+    // =========================================================================
+    // Additional WindowLayout tests
+    // =========================================================================
+
+    #[test]
+    fn test_window_layout_clear() {
+        let mut layout = WindowLayout::empty();
+        layout.add(Window::new());
+        layout.add(Window::new());
+        assert_eq!(layout.len(), 2);
+
+        layout.clear();
+        assert!(layout.is_empty());
+        assert_eq!(layout.len(), 0);
+        assert!(layout.active().is_none());
+        assert!(layout.active_mut().is_none());
+    }
+
+    #[test]
+    fn test_window_layout_get() {
+        let mut layout = WindowLayout::empty();
+        let w = Window::new();
+        let id = w.id;
+        layout.add(w);
+
+        // Get existing window
+        let found = layout.get(id);
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+
+        // Get non-existing window
+        let fake_id = WindowId::new();
+        assert!(layout.get(fake_id).is_none());
+    }
+
+    #[test]
+    fn test_window_layout_get_mut() {
+        let mut layout = WindowLayout::empty();
+        let w = Window::new();
+        let id = w.id;
+        layout.add(w);
+
+        // Get mut existing window
+        let found = layout.get_mut(id);
+        assert!(found.is_some());
+
+        // Modify window
+        found.unwrap().cursor = CursorPosition::new(5, 10);
+        assert_eq!(layout.get(id).unwrap().cursor.line, 5);
+
+        // Get mut non-existing window
+        let fake_id = WindowId::new();
+        assert!(layout.get_mut(fake_id).is_none());
+    }
+
+    #[test]
+    fn test_window_layout_set_active_nonexistent() {
+        let mut layout = WindowLayout::empty();
+        layout.add(Window::new());
+
+        let fake_id = WindowId::new();
+        assert!(!layout.set_active(fake_id));
+    }
+
+    #[test]
+    fn test_window_layout_set_active_returns_true() {
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let w2 = Window::new();
+        let id2 = w2.id;
+        layout.add(w1);
+        layout.add(w2);
+
+        assert!(layout.set_active(id2));
+        assert_eq!(layout.active_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_window_layout_default() {
+        let layout = WindowLayout::default();
+        assert!(layout.is_empty());
+    }
+
+    #[test]
+    fn test_window_layout_clone() {
+        let mut layout = WindowLayout::empty();
+        let w = Window::new();
+        let id = w.id;
+        layout.add(w);
+
+        let cloned = layout.clone();
+        assert_eq!(cloned.len(), 1);
+        assert_eq!(cloned.active_id(), Some(id));
+    }
+
+    // =========================================================================
+    // Additional KeySequence tests
+    // =========================================================================
+
+    #[test]
+    fn test_key_sequence_keys() {
+        let mut seq = KeySequence::new();
+        seq.push("d".to_string());
+        seq.push("w".to_string());
+
+        let keys = seq.keys();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0], "d");
+        assert_eq!(keys[1], "w");
+    }
+
+    #[test]
+    fn test_key_sequence_default() {
+        let seq = KeySequence::default();
+        assert!(seq.is_empty());
+        assert!(seq.keys().is_empty());
+        assert!(seq.as_string().is_empty());
+    }
+
+    #[test]
+    fn test_key_sequence_as_string_single() {
+        let mut seq = KeySequence::new();
+        seq.push("a".to_string());
+        assert_eq!(seq.as_string(), "a");
+    }
+
+    #[test]
+    fn test_key_sequence_special_keys() {
+        let mut seq = KeySequence::new();
+        seq.push("<C-w>".to_string());
+        seq.push("h".to_string());
+        assert_eq!(seq.as_string(), "<C-w>h");
+        assert_eq!(seq.keys().len(), 2);
+    }
+
+    #[test]
+    fn test_key_sequence_debug() {
+        let seq = KeySequence::new();
+        let debug = format!("{seq:?}");
+        assert!(debug.contains("KeySequence"));
+    }
+
+    // =========================================================================
+    // Additional Viewport tests
+    // =========================================================================
+
+    #[test]
+    fn test_viewport_with_scroll() {
+        let mut vp = Viewport::new(80, 24);
+        vp.scroll_top = 10;
+        vp.scroll_left = 5;
+
+        assert_eq!(vp.last_visible_line(), 33); // 10 + 24 - 1
+        assert_eq!(vp.last_visible_column(), 84); // 5 + 80 - 1
+
+        // Lines before scroll_top should not be visible
+        assert!(!vp.is_line_visible(9));
+        assert!(vp.is_line_visible(10));
+        assert!(vp.is_line_visible(33));
+        assert!(!vp.is_line_visible(34));
+
+        // Columns before scroll_left should not be visible
+        assert!(!vp.is_column_visible(4));
+        assert!(vp.is_column_visible(5));
+        assert!(vp.is_column_visible(84));
+        assert!(!vp.is_column_visible(85));
+    }
+
+    #[test]
+    fn test_viewport_is_position_visible_with_scroll() {
+        let mut vp = Viewport::new(40, 20);
+        vp.scroll_top = 5;
+        vp.scroll_left = 10;
+
+        // Position within viewport
+        assert!(vp.is_position_visible(10, 20));
+
+        // Position outside - line too early
+        assert!(!vp.is_position_visible(4, 20));
+
+        // Position outside - column too early
+        assert!(!vp.is_position_visible(10, 9));
+
+        // Position outside - both out
+        assert!(!vp.is_position_visible(100, 200));
+    }
+
+    #[test]
+    fn test_viewport_default_size() {
+        let vp = Viewport::default_size();
+        assert_eq!(vp.width, 80);
+        assert_eq!(vp.height, 24);
+        assert_eq!(vp.scroll_top, 0);
+        assert_eq!(vp.scroll_left, 0);
+    }
+
+    // =========================================================================
+    // Additional CursorPosition tests
+    // =========================================================================
+
+    #[test]
+    fn test_cursor_position_default() {
+        let cursor = CursorPosition::default();
+        assert_eq!(cursor.line, 0);
+        assert_eq!(cursor.column, 0);
+    }
+
+    #[test]
+    fn test_cursor_position_debug() {
+        let cursor = CursorPosition::new(5, 10);
+        let debug = format!("{cursor:?}");
+        assert!(debug.contains('5'));
+        assert!(debug.contains("10"));
+    }
+
+    #[test]
+    fn test_cursor_position_eq() {
+        let a = CursorPosition::new(5, 10);
+        let b = CursorPosition::new(5, 10);
+        let c = CursorPosition::new(5, 11);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    // =========================================================================
+    // Additional Window tests
+    // =========================================================================
+
+    #[test]
+    fn test_window_default() {
+        let w = Window::default();
+        assert!(w.buffer_id.is_none());
+        assert_eq!(w.cursor, CursorPosition::origin());
+        assert!(w.selection.is_none());
+    }
+
+    #[test]
+    fn test_window_with_buffer_has_default_cursor() {
+        let buf_id = BufferId::new();
+        let w = Window::with_buffer(buf_id);
+        assert_eq!(w.buffer_id, Some(buf_id));
+        assert_eq!(w.cursor, CursorPosition::origin());
+        assert_eq!(w.viewport.width, 80);
+        assert_eq!(w.viewport.height, 24);
+        assert!(w.selection.is_none());
+    }
+
+    #[test]
+    fn test_window_debug() {
+        let w = Window::new();
+        let debug = format!("{w:?}");
+        assert!(debug.contains("Window"));
+    }
+
+    // =========================================================================
+    // Additional TextObjRange tests
+    // =========================================================================
+
+    #[test]
+    fn test_textobj_range_clone() {
+        let range = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        let cloned = range;
+        assert_eq!(range, cloned);
+    }
+
+    #[test]
+    fn test_textobj_range_debug() {
+        let range = TextObjRange::linewise(Position::new(1, 0), Position::new(3, 0));
+        let debug = format!("{range:?}");
+        assert!(debug.contains("TextObjRange"));
+        assert!(debug.contains("is_linewise: true"));
+    }
+
+    #[test]
+    fn test_textobj_range_eq() {
+        let a = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        let b = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_textobj_range_ne() {
+        let a = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        let b = TextObjRange::linewise(Position::new(0, 0), Position::new(0, 5));
+        assert_ne!(a, b);
+    }
+
+    // =========================================================================
+    // Additional BootstrapState tests
+    // =========================================================================
+
+    #[test]
+    fn test_bootstrap_state_new() {
+        let mode = test_mode();
+        let state = BootstrapState::new(mode.clone());
+
+        assert_eq!(state.mode_stack.current(), &mode);
+        assert!(state.windows.is_empty());
+        assert!(state.pending_keys.is_empty());
+        assert!(state.extensions.is_empty());
+    }
+
+    #[test]
+    fn test_bootstrap_state_with_buffer() {
+        let mode = test_mode();
+        let buf_id = BufferId::new();
+        let state = BootstrapState::with_buffer(mode.clone(), buf_id);
+
+        assert_eq!(state.mode_stack.current(), &mode);
+        assert_eq!(state.windows.len(), 1);
+        assert_eq!(state.windows.active().unwrap().buffer_id, Some(buf_id));
+        assert!(state.pending_keys.is_empty());
+        assert!(state.extensions.is_empty());
+    }
+
+    #[test]
+    fn test_bootstrap_state_debug() {
+        let mode = test_mode();
+        let state = BootstrapState::new(mode);
+        let debug = format!("{state:?}");
+        assert!(debug.contains("BootstrapState"));
+    }
+
+    // =========================================================================
+    // Additional Session tests
+    // =========================================================================
+
+    #[test]
+    fn test_session_debug() {
+        let mode = test_mode();
+        let session = Session::new(ClientId::new(1), mode);
+        let debug = format!("{session:?}");
+        assert!(debug.contains("Session"));
+        assert!(debug.contains("ClientId"));
+    }
+
+    #[test]
+    fn test_session_compositor_none_by_default() {
+        let mode = test_mode();
+        let session = Session::new(ClientId::new(1), mode);
+        assert!(session.compositor().is_none());
+        assert!(session.active_buffer().is_none());
+    }
+
+    #[test]
+    fn test_session_shared_compositor_none_by_default() {
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
+        assert!(shared.compositor().is_none());
+        assert!(shared.compositor_mut().is_none());
+    }
+
+    #[test]
+    fn test_session_shared_set_active_buffer() {
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
+        let buf_id = BufferId::new();
+        shared.set_active_buffer(Some(buf_id));
+        assert_eq!(shared.active_buffer(), Some(buf_id));
+    }
+
+    // =========================================================================
+    // ClientId tests
+    // =========================================================================
+
+    #[test]
+    fn test_client_id_hash() {
+        use std::collections::HashSet;
+
+        let mut set = HashSet::new();
+        set.insert(ClientId::new(1));
+        set.insert(ClientId::new(2));
+        set.insert(ClientId::new(1)); // duplicate
+
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_client_id_clone_copy() {
+        let id = ClientId::new(42);
+        let cloned = id;
+        assert_eq!(id, cloned);
+    }
+
+    #[test]
+    fn test_client_id_debug() {
+        let id = ClientId::new(42);
+        let debug = format!("{id:?}");
+        assert!(debug.contains("42"));
+    }
+
+    #[test]
+    fn test_client_id_display_format() {
+        assert_eq!(ClientId::new(0).to_string(), "client-0");
+        assert_eq!(ClientId::new(100).to_string(), "client-100");
     }
 }

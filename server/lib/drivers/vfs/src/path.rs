@@ -294,4 +294,123 @@ mod tests {
         );
         assert_eq!(normalizer.relative_to(Path::new("/foo/bar"), Path::new("/other")), None);
     }
+
+    #[test]
+    fn test_canonicalize_nonexistent() {
+        let normalizer = StandardPathNormalizer;
+        let result = normalizer.canonicalize(Path::new("/nonexistent_path_xyz_abc_123"));
+        assert!(result.is_err());
+        // Should produce a NotFound error specifically
+        match result.unwrap_err() {
+            VfsError::NotFound(p) => {
+                assert_eq!(p, PathBuf::from("/nonexistent_path_xyz_abc_123"));
+            }
+            other => panic!("Expected VfsError::NotFound, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_canonicalize_existing() {
+        let normalizer = StandardPathNormalizer;
+        // /tmp should always exist on Linux
+        let result = normalizer.canonicalize(Path::new("/tmp"));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_absolute());
+    }
+
+    #[test]
+    fn test_normalize_multiple_parent_dirs() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.normalize(Path::new("a/b/c/../../d")), PathBuf::from("a/d"));
+    }
+
+    #[test]
+    fn test_normalize_root_with_parent() {
+        let normalizer = StandardPathNormalizer;
+        // Going above root stays at root
+        assert_eq!(normalizer.normalize(Path::new("/a/..")), PathBuf::from("/"));
+    }
+
+    #[test]
+    fn test_parent_of_file() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.parent(Path::new("foo/bar.txt")), Some(PathBuf::from("foo")));
+    }
+
+    #[test]
+    fn test_parent_of_single_component() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.parent(Path::new("foo")), Some(PathBuf::from("")));
+    }
+
+    #[test]
+    fn test_file_name_none_case() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.file_name(Path::new("/")), None);
+        assert_eq!(normalizer.file_name(Path::new("..")), None);
+    }
+
+    #[test]
+    fn test_extension_dotfile() {
+        let normalizer = StandardPathNormalizer;
+        // .gitignore has no extension in Rust's Path
+        assert_eq!(normalizer.extension(Path::new(".gitignore")), None);
+    }
+
+    #[test]
+    fn test_stem_no_extension() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.stem(Path::new("/foo/bar")), Some(OsStr::new("bar")));
+    }
+
+    #[test]
+    fn test_stem_with_extension() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.stem(Path::new("file.rs")), Some(OsStr::new("file")));
+    }
+
+    #[test]
+    fn test_components() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.components(Path::new("/foo/bar")).count(), 3); // RootDir, "foo", "bar"
+    }
+
+    #[test]
+    fn test_default_trait() {
+        let normalizer = StandardPathNormalizer;
+        assert!(normalizer.is_absolute(Path::new("/test")));
+    }
+
+    #[test]
+    fn test_normalize_only_dots() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.normalize(Path::new("./.")), PathBuf::from("."));
+    }
+
+    #[test]
+    fn test_join_with_empty() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(normalizer.join(Path::new("/base"), Path::new("")), PathBuf::from("/base"));
+    }
+
+    #[test]
+    fn test_starts_with_same_path() {
+        let normalizer = StandardPathNormalizer;
+        assert!(normalizer.starts_with(Path::new("/foo"), Path::new("/foo")));
+    }
+
+    #[test]
+    fn test_ends_with_full_path() {
+        let normalizer = StandardPathNormalizer;
+        assert!(normalizer.ends_with(Path::new("/foo/bar"), Path::new("/foo/bar")));
+    }
+
+    #[test]
+    fn test_strip_prefix_same_path() {
+        let normalizer = StandardPathNormalizer;
+        assert_eq!(
+            normalizer.strip_prefix(Path::new("/foo"), Path::new("/foo")),
+            Some(PathBuf::from(""))
+        );
+    }
 }

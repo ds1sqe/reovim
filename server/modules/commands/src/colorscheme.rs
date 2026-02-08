@@ -104,7 +104,7 @@ impl ExCommandHandler for ColorschemeCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, std::sync::Arc};
 
     #[test]
     fn test_colorscheme_command_id() {
@@ -116,40 +116,195 @@ mod tests {
     fn test_colorscheme_command_names() {
         let cmd = ColorschemeCommand;
         let names = cmd.names();
+        assert_eq!(names.len(), 3);
         assert!(names.contains(&"colorscheme"));
         assert!(names.contains(&"colors"));
         assert!(names.contains(&"colo"));
     }
 
     #[test]
-    fn test_colorscheme_completion() {
+    fn test_colorscheme_completion_partial_d() {
         let cmd = ColorschemeCommand;
-
-        // Complete partial "d"
         let completions = cmd.complete("d");
+        assert_eq!(completions.len(), 1);
         assert!(completions.contains(&"dark".to_string()));
-        assert!(!completions.contains(&"light".to_string()));
+    }
 
-        // Complete empty string - should return all
+    #[test]
+    fn test_colorscheme_completion_partial_l() {
+        let cmd = ColorschemeCommand;
+        let completions = cmd.complete("l");
+        assert_eq!(completions.len(), 1);
+        assert!(completions.contains(&"light".to_string()));
+    }
+
+    #[test]
+    fn test_colorscheme_completion_partial_t() {
+        let cmd = ColorschemeCommand;
+        let completions = cmd.complete("t");
+        assert_eq!(completions.len(), 1);
+        assert!(completions.contains(&"tokyo-night-orange".to_string()));
+    }
+
+    #[test]
+    fn test_colorscheme_completion_empty_returns_all() {
+        let cmd = ColorschemeCommand;
         let completions = cmd.complete("");
         assert_eq!(completions.len(), 3);
         assert!(completions.contains(&"dark".to_string()));
         assert!(completions.contains(&"light".to_string()));
         assert!(completions.contains(&"tokyo-night-orange".to_string()));
+    }
 
-        // Complete "t"
-        let completions = cmd.complete("t");
-        assert!(completions.contains(&"tokyo-night-orange".to_string()));
-        assert!(!completions.contains(&"dark".to_string()));
+    #[test]
+    fn test_colorscheme_completion_no_match() {
+        let cmd = ColorschemeCommand;
+        let completions = cmd.complete("xyz");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_colorscheme_completion_full_name() {
+        let cmd = ColorschemeCommand;
+        let completions = cmd.complete("dark");
+        assert_eq!(completions.len(), 1);
+        assert!(completions.contains(&"dark".to_string()));
     }
 
     #[test]
     fn test_colorscheme_help() {
         let cmd = ColorschemeCommand;
         let help = cmd.help();
+        assert!(!help.is_empty());
         assert!(help.contains("colorscheme"));
         assert!(help.contains("dark"));
         assert!(help.contains("light"));
         assert!(help.contains("tokyo-night-orange"));
+    }
+
+    #[test]
+    fn test_colorscheme_available_themes_constant() {
+        assert_eq!(ColorschemeCommand::AVAILABLE_THEMES.len(), 3);
+        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"dark"));
+        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"light"));
+        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"tokyo-night-orange"));
+    }
+
+    #[test]
+    fn test_colorscheme_execute_no_theme_manager_returns_error() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        // No SharedThemeManager registered in services
+        let result = cmd.execute(&mut ctx, &["dark"]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let display = err.to_string();
+        assert!(display.contains("Theme system not initialized"));
+    }
+
+    #[test]
+    fn test_colorscheme_execute_show_current_with_theme_manager() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        // Empty args = show current theme
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_colorscheme_execute_switch_to_dark() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Light.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["dark"]);
+        assert!(result.is_ok());
+
+        // Verify theme was switched
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "dark");
+    }
+
+    #[test]
+    fn test_colorscheme_execute_switch_to_light() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["light"]);
+        assert!(result.is_ok());
+
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "light");
+    }
+
+    #[test]
+    fn test_colorscheme_execute_switch_to_tokyo_night_orange() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["tokyo-night-orange"]);
+        assert!(result.is_ok());
+
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "tokyo-night-orange");
+    }
+
+    #[test]
+    fn test_colorscheme_execute_invalid_theme_returns_error() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["nonexistent"]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let display = err.to_string();
+        assert!(display.contains("nonexistent"));
+        assert!(display.contains("Available"));
+    }
+
+    #[test]
+    fn test_colorscheme_execute_no_theme_manager_empty_args() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ColorschemeCommand;
+        // No theme manager, even with empty args the error is the same
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_colorscheme_command_debug() {
+        let cmd = ColorschemeCommand;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("ColorschemeCommand"));
+    }
+
+    #[test]
+    fn test_colorscheme_command_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<ColorschemeCommand>();
     }
 }

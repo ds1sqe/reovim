@@ -502,4 +502,169 @@ mod tests {
         assert_eq!(truncate_text_to_width("hello", 10), "hello");
         assert_eq!(truncate_text_to_width("hello", 0), "");
     }
+
+    // =========================================================================
+    // Extended statusline renderer tests
+    // =========================================================================
+
+    #[test]
+    fn test_render_sections_with_separators() {
+        let mut buffer = FrameBuffer::new(80, 24);
+        let style_a = Style::new().bg(Color::Blue);
+
+        let sections = vec![
+            Section::new(SectionId::A, " NORMAL ", style_a.clone()),
+            Section::new(SectionId::B, " main.rs ", style_a),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::PIPE,
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // Verify first section is rendered
+        assert_eq!(buffer.get(1, 23).unwrap().char, 'N');
+    }
+
+    #[test]
+    fn test_render_sections_right_with_separators() {
+        let mut buffer = FrameBuffer::new(80, 24);
+        let style = Style::new().bg(Color::Blue);
+
+        let sections = vec![
+            Section::new(SectionId::Y, " utf-8 ", style.clone()),
+            Section::new(SectionId::Z, " 42:15 ", style),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::PIPE,
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // Right sections should be rendered near the right edge
+        let z_start = 80 - 14; // two 7-char sections
+        // Verify content is present on the row
+        let row_str: String = (z_start..80)
+            .filter_map(|x| buffer.get(x, 23).map(|c| c.char))
+            .collect();
+        assert!(row_str.contains("42:15"), "Row should contain '42:15', got: {row_str}");
+    }
+
+    #[test]
+    fn test_render_sections_powerline_coloring() {
+        let mut buffer = FrameBuffer::new(80, 24);
+        let style_a = Style::new().bg(Color::Blue);
+        let style_b = Style::new().bg(Color::Green);
+
+        let sections = vec![
+            Section::new(SectionId::A, " A ", style_a),
+            Section::new(SectionId::B, " B ", style_b),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::POWERLINE_ARROW,
+            powerline_coloring: true,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // Just verify it renders without panicking
+        assert_eq!(buffer.get(1, 23).unwrap().char, 'A');
+    }
+
+    #[test]
+    fn test_render_statusline_simple_narrow() {
+        let mut buffer = FrameBuffer::new(20, 24);
+        let mode_style = Style::new().bg(Color::Blue);
+        let pos_style = Style::new().bg(Color::Green);
+        let fill_style = Style::default();
+
+        render_statusline_simple(
+            &mut buffer,
+            23,
+            "NOR",
+            "1:1",
+            &mode_style,
+            &pos_style,
+            &fill_style,
+        );
+
+        // Mode at left
+        assert_eq!(buffer.get(0, 23).unwrap().char, 'N');
+        // Position at right
+        assert_eq!(buffer.get(19, 23).unwrap().char, '1');
+    }
+
+    #[test]
+    fn test_separator_default() {
+        let sep = StatuslineSeparator::default();
+        assert_eq!(sep.left, StatuslineSeparator::POWERLINE_ARROW.left);
+    }
+
+    #[test]
+    fn test_statusline_renderer_config_default() {
+        let config = StatuslineRendererConfig::default();
+        assert!(config.powerline_coloring);
+        assert_eq!(config.separator.left, StatuslineSeparator::POWERLINE_ARROW.left);
+    }
+
+    #[test]
+    fn test_truncate_sections_multiple_truncation() {
+        let sections = vec![
+            Section::with_priority(SectionId::A, "ABCDEFGHIJ", Style::default(), 100),
+            Section::with_priority(SectionId::B, "1234567890", Style::default(), 50),
+            Section::with_priority(SectionId::C, "XYZXYZXYZX", Style::default(), 10),
+        ];
+
+        // Total = 30, need to fit in 15
+        let result = truncate_sections(&sections, 15);
+
+        // Lowest priority (C) should be truncated first, then B
+        let total_width: usize = result.iter().map(Section::display_width).sum();
+        assert!(total_width <= 15, "Total width {total_width} should be <= 15");
+    }
+
+    #[test]
+    fn test_truncate_section_very_small_target() {
+        let section = Section::with_priority(SectionId::A, "ABCDEFGHIJ", Style::default(), 100);
+        let truncated = truncate_section(&section, 100);
+        // When target_width <= TRUNCATION_WIDTH, should just be the indicator
+        assert_eq!(truncated.text, "\u{2026}"); // "..."
+    }
+
+    #[test]
+    fn test_truncate_sections_small_section_skipped() {
+        let sections = vec![
+            Section::with_priority(SectionId::A, "X", Style::default(), 10), // Too small to truncate
+            Section::with_priority(SectionId::B, "ABCDEFGHIJ", Style::default(), 50),
+        ];
+
+        // Total = 11, need to fit in 5
+        let result = truncate_sections(&sections, 5);
+        // Small section should be kept, larger truncated
+        assert_eq!(result[0].text, "X");
+    }
+
+    #[test]
+    fn test_render_section_content_at_max_width() {
+        let mut buffer = FrameBuffer::new(5, 1);
+        let section = Section::new(SectionId::A, "Hello World", Style::default());
+
+        let next_x = render_section_content(&mut buffer, 0, 0, &section, 5);
+        // Should stop at max_width
+        assert_eq!(next_x, 5);
+    }
+
+    #[test]
+    fn test_separator_round_constants() {
+        assert_eq!(StatuslineSeparator::POWERLINE_ROUND.left, "\u{e0b4}");
+        assert_eq!(StatuslineSeparator::POWERLINE_ROUND.right, "\u{e0b6}");
+    }
 }

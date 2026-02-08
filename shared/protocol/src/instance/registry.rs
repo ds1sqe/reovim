@@ -406,4 +406,233 @@ mod tests {
         assert!(instances.is_empty());
         assert!(!path.exists());
     }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = InstanceRegistry::default();
+        let default_dir = InstanceRegistry::default_registry_dir();
+        assert_eq!(registry.registry_dir(), &default_dir);
+    }
+
+    #[test]
+    fn test_registry_unregister_nonexistent() {
+        let (registry, _temp) = test_registry();
+        // Unregistering a non-existent instance should succeed silently
+        let result = registry.unregister("does-not-exist");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_registry_get_nonexistent() {
+        let (registry, _temp) = test_registry();
+        let result = registry.get("does-not-exist").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_registry_list_nonexistent_dir() {
+        // Create a registry pointing to a non-existent directory
+        let registry = InstanceRegistry::with_dir(std::path::PathBuf::from(
+            "/tmp/reovim-test-nonexistent-dir-12345",
+        ));
+        let instances = registry.list().unwrap();
+        assert!(instances.is_empty());
+    }
+
+    #[test]
+    fn test_registry_list_skips_non_json_files() {
+        let (registry, _temp) = test_registry();
+
+        std::fs::create_dir_all(registry.registry_dir()).unwrap();
+        // Write a non-JSON file
+        let path = registry.registry_dir().join("readme.txt");
+        std::fs::write(&path, "not an instance").unwrap();
+
+        // Should not include non-JSON files
+        let instances = registry.list().unwrap();
+        assert!(instances.is_empty());
+        // Non-JSON file should not be deleted
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_validate_name_exactly_63_chars() {
+        let name = "a".repeat(63);
+        assert!(InstanceRegistry::validate_name(&name).is_ok());
+    }
+
+    #[test]
+    fn test_validate_name_exactly_64_chars() {
+        let name = "a".repeat(64);
+        assert!(InstanceRegistry::validate_name(&name).is_err());
+    }
+
+    #[test]
+    fn test_validate_name_special_chars() {
+        assert!(InstanceRegistry::validate_name("has.dot").is_err());
+        assert!(InstanceRegistry::validate_name("has@at").is_err());
+        assert!(InstanceRegistry::validate_name("has!bang").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_with_numbers_and_hyphens() {
+        assert!(InstanceRegistry::validate_name("a-b-c").is_ok());
+        assert!(InstanceRegistry::validate_name("a_b_c").is_ok());
+        assert!(InstanceRegistry::validate_name("abc123").is_ok());
+        assert!(InstanceRegistry::validate_name("1starts-with-number").is_ok());
+    }
+
+    #[test]
+    fn test_registry_stale_entry_replaced() {
+        let (registry, _temp) = test_registry();
+        let pid = std::process::id();
+
+        // Write a stale entry directly
+        std::fs::create_dir_all(registry.registry_dir()).unwrap();
+        let info = InstanceInfo::new(
+            "stale-replace".to_string(),
+            u32::MAX - 1, // fake PID
+            TransportInfo::tcp("127.0.0.1", 12521),
+        );
+        let path = registry.registry_dir().join("stale-replace.json");
+        let json = serde_json::to_string(&info).unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        // Register with the same name should succeed (stale entry replaced)
+        let new_info = InstanceInfo::new(
+            "stale-replace".to_string(),
+            pid,
+            TransportInfo::tcp("127.0.0.1", 12522),
+        );
+        registry.register(&new_info).unwrap();
+
+        // Should find the new entry
+        let retrieved = registry.get("stale-replace").unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().pid, pid);
+    }
+
+    #[test]
+    fn test_registry_get_internal_stale_no_cleanup() {
+        let (registry, _temp) = test_registry();
+
+        // Write a stale entry
+        std::fs::create_dir_all(registry.registry_dir()).unwrap();
+        let info = InstanceInfo::new(
+            "stale-no-clean".to_string(),
+            u32::MAX - 1,
+            TransportInfo::tcp("127.0.0.1", 12521),
+        );
+        let path = registry.registry_dir().join("stale-no-clean.json");
+        let json = serde_json::to_string(&info).unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        // get() returns None for stale entries but also cleans up
+        let result = registry.get("stale-no-clean").unwrap();
+        assert!(result.is_none());
+        // File should be cleaned up by get() (cleanup_stale=true)
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_instance_path() {
+        let (registry, _temp) = test_registry();
+        let dir = registry.registry_dir().clone();
+        let expected = dir.join("my-instance.json");
+        // instance_path is private, but we can verify indirectly
+        // by registering and checking the file exists
+        let info = InstanceInfo::new(
+            "my-instance".to_string(),
+            std::process::id(),
+            TransportInfo::tcp("127.0.0.1", 12521),
+        );
+        registry.register(&info).unwrap();
+        assert!(expected.exists());
+    }
+
+    #[test]
+    fn test_validate_name_path_traversal_with_backslash() {
+        assert!(InstanceRegistry::validate_name("test\\escape").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_path_traversal_with_slash() {
+        assert!(InstanceRegistry::validate_name("test/path").is_err());
+    }
+
+    #[test]
+    fn test_validate_name_single_char() {
+        assert!(InstanceRegistry::validate_name("a").is_ok());
+        assert!(InstanceRegistry::validate_name("1").is_ok());
+    }
+
+    #[test]
+    fn test_registry_list_stale_entries_removed() {
+        let (registry, _temp) = test_registry();
+
+        // Write stale entry directly (fake PID)
+        std::fs::create_dir_all(registry.registry_dir()).unwrap();
+        let info = InstanceInfo::new(
+            "stale-list".to_string(),
+            u32::MAX - 2,
+            TransportInfo::tcp("127.0.0.1", 12521),
+        );
+        let path = registry.registry_dir().join("stale-list.json");
+        let json = serde_json::to_string(&info).unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        // List should filter out the stale entry and remove the file
+        let instances = registry.list().unwrap();
+        assert!(instances.is_empty());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn test_registry_register_then_get_returns_current_pid() {
+        let (registry, _temp) = test_registry();
+        let pid = std::process::id();
+
+        let info =
+            InstanceInfo::new("pid-check".to_string(), pid, TransportInfo::tcp("127.0.0.1", 12521));
+        registry.register(&info).unwrap();
+
+        let retrieved = registry.get("pid-check").unwrap().unwrap();
+        assert_eq!(retrieved.pid, pid);
+    }
+
+    #[test]
+    fn test_registry_list_multiple_live_and_stale() {
+        let (registry, _temp) = test_registry();
+        let pid = std::process::id();
+
+        // Register a live instance
+        let live = InstanceInfo::new(
+            "live-instance".to_string(),
+            pid,
+            TransportInfo::tcp("127.0.0.1", 12521),
+        );
+        registry.register(&live).unwrap();
+
+        // Write a stale entry
+        let stale = InstanceInfo::new(
+            "stale-instance".to_string(),
+            u32::MAX - 3,
+            TransportInfo::tcp("127.0.0.1", 12522),
+        );
+        let stale_path = registry.registry_dir().join("stale-instance.json");
+        let json = serde_json::to_string(&stale).unwrap();
+        std::fs::write(&stale_path, json).unwrap();
+
+        // List should return only the live instance
+        let instances = registry.list().unwrap();
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].name, "live-instance");
+        // Stale file should be removed
+        assert!(!stale_path.exists());
+    }
+
+    #[test]
+    fn test_validate_name_double_dots() {
+        assert!(InstanceRegistry::validate_name("a..b").is_err());
+    }
 }

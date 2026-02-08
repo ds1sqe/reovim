@@ -469,4 +469,295 @@ mod tests {
         assert_eq!(renderer.source_count(), 1, "Should have 1 source registered");
         assert_eq!(renderer.presenter_count(), 1, "Should have 1 presenter registered");
     }
+
+    // ========================================================================
+    // VimModule Default and exit tests
+    // ========================================================================
+
+    #[test]
+    fn test_vim_module_default() {
+        let module = VimModule;
+        assert_eq!(module.id().as_str(), "vim");
+        assert_eq!(module.name(), "Vim");
+    }
+
+    #[test]
+    fn test_vim_module_exit() {
+        let mut module = VimModule::new();
+        let result = module.exit();
+        assert!(result.is_ok(), "exit() should succeed");
+    }
+
+    #[test]
+    fn test_vim_module_const_new() {
+        const MODULE: VimModule = VimModule::new();
+        assert_eq!(MODULE.name(), "Vim");
+    }
+
+    // ========================================================================
+    // CommandProvider tests
+    // ========================================================================
+
+    #[test]
+    fn test_command_handlers_not_empty() {
+        let module = VimModule::new();
+        let handlers = module.command_handlers();
+        assert!(!handlers.is_empty(), "Should have command handlers");
+    }
+
+    #[test]
+    fn test_command_handlers_count() {
+        let module = VimModule::new();
+        let handlers = module.command_handlers();
+        // mode_commands() + visual_commands() + operator_commands()
+        let mode_count = commands::mode_commands().len();
+        let visual_count = visual::visual_commands().len();
+        let operator_count = operators::operator_commands().len();
+        let expected = mode_count + visual_count + operator_count;
+        assert_eq!(
+            handlers.len(),
+            expected,
+            "command_handlers should aggregate mode + visual + operator commands"
+        );
+    }
+
+    #[test]
+    fn test_command_handlers_all_have_ids() {
+        let module = VimModule::new();
+        let handlers = module.command_handlers();
+        for handler in &handlers {
+            let id = handler.id();
+            assert_eq!(
+                id.module().as_str(),
+                "vim",
+                "handler '{}' should be in vim module",
+                id.name()
+            );
+        }
+    }
+
+    // ========================================================================
+    // Init registration counts
+    // ========================================================================
+
+    #[test]
+    fn test_init_registers_resolvers() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let resolver_registry = ctx.services.get::<ResolverRegistry>();
+        assert!(resolver_registry.is_some(), "ResolverRegistry should exist after init");
+        let resolver_registry = resolver_registry.unwrap();
+        // Should have: normal, insert, delete, yank, change, commandline, window,
+        // visual, visual-line, visual-block = 10
+        assert_eq!(resolver_registry.len(), 10, "Should register 10 resolvers");
+    }
+
+    #[test]
+    fn test_init_registers_modes() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let mode_store = ctx.services.get::<ModeInfoStore>();
+        assert!(mode_store.is_some(), "ModeInfoStore should exist after init");
+        let mode_store = mode_store.unwrap();
+        assert_eq!(mode_store.len(), VimMode::ALL.len(), "Should register all VimMode variants");
+    }
+
+    #[test]
+    fn test_init_registers_keybindings() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let keybinding_store = ctx.services.get::<KeybindingStore>();
+        assert!(keybinding_store.is_some(), "KeybindingStore should exist after init");
+        let keybinding_store = keybinding_store.unwrap();
+        let all_bindings = bindings::all();
+        assert_eq!(keybinding_store.len(), all_bindings.len(), "Should register all keybindings");
+    }
+
+    #[test]
+    fn test_init_registers_commands() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let command_store = ctx.services.get::<CommandHandlerStore>();
+        assert!(command_store.is_some(), "CommandHandlerStore should exist after init");
+        let command_store = command_store.unwrap();
+        let expected = module.command_handlers().len();
+        assert_eq!(command_store.len(), expected, "Should register all command handlers");
+    }
+
+    #[test]
+    fn test_init_registers_mode_provider() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let mode_registry = ctx.services.get::<ModeProviderRegistry>();
+        assert!(mode_registry.is_some(), "ModeProviderRegistry should exist after init");
+    }
+
+    #[test]
+    fn test_init_returns_success() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        let result = module.init(&ctx);
+        assert!(matches!(result, ProbeResult::Success));
+    }
+
+    #[test]
+    fn test_init_idempotent_options() {
+        // Second init should fail because options already registered
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        let result1 = module.init(&ctx);
+        assert!(matches!(result1, ProbeResult::Success));
+
+        let result2 = module.init(&ctx);
+        // Second init may fail on option registration - this is expected behavior
+        // The important thing is it doesn't panic
+        let _ = result2;
+    }
+
+    #[test]
+    fn test_vim_module_version_patch() {
+        let module = VimModule::new();
+        let version = module.version();
+        assert_eq!(version.patch, 0);
+    }
+
+    // ========================================================================
+    // Binding category tests
+    // ========================================================================
+
+    #[test]
+    fn test_normal_mode_has_motion_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("motion")),
+            "Normal mode should have motion bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_operator_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("operator")),
+            "Normal mode should have operator bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_mode_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("mode")),
+            "Normal mode should have mode bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_edit_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("edit")),
+            "Normal mode should have edit bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_history_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("history")),
+            "Normal mode should have history bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_clipboard_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("clipboard")),
+            "Normal mode should have clipboard bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_scroll_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("scroll")),
+            "Normal mode should have scroll bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_search_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("search")),
+            "Normal mode should have search bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_window_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("window")),
+            "Normal mode should have window bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_mark_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("mark")),
+            "Normal mode should have mark bindings"
+        );
+    }
+
+    #[test]
+    fn test_normal_mode_has_session_category() {
+        let bindings = bindings::normal::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("session")),
+            "Normal mode should have session bindings"
+        );
+    }
+
+    #[test]
+    fn test_insert_mode_has_completion_category() {
+        let bindings = bindings::insert::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("completion")),
+            "Insert mode should have completion bindings"
+        );
+    }
+
+    #[test]
+    fn test_visual_mode_has_textobject_category() {
+        let bindings = bindings::visual::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("textobject")),
+            "Visual mode should have textobject bindings"
+        );
+    }
+
+    #[test]
+    fn test_visual_mode_has_selection_category() {
+        let bindings = bindings::visual::bindings();
+        assert!(
+            bindings.iter().any(|b| b.category == Some("selection")),
+            "Visual mode should have selection bindings"
+        );
+    }
 }

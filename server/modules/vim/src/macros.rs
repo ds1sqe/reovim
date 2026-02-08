@@ -405,4 +405,161 @@ mod tests {
         assert!(parsed[0].modifiers.contains(Modifiers::CTRL));
         assert_eq!(original[1].code, parsed[1].code);
     }
+
+    // ========================================================================
+    // Additional key_to_notation edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_key_to_notation_home_end() {
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::Home)), "<Home>");
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::End)), "<End>");
+    }
+
+    #[test]
+    fn test_key_to_notation_page_up_down() {
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::PageUp)), "<PageUp>");
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::PageDown)), "<PageDown>");
+    }
+
+    #[test]
+    fn test_key_to_notation_backtab() {
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::BackTab)), "<S-Tab>");
+    }
+
+    #[test]
+    fn test_key_to_notation_f_keys_range() {
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::F(1))), "<F1>");
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::F(5))), "<F5>");
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::F(10))), "<F10>");
+        assert_eq!(key_to_notation(&KeyEvent::new(KeyCode::F(12))), "<F12>");
+    }
+
+    #[test]
+    fn test_key_to_notation_special_with_modifiers() {
+        // Escape with ctrl
+        let key_esc_ctrl = KeyEvent::with_modifiers(KeyCode::Escape, Modifiers::CTRL);
+        assert_eq!(key_to_notation(&key_esc_ctrl), "<C-Esc>");
+
+        // Enter with alt
+        let key_enter_alt = KeyEvent::with_modifiers(KeyCode::Enter, Modifiers::ALT);
+        assert_eq!(key_to_notation(&key_enter_alt), "<A-Enter>");
+
+        // Tab with shift
+        let key_tab_shift = KeyEvent::with_modifiers(KeyCode::Tab, Modifiers::SHIFT);
+        assert_eq!(key_to_notation(&key_tab_shift), "<S-Tab>");
+
+        // Backspace with ctrl
+        let key_bs_ctrl = KeyEvent::with_modifiers(KeyCode::Backspace, Modifiers::CTRL);
+        assert_eq!(key_to_notation(&key_bs_ctrl), "<C-BS>");
+
+        // Delete with alt
+        let key_del_alt = KeyEvent::with_modifiers(KeyCode::Delete, Modifiers::ALT);
+        assert_eq!(key_to_notation(&key_del_alt), "<A-Del>");
+    }
+
+    #[test]
+    fn test_key_to_notation_arrows_with_modifiers() {
+        let key_up_ctrl = KeyEvent::with_modifiers(KeyCode::Up, Modifiers::CTRL);
+        assert_eq!(key_to_notation(&key_up_ctrl), "<C-Up>");
+
+        let key_down_shift = KeyEvent::with_modifiers(KeyCode::Down, Modifiers::SHIFT);
+        assert_eq!(key_to_notation(&key_down_shift), "<S-Down>");
+    }
+
+    #[test]
+    fn test_key_to_notation_all_three_modifiers() {
+        let mods = Modifiers::CTRL | Modifiers::ALT | Modifiers::SHIFT;
+        assert_eq!(key_to_notation(&key_with_mod('a', mods)), "<C-A-S-a>");
+    }
+
+    #[test]
+    fn test_key_to_notation_f_key_with_modifier() {
+        let key_f1_ctrl = KeyEvent::with_modifiers(KeyCode::F(1), Modifiers::CTRL);
+        assert_eq!(key_to_notation(&key_f1_ctrl), "<C-F1>");
+    }
+
+    // ========================================================================
+    // Additional MacroContent tests
+    // ========================================================================
+
+    #[test]
+    fn test_macro_content_default() {
+        let mc = MacroContent::default();
+        assert!(mc.is_empty());
+        assert_eq!(mc.len(), 0);
+    }
+
+    #[test]
+    fn test_macro_content_len_nonzero() {
+        let mc = MacroContent::new(vec![key('a'), key('b'), key('c')]);
+        assert_eq!(mc.len(), 3);
+        assert!(!mc.is_empty());
+    }
+
+    #[test]
+    fn test_macro_content_from_notation_invalid() {
+        // Empty string
+        let result = MacroContent::from_notation("");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_macro_content_debug() {
+        let mc = MacroContent::new(vec![key('d')]);
+        let debug = format!("{mc:?}");
+        assert!(debug.contains("MacroContent"));
+    }
+
+    #[test]
+    fn test_macro_content_clone() {
+        let mc = MacroContent::new(vec![key('x'), key('y')]);
+        let cloned = mc.clone();
+        assert_eq!(cloned.len(), mc.len());
+        assert_eq!(cloned.keys, mc.keys);
+    }
+
+    // ========================================================================
+    // Additional keys_to_notation tests
+    // ========================================================================
+
+    #[test]
+    fn test_keys_to_notation_single_char() {
+        assert_eq!(keys_to_notation(&[key('a')]), "a");
+    }
+
+    #[test]
+    fn test_keys_to_notation_single_special() {
+        assert_eq!(keys_to_notation(&[KeyEvent::new(KeyCode::Escape)]), "<Esc>");
+    }
+
+    #[test]
+    fn test_keys_to_notation_complex_sequence() {
+        let keys = [
+            key_with_mod('w', Modifiers::CTRL),
+            key('h'),
+            KeyEvent::new(KeyCode::Escape),
+        ];
+        assert_eq!(keys_to_notation(&keys), "<C-w>h<Esc>");
+    }
+
+    // ========================================================================
+    // Roundtrip edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_roundtrip_macro_content() {
+        let original = MacroContent::new(vec![key('d'), key('w'), KeyEvent::new(KeyCode::Escape)]);
+        let notation = original.to_notation();
+        let restored = MacroContent::from_notation(&notation).unwrap();
+        assert_eq!(original.keys, restored.keys);
+    }
+
+    #[test]
+    fn test_roundtrip_single_char() {
+        let original = vec![key('x')];
+        let notation = keys_to_notation(&original);
+        let parsed = notation_to_keys(&notation).unwrap();
+        assert_eq!(original, parsed);
+    }
 }

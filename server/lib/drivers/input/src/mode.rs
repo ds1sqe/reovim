@@ -690,4 +690,328 @@ mod tests {
         assert_eq!(target1, target2);
         assert_ne!(target1, target3);
     }
+
+    // ========================================================================
+    // Additional KeySequence::parse tests for uncovered paths
+    // ========================================================================
+
+    #[test]
+    fn test_key_sequence_parse_alt_modifier() {
+        let seq = KeySequence::parse("<A-x>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('x'));
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::ALT));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_meta_alias_for_alt() {
+        // M- is alias for Alt
+        let seq = KeySequence::parse("<M-x>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('x'));
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::ALT));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_shift_modifier() {
+        let seq = KeySequence::parse("<S-Tab>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Tab);
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_combined_modifiers() {
+        let seq = KeySequence::parse("<C-A-S-x>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::CTRL));
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::ALT));
+        assert!(seq.as_slice()[0].modifiers.contains(Modifiers::SHIFT));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_enter_aliases() {
+        for alias in ["<Enter>", "<CR>", "<Return>"] {
+            let seq = KeySequence::parse(alias).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                KeyCode::Enter,
+                "alias {alias} did not parse to Enter"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_escape_aliases() {
+        for alias in ["<Esc>", "<Escape>"] {
+            let seq = KeySequence::parse(alias).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                KeyCode::Escape,
+                "alias {alias} did not parse to Escape"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_space() {
+        let seq = KeySequence::parse("<Space>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char(' '));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_backspace_aliases() {
+        for alias in ["<BS>", "<Backspace>"] {
+            let seq = KeySequence::parse(alias).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                KeyCode::Backspace,
+                "alias {alias} did not parse to Backspace"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_delete_aliases() {
+        for alias in ["<Del>", "<Delete>"] {
+            let seq = KeySequence::parse(alias).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                KeyCode::Delete,
+                "alias {alias} did not parse to Delete"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_arrow_keys() {
+        let cases = [
+            ("<Up>", KeyCode::Up),
+            ("<Down>", KeyCode::Down),
+            ("<Left>", KeyCode::Left),
+            ("<Right>", KeyCode::Right),
+        ];
+        for (notation, expected) in cases {
+            let seq = KeySequence::parse(notation).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                expected,
+                "notation {notation} did not parse correctly"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_navigation_keys() {
+        let cases = [
+            ("<Home>", KeyCode::Home),
+            ("<End>", KeyCode::End),
+            ("<PageUp>", KeyCode::PageUp),
+            ("<PageDown>", KeyCode::PageDown),
+        ];
+        for (notation, expected) in cases {
+            let seq = KeySequence::parse(notation).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(
+                seq.as_slice()[0].code,
+                expected,
+                "notation {notation} did not parse correctly"
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_function_keys() {
+        for n in 1..=12u8 {
+            let notation = format!("<F{n}>");
+            let seq = KeySequence::parse(&notation).unwrap();
+            assert_eq!(seq.len(), 1);
+            assert_eq!(seq.as_slice()[0].code, KeyCode::F(n), "F{n} did not parse correctly");
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_parse_tab() {
+        let seq = KeySequence::parse("<Tab>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Tab);
+    }
+
+    #[test]
+    fn test_key_sequence_parse_lt_gt() {
+        let seq = KeySequence::parse("<lt>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('<'));
+
+        let seq = KeySequence::parse("<gt>").unwrap();
+        assert_eq!(seq.len(), 1);
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Char('>'));
+    }
+
+    #[test]
+    fn test_key_sequence_parse_invalid_special() {
+        // Unknown key name should return None
+        assert!(KeySequence::parse("<Unknown>").is_none());
+        assert!(KeySequence::parse("<InvalidKey>").is_none());
+    }
+
+    #[test]
+    fn test_key_sequence_parse_case_insensitive() {
+        // parse_special converts to lowercase
+        let seq = KeySequence::parse("<ESC>").unwrap();
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Escape);
+
+        let seq = KeySequence::parse("<ENTER>").unwrap();
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Enter);
+    }
+
+    // ========================================================================
+    // Additional KeySequence::Display tests
+    // ========================================================================
+
+    #[test]
+    fn test_key_sequence_display_special_keys() {
+        let test_cases = [
+            (KeyCode::Escape, "<Esc>"),
+            (KeyCode::Enter, "<Enter>"),
+            (KeyCode::Tab, "<Tab>"),
+            (KeyCode::Backspace, "<BS>"),
+            (KeyCode::Delete, "<Del>"),
+            (KeyCode::Up, "<Up>"),
+            (KeyCode::Down, "<Down>"),
+            (KeyCode::Left, "<Left>"),
+            (KeyCode::Right, "<Right>"),
+            (KeyCode::Home, "<Home>"),
+            (KeyCode::End, "<End>"),
+            (KeyCode::PageUp, "<PageUp>"),
+            (KeyCode::PageDown, "<PageDown>"),
+        ];
+
+        for (code, expected) in test_cases {
+            let seq = KeySequence::from_keys(&[KeyEvent::new(code)]);
+            assert_eq!(format!("{seq}"), expected, "Display for {code:?} was wrong");
+        }
+    }
+
+    #[test]
+    fn test_key_sequence_display_function_key() {
+        let seq = KeySequence::from_keys(&[KeyEvent::new(KeyCode::F(5))]);
+        assert_eq!(format!("{seq}"), "<F5>");
+    }
+
+    #[test]
+    fn test_key_sequence_display_alt_modifier() {
+        let seq =
+            KeySequence::from_keys(&[KeyEvent::with_modifiers(KeyCode::Char('x'), Modifiers::ALT)]);
+        assert_eq!(format!("{seq}"), "<A-x>");
+    }
+
+    #[test]
+    fn test_key_sequence_display_shift_modifier() {
+        let seq = KeySequence::from_keys(&[KeyEvent::with_modifiers(
+            KeyCode::Char('a'),
+            Modifiers::SHIFT,
+        )]);
+        assert_eq!(format!("{seq}"), "<S-a>");
+    }
+
+    #[test]
+    fn test_key_sequence_display_combined_modifiers() {
+        let seq = KeySequence::from_keys(&[KeyEvent::with_modifiers(
+            KeyCode::Char('x'),
+            Modifiers::CTRL | Modifiers::ALT,
+        )]);
+        let display = format!("{seq}");
+        assert!(display.contains("C-"));
+        assert!(display.contains("A-"));
+    }
+
+    #[test]
+    fn test_key_sequence_display_unknown_key() {
+        // Test fallback display for keys not in the match
+        let seq = KeySequence::from_keys(&[KeyEvent::new(KeyCode::Insert)]);
+        assert_eq!(format!("{seq}"), "<?>");
+    }
+
+    #[test]
+    fn test_key_sequence_display_mixed() {
+        let seq = KeySequence::from_keys(&[
+            KeyEvent::with_modifiers(KeyCode::Char('w'), Modifiers::CTRL),
+            KeyEvent::new(KeyCode::Char('h')),
+        ]);
+        assert_eq!(format!("{seq}"), "<C-w>h");
+    }
+
+    #[test]
+    fn test_key_sequence_display_empty() {
+        let seq = KeySequence::new();
+        assert_eq!(format!("{seq}"), "");
+    }
+
+    // ========================================================================
+    // KeySequence default and equality tests
+    // ========================================================================
+
+    #[test]
+    fn test_key_sequence_default_is_empty() {
+        let seq = KeySequence::default();
+        assert!(seq.is_empty());
+    }
+
+    #[test]
+    fn test_key_sequence_hash() {
+        use std::collections::HashSet;
+        let seq1 = KeySequence::from_keys(&[KeyEvent::new(KeyCode::Char('j'))]);
+        let seq2 = KeySequence::from_keys(&[KeyEvent::new(KeyCode::Char('j'))]);
+        let seq3 = KeySequence::from_keys(&[KeyEvent::new(KeyCode::Char('k'))]);
+
+        let mut set = HashSet::new();
+        set.insert(seq1);
+        set.insert(seq2);
+        assert_eq!(set.len(), 1); // seq1 and seq2 are equal
+        set.insert(seq3);
+        assert_eq!(set.len(), 2);
+    }
+
+    // ========================================================================
+    // Keybinding::from_str additional test
+    // ========================================================================
+
+    #[test]
+    fn test_keybinding_from_str_invalid_returns_none() {
+        let module = ModuleId::new("test");
+        let mode = ModeId::new(module.clone(), "normal");
+        let cmd = CommandId::new(module, "cmd");
+
+        // Empty string
+        let binding = Keybinding::from_str("", mode, cmd, "empty");
+        assert!(binding.is_none());
+    }
+
+    #[test]
+    fn test_keybinding_from_str_special_key() {
+        let module = ModuleId::new("test");
+        let mode = ModeId::new(module.clone(), "normal");
+        let cmd = CommandId::new(module, "escape");
+
+        let binding = Keybinding::from_str("<Esc>", mode, cmd, "Escape").unwrap();
+        assert_eq!(binding.keys.len(), 1);
+        assert_eq!(binding.keys.as_slice()[0].code, KeyCode::Escape);
+    }
+
+    #[test]
+    fn test_keybinding_from_str_multi_key() {
+        let module = ModuleId::new("test");
+        let mode = ModeId::new(module.clone(), "normal");
+        let cmd = CommandId::new(module, "goto-top");
+
+        let binding = Keybinding::from_str("gg", mode, cmd, "Go to top").unwrap();
+        assert_eq!(binding.keys.len(), 2);
+    }
 }

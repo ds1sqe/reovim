@@ -436,6 +436,14 @@ mod buffer_tests {
     }
 
     #[test]
+    fn test_delete_range_same_position() {
+        let mut buf = Buffer::from_string("Hello");
+        let deleted = buf.delete_range(Position::new(0, 2), Position::new(0, 2));
+        assert_eq!(deleted, "");
+        assert_eq!(buf.line(0), Some("Hello"));
+    }
+
+    #[test]
     fn test_position_to_byte() {
         let buf = Buffer::from_string("Hello\nWorld");
         assert_eq!(buf.position_to_byte(Position::new(0, 0)), 0);

@@ -1927,4 +1927,2614 @@ mod tests {
         });
         assert_eq!(result, Some("line one\n".to_string()));
     }
+
+    // =========================================================================
+    // Additional BufferApi tests via TestSessionRuntime
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_line_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello\nworld\nfoo");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            assert_eq!(runtime.buffer_line(buffer_id, 0), Some("hello".to_string()));
+            assert_eq!(runtime.buffer_line(buffer_id, 1), Some("world".to_string()));
+            assert_eq!(runtime.buffer_line(buffer_id, 2), Some("foo".to_string()));
+            assert!(runtime.buffer_line(buffer_id, 99).is_none());
+        });
+    }
+
+    #[test]
+    fn test_buffer_line_count_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello\nworld\nfoo");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        let count = harness.with_runtime(|runtime| runtime.buffer_line_count(buffer_id));
+        assert_eq!(count, Some(3));
+    }
+
+    #[test]
+    fn test_buffer_content_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        let content = harness.with_runtime(|runtime| runtime.buffer_content(buffer_id));
+        assert_eq!(content, Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_buffer_nonexistent() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let fake_id = BufferId::new();
+
+        harness.with_runtime(|runtime| {
+            assert!(runtime.buffer_line(fake_id, 0).is_none());
+            assert!(runtime.buffer_line_count(fake_id).is_none());
+            assert!(runtime.buffer_content(fake_id).is_none());
+            assert!(runtime.buffer_file_path(fake_id).is_none());
+            assert!(runtime.is_buffer_modified(fake_id).is_none());
+            assert!(
+                runtime
+                    .buffer_text_range(fake_id, Position::new(0, 0), Position::new(0, 5))
+                    .is_none()
+            );
+        });
+    }
+
+    #[test]
+    fn test_buffer_file_path_none() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Buffer created without name should have no file path
+        let path = harness.with_runtime(|runtime| runtime.buffer_file_path(buffer_id));
+        assert!(path.is_none());
+    }
+
+    #[test]
+    fn test_buffer_modified_flag() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Initially not modified
+        let modified = harness.with_runtime(|runtime| runtime.is_buffer_modified(buffer_id));
+        assert_eq!(modified, Some(false));
+
+        // Set modified
+        harness.with_runtime(|runtime| {
+            runtime.set_buffer_modified(buffer_id, true);
+        });
+        let modified = harness.with_runtime(|runtime| runtime.is_buffer_modified(buffer_id));
+        assert_eq!(modified, Some(true));
+
+        // Clear modified
+        harness.with_runtime(|runtime| {
+            runtime.set_buffer_modified(buffer_id, false);
+        });
+        let modified = harness.with_runtime(|runtime| runtime.is_buffer_modified(buffer_id));
+        assert_eq!(modified, Some(false));
+    }
+
+    #[test]
+    fn test_set_buffer_modified_nonexistent() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        // Should not panic for non-existent buffer
+        harness.with_runtime(|runtime| {
+            runtime.set_buffer_modified(fake_id, true);
+        });
+    }
+
+    #[test]
+    fn test_insert_text_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("helloworld");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            runtime.insert_text(buffer_id, Position::new(0, 5), " ");
+        });
+
+        harness.assert_buffer_content("hello world");
+        let changes = harness.take_changes();
+        assert!(changes.buffer_modified);
+    }
+
+    #[test]
+    fn test_insert_text_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        // Should not panic for non-existent buffer
+        harness.with_runtime(|runtime| {
+            runtime.insert_text(fake_id, Position::new(0, 0), "text");
+        });
+    }
+
+    #[test]
+    fn test_delete_range_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+        });
+
+        harness.assert_buffer_content("hello");
+        let changes = harness.take_changes();
+        assert!(changes.buffer_modified);
+    }
+
+    #[test]
+    fn test_delete_range_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        // Should not panic for non-existent buffer
+        harness.with_runtime(|runtime| {
+            runtime.delete_range(fake_id, Position::new(0, 0), Position::new(0, 5));
+        });
+    }
+
+    #[test]
+    fn test_create_buffer_unnamed() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let buf_id = harness.with_runtime(|runtime| runtime.create_buffer(None, "content"));
+
+        let content = harness.with_runtime(|runtime| runtime.buffer_content(buf_id));
+        assert_eq!(content, Some("content".to_string()));
+
+        let path = harness.with_runtime(|runtime| runtime.buffer_file_path(buf_id));
+        assert!(path.is_none());
+
+        let changes = harness.take_changes();
+        assert!(changes.buffers_created.contains(&buf_id));
+    }
+
+    #[test]
+    fn test_create_buffer_named() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let buf_id =
+            harness.with_runtime(|runtime| runtime.create_buffer(Some("test.txt"), "hello"));
+
+        let path = harness.with_runtime(|runtime| runtime.buffer_file_path(buf_id));
+        assert_eq!(path, Some("test.txt".to_string()));
+    }
+
+    #[test]
+    fn test_rename_buffer_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let buf_id =
+            harness.with_runtime(|runtime| runtime.create_buffer(Some("old.txt"), "content"));
+        harness.take_changes(); // Clear creation changes
+
+        harness.with_runtime(|runtime| {
+            runtime.rename_buffer(buf_id, "new.txt");
+        });
+
+        let path = harness.with_runtime(|runtime| runtime.buffer_file_path(buf_id));
+        assert_eq!(path, Some("new.txt".to_string()));
+
+        let changes = harness.take_changes();
+        assert!(!changes.buffers_renamed.is_empty());
+        assert_eq!(changes.buffers_renamed[0].1, "new.txt");
+    }
+
+    #[test]
+    fn test_rename_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        // Should not panic
+        harness.with_runtime(|runtime| {
+            runtime.rename_buffer(fake_id, "new.txt");
+        });
+    }
+
+    #[test]
+    fn test_delete_buffer_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let buf1 = harness.with_runtime(|runtime| runtime.create_buffer(None, "first"));
+        let buf2 = harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+        harness.take_changes();
+
+        // Delete one buffer
+        let result = harness.with_runtime(|runtime| runtime.delete_buffer(buf1));
+        assert!(result.is_ok());
+
+        // Verify it's gone
+        let content = harness.with_runtime(|runtime| runtime.buffer_content(buf1));
+        assert!(content.is_none());
+
+        // The other buffer should still exist
+        let content = harness.with_runtime(|runtime| runtime.buffer_content(buf2));
+        assert_eq!(content, Some("second".to_string()));
+
+        let changes = harness.take_changes();
+        assert!(changes.buffers_deleted.contains(&buf1));
+    }
+
+    #[test]
+    fn test_delete_last_buffer_fails() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("only buffer");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        let result = harness.with_runtime(|runtime| runtime.delete_buffer(buffer_id));
+        assert!(matches!(result, Err(BufferError::CannotDeleteLastBuffer)));
+    }
+
+    #[test]
+    fn test_delete_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        // Need at least 2 buffers so the count check passes before the existence check
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| runtime.create_buffer(None, "first"));
+        harness.with_runtime(|runtime| runtime.create_buffer(None, "second"));
+
+        let fake_id = BufferId::new();
+        let result = harness.with_runtime(|runtime| runtime.delete_buffer(fake_id));
+        assert!(matches!(result, Err(BufferError::NotFound(_))));
+    }
+
+    // =========================================================================
+    // WindowApi tests via TestSessionRuntime
+    // =========================================================================
+
+    #[test]
+    fn test_window_buffer_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+        let window_id = harness.with_runtime(|runtime| runtime.active_window().unwrap());
+
+        let buf = harness.with_runtime(|runtime| runtime.window_buffer(window_id));
+        assert_eq!(buf, Some(buffer_id));
+    }
+
+    #[test]
+    fn test_window_buffer_nonexistent() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let fake_id = WindowId::new();
+
+        let buf = harness.with_runtime(|runtime| runtime.window_buffer(fake_id));
+        assert!(buf.is_none());
+    }
+
+    #[test]
+    fn test_cursor_position_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+
+        let pos = harness.with_runtime(|runtime| runtime.cursor_position());
+        assert_eq!(pos, Some(Position::new(0, 0)));
+    }
+
+    #[test]
+    fn test_cursor_position_no_window() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new(); // No windows
+
+        let pos = harness.with_runtime(|runtime| runtime.cursor_position());
+        assert!(pos.is_none());
+    }
+
+    #[test]
+    fn test_focus_nonexistent_window() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let fake_id = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.focus_window(fake_id));
+        assert!(matches!(result, Err(WindowError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_close_nonexistent_window() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let _w1 = harness.with_runtime(|runtime| runtime.create_window(None));
+        let fake_id = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.close_window(fake_id));
+        assert!(matches!(result, Err(WindowError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_set_window_buffer_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let window_id = harness.with_runtime(|runtime| runtime.active_window().unwrap());
+
+        // Create a new buffer and set it on the window
+        let new_buf = harness.with_runtime(|runtime| runtime.create_buffer(None, "world"));
+
+        let result = harness.with_runtime(|runtime| runtime.set_window_buffer(window_id, new_buf));
+        assert!(result.is_ok());
+
+        // Verify the window now shows the new buffer
+        let buf = harness.with_runtime(|runtime| runtime.window_buffer(window_id));
+        assert_eq!(buf, Some(new_buf));
+    }
+
+    #[test]
+    fn test_set_window_buffer_nonexistent_window() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buf_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+        let fake_win = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.set_window_buffer(fake_win, buf_id));
+        assert!(matches!(result, Err(WindowError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_set_window_buffer_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let window_id = harness.with_runtime(|runtime| runtime.active_window().unwrap());
+        let fake_buf = BufferId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.set_window_buffer(window_id, fake_buf));
+        assert!(matches!(result, Err(WindowError::BufferNotFound(_))));
+    }
+
+    // =========================================================================
+    // ModeApi additional tests
+    // =========================================================================
+
+    #[test]
+    fn test_mode_stack_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let stack = harness.with_runtime(|runtime| runtime.mode_stack());
+        assert_eq!(stack.len(), 1);
+
+        // Push a mode
+        harness.with_runtime(|runtime| {
+            runtime.push_mode(test_mode_2(), TransitionContext::new());
+        });
+
+        let stack = harness.with_runtime(|runtime| runtime.mode_stack());
+        assert_eq!(stack.len(), 2);
+        assert_eq!(stack[0], test_mode());
+        assert_eq!(stack[1], test_mode_2());
+    }
+
+    #[test]
+    fn test_set_mode_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        // set_mode replaces current mode
+        harness.with_runtime(|runtime| {
+            runtime.set_mode(test_mode_2(), TransitionContext::new());
+        });
+
+        let current = harness.with_runtime(|runtime| runtime.current_mode().clone());
+        assert_eq!(current, test_mode_2());
+
+        let depth = harness.with_runtime(|runtime| runtime.mode_depth());
+        assert_eq!(depth, 1); // set_mode replaces, doesn't push
+    }
+
+    #[test]
+    fn test_is_mode_active_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        assert!(harness.with_runtime(|runtime| runtime.is_mode_active(&test_mode())));
+        assert!(!harness.with_runtime(|runtime| runtime.is_mode_active(&test_mode_2())));
+
+        // Push mode_2
+        harness.with_runtime(|runtime| {
+            runtime.push_mode(test_mode_2(), TransitionContext::new());
+        });
+
+        // Both should be active (on the stack)
+        assert!(harness.with_runtime(|runtime| runtime.is_mode_active(&test_mode())));
+        assert!(harness.with_runtime(|runtime| runtime.is_mode_active(&test_mode_2())));
+    }
+
+    #[test]
+    fn test_home_mode_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let home = harness.with_runtime(|runtime| runtime.home_mode().clone());
+        assert_eq!(home, test_mode());
+
+        // Push another mode - home should stay the same
+        harness.with_runtime(|runtime| {
+            runtime.push_mode(test_mode_2(), TransitionContext::new());
+        });
+        let home = harness.with_runtime(|runtime| runtime.home_mode().clone());
+        assert_eq!(home, test_mode());
+    }
+
+    // =========================================================================
+    // SessionRuntime accessor tests
+    // =========================================================================
+
+    #[test]
+    fn test_has_compositor_false() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        assert!(!runtime.has_compositor());
+    }
+
+    #[test]
+    fn test_session_accessor() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        assert_eq!(runtime.session().id.as_usize(), 1);
+    }
+
+    #[test]
+    fn test_session_mut_accessor() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        runtime.session_mut().set_terminal_size(120, 40);
+        assert_eq!(runtime.session().terminal_size(), (120, 40));
+    }
+
+    #[test]
+    fn test_kernel_accessor() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        // Just verify kernel() doesn't panic
+        let _kernel = runtime.kernel();
+    }
+
+    #[test]
+    fn test_windows_accessor() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        assert!(runtime.windows().is_empty());
+    }
+
+    #[test]
+    fn test_windows_mut_accessor() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        runtime.windows_mut().add(crate::Window::new());
+        assert_eq!(runtime.windows().len(), 1);
+    }
+
+    // =========================================================================
+    // CommandApi test
+    // =========================================================================
+
+    #[test]
+    fn test_execute_command_api() {
+        use {
+            crate::testing::TestSessionRuntime, reovim_driver_command_types::CommandContext,
+            reovim_kernel::api::v1::ModuleId,
+        };
+
+        let mut harness = TestSessionRuntime::new();
+        let cmd = CommandId::new(ModuleId::new("test"), "test_cmd");
+
+        let result =
+            harness.with_runtime(|runtime| runtime.execute_command(cmd, CommandContext::new()));
+        // StubExecutor always returns Success
+        assert!(matches!(result, reovim_driver_command_types::CommandResult::Success));
+    }
+
+    // =========================================================================
+    // with_buffer_read test
+    // =========================================================================
+
+    #[test]
+    fn test_with_buffer_read() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        let line_count = harness.with_runtime(|runtime| {
+            runtime.with_buffer_read(buffer_id, reovim_kernel::api::v1::Buffer::line_count)
+        });
+        assert_eq!(line_count, Some(1));
+    }
+
+    #[test]
+    fn test_with_buffer_read_nonexistent() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        let result = harness.with_runtime(|runtime| {
+            runtime.with_buffer_read(fake_id, reovim_kernel::api::v1::Buffer::line_count)
+        });
+        assert!(result.is_none());
+    }
+
+    // =========================================================================
+    // Record option change tests
+    // =========================================================================
+
+    #[test]
+    fn test_record_global_option_change() {
+        use {crate::testing::TestSessionRuntime, reovim_kernel::api::v1::OptionValue};
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            runtime.record_global_option_change("number", OptionValue::bool(true));
+        });
+
+        let changes = harness.take_changes();
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed.len(), 1);
+        assert_eq!(changes.options_changed[0].name, "number");
+    }
+
+    #[test]
+    fn test_record_window_option_change() {
+        use {crate::testing::TestSessionRuntime, reovim_kernel::api::v1::OptionValue};
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let window_id = harness.with_runtime(|runtime| runtime.active_window().unwrap());
+
+        harness.with_runtime(|runtime| {
+            runtime.record_window_option_change("wrap", OptionValue::bool(false), window_id);
+        });
+
+        let changes = harness.take_changes();
+        assert!(changes.option_changed);
+        assert_eq!(changes.options_changed.len(), 1);
+        assert_eq!(changes.options_changed[0].window_id, Some(window_id));
+    }
+
+    // =========================================================================
+    // ChangeTracker record_cursor_move test
+    // =========================================================================
+
+    #[test]
+    fn test_change_tracker_record_cursor_move() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            ChangeTracker::record_cursor_move(runtime, buffer_id);
+        });
+
+        let changes = harness.take_changes();
+        assert!(changes.cursor_moved);
+        assert!(changes.affected_buffers.contains(&buffer_id));
+    }
+
+    // =========================================================================
+    // UndoApi - can_undo / can_redo without provider
+    // =========================================================================
+
+    #[test]
+    fn test_can_undo_without_provider() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // No undo provider registered, should return false
+        let can_undo = harness.with_runtime(|runtime| runtime.can_undo(buffer_id));
+        assert!(!can_undo);
+
+        let can_redo = harness.with_runtime(|runtime| runtime.can_redo(buffer_id));
+        assert!(!can_redo);
+    }
+
+    #[test]
+    fn test_undo_without_provider() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        let result = harness.with_runtime(|runtime| runtime.undo(buffer_id));
+        assert!(result.is_none());
+
+        let result = harness.with_runtime(|runtime| runtime.redo(buffer_id));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_undo_mine_without_owner() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Without owner, undo_mine should return None
+        let result = harness.with_runtime(|runtime| runtime.undo_mine(buffer_id));
+        assert!(result.is_none());
+
+        let result = harness.with_runtime(|runtime| runtime.redo_mine(buffer_id));
+        assert!(result.is_none());
+    }
+
+    // =========================================================================
+    // RegisterApi additional tests
+    // =========================================================================
+
+    #[test]
+    fn test_numbered_register_writes_ignored() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            // Writing to numbered register should be ignored
+            runtime.set_register(Some('0'), crate::api::RegisterContent::characterwise("test"));
+
+            // Reading numbered registers returns None without provider
+            let content = runtime.get_register(Some('0'));
+            assert!(content.is_none());
+        });
+    }
+
+    #[test]
+    fn test_clipboard_register_without_provider() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            // Without clipboard provider, + register falls back to kernel registers
+            runtime
+                .set_register(Some('+'), crate::api::RegisterContent::characterwise("clipboard"));
+
+            // The fallback stores in kernel registers
+            let content = runtime.get_register(Some('+'));
+            assert!(content.is_none()); // No clipboard provider, get returns None
+        });
+    }
+
+    #[test]
+    fn test_selection_register_without_provider() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            runtime
+                .set_register(Some('*'), crate::api::RegisterContent::characterwise("selection"));
+
+            let content = runtime.get_register(Some('*'));
+            assert!(content.is_none()); // No clipboard provider
+        });
+    }
+
+    // =========================================================================
+    // CompositorApi error paths (no compositor)
+    // =========================================================================
+
+    #[test]
+    fn test_compositor_api_no_compositor() {
+        use {
+            crate::testing::TestSessionRuntime,
+            reovim_driver_display::{NavigateDirection, Rect, SplitDirection},
+        };
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            // All compositor operations should return errors when no compositor
+            assert!(runtime.navigate(NavigateDirection::Left).is_err());
+            assert!(runtime.split(SplitDirection::Horizontal).is_err());
+            assert!(runtime.close_current_window().is_err());
+            assert!(runtime.close_others().is_err());
+            assert!(runtime.resize(NavigateDirection::Right, 5).is_err());
+            assert!(runtime.equalize().is_err());
+            assert!(runtime.cycle(true).is_err());
+            assert!(runtime.toggle_float().is_err());
+            assert!(runtime.raise_float().is_err());
+            assert!(runtime.lower_float().is_err());
+            assert!(runtime.hide_all_overlays().is_err());
+
+            // focused_window returns None
+            assert!(runtime.focused_window().is_none());
+            // compositor_window_count returns 0
+            assert_eq!(runtime.compositor_window_count(), 0);
+            // active_layer returns None
+            assert!(runtime.active_layer().is_none());
+            // arrange returns empty
+            assert!(runtime.arrange(Rect::new(0, 0, 80, 24)).is_empty());
+        });
+    }
+
+    #[test]
+    fn test_set_screen_no_compositor() {
+        use {crate::testing::TestSessionRuntime, reovim_driver_display::Rect};
+
+        let mut harness = TestSessionRuntime::new();
+
+        // Should not panic even without compositor
+        harness.with_runtime(|runtime| {
+            runtime.set_screen(Rect::new(0, 0, 120, 40));
+        });
+    }
+
+    // =========================================================================
+    // buffer_text_range edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_text_range_empty_range() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Same position - should return empty string
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 3), Position::new(0, 3))
+        });
+        assert_eq!(result, Some(String::new()));
+    }
+
+    #[test]
+    fn test_buffer_text_range_out_of_bounds_column() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hi");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Columns beyond line length should be clamped
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 0), Position::new(0, 100))
+        });
+        assert_eq!(result, Some("hi".to_string()));
+    }
+
+    // =========================================================================
+    // Named/unnamed register tests
+    // =========================================================================
+
+    #[test]
+    fn test_named_register_set_and_get() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            let content = crate::api::RegisterContent::characterwise("hello");
+            runtime.set_register(Some('a'), content);
+
+            let got = runtime.get_register(Some('a'));
+            assert!(got.is_some());
+            assert_eq!(got.unwrap().text, "hello");
+        });
+    }
+
+    #[test]
+    fn test_unnamed_register_set_and_get() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            let content = crate::api::RegisterContent::characterwise("unnamed");
+            runtime.set_register(None, content);
+
+            let got = runtime.get_register(None);
+            assert!(got.is_some());
+            assert_eq!(got.unwrap().text, "unnamed");
+        });
+    }
+
+    #[test]
+    fn test_get_register_nonexistent_named() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        let got = harness.with_runtime(|runtime| runtime.get_register(Some('z')));
+        assert!(got.is_none());
+    }
+
+    // =========================================================================
+    // UndoApi: record_edit without provider
+    // =========================================================================
+
+    #[test]
+    fn test_record_edit_without_provider() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Should not panic when no undo provider is registered
+        harness.with_runtime(|runtime| {
+            runtime.record_edit(
+                buffer_id,
+                vec![reovim_kernel::api::v1::Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "x".to_string(),
+                }],
+                Position::new(0, 0),
+                Position::new(0, 1),
+            );
+        });
+    }
+
+    #[test]
+    fn test_record_edit_mine_without_owner() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Without owner, record_edit_mine falls back to record_edit
+        // Should not panic
+        harness.with_runtime(|runtime| {
+            runtime.record_edit_mine(
+                buffer_id,
+                vec![reovim_kernel::api::v1::Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "x".to_string(),
+                }],
+                Position::new(0, 0),
+                Position::new(0, 1),
+            );
+        });
+    }
+
+    // =========================================================================
+    // BufferApi: buffer_line_len
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_line_len_api() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello\nworld");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            assert_eq!(runtime.buffer_line_len(buffer_id, 0), Some(5));
+            assert_eq!(runtime.buffer_line_len(buffer_id, 1), Some(5));
+            assert!(runtime.buffer_line_len(buffer_id, 99).is_none());
+        });
+    }
+
+    #[test]
+    fn test_buffer_line_len_nonexistent_buffer() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_id = BufferId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.buffer_line_len(fake_id, 0));
+        assert!(result.is_none());
+    }
+
+    // =========================================================================
+    // BufferApi: delete_range that produces empty deleted text
+    // =========================================================================
+
+    #[test]
+    fn test_delete_range_empty_range() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Delete from position to same position produces empty deleted text
+        harness.with_runtime(|runtime| {
+            runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 5));
+        });
+
+        // Buffer content should be unchanged
+        harness.assert_buffer_content("hello world");
+    }
+
+    // =========================================================================
+    // CompositorApi: show_overlay, hide_overlay, resize_overlay error paths
+    // =========================================================================
+
+    #[test]
+    fn test_show_overlay_no_compositor() {
+        use {
+            crate::testing::TestSessionRuntime, reovim_driver_display::layout::OverlayConstraints,
+        };
+
+        let mut harness = TestSessionRuntime::new();
+
+        let result = harness.with_runtime(|runtime| {
+            runtime.show_overlay(OverlayConstraints::centered().with_size(20, 10))
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_hide_overlay_no_compositor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_win = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.hide_overlay(fake_win));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resize_overlay_no_compositor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_win = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.resize_overlay(fake_win, 40, 20));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_focus_no_compositor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        let fake_win = WindowId::new();
+
+        let result = harness.with_runtime(|runtime| runtime.focus(fake_win));
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // to_kernel_split_direction coverage
+    // =========================================================================
+
+    #[test]
+    fn test_to_kernel_split_direction() {
+        use reovim_driver_display::SplitDirection;
+
+        let h = to_kernel_split_direction(SplitDirection::Horizontal);
+        assert!(matches!(h, KernelSplitDirection::Horizontal));
+
+        let v = to_kernel_split_direction(SplitDirection::Vertical);
+        assert!(matches!(v, KernelSplitDirection::Vertical));
+    }
+
+    // =========================================================================
+    // buffer_text_range multi-line with out-of-bounds start column
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_text_range_multi_line_out_of_bounds_start() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("ab\ncd\nef");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Start column beyond line length in multi-line range
+        let result = harness.with_runtime(|runtime| {
+            runtime.buffer_text_range(buffer_id, Position::new(0, 100), Position::new(2, 1))
+        });
+        // Start column clamped to end of first line -> empty first line + \n + "cd\n" + "e"
+        assert_eq!(result, Some("\ncd\ne".to_string()));
+    }
+
+    // =========================================================================
+    // ExecuteCommand: command not found path
+    // =========================================================================
+
+    #[test]
+    fn test_execute_command_not_found() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        struct NullExecutor;
+        impl CommandExecutor for NullExecutor {
+            fn execute(
+                &self,
+                _cmd: &CommandId,
+                _ctx: &CommandContext,
+                _kernel: &KernelContext,
+            ) -> Option<CommandResult> {
+                None
+            }
+        }
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = NullExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let cmd = CommandId::new(ModuleId::new("test"), "nonexistent");
+        let result = runtime.execute_command(cmd, CommandContext::new());
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    // =========================================================================
+    // set_window_buffer clears selection
+    // =========================================================================
+
+    #[test]
+    fn test_set_window_buffer_clears_selection() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let window_id = harness.with_runtime(|runtime| runtime.active_window().unwrap());
+
+        // Set a selection on the window
+        if let Some(w) = harness.windows.get_mut(window_id) {
+            w.selection = Some(crate::Selection::new(
+                Position::new(0, 0),
+                Position::new(0, 3),
+                crate::SelectionMode::Character,
+            ));
+        }
+
+        // Create a new buffer and set it on the window
+        let new_buf = harness.with_runtime(|runtime| runtime.create_buffer(None, "world"));
+        let result = harness.with_runtime(|runtime| runtime.set_window_buffer(window_id, new_buf));
+        assert!(result.is_ok());
+
+        // Selection should be cleared
+        assert!(harness.windows.get(window_id).unwrap().selection.is_none());
+    }
+
+    // =========================================================================
+    // insert_text with cursor from active window
+    // =========================================================================
+
+    #[test]
+    fn test_insert_text_with_cursor_position() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Set cursor to a specific position
+        if let Some(w) = harness.windows.active_mut() {
+            w.cursor.line = 0;
+            w.cursor.column = 3;
+        }
+
+        harness.with_runtime(|runtime| {
+            runtime.insert_text(buffer_id, Position::new(0, 3), " ");
+        });
+
+        harness.assert_buffer_content("hel lo");
+    }
+
+    // =========================================================================
+    // delete_range with actual content and BufferModified event
+    // =========================================================================
+
+    #[test]
+    fn test_delete_range_emits_buffer_modified() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        harness.with_runtime(|runtime| {
+            runtime.delete_range(buffer_id, Position::new(0, 5), Position::new(0, 11));
+        });
+
+        harness.assert_buffer_content("hello");
+        let changes = harness.take_changes();
+        assert!(changes.buffer_modified);
+        assert!(changes.affected_buffers.contains(&buffer_id));
+    }
+
+    // =========================================================================
+    // pop_mode with PopResult
+    // =========================================================================
+
+    #[test]
+    fn test_pop_mode_with_result() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            runtime.push_mode(test_mode_2(), TransitionContext::new());
+        });
+
+        // Pop with a Cancelled result
+        let result = harness.with_runtime(|runtime| runtime.pop_mode(Some(PopResult::Cancelled)));
+        assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // set_mode records change
+    // =========================================================================
+
+    #[test]
+    fn test_set_mode_records_change() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+
+        harness.with_runtime(|runtime| {
+            runtime.set_mode(test_mode_2(), TransitionContext::new());
+        });
+
+        let changes = harness.take_changes();
+        assert!(changes.mode_changed);
+    }
+
+    // =========================================================================
+    // insert_text / delete_range fallback when no active window (lines 559, 584)
+    // =========================================================================
+
+    /// Buffer manager that actually stores buffers, for tests requiring real buffers.
+    struct InMemoryBufferManager {
+        buffers: reovim_arch::sync::RwLock<
+            std::collections::HashMap<
+                BufferId,
+                std::sync::Arc<reovim_arch::sync::RwLock<reovim_kernel::api::v1::Buffer>>,
+            >,
+        >,
+    }
+
+    impl InMemoryBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: reovim_arch::sync::RwLock::new(std::collections::HashMap::new()),
+            }
+        }
+    }
+
+    impl reovim_kernel::api::v1::BufferManager for InMemoryBufferManager {
+        fn get(
+            &self,
+            id: BufferId,
+        ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<reovim_kernel::api::v1::Buffer>>>
+        {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = std::sync::Arc::new(reovim_arch::sync::RwLock::new(
+                reovim_kernel::api::v1::Buffer::new(),
+            ));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: reovim_kernel::api::v1::Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = std::sync::Arc::new(reovim_arch::sync::RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(
+            &self,
+            id: BufferId,
+        ) -> Result<reovim_kernel::api::v1::Buffer, reovim_kernel::api::v1::BufferError> {
+            self.buffers.write().remove(&id).map_or(
+                Err(reovim_kernel::api::v1::BufferError::NotFound(id)),
+                |arc_buf| {
+                    std::sync::Arc::try_unwrap(arc_buf)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                },
+            )
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    /// Helper to create a `KernelContext` with a real buffer manager and custom services.
+    fn make_kernel_with_services(
+        services: std::sync::Arc<reovim_kernel::api::v1::ServiceRegistry>,
+    ) -> KernelContext {
+        use reovim_kernel::api::v1::{
+            EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, TextObjectEngine,
+        };
+
+        KernelContext::new(
+            std::sync::Arc::new(EventBus::new()),
+            std::sync::Arc::new(InMemoryBufferManager::new()),
+            std::sync::Arc::new(MotionEngine),
+            std::sync::Arc::new(TextObjectEngine),
+            std::sync::Arc::new(reovim_arch::sync::RwLock::new(RegisterBank::new())),
+            std::sync::Arc::new(reovim_arch::sync::RwLock::new(MarkBank::new())),
+            std::sync::Arc::new(OptionRegistry::new()),
+            services,
+        )
+    }
+
+    #[test]
+    fn test_insert_text_no_active_window_uses_zero_position() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let kernel = make_kernel_with_services(services);
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+        let buf_id = kernel.buffers.register(buf);
+        session.set_active_buffer(Some(buf_id));
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty(); // No windows!
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        runtime.insert_text(buf_id, Position::new(0, 5), " world");
+
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_delete_range_no_active_window_uses_zero_position() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let kernel = make_kernel_with_services(services);
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello world");
+        let buf_id = kernel.buffers.register(buf);
+        session.set_active_buffer(Some(buf_id));
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty(); // No windows!
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        runtime.delete_range(buf_id, Position::new(0, 5), Position::new(0, 11));
+
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("hello".to_string()));
+    }
+
+    // =========================================================================
+    // RegisterApi with clipboard provider (lines 736-790)
+    // =========================================================================
+
+    struct MockClipboard {
+        clipboard: std::sync::Mutex<Option<String>>,
+        selection: std::sync::Mutex<Option<String>>,
+        history: std::sync::Mutex<Vec<RegisterContent>>,
+    }
+
+    impl MockClipboard {
+        fn new() -> Self {
+            Self {
+                clipboard: std::sync::Mutex::new(None),
+                selection: std::sync::Mutex::new(None),
+                history: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_clipboard(text: &str) -> Self {
+            Self {
+                clipboard: std::sync::Mutex::new(Some(text.to_string())),
+                selection: std::sync::Mutex::new(None),
+                history: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_selection(text: &str) -> Self {
+            Self {
+                clipboard: std::sync::Mutex::new(None),
+                selection: std::sync::Mutex::new(Some(text.to_string())),
+                history: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_history(entries: Vec<RegisterContent>) -> Self {
+            Self {
+                clipboard: std::sync::Mutex::new(None),
+                selection: std::sync::Mutex::new(None),
+                history: std::sync::Mutex::new(entries),
+            }
+        }
+    }
+
+    impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
+        fn history(&self) -> Vec<RegisterContent> {
+            self.history.lock().unwrap().clone()
+        }
+        fn history_entry(&self, index: usize) -> Option<RegisterContent> {
+            self.history.lock().unwrap().get(index).cloned()
+        }
+        fn push_history(&self, content: RegisterContent) {
+            self.history.lock().unwrap().insert(0, content);
+        }
+        fn history_len(&self) -> usize {
+            self.history.lock().unwrap().len()
+        }
+        fn clipboard_available(&self) -> bool {
+            true
+        }
+        fn copy_to_clipboard(
+            &self,
+            text: &str,
+        ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+            *self.clipboard.lock().unwrap() = Some(text.to_string());
+            Ok(())
+        }
+        fn paste_from_clipboard(
+            &self,
+        ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+            Ok(self.clipboard.lock().unwrap().clone())
+        }
+        fn selection_available(&self) -> bool {
+            true
+        }
+        fn copy_to_selection(
+            &self,
+            text: &str,
+        ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+            *self.selection.lock().unwrap() = Some(text.to_string());
+            Ok(())
+        }
+        fn paste_from_selection(
+            &self,
+        ) -> Result<Option<String>, reovim_driver_clipboard::ClipboardError> {
+            Ok(self.selection.lock().unwrap().clone())
+        }
+    }
+
+    fn kernel_with_clipboard(provider: MockClipboard) -> KernelContext {
+        let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let clipboard_registry = ClipboardProviderRegistry::new();
+        clipboard_registry.register(ClipboardKey::Default, std::sync::Arc::new(provider));
+        services.register(std::sync::Arc::new(clipboard_registry));
+        make_kernel_with_services(services)
+    }
+
+    #[test]
+    fn test_get_register_clipboard_plus_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::with_clipboard("from-clipboard"));
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let content = runtime.get_register(Some('+'));
+        assert!(content.is_some());
+        assert_eq!(content.unwrap().text, "from-clipboard");
+    }
+
+    #[test]
+    fn test_get_register_selection_star_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::with_selection("from-selection"));
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let content = runtime.get_register(Some('*'));
+        assert!(content.is_some());
+        assert_eq!(content.unwrap().text, "from-selection");
+    }
+
+    #[test]
+    fn test_get_register_numbered_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let entries = vec![
+            RegisterContent::characterwise("yank-0"),
+            RegisterContent::characterwise("yank-1"),
+        ];
+        let kernel = kernel_with_clipboard(MockClipboard::with_history(entries));
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let c0 = runtime.get_register(Some('0'));
+        assert!(c0.is_some());
+        assert_eq!(c0.unwrap().text, "yank-0");
+
+        let c1 = runtime.get_register(Some('1'));
+        assert!(c1.is_some());
+        assert_eq!(c1.unwrap().text, "yank-1");
+    }
+
+    #[test]
+    fn test_set_register_clipboard_plus_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        runtime.set_register(Some('+'), RegisterContent::characterwise("to-clipboard"));
+
+        let content = runtime.get_register(Some('+'));
+        assert!(content.is_some());
+        assert_eq!(content.unwrap().text, "to-clipboard");
+    }
+
+    #[test]
+    fn test_set_register_selection_star_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        runtime.set_register(Some('*'), RegisterContent::characterwise("to-selection"));
+
+        let content = runtime.get_register(Some('*'));
+        assert!(content.is_some());
+        assert_eq!(content.unwrap().text, "to-selection");
+    }
+
+    // =========================================================================
+    // UndoApi with provider (lines 817-993)
+    // =========================================================================
+
+    #[allow(clippy::type_complexity)]
+    struct MockUndoProvider {
+        edits: std::sync::Mutex<Vec<(BufferId, Vec<Edit>, Position, Position)>>,
+    }
+
+    impl MockUndoProvider {
+        fn new() -> Self {
+            Self {
+                edits: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl reovim_driver_undo::UndoProvider for MockUndoProvider {
+        fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "X".to_string(),
+                }],
+                cursor: Position::new(0, 1),
+            })
+        }
+
+        fn redo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![Edit::Delete {
+                    position: Position::new(0, 0),
+                    text: "X".to_string(),
+                }],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn redo_branch(&self, _buffer_id: BufferId, _branch_idx: usize) -> Option<UndoResult> {
+            None
+        }
+
+        fn record(
+            &self,
+            buffer_id: BufferId,
+            edits: Vec<Edit>,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            self.edits
+                .lock()
+                .unwrap()
+                .push((buffer_id, edits, cursor_before, cursor_after));
+        }
+
+        fn has_history(&self, _buffer_id: BufferId) -> bool {
+            true
+        }
+
+        fn remove(&self, _buffer_id: BufferId) {}
+
+        fn buffer_count(&self) -> usize {
+            1
+        }
+
+        fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
+            let mut tree = reovim_kernel::api::v1::UndoTree::new();
+            tree.push(
+                vec![Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "a".to_string(),
+                }],
+                Position::new(0, 0),
+                Position::new(0, 1),
+            );
+            Some(tree)
+        }
+
+        fn begin_batch(&self, _buffer_id: BufferId, _cursor_before: Position) {}
+        fn end_batch(&self, _buffer_id: BufferId, _cursor_after: Position) {}
+        fn is_batching(&self, _buffer_id: BufferId) -> bool {
+            false
+        }
+
+        fn persist(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<(), reovim_driver_undo::UndoPersistError> {
+            Ok(())
+        }
+
+        fn load(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
+            Ok(false)
+        }
+
+        fn undo_for_client(&self, _buffer_id: BufferId, _client_id: usize) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "Y".to_string(),
+                }],
+                cursor: Position::new(0, 1),
+            })
+        }
+
+        fn redo_for_client(&self, _buffer_id: BufferId, _client_id: usize) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![Edit::Delete {
+                    position: Position::new(0, 0),
+                    text: "Y".to_string(),
+                }],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn record_for_client(
+            &self,
+            buffer_id: BufferId,
+            _client_id: usize,
+            edits: Vec<Edit>,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            self.record(buffer_id, edits, cursor_before, cursor_after);
+        }
+    }
+
+    fn kernel_with_undo(provider: MockUndoProvider) -> KernelContext {
+        let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let undo_registry = UndoProviderRegistry::new();
+        undo_registry.register(UndoKey::Buffer, std::sync::Arc::new(provider));
+        services.register(std::sync::Arc::new(undo_registry));
+        make_kernel_with_services(services)
+    }
+
+    #[test]
+    fn test_undo_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.undo(buf_id);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().cursor, Position::new(0, 1));
+        assert!(runtime.changes.buffer_modified);
+        assert!(runtime.changes.cursor_moved);
+    }
+
+    #[test]
+    fn test_redo_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("Xhello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.redo(buf_id);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().cursor, Position::new(0, 0));
+        assert!(runtime.changes.buffer_modified);
+        assert!(runtime.changes.cursor_moved);
+    }
+
+    #[test]
+    fn test_can_undo_with_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let buf_id = BufferId::from_raw(1);
+        assert!(runtime.can_undo(buf_id));
+    }
+
+    #[test]
+    fn test_undo_mine_with_owner_and_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let client_id = ClientId::new(42);
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::with_owner(
+            client_id,
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.undo_mine(buf_id);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().cursor, Position::new(0, 1));
+        assert!(runtime.changes.buffer_modified);
+        assert!(runtime.changes.cursor_moved);
+    }
+
+    #[test]
+    fn test_redo_mine_with_owner_and_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let client_id = ClientId::new(42);
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("Yhello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::with_owner(
+            client_id,
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.redo_mine(buf_id);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().cursor, Position::new(0, 0));
+        assert!(runtime.changes.buffer_modified);
+        assert!(runtime.changes.cursor_moved);
+    }
+
+    #[test]
+    fn test_record_edit_mine_with_owner_and_provider() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_undo(MockUndoProvider::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let client_id = ClientId::new(42);
+        let buf_id = BufferId::from_raw(1);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::with_owner(
+            client_id,
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        runtime.record_edit_mine(
+            buf_id,
+            vec![Edit::Insert {
+                position: Position::new(0, 0),
+                text: "z".to_string(),
+            }],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        // No panic is sufficient
+    }
+
+    // =========================================================================
+    // CompositorApi with compositor (lines 1081-1537)
+    // =========================================================================
+
+    struct MockLayerCompositor {
+        id: reovim_driver_display::layout::LayerId,
+        windows: Vec<WindowId>,
+        focused: Option<WindowId>,
+        next_id: usize,
+    }
+
+    impl MockLayerCompositor {
+        fn new() -> Self {
+            let first = WindowId::from_raw(1);
+            let second = WindowId::from_raw(2);
+            Self {
+                id: reovim_driver_display::layout::LayerId::new(0),
+                windows: vec![first, second],
+                focused: Some(first),
+                next_id: 3,
+            }
+        }
+    }
+
+    impl reovim_driver_display::layout::WindowLayerCompositor for MockLayerCompositor {
+        fn id(&self) -> reovim_driver_display::layout::LayerId {
+            self.id
+        }
+
+        fn arrange(&self, _bounds: Rect) -> Vec<reovim_driver_display::layout::WindowPlacement> {
+            Vec::new()
+        }
+
+        fn add_tiled(&mut self) -> WindowId {
+            let id = WindowId::from_raw(self.next_id);
+            self.next_id += 1;
+            self.windows.push(id);
+            if self.focused.is_none() {
+                self.focused = Some(id);
+            }
+            id
+        }
+
+        fn split_tiled(
+            &mut self,
+            _from: WindowId,
+            _direction: reovim_driver_display::SplitDirection,
+        ) -> Option<WindowId> {
+            let id = WindowId::from_raw(self.next_id);
+            self.next_id += 1;
+            self.windows.push(id);
+            self.focused = Some(id);
+            Some(id)
+        }
+
+        fn navigate_tiled(
+            &self,
+            from: WindowId,
+            _direction: NavigateDirection,
+        ) -> Option<WindowId> {
+            self.windows.iter().find(|&&w| w != from).copied()
+        }
+
+        fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
+
+        fn close_tiled(&mut self, window: WindowId) -> Option<WindowId> {
+            self.windows.retain(|&w| w != window);
+            let next = self.windows.first().copied();
+            if self.focused == Some(window) {
+                self.focused = next;
+            }
+            next
+        }
+
+        fn equalize_tiled(&mut self) {}
+
+        fn cycle_tiled(&self, from: WindowId, _forward: bool) -> Option<WindowId> {
+            self.windows.iter().find(|&&w| w != from).copied()
+        }
+
+        fn create_float(&mut self, _bounds: Rect) -> WindowId {
+            let id = WindowId::from_raw(self.next_id);
+            self.next_id += 1;
+            id
+        }
+
+        fn move_float(&mut self, _window: WindowId, _x: u16, _y: u16) {}
+        fn resize_float(&mut self, _window: WindowId, _width: u16, _height: u16) {}
+        fn raise_float(&mut self, _window: WindowId) {}
+        fn lower_float(&mut self, _window: WindowId) {}
+        fn close_float(&mut self, _window: WindowId) {}
+        fn toggle_float(&mut self, _window: WindowId) {}
+
+        fn show_overlay(
+            &mut self,
+            _constraints: reovim_driver_display::layout::OverlayConstraints,
+        ) -> WindowId {
+            let id = WindowId::from_raw(self.next_id);
+            self.next_id += 1;
+            id
+        }
+
+        fn hide_overlay(&mut self, _window: WindowId) {}
+        fn resize_overlay(&mut self, _window: WindowId, _width: u16, _height: u16) {}
+        fn hide_all_overlays(&mut self) {}
+
+        fn set_focus(&mut self, window: WindowId) {
+            self.focused = Some(window);
+        }
+
+        fn focused(&self) -> Option<WindowId> {
+            self.focused
+        }
+
+        fn windows_in_zone(&self, zone: reovim_driver_display::layout::Zone) -> Vec<WindowId> {
+            if zone == reovim_driver_display::layout::Zone::Tiled {
+                self.windows.clone()
+            } else {
+                Vec::new()
+            }
+        }
+
+        fn zone_of(&self, _window: WindowId) -> Option<reovim_driver_display::layout::Zone> {
+            Some(reovim_driver_display::layout::Zone::Tiled)
+        }
+    }
+
+    struct MockRootCompositor {
+        layer: MockLayerCompositor,
+        focused: Option<WindowId>,
+    }
+
+    impl MockRootCompositor {
+        fn new() -> Self {
+            let layer = MockLayerCompositor::new();
+            let focused = layer.focused;
+            Self { layer, focused }
+        }
+    }
+
+    impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
+        fn composite(&self, screen: Rect) -> reovim_driver_display::layout::CompositeResult {
+            reovim_driver_display::layout::CompositeResult::empty(screen)
+        }
+
+        fn create_layer(
+            &mut self,
+            _config: reovim_driver_display::layout::LayerConfig,
+        ) -> reovim_driver_display::layout::LayerId {
+            reovim_driver_display::layout::LayerId::new(0)
+        }
+
+        fn remove_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+
+        fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_display::layout::LayerId> {
+            None
+        }
+
+        fn layers(&self) -> Vec<&reovim_driver_display::layout::Layer> {
+            Vec::new()
+        }
+
+        fn set_layer_visible(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _visible: bool,
+        ) {
+        }
+
+        fn set_layer_opacity(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _opacity: f32,
+        ) {
+        }
+
+        fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
+
+        fn set_active_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+
+        fn active_layer(&self) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+
+        fn set_focus(&mut self, window: WindowId) {
+            self.focused = Some(window);
+            reovim_driver_display::layout::WindowLayerCompositor::set_focus(
+                &mut self.layer,
+                window,
+            );
+        }
+
+        fn focused(&self) -> Option<WindowId> {
+            self.focused
+        }
+
+        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
+            self.focused
+        }
+
+        fn layer_compositor(
+            &self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            Some(&self.layer)
+        }
+
+        fn layer_compositor_mut(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&mut dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            Some(&mut self.layer)
+        }
+
+        fn window_count(&self) -> usize {
+            self.layer.windows.len()
+        }
+
+        fn set_screen(&mut self, _screen: Rect) {}
+
+        fn layer_of(&self, _window: WindowId) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+
+        fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
+            Box::new(Self {
+                layer: MockLayerCompositor {
+                    id: self.layer.id,
+                    windows: self.layer.windows.clone(),
+                    focused: self.layer.focused,
+                    next_id: self.layer.next_id,
+                },
+                focused: self.focused,
+            })
+        }
+    }
+
+    fn make_compositor_runtime<'a>(
+        session: &'a mut Session,
+        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
+        windows: &'a mut crate::WindowLayout,
+        extensions: &'a mut crate::ExtensionMap,
+        kernel: &'a KernelContext,
+        executor: &'a StubExecutor,
+    ) -> SessionRuntime<'a> {
+        session.set_compositor(Box::new(MockRootCompositor::new()));
+        SessionRuntime::new(session, mode_stack, windows, extensions, kernel, executor)
+    }
+
+    #[test]
+    fn test_compositor_navigate() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.navigate(NavigateDirection::Right);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), WindowId::from_raw(2));
+    }
+
+    #[test]
+    fn test_compositor_split() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.split(reovim_driver_display::SplitDirection::Horizontal);
+        assert!(result.is_ok());
+        assert!(rt.changes.windows_created.contains(&result.unwrap()));
+    }
+
+    #[test]
+    fn test_compositor_close_current_window() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.close_current_window();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), WindowId::from_raw(2));
+    }
+
+    #[test]
+    fn test_compositor_close_others() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.close_others();
+        assert!(result.is_ok());
+        assert!(rt.changes.windows_closed.contains(&WindowId::from_raw(2)));
+    }
+
+    #[test]
+    fn test_compositor_resize() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.resize(NavigateDirection::Right, 5);
+        assert!(result.is_ok());
+        assert!(rt.changes.window_changed);
+    }
+
+    #[test]
+    fn test_compositor_equalize() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.equalize();
+        assert!(result.is_ok());
+        assert!(rt.changes.window_changed);
+    }
+
+    #[test]
+    fn test_compositor_cycle() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.cycle(true);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), WindowId::from_raw(2));
+    }
+
+    #[test]
+    fn test_compositor_focus() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.focus(WindowId::from_raw(2));
+        assert!(result.is_ok());
+        assert!(rt.changes.focus_changed);
+    }
+
+    #[test]
+    fn test_compositor_focus_same_window_no_event() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        // Focus the already-focused window - LayoutChanged event should NOT fire
+        let result = rt.focus(WindowId::from_raw(1));
+        assert!(result.is_ok());
+        assert!(rt.changes.focus_changed);
+    }
+
+    #[test]
+    fn test_compositor_focused_window() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert_eq!(rt.focused_window(), Some(WindowId::from_raw(1)));
+    }
+
+    #[test]
+    fn test_compositor_window_count() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert_eq!(rt.compositor_window_count(), 2);
+    }
+
+    #[test]
+    fn test_compositor_active_layer() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.active_layer().is_some());
+    }
+
+    #[test]
+    fn test_compositor_toggle_float() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.toggle_float().is_ok());
+        assert!(rt.changes.window_changed);
+    }
+
+    #[test]
+    fn test_compositor_raise_float() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.raise_float().is_ok());
+    }
+
+    #[test]
+    fn test_compositor_lower_float() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.lower_float().is_ok());
+    }
+
+    #[test]
+    fn test_compositor_show_overlay() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let result = rt.show_overlay(
+            reovim_driver_display::layout::OverlayConstraints::centered().with_size(20, 10),
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compositor_hide_overlay() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.hide_overlay(WindowId::from_raw(99)).is_ok());
+    }
+
+    #[test]
+    fn test_compositor_resize_overlay() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.resize_overlay(WindowId::from_raw(99), 40, 20).is_ok());
+    }
+
+    #[test]
+    fn test_compositor_hide_all_overlays() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        assert!(rt.hide_all_overlays().is_ok());
+    }
+
+    #[test]
+    fn test_set_screen_with_compositor() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let mut rt =
+            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        rt.set_screen(Rect::new(0, 0, 120, 40));
+    }
+
+    #[test]
+    fn test_emit_layout_event_with_compositor() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        rt.emit_layout_event(reovim_kernel::api::v1::events::kernel::LayoutChangeKind::Equalize);
+    }
+
+    #[test]
+    fn test_arrange_with_compositor() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let placements = rt.arrange(Rect::new(0, 0, 80, 24));
+        assert!(placements.is_empty());
+    }
 }

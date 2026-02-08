@@ -103,6 +103,47 @@ mod tests {
     }
 
     #[test]
+    fn test_module_version() {
+        let module = TextObjectsModule;
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 9);
+        assert_eq!(version.patch, 0);
+    }
+
+    #[test]
+    fn test_module_init() {
+        use reovim_kernel::api::v1::ModuleContext;
+        let mut module = TextObjectsModule::new();
+        let ctx = ModuleContext::default();
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+    }
+
+    #[test]
+    fn test_module_exit() {
+        let mut module = TextObjectsModule::new();
+        let result = module.exit();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_module_default() {
+        let module = TextObjectsModule;
+        assert_eq!(module.name(), "Vim Text Objects");
+    }
+
+    #[test]
+    fn test_module_new() {
+        let _module = TextObjectsModule::new();
+    }
+
+    #[test]
+    fn test_textobjects_module_id_constant() {
+        assert_eq!(TEXTOBJECTS_MODULE.as_str(), "textobjects");
+    }
+
+    #[test]
     fn test_word_commands_count() {
         let cmds = word::all_commands();
         assert_eq!(cmds.len(), 4); // iw, aw, iW, aW

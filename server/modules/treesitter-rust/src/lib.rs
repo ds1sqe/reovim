@@ -247,6 +247,39 @@ mod tests {
     }
 
     #[test]
+    fn test_factory_default() {
+        let factory = RustSyntaxFactory::default();
+        assert!(factory.supports("rust"));
+        assert!(!factory.supports("markdown"));
+    }
+
+    #[test]
+    fn test_factory_supports_negative_cases() {
+        let factory = RustSyntaxFactory::new();
+        assert!(!factory.supports(""));
+        assert!(!factory.supports("Rust"));
+        assert!(!factory.supports("RUST"));
+        assert!(!factory.supports("javascript"));
+        assert!(!factory.supports("c++"));
+    }
+
+    #[test]
+    fn test_factory_folds_query_accessor() {
+        let factory = RustSyntaxFactory::new();
+        let folds_query = factory.folds_query();
+        // The folds query should be a valid Arc<Query> (not null/empty)
+        // We just verify it is accessible and shared
+        let _clone = Arc::clone(folds_query);
+    }
+
+    #[test]
+    fn test_factory_capture_mapper_accessor() {
+        let factory = RustSyntaxFactory::new();
+        let mapper = factory.capture_mapper();
+        let _clone = Arc::clone(mapper);
+    }
+
+    #[test]
     fn test_create_driver() {
         let factory = RustSyntaxFactory::new();
 
@@ -255,6 +288,22 @@ mod tests {
 
         let driver = factory.create("python");
         assert!(driver.is_none());
+    }
+
+    #[test]
+    fn test_create_driver_unsupported_languages() {
+        let factory = RustSyntaxFactory::new();
+        assert!(factory.create("").is_none());
+        assert!(factory.create("Rust").is_none());
+        assert!(factory.create("python").is_none());
+        assert!(factory.create("markdown").is_none());
+    }
+
+    #[test]
+    fn test_driver_not_parsed_before_parse() {
+        let factory = RustSyntaxFactory::new();
+        let driver = factory.create("rust").unwrap();
+        assert!(!driver.is_parsed());
     }
 
     #[test]
@@ -277,8 +326,6 @@ mod tests {
             .iter()
             .find(|h| h.start_byte == 0 && h.end_byte == 2);
         assert!(fn_highlight.is_some(), "Expected 'fn' to be highlighted");
-
-        tracing::debug!("Highlights: {highlights:?}");
     }
 
     #[test]
@@ -371,12 +418,92 @@ mod tests {
     }
 
     #[test]
+    fn test_highlights_contain_number() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("let x = 42;");
+        let highlights = driver.highlights(0..100);
+
+        let number_highlight = highlights
+            .iter()
+            .find(|h| h.group == HighlightGroup::Number);
+
+        assert!(number_highlight.is_some(), "Expected number highlight");
+    }
+
+    #[test]
+    fn test_highlights_contain_type() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("let x: i32 = 1;");
+        let highlights = driver.highlights(0..100);
+
+        // i32 should be a builtin type
+        let type_highlight = highlights.iter().find(|h| h.group.is_type());
+
+        assert!(type_highlight.is_some(), "Expected type highlight for i32");
+    }
+
+    #[test]
+    fn test_highlights_contain_variable() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("fn main() { let x = 1; }");
+        let highlights = driver.highlights(0..100);
+
+        // 'x' should be highlighted as a variable
+        let var_highlight = highlights
+            .iter()
+            .find(|h| h.group == HighlightGroup::Variable);
+
+        assert!(var_highlight.is_some(), "Expected variable highlight");
+    }
+
+    #[test]
+    fn test_highlights_contain_mutable_keyword() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        // 'mut' is captured as @keyword by the highlights query
+        driver.parse("fn main() { let mut x = 1; }");
+        let highlights = driver.highlights(0..100);
+
+        let keyword_highlight = highlights.iter().find(|h| h.group.is_keyword());
+
+        assert!(keyword_highlight.is_some(), "Expected keyword highlight for 'mut' or 'fn'");
+    }
+
+    #[test]
+    fn test_highlights_contain_macro() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("fn main() { println!(\"test\"); }");
+        let highlights = driver.highlights(0..100);
+
+        let macro_highlight = highlights
+            .iter()
+            .find(|h| h.group == HighlightGroup::FunctionMacro);
+
+        assert!(macro_highlight.is_some(), "Expected macro highlight for println!");
+    }
+
+    #[test]
     fn test_highlights_utf8_safety() {
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
         // Parse code with Unicode
-        let code = "let λ = 1; // émoji 🎉";
+        let code = "let \u{03bb} = 1; // \u{00e9}moji \u{1f389}";
         driver.parse(code);
         let highlights = driver.highlights(0..code.len());
 
@@ -384,15 +511,13 @@ mod tests {
         for span in &highlights {
             assert!(
                 code.is_char_boundary(span.start_byte),
-                "start_byte {} is not a char boundary in '{}'",
+                "start_byte {} is not a char boundary in '{code}'",
                 span.start_byte,
-                code
             );
             assert!(
                 code.is_char_boundary(span.end_byte),
-                "end_byte {} is not a char boundary in '{}'",
+                "end_byte {} is not a char boundary in '{code}'",
                 span.end_byte,
-                code
             );
         }
     }
@@ -407,6 +532,106 @@ mod tests {
 
         let highlights = driver.highlights(0..0);
         assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_highlights_beyond_content() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        let code = "fn main() {}";
+        driver.parse(code);
+        // Querying a range beyond the content should not panic
+        let highlights = driver.highlights(code.len()..code.len() + 100);
+        // May be empty or contain highlights at the boundary - just verify no panic
+        let _ = highlights;
+    }
+
+    #[test]
+    fn test_highlights_partial_range() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        // "fn main() {}\nfn bar() {}" - two lines
+        let code = "fn main() {}\nfn bar() {}";
+        driver.parse(code);
+
+        // Get highlights for only the first line (bytes 0..12)
+        let highlights = driver.highlights(0..12);
+
+        // All highlights should be within the requested range or overlap it
+        for h in &highlights {
+            assert!(
+                h.start_byte < 12,
+                "Highlight starts at {} which is outside requested range 0..12",
+                h.start_byte
+            );
+        }
+    }
+
+    #[test]
+    fn test_reparse_updates_highlights() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        // First parse
+        driver.parse("let x = 1;");
+        let highlights1 = driver.highlights(0..100);
+        assert!(
+            highlights1
+                .iter()
+                .any(|h| h.group == HighlightGroup::Number),
+            "Should have number highlight"
+        );
+
+        // Re-parse with different code
+        driver.parse("fn foo() {}");
+        let highlights2 = driver.highlights(0..100);
+        assert!(
+            highlights2
+                .iter()
+                .any(|h| h.group == HighlightGroup::KeywordFunction),
+            "Should have function keyword after re-parse"
+        );
+        // Number should no longer appear
+        assert!(
+            !highlights2
+                .iter()
+                .any(|h| h.group == HighlightGroup::Number),
+            "Number should not appear after re-parse to function code"
+        );
+    }
+
+    #[test]
+    fn test_incremental_update() {
+        use reovim_driver_syntax::SyntaxEdit;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        // Initial parse
+        let initial = "fn main() {}";
+        driver.parse(initial);
+        assert!(driver.is_parsed());
+
+        // Simulate inserting " let x = 1;" inside the braces
+        // "fn main() { let x = 1; }"
+        let updated = "fn main() { let x = 1; }";
+        let edit = SyntaxEdit::insert(
+            11, // start_byte: after '{'
+            0,  // start_row
+            11, // start_col
+            23, // new_end_byte: position after " let x = 1;"
+            0,  // new_end_row
+            23, // new_end_col
+        );
+        driver.update(updated, &edit);
+        assert!(driver.is_parsed());
+
+        let highlights = driver.highlights(0..updated.len());
+        assert!(!highlights.is_empty(), "Should have highlights after incremental update");
     }
 
     #[test]
@@ -426,6 +651,19 @@ mod tests {
     fn test_injection_layer_factory_language_id() {
         let factory = RustSyntaxFactory::new();
         assert_eq!(factory.language_id(), "rust");
+    }
+
+    #[test]
+    fn test_injection_layer_factory_shared_mapper() {
+        let factory = RustSyntaxFactory::new();
+        let mapper1 = Arc::new(CaptureMapper::new());
+        let mapper2 = Arc::new(CaptureMapper::new());
+
+        // Should be able to create layers with different mappers
+        let layer1 = factory.create_layer(mapper1);
+        let layer2 = factory.create_layer(mapper2);
+        assert!(layer1.is_some());
+        assert!(layer2.is_some());
     }
 
     // ========================================================================
@@ -481,6 +719,16 @@ mod tests {
         assert_eq!(injections.len(), 2, "Expected 2 injections for 2 doc comment lines");
     }
 
+    #[test]
+    fn test_injections_empty_for_no_doc_comments() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("fn main() { let x = 1; }");
+        let injections = driver.injections();
+        assert!(injections.is_empty(), "Code without doc comments should have no injections");
+    }
+
     // ========================================================================
     // Indentation Hints Tests (Phase 12.4)
     // ========================================================================
@@ -532,6 +780,35 @@ mod tests {
         let indent = driver.indent_for(0);
         assert!(indent.is_some());
         // Function item itself doesn't increase indent (body does)
+    }
+
+    #[test]
+    fn test_indent_for_out_of_range_line() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("fn main() {}");
+
+        // Requesting indent for a line beyond the file should return None or 0
+        let indent = driver.indent_for(100);
+        // Either None or 0 is acceptable for out-of-range lines
+        if let Some(level) = indent {
+            assert_eq!(level, 0, "Out-of-range line should have zero indent");
+        }
+    }
+
+    #[test]
+    fn test_indent_for_empty_file() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("");
+
+        let indent = driver.indent_for(0);
+        // Empty file: either None or 0
+        if let Some(level) = indent {
+            assert_eq!(level, 0, "Empty file should have zero indent");
+        }
     }
 
     // ========================================================================
@@ -694,6 +971,100 @@ impl Foo {
         );
     }
 
+    #[test]
+    fn test_folds_empty_file() {
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        driver.parse("");
+        let folds = driver.folds();
+        assert!(folds.is_empty(), "Empty file should have no folds");
+    }
+
+    #[test]
+    fn test_folds_trait_definition() {
+        use reovim_driver_syntax::FoldKind;
+
+        let factory = RustSyntaxFactory::new();
+        let mut driver = factory.create("rust").unwrap();
+
+        let code = "pub trait Foo {\n    fn bar(&self);\n    fn baz(&self);\n}";
+        driver.parse(code);
+        let folds = driver.folds();
+
+        let trait_fold = folds.iter().find(|f| f.kind == FoldKind::Class);
+        assert!(trait_fold.is_some(), "Expected Class fold for trait definition");
+    }
+
+    // ========================================================================
+    // Module Trait Tests
+    // ========================================================================
+
+    #[test]
+    fn test_module_new() {
+        let module = TreesitterRustModule::new();
+        // Just verify construction does not panic
+        let _id = module.id();
+    }
+
+    #[test]
+    fn test_module_default() {
+        fn takes_default<T: Default>(val: T) -> T {
+            drop(val);
+            T::default()
+        }
+        let module = takes_default(TreesitterRustModule::new());
+        assert_eq!(module.name(), "Treesitter Rust");
+    }
+
+    #[test]
+    fn test_module_id() {
+        let module = TreesitterRustModule::new();
+        assert_eq!(module.id(), ModuleId::new("treesitter-rust"));
+    }
+
+    #[test]
+    fn test_module_name() {
+        let module = TreesitterRustModule::new();
+        assert_eq!(module.name(), "Treesitter Rust");
+    }
+
+    #[test]
+    fn test_module_version() {
+        let module = TreesitterRustModule::new();
+        let version = module.version();
+        assert_eq!(version, Version::new(0, 9, 0));
+    }
+
+    #[test]
+    fn test_module_init() {
+        use reovim_kernel::api::v1::ServiceRegistry;
+
+        let mut module = TreesitterRustModule::new();
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let services = Arc::new(ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            kernel,
+            services.clone(),
+            std::path::PathBuf::from("/tmp/test-data"),
+            std::path::PathBuf::from("/tmp/test-cache"),
+        );
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+
+        // Verify that the factory was registered
+        let syntax_store = services.get_or_create::<SyntaxFactoryStore>();
+        let factory = syntax_store.find("rust");
+        assert!(factory.is_some(), "Rust factory should be available after module init");
+    }
+
+    #[test]
+    fn test_module_exit() {
+        let mut module = TreesitterRustModule::new();
+        let result = module.exit();
+        assert!(result.is_ok());
+    }
+
     // ========================================================================
     // Integration Tests - Realistic Rust Code
     // ========================================================================
@@ -854,5 +1225,50 @@ mod tests {
         let impl_fold = folds.iter().find(|f| f.kind == FoldKind::Class);
         assert!(impl_fold.is_some(), "Expected Class fold for impl");
         assert_eq!(impl_fold.unwrap().start_line, 0, "Impl fold should start at line 0");
+    }
+
+    // ========================================================================
+    // Send + Sync Tests
+    // ========================================================================
+
+    #[test]
+    fn test_factory_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<RustSyntaxFactory>();
+    }
+
+    #[test]
+    fn test_driver_send_sync() {
+        fn assert_send_sync<T: Send + Sync + ?Sized>(_: &T) {}
+        let factory = RustSyntaxFactory::new();
+        let driver = factory.create("rust").unwrap();
+        // SyntaxDriver requires Send + Sync
+        assert_send_sync(&*driver);
+    }
+
+    // ========================================================================
+    // Multiple Factory Instances
+    // ========================================================================
+
+    #[test]
+    fn test_multiple_factory_instances() {
+        let factory1 = RustSyntaxFactory::new();
+        let factory2 = RustSyntaxFactory::new();
+
+        // Both should independently create working drivers
+        let mut driver1 = factory1.create("rust").unwrap();
+        let mut driver2 = factory2.create("rust").unwrap();
+
+        driver1.parse("fn foo() {}");
+        driver2.parse("let x = 1;");
+
+        assert!(driver1.is_parsed());
+        assert!(driver2.is_parsed());
+
+        let h1 = driver1.highlights(0..100);
+        let h2 = driver2.highlights(0..100);
+
+        assert!(!h1.is_empty());
+        assert!(!h2.is_empty());
     }
 }

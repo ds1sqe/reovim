@@ -9,11 +9,11 @@
 //! `Color` comes from `reovim-arch` (platform abstraction layer).
 //!
 //! ```text
-//! lib/drivers/display/      <-- Traits + Style types (this crate)
+//! clients/tui/lib/drivers/display/  <-- Traits + Style types (this crate)
 //!        ^
 //!        |  uses Color from
 //!        |
-//! lib/arch/                 <-- Platform-agnostic Color type
+//! shared/arch/                     <-- Platform-agnostic Color type
 //! ```
 //!
 //! # Components

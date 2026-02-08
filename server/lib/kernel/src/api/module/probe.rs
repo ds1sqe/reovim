@@ -318,15 +318,6 @@ mod tests {
     }
 
     #[test]
-    fn test_module_probe_is_repr_c() {
-        // Verify struct size is predictable for FFI
-        // id: 64 + name: 128 + version: 12 + api_version: 12 + rustc_version: 64
-        // + required_deps_count: 1 + required_deps: 512 + optional_deps_count: 1
-        // + optional_deps: 512 + 2 padding = 1308
-        assert_eq!(std::mem::size_of::<ModuleProbe>(), 1308);
-    }
-
-    #[test]
     fn test_module_probe_is_copy() {
         let probe1 = ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(1, 0, 0));
         let probe2 = probe1; // Copy

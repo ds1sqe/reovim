@@ -145,4 +145,55 @@ mod tests {
         let vfs_err = VfsError::NotFound(PathBuf::new());
         assert!(vfs_err.source().is_none());
     }
+
+    #[test]
+    fn test_vfs_error_io_display() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe broke");
+        let vfs_err = VfsError::Io(io_err);
+        let display = format!("{vfs_err}");
+        assert!(display.starts_with("I/O error: "));
+        assert!(display.contains("pipe broke"));
+    }
+
+    #[test]
+    fn test_vfs_error_debug() {
+        let err = VfsError::NotFound(PathBuf::from("/test"));
+        let debug = format!("{err:?}");
+        assert!(debug.contains("NotFound"));
+    }
+
+    #[test]
+    fn test_error_source_all_variants() {
+        // All non-Io variants should return None for source()
+        let variants: Vec<VfsError> = vec![
+            VfsError::PermissionDenied(PathBuf::new()),
+            VfsError::AlreadyExists(PathBuf::new()),
+            VfsError::NotADirectory(PathBuf::new()),
+            VfsError::NotAFile(PathBuf::new()),
+            VfsError::IsADirectory(PathBuf::new()),
+            VfsError::DirectoryNotEmpty(PathBuf::new()),
+            VfsError::InvalidPath("test".into()),
+            VfsError::PathTooLong(PathBuf::new()),
+            VfsError::ReadOnlyFilesystem,
+            VfsError::NotSupported("test".into()),
+        ];
+
+        for err in variants {
+            assert!(err.source().is_none(), "Expected None source for {err}");
+        }
+    }
+
+    #[test]
+    fn test_from_io_error_interrupted() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted");
+        let vfs_err: VfsError = io_err.into();
+        assert!(matches!(vfs_err, VfsError::Io(_)));
+    }
+
+    #[test]
+    fn test_from_io_error_would_block() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::WouldBlock, "would block");
+        let vfs_err: VfsError = io_err.into();
+        assert!(matches!(vfs_err, VfsError::Io(_)));
+    }
 }

@@ -302,4 +302,36 @@ mod tests {
         assert!(response.is_ok());
         assert!(response.unwrap().into_inner().ok);
     }
+
+    #[tokio::test]
+    async fn test_resize_with_authenticated_client() {
+        let registry = test_registry();
+        let service = EditorServiceImpl::new(registry.clone(), SessionId::new("test"));
+
+        let session = registry.get(&SessionId::new("test")).unwrap();
+        let mut rx = session.subscribe_notifications();
+
+        let client_id = ClientId::new(99);
+        let mut request = Request::new(ResizeRequest {
+            width: 100,
+            height: 50,
+        });
+        request.extensions_mut().insert(client_id);
+
+        let response = service.resize(request).await;
+        assert!(response.is_ok());
+
+        // Check the notification payload includes the target client ID
+        let notification = rx.try_recv().unwrap();
+        assert_eq!(notification.event_type, "resize_request");
+        if let Some(reovim_protocol::v2::notification::Payload::ResizeRequest(payload)) =
+            notification.payload
+        {
+            assert_eq!(payload.width, 100);
+            assert_eq!(payload.height, 50);
+            assert_eq!(payload.target_client_id, 99);
+        } else {
+            panic!("Expected ResizeRequest payload");
+        }
+    }
 }

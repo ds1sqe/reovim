@@ -17,7 +17,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │ SESSION DRIVER (lib/drivers/session/) - PURE MECHANISM          │
+//! │ SESSION DRIVER (server/lib/drivers/session/) - PURE MECHANISM          │
 //! │                                                                 │
 //! │ SHARED INFRASTRUCTURE:                                          │
 //! │   Session { id, shared: SessionShared }                         │

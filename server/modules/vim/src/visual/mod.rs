@@ -908,4 +908,174 @@ mod tests {
         assert_eq!(buffer.line_count(), 1);
         assert_eq!(buffer.lines()[0], "line three");
     }
+
+    // =========================================================================
+    // Additional Visual Mode Integration Tests
+    // =========================================================================
+
+    #[test]
+    fn test_visual_commands_total_is_correct() {
+        let total = visual_commands();
+        let entry = visual_entry_commands();
+        let exit = visual_exit_commands();
+        let sel = visual_selection_commands();
+        let ops = visual_operator_commands();
+        assert_eq!(total.len(), entry.len() + exit.len() + sel.len() + ops.len());
+    }
+
+    #[test]
+    fn test_all_visual_commands_have_vim_module() {
+        let cmds = visual_commands();
+        for cmd in &cmds {
+            assert_eq!(
+                cmd.id().module(),
+                &VIM_MODULE,
+                "command '{}' should be in vim module",
+                cmd.id().name()
+            );
+        }
+    }
+
+    #[test]
+    fn test_visual_entry_commands_unique_ids() {
+        let cmds = visual_entry_commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(seen.insert(id.name()), "Duplicate command id: {}", id.name());
+        }
+    }
+
+    #[test]
+    fn test_visual_operator_commands_unique_ids() {
+        let cmds = visual_operator_commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(seen.insert(id.name()), "Duplicate command id: {}", id.name());
+        }
+    }
+
+    #[test]
+    fn test_visual_selection_commands_unique_ids() {
+        let cmds = visual_selection_commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(seen.insert(id.name()), "Duplicate command id: {}", id.name());
+        }
+    }
+
+    #[test]
+    fn test_all_visual_commands_unique_ids() {
+        let cmds = visual_commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        let mut seen = std::collections::HashSet::new();
+        for id in &ids {
+            assert!(
+                seen.insert(format!("{}:{}", id.module().as_str(), id.name())),
+                "Duplicate command id: {}",
+                id.name()
+            );
+        }
+    }
+
+    #[test]
+    fn test_indent_selection_noop_without_selection() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = run_command(&IndentSelection, &ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Buffer unchanged
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert_eq!(buffer.lines()[0], "hello");
+    }
+
+    #[test]
+    fn test_dedent_selection_noop_without_selection() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("    hello\n    world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = run_command(&DedentSelection, &ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Buffer unchanged
+        let buffer_arc = ctx.buffers.get(buffer_id).unwrap();
+        let buffer = buffer_arc.read();
+        assert_eq!(buffer.lines()[0], "    hello");
+    }
+
+    #[test]
+    fn test_toggle_visual_line_from_char_keeps_selection() {
+        use reovim_driver_session::{SelectionMode, api::Selection};
+
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Toggle from char to line should keep selection with Line mode
+        let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
+        let (result, windows) =
+            run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = windows.active().unwrap();
+        assert!(window.selection.is_some());
+        assert_eq!(window.selection.as_ref().unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_toggle_visual_block_exits_if_already_block() {
+        use reovim_driver_session::api::Selection;
+
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let selection = Selection::block(Position::new(0, 0), Position::new(0, 5));
+        let (result, windows) =
+            run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
+        assert_eq!(result, CommandResult::Success);
+
+        // Toggle block when already block exits (clears selection)
+        assert!(windows.active().unwrap().selection.is_none());
+    }
+
+    #[test]
+    fn test_swap_anchor_with_different_lines() {
+        use reovim_driver_session::api::Selection;
+
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let selection = Selection::character(Position::new(0, 2), Position::new(2, 1));
+        let (result, windows) = run_command_with_selection(&SwapAnchor, &ctx, &args, selection);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = windows.active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(2, 1));
+        assert_eq!(sel.end, Position::new(0, 2));
+    }
 }

@@ -635,4 +635,351 @@ mod tests {
         assert!(debug.contains("InjectionLayerStore"));
         assert!(debug.contains("count"));
     }
+
+    #[test]
+    fn test_injection_layer_store_default() {
+        let store = InjectionLayerStore::default();
+        assert!(store.is_empty());
+        assert_eq!(store.len(), 0);
+    }
+
+    #[test]
+    fn test_injection_manager_register_and_has() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        assert!(manager.has_layer("rust"));
+        assert!(!manager.has_layer("python"));
+        assert_eq!(manager.layer_count(), 1);
+    }
+
+    #[test]
+    fn test_injection_manager_capture_mapper() {
+        let mapper = Arc::new(CaptureMapper::new());
+        let manager = InjectionManager::new(Arc::clone(&mapper));
+
+        // Verify the capture mapper is accessible and has mappings
+        assert!(!manager.capture_mapper().is_empty());
+    }
+
+    #[test]
+    fn test_injection_manager_highlight_out_of_range_skipped() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // Create an injection outside the query range
+        let injections = vec![Injection::new("rust".to_string(), 100..200, 5, 0, 10, 0)];
+
+        // Query range 0..50 does not overlap injection 100..200
+        let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..50);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_layer_clear_cache() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+
+        // Parse something to populate cache
+        let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
+        let injection = Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10);
+        let _highlights = layer.highlight_injection(&injection, content);
+
+        // Now clear cache
+        layer.clear_cache();
+
+        // Re-highlight after clear (should re-parse without error)
+        let highlights = layer.highlight_injection(&injection, content);
+        assert!(!highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_layer_highlight_empty_content() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+
+        // Empty injection content
+        let injection = Injection::new("rust".to_string(), 5..5, 0, 0, 0, 0);
+        let highlights = layer.highlight_injection(&injection, "hello");
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_layer_highlight_out_of_bounds() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+
+        // Range beyond content length
+        let injection = Injection::new("rust".to_string(), 100..200, 0, 0, 0, 0);
+        let highlights = layer.highlight_injection(&injection, "short");
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_manager_get_or_create_layer_no_layer() {
+        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+
+        /// Factory that does not support any language.
+        struct EmptyFactory;
+
+        impl SyntaxDriverFactory for EmptyFactory {
+            fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+                None
+            }
+
+            fn supported_languages(&self) -> Vec<&str> {
+                vec![]
+            }
+        }
+
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(mapper);
+
+        // get_or_create_layer for an unknown language should return None
+        let result = manager.get_or_create_layer("unknown", &EmptyFactory);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_injection_manager_get_or_create_layer_supported_but_no_implementation() {
+        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+
+        /// Factory that claims to support "rust" but can't create injection layers.
+        struct ClaimFactory;
+
+        impl SyntaxDriverFactory for ClaimFactory {
+            fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+                None
+            }
+
+            fn supported_languages(&self) -> Vec<&str> {
+                vec!["rust"]
+            }
+
+            fn supports(&self, language_id: &str) -> bool {
+                language_id == "rust"
+            }
+        }
+
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(mapper);
+
+        // Factory supports "rust" but get_or_create_layer still returns None
+        // (dynamic creation not yet implemented)
+        let result = manager.get_or_create_layer("rust", &ClaimFactory);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_injection_manager_get_or_create_layer_cached() {
+        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+
+        struct DummyFactory;
+
+        impl SyntaxDriverFactory for DummyFactory {
+            fn create(&self, _: &str) -> Option<Box<dyn SyntaxDriver>> {
+                None
+            }
+            fn supported_languages(&self) -> Vec<&str> {
+                vec![]
+            }
+        }
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        // Pre-register a layer
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // get_or_create_layer should find the cached layer
+        let result = manager.get_or_create_layer("rust", &DummyFactory);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().language_id(), "rust");
+    }
+
+    #[test]
+    fn test_injection_manager_highlight_non_overlapping_injection() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // Injection range 10..50, query range 60..100 => no overlap
+        let injections = vec![Injection::new("rust".to_string(), 10..50, 0, 0, 2, 0)];
+        let highlights = manager.highlight_injections(&injections, "let x = 1;", 60..100);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_layer_store_service_impl() {
+        fn accepts_service(_: &dyn reovim_kernel::api::v1::Service) {}
+        let store = InjectionLayerStore::new();
+        accepts_service(&store);
+    }
+
+    #[test]
+    fn test_injection_manager_invalidate_with_layers() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // Highlight to populate cache
+        let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
+        let injections = vec![Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10)];
+        let _highlights = manager.highlight_injections(&injections, content, 0..100);
+
+        // Invalidate should not panic and should clear caches
+        manager.invalidate();
+        assert_eq!(manager.layer_count(), 1); // Layer still registered
+    }
+
+    #[test]
+    fn test_injection_layer_store_debug_with_languages() {
+        let store = InjectionLayerStore::new();
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+        store.add(Arc::new(MockLayerFactory { language: "python" }));
+
+        let debug = format!("{store:?}");
+        assert!(debug.contains("InjectionLayerStore"));
+        assert!(debug.contains("rust"));
+        assert!(debug.contains("python"));
+        assert!(debug.contains('2'));
+    }
+
+    #[test]
+    fn test_injection_layer_store_find_returns_none_for_unknown() {
+        let store = InjectionLayerStore::new();
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+        assert!(store.find("javascript").is_none());
+    }
+
+    #[test]
+    fn test_injection_layer_store_supported_languages_empty() {
+        let store = InjectionLayerStore::new();
+        let langs = store.supported_languages();
+        assert!(langs.is_empty());
+    }
+
+    #[test]
+    fn test_injection_manager_debug_with_layers() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        let debug = format!("{manager:?}");
+        assert!(debug.contains("InjectionManager"));
+        assert!(debug.contains("rust"));
+        assert!(debug.contains("layer_count"));
+    }
+
+    #[test]
+    fn test_injection_manager_highlight_injection_end_at_start_of_range() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // Injection ends exactly where query range starts: no overlap
+        let injections = vec![Injection::new("rust".to_string(), 0..10, 0, 0, 0, 10)];
+        let highlights = manager.highlight_injections(&injections, "let x = 1;", 10..20);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_manager_highlight_injection_start_at_end_of_range() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        manager.register_layer(layer);
+
+        // Injection starts exactly where query range ends: no overlap
+        let injections = vec![Injection::new("rust".to_string(), 20..30, 0, 0, 0, 10)];
+        let highlights =
+            manager.highlight_injections(&injections, "let x = 1;let y = 2;let z = 3;", 0..20);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_injection_layer_highlight_reuses_cached_tree() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+
+        let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
+        let injection = Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10);
+
+        // First call populates cache
+        let h1 = layer.highlight_injection(&injection, content);
+        assert!(!h1.is_empty());
+
+        // Second call reuses cached tree
+        let h2 = layer.highlight_injection(&injection, content);
+        assert!(!h2.is_empty());
+        assert_eq!(h1.len(), h2.len());
+    }
+
+    #[test]
+    fn test_injection_manager_register_replaces_existing_layer() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let query1 = Query::new(&language, "(identifier) @variable").unwrap();
+        let query2 = Query::new(&language, "(identifier) @variable").unwrap();
+        let mapper = Arc::new(CaptureMapper::new());
+        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+
+        let layer1 =
+            InjectionLayer::new("rust", &language, Arc::new(query1), Arc::clone(&mapper)).unwrap();
+        manager.register_layer(layer1);
+        assert_eq!(manager.layer_count(), 1);
+
+        // Re-registering with same language_id replaces
+        let layer2 = InjectionLayer::new("rust", &language, Arc::new(query2), mapper).unwrap();
+        manager.register_layer(layer2);
+        assert_eq!(manager.layer_count(), 1); // Still 1, replaced
+    }
+
+    #[test]
+    fn test_injection_layer_store_not_empty() {
+        let store = InjectionLayerStore::new();
+        assert!(store.is_empty());
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+        assert!(!store.is_empty());
+        assert_eq!(store.len(), 1);
+    }
 }

@@ -906,4 +906,248 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<Runtime>();
     }
+
+    // === schedule_delayed ===
+
+    #[test]
+    fn test_runtime_schedule_delayed() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let handle = runtime.schedule_delayed(std::time::Duration::ZERO, move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+        assert!(!handle.is_failed());
+
+        // Tick to fire timer and schedule work, then execute
+        runtime.tick();
+        runtime.tick();
+
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    // === schedule_periodic ===
+
+    #[test]
+    fn test_runtime_schedule_periodic() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let handle = runtime.schedule_periodic(std::time::Duration::ZERO, move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+        let _ = handle.detach();
+
+        // Tick multiple times
+        for _ in 0..4 {
+            runtime.tick();
+        }
+
+        assert!(counter.load(Ordering::SeqCst) >= 1);
+    }
+
+    // === cancel_timer ===
+
+    #[test]
+    fn test_runtime_cancel_timer() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let handle = runtime.schedule_delayed(std::time::Duration::from_mins(1), || {});
+        let id = handle.detach();
+        assert!(runtime.cancel_timer(id));
+    }
+
+    // === timer_wheel() ===
+
+    #[test]
+    fn test_runtime_timer_wheel() {
+        let runtime = Runtime::new();
+        let wheel = runtime.timer_wheel();
+        assert_eq!(wheel.pending_count(), 0);
+    }
+
+    // === queue_event ===
+
+    #[test]
+    fn test_runtime_queue_event() {
+        use crate::ipc::{DynEvent, Event};
+
+        #[derive(Debug)]
+        struct TestEvent;
+        impl Event for TestEvent {}
+
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let event = DynEvent::new(TestEvent);
+        assert!(runtime.queue_event(event));
+    }
+
+    // === Emergency command ===
+
+    #[test]
+    fn test_runtime_emergency_via_command() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let sender = runtime.command_sender();
+        sender.send(RuntimeCommand::Emergency).unwrap();
+
+        runtime.tick();
+        assert_eq!(runtime.state(), RuntimeState::Emergency);
+    }
+
+    // === schedule when not accepting work ===
+
+    #[test]
+    fn test_runtime_schedule_work_when_stopping() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.shutdown();
+
+        // Stopping state should not accept new work
+        assert!(!runtime.schedule_work(|| {}));
+    }
+
+    #[test]
+    fn test_runtime_schedule_task_not_running() {
+        let runtime = Runtime::new(); // Booting state
+        let task = super::super::task::Task::new(|| {});
+        assert!(!runtime.schedule_task(task));
+    }
+
+    // === Default ===
+
+    #[test]
+    fn test_runtime_default() {
+        let runtime = Runtime::default();
+        assert_eq!(runtime.state(), RuntimeState::Booting);
+    }
+
+    // === work_queue accessor ===
+
+    #[test]
+    fn test_runtime_work_queue() {
+        let runtime = Runtime::new();
+        assert!(runtime.work_queue().is_empty());
+    }
+
+    // === schedule_work_with_priority when not running ===
+
+    #[test]
+    fn test_runtime_schedule_work_with_priority_not_running() {
+        let runtime = Runtime::new(); // Booting state
+        assert!(!runtime.schedule_work_with_priority(Priority::HIGH, || {}));
+    }
+
+    // === Coverage: ScheduleTask via command when not accepting work ===
+
+    #[test]
+    fn test_runtime_command_schedule_task_when_stopping() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = Arc::clone(&executed);
+
+        let sender = runtime.command_sender();
+        sender.send(RuntimeCommand::Shutdown).unwrap();
+        sender
+            .send(RuntimeCommand::ScheduleTask(Task::new(move || {
+                executed_clone.store(true, Ordering::SeqCst);
+            })))
+            .unwrap();
+
+        runtime.tick();
+        assert_eq!(runtime.state(), RuntimeState::Stopping);
+    }
+
+    // === Coverage: shutdown when not running (from Booting) ===
+
+    #[test]
+    fn test_runtime_shutdown_from_booting() {
+        let mut runtime = Runtime::new();
+        runtime.shutdown();
+        assert_eq!(runtime.state(), RuntimeState::Booting);
+    }
+
+    // === Coverage: emergency_stop from any state ===
+
+    #[test]
+    fn test_runtime_emergency_stop_from_booting() {
+        let mut runtime = Runtime::new();
+        runtime.emergency_stop();
+        assert_eq!(runtime.state(), RuntimeState::Emergency);
+    }
+
+    // === Coverage: dispatch_events with scope ===
+
+    #[test]
+    fn test_runtime_dispatch_events_with_scope() {
+        use crate::ipc::{DynEvent, Event, EventScope};
+
+        #[derive(Debug)]
+        struct ScopeTestEvent;
+        impl Event for ScopeTestEvent {}
+
+        let mut runtime = Runtime::new();
+        runtime.boot();
+
+        let scope = EventScope::new();
+        scope.increment();
+        scope.increment();
+        runtime.set_scope(scope.clone());
+
+        let event = DynEvent::new(ScopeTestEvent);
+        runtime.queue_event(event);
+
+        runtime.tick();
+        assert!(scope.in_flight() < 2);
+    }
+
+    // === Coverage: RuntimeConfig Debug/Clone ===
+
+    #[test]
+    fn test_runtime_config_debug_clone() {
+        let config = RuntimeConfig::default();
+        let cloned = config;
+        assert_eq!(cloned.batch_size, DEFAULT_BATCH_SIZE);
+        let debug = format!("{config:?}");
+        assert!(debug.contains("RuntimeConfig"));
+    }
+
+    // === Coverage: RuntimeCommand Debug ===
+
+    #[test]
+    fn test_runtime_command_debug() {
+        let cmd = RuntimeCommand::Shutdown;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("Shutdown"));
+    }
+
+    // === Coverage: RuntimeStats Default ===
+
+    #[test]
+    fn test_runtime_stats_default() {
+        let stats = RuntimeStats::default();
+        assert_eq!(stats.state, RuntimeState::Booting);
+        assert_eq!(stats.tasks_executed, 0);
+    }
+
+    // === Coverage: tick with Emergency state ===
+
+    #[test]
+    fn test_runtime_tick_emergency_returns_false() {
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.emergency_stop();
+        assert!(!runtime.tick());
+    }
 }

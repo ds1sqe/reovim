@@ -11,7 +11,7 @@
 //!
 //! # Design Philosophy
 //!
-//! Following the proven patterns from `lib/core`:
+//! Following the proven lock-free patterns:
 //! - **Lock-free dispatch**: `ArcSwap::load()` for handler lookup
 //! - **RCU for subscriptions**: Copy-on-write via `ArcSwap::rcu()`
 //! - **Fire-and-forget**: Handlers return `EventResult`, not `Result<T, E>`
@@ -1200,5 +1200,119 @@ mod tests {
         let result2 = bus.dispatch_with_context(&event2, &mut ctx);
         assert_eq!(result2.result, EventResult::NotHandled);
         assert_eq!(called.load(Ordering::SeqCst), 1); // Count unchanged
+    }
+
+    // ========== dispatch_with_context Consumed result ==========
+
+    #[test]
+    fn test_dispatch_with_context_consumed() {
+        let bus = EventBus::new();
+
+        let _sub = bus.subscribe_with_context::<TestEvent, _>(50, move |_event, ctx| {
+            ctx.request_quit();
+            EventResult::Consumed
+        });
+
+        // Second handler should NOT be called after Consumed
+        let second_called = Arc::new(AtomicU32::new(0));
+        let second_called_copy = second_called.clone();
+        let _sub2 = bus.subscribe_with_context::<TestEvent, _>(100, move |_event, _ctx| {
+            second_called_copy.fetch_add(1, Ordering::SeqCst);
+            EventResult::Handled
+        });
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 1 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+
+        assert_eq!(result.result, EventResult::Consumed);
+        assert!(result.quit_requested);
+        assert_eq!(second_called.load(Ordering::SeqCst), 0);
+    }
+
+    // ========== dispatch_with_context not_handled ==========
+
+    #[test]
+    fn test_dispatch_with_context_no_handlers() {
+        let bus = EventBus::new();
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 1 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+
+        assert_eq!(result.result, EventResult::NotHandled);
+        assert!(!result.render_requested);
+        assert!(!result.quit_requested);
+        assert!(result.emitted_events.is_empty());
+    }
+
+    // ========== dispatch NotHandled from all handlers ==========
+
+    #[test]
+    fn test_dispatch_all_not_handled() {
+        let bus = EventBus::new();
+
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::NotHandled);
+
+        let result = bus.emit(TestEvent { value: 1 });
+        assert!(result.is_not_handled());
+    }
+
+    // === Coverage: dispatch_with_context Simple handler returning NotHandled ===
+
+    #[test]
+    fn test_dispatch_with_context_simple_not_handled() {
+        let bus = EventBus::new();
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::NotHandled);
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 1 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+        assert_eq!(result.result, EventResult::NotHandled);
+    }
+
+    // === Coverage: dispatch_with_context Simple handler returning Handled ===
+
+    #[test]
+    fn test_dispatch_with_context_simple_handled() {
+        let bus = EventBus::new();
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::Handled);
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 1 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+        assert_eq!(result.result, EventResult::Handled);
+    }
+
+    // === Coverage: context handler returning NotHandled ===
+
+    #[test]
+    fn test_dispatch_with_context_all_not_handled() {
+        let bus = EventBus::new();
+        let _sub =
+            bus.subscribe_with_context::<TestEvent, _>(100, |_event, _ctx| EventResult::NotHandled);
+
+        let mut ctx = HandlerContext::new();
+        let event = DynEvent::new(TestEvent { value: 1 });
+        let result = bus.dispatch_with_context(&event, &mut ctx);
+        assert_eq!(result.result, EventResult::NotHandled);
+    }
+
+    // === Coverage: EventBus clone ===
+
+    #[test]
+    fn test_event_bus_clone() {
+        let bus = EventBus::new();
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::Handled);
+
+        let bus2 = bus.clone();
+        assert_eq!(bus2.handler_count::<TestEvent>(), 1);
+    }
+
+    // === Coverage: handler_count for unregistered type ===
+
+    #[test]
+    fn test_handler_count_no_handlers() {
+        let bus = EventBus::new();
+        assert_eq!(bus.handler_count::<OtherEvent>(), 0);
     }
 }

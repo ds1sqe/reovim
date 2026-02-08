@@ -61,4 +61,20 @@ mod tests {
     fn test_debug() {
         assert_eq!(format!("{:?}", SessionHandlerKey::Empty), "Empty");
     }
+
+    #[test]
+    fn test_clone_copy() {
+        let key = SessionHandlerKey::Empty;
+        let cloned = key;
+        assert_eq!(key, cloned);
+    }
+
+    #[test]
+    fn test_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(SessionHandlerKey::Empty);
+        set.insert(SessionHandlerKey::Empty); // duplicate
+        assert_eq!(set.len(), 1);
+    }
 }

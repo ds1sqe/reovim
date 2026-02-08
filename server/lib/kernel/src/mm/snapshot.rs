@@ -381,4 +381,73 @@ mod tests {
         assert_eq!(snapshot.line_len(1), Some(6));
         assert_eq!(snapshot.line_len(99), None);
     }
+
+    // === Coverage: lines() accessor ===
+
+    #[test]
+    fn test_snapshot_lines() {
+        let buffer = super::super::Buffer::from_string("Hello\nWorld");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let lines = snapshot.lines();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Hello");
+        assert_eq!(lines[1], "World");
+    }
+
+    // === Coverage: content() ===
+
+    #[test]
+    fn test_snapshot_content_two_lines() {
+        let buffer = super::super::Buffer::from_string("Hello\nWorld");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        assert_eq!(snapshot.content(), "Hello\nWorld");
+    }
+
+    // === Coverage: text_in_range reversed positions ===
+
+    #[test]
+    fn test_snapshot_text_in_range_reversed() {
+        let buffer = super::super::Buffer::from_string("Hello World");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        // Reversed: end before start should still work
+        let text = snapshot.text_in_range(Position::new(0, 5), Position::new(0, 0));
+        assert_eq!(text, "Hello");
+    }
+
+    // === Coverage: text_in_range empty buffer ===
+
+    #[test]
+    fn test_snapshot_text_in_range_empty() {
+        let buffer = super::super::Buffer::new();
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 0), Position::new(0, 5));
+        assert_eq!(text, "");
+    }
+
+    // === Coverage: text_in_range multiline with middle lines ===
+
+    #[test]
+    fn test_snapshot_text_in_range_multiline_three() {
+        let buffer = super::super::Buffer::from_string("aaa\nbbb\nccc");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 1), Position::new(2, 2));
+        // First line: "aa", middle line: "bbb", last line: "cc"
+        assert_eq!(text, "aa\nbbb\ncc");
+    }
+
+    // === Coverage: single line extraction with empty result ===
+
+    #[test]
+    fn test_snapshot_text_in_range_same_pos() {
+        let buffer = super::super::Buffer::from_string("Hello");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 2), Position::new(0, 2));
+        assert_eq!(text, "");
+    }
 }

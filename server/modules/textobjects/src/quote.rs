@@ -325,7 +325,199 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::TEXTOBJECTS_MODULE};
+    use {
+        super::*,
+        crate::TEXTOBJECTS_MODULE,
+        reovim_driver_command::ArgValue,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, OperatorPendingState, Session, Window, WindowLayout,
+            api::{CommandExecutor, SelectionMode},
+        },
+        reovim_kernel::api::{
+            ModeStack, ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
+                Position, RegisterBank, RwLock, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    // =========================================================================
+    // Test Infrastructure
+    // =========================================================================
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    fn visual_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "visual")
+    }
+
+    fn visual_line_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "visual-line")
+    }
+
+    fn visual_block_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "visual-block")
+    }
+
+    fn operator_pending_mode() -> ModeId {
+        ModeId::new(ModuleId::new("vim"), "delete")
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
+        let buffer = Buffer::from_string(content);
+        ctx.buffers.register(buffer)
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(Window::with_buffer(buffer_id));
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn with_custom_window(window: Window, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(window);
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn empty(mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(Window::new());
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a dyn CommandExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
+    // Command ID Tests
+    // =========================================================================
 
     #[test]
     fn test_inner_double_quote_id() {
@@ -368,5 +560,828 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 6);
+    }
+
+    // =========================================================================
+    // Description Tests
+    // =========================================================================
+
+    #[test]
+    fn test_quote_descriptions() {
+        assert_eq!(InnerDoubleQuote.description(), "Inner double quote text object");
+        assert_eq!(AroundDoubleQuote.description(), "Around double quote text object");
+        assert_eq!(InnerSingleQuote.description(), "Inner single quote text object");
+        assert_eq!(AroundSingleQuote.description(), "Around single quote text object");
+        assert_eq!(InnerBacktick.description(), "Inner backtick text object");
+        assert_eq!(AroundBacktick.description(), "Around backtick text object");
+    }
+
+    // =========================================================================
+    // Command Args Tests
+    // =========================================================================
+
+    #[test]
+    fn test_quote_commands_have_count_arg() {
+        for cmd in all_commands() {
+            let args = cmd.args();
+            assert!(!args.is_empty(), "Command {} should have count arg", cmd.id());
+            assert_eq!(args[0].name, "count");
+            assert_eq!(args[0].kind, ArgKind::Count);
+        }
+    }
+
+    // =========================================================================
+    // Error Handling Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_double_quote_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_double_quote_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_all_quote_commands_no_buffer_error() {
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        let commands: Vec<Box<dyn CommandHandler>> = all_commands();
+        for cmd in &commands {
+            let mut state = TestState::empty(test_mode());
+            let mut runtime = state.runtime(&kernel, &executor);
+            let args = CommandContext::new();
+            let result = cmd.execute(&mut runtime, &args);
+            assert!(result.is_error(), "Command {} should error without buffer", cmd.id());
+        }
+    }
+
+    // =========================================================================
+    // Double Quote Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_double_quote_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        // Cursor on 'h' inside quotes at col 5
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_double_quote_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_double_quote_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_double_quote_visual_mode_sets_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_around_double_quote_visual_mode_sets_selection() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    // =========================================================================
+    // Single Quote Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_single_quote_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_single_quote_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_single_quote_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_single_quote_visual_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    // =========================================================================
+    // Backtick Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_backtick_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_backtick_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_backtick_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_backtick_visual_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    // =========================================================================
+    // Visual Line Mode Test
+    // =========================================================================
+
+    #[test]
+    fn test_inner_double_quote_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    // =========================================================================
+    // Edge Cases
+    // =========================================================================
+
+    #[test]
+    fn test_empty_buffer_quote() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_no_matching_quotes_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no quotes here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_visual_mode_does_not_store_operator_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        if let Some(ext_state) = ext_state {
+            assert!(!ext_state.has_textobj_range());
+        }
+    }
+
+    #[test]
+    fn test_inner_double_quote_visual_block_mode() {
+        // Tests visual-block mode handling (line 38-44)
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_around_single_quote_visual_line_mode() {
+        // Test around with visual-line mode
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_around_backtick_visual_block_mode() {
+        // Test around with visual-block mode
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_inner_double_quote_with_count() {
+        // Tests count argument handling
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Additional coverage tests
+    // =========================================================================
+
+    #[test]
+    fn test_around_double_quote_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say \"hello\" world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundDoubleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_single_quote_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_backtick_operator_pending_stores_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, operator_pending_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_single_quote_visual_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_inner_backtick_visual_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+    }
+
+    #[test]
+    fn test_inner_single_quote_no_buffer_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_single_quote_no_buffer_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = AroundSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_backtick_no_buffer_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_backtick_no_buffer_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = AroundBacktick.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_no_matching_single_quotes_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no quotes here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_no_matching_backticks_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no backticks here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_single_quote_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_backtick_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_single_quote_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say 'hello' world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_inner_backtick_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "say `hello` world");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_empty_buffer_single_quote() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSingleQuote.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_empty_buffer_backtick() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBacktick.execute(&mut runtime, &args);
+        assert!(result.is_success());
     }
 }

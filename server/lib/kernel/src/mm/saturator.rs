@@ -457,4 +457,147 @@ mod tests {
 
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
+
+    // === Coverage: submit_request with Low priority ===
+
+    #[test]
+    fn test_submit_request_low_priority() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        let handle = spawn_saturator(
+            |x: i32| x,
+            move |_result| {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            },
+        );
+
+        handle.submit_request(SaturationRequest {
+            data: 99,
+            priority: RequestPriority::Low,
+            scope: None,
+        });
+
+        thread::sleep(Duration::from_millis(50));
+
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    // === Coverage: SaturatorConfig default ===
+
+    #[test]
+    fn test_saturator_config_default() {
+        let config = SaturatorConfig::default();
+        assert!(config.drain_on_shutdown);
+    }
+
+    // === Coverage: SaturatorConfig Debug and Clone ===
+
+    #[test]
+    fn test_saturator_config_debug_clone() {
+        let config = SaturatorConfig {
+            drain_on_shutdown: false,
+        };
+        let cloned = config.clone();
+        assert!(!cloned.drain_on_shutdown);
+
+        let debug = format!("{config:?}");
+        assert!(debug.contains("SaturatorConfig"));
+        assert!(debug.contains("false"));
+    }
+
+    // === Coverage: submit_background with scope tracking ===
+
+    #[test]
+    fn test_submit_background_with_scope() {
+        let scope = EventScope::new();
+        let scope_clone = scope.clone();
+
+        let handle = spawn_saturator(|x: i32| x, |_result| {});
+
+        handle.submit_background(1, Some(&scope_clone));
+        handle.submit_background(2, Some(&scope_clone));
+
+        let completed = scope.wait_timeout(Duration::from_millis(100));
+        assert!(completed, "Scope should complete when all items processed");
+    }
+
+    // === Coverage: SaturationRequest Debug ===
+
+    #[test]
+    fn test_saturation_request_debug() {
+        let request = SaturationRequest {
+            data: 42i32,
+            priority: RequestPriority::High,
+            scope: None,
+        };
+        let debug = format!("{request:?}");
+        assert!(debug.contains("SaturationRequest"));
+        assert!(debug.contains("42"));
+    }
+
+    // === Coverage: RequestPriority Debug, Clone, Hash ===
+
+    #[test]
+    fn test_request_priority_debug_clone_hash() {
+        use std::collections::HashSet;
+        let high = RequestPriority::High;
+        let low = RequestPriority::Low;
+
+        let cloned = high;
+        assert_eq!(cloned, RequestPriority::High);
+
+        let debug_high = format!("{high:?}");
+        assert!(debug_high.contains("High"));
+
+        let debug_low = format!("{low:?}");
+        assert!(debug_low.contains("Low"));
+
+        let mut set = HashSet::new();
+        set.insert(high);
+        set.insert(low);
+        assert_eq!(set.len(), 2);
+    }
+
+    // === Coverage: Drop with worker thread join ===
+
+    #[test]
+    fn test_saturator_drop_joins_worker() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        {
+            let handle = spawn_saturator(
+                |x: i32| x,
+                move |_result| {
+                    counter_clone.fetch_add(1, Ordering::SeqCst);
+                },
+            );
+            handle.submit(1, None);
+            thread::sleep(Duration::from_millis(50));
+            // handle drops here, setting shutdown flag and joining worker
+        }
+
+        // Worker should have processed the item before shutting down
+        assert!(counter.load(Ordering::SeqCst) >= 1);
+    }
+
+    // === Coverage: submit_request with scope ===
+
+    #[test]
+    fn test_submit_request_with_scope() {
+        let scope = EventScope::new();
+        let scope_clone = scope.clone();
+
+        let handle = spawn_saturator(|x: i32| x, |_result| {});
+
+        handle.submit_request(SaturationRequest {
+            data: 7,
+            priority: RequestPriority::High,
+            scope: Some(scope_clone),
+        });
+
+        let completed = scope.wait_timeout(Duration::from_millis(100));
+        assert!(completed);
+    }
 }

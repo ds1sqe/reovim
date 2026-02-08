@@ -149,3 +149,20 @@ pub trait WindowManager: Send + Sync {
     /// Swap active window with neighbor.
     fn swap(&mut self, direction: NavigateDirection) -> bool;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_display_driver_is_object_safe() {
+        fn _accepts_ref(_: &dyn DisplayDriver) {}
+        fn _accepts_box(_: Box<dyn DisplayDriver>) {}
+    }
+
+    #[test]
+    fn test_window_manager_is_object_safe() {
+        fn _accepts_ref(_: &dyn WindowManager) {}
+        fn _accepts_box(_: Box<dyn WindowManager>) {}
+    }
+}

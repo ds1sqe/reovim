@@ -147,4 +147,58 @@ mod tests {
         let mut state = OperatorPendingState::new();
         assert!(state.take_textobj_range().is_none());
     }
+
+    #[test]
+    fn test_session_extension_create() {
+        let state = OperatorPendingState::create();
+        assert!(!state.has_textobj_range());
+    }
+
+    #[test]
+    fn test_set_overwrites_previous() {
+        let mut state = OperatorPendingState::new();
+
+        let range1 = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        state.set_textobj_range(range1);
+
+        let range2 = TextObjRange::linewise(Position::new(1, 0), Position::new(3, 0));
+        state.set_textobj_range(range2);
+
+        // Should get the second range
+        let taken = state.take_textobj_range().unwrap();
+        assert!(taken.is_linewise);
+        assert_eq!(taken.start, Position::new(1, 0));
+    }
+
+    #[test]
+    fn test_clear_on_empty_is_noop() {
+        let mut state = OperatorPendingState::new();
+        state.clear(); // Should not panic
+        assert!(!state.has_textobj_range());
+    }
+
+    #[test]
+    fn test_double_take_returns_none() {
+        let mut state = OperatorPendingState::new();
+        let range = TextObjRange::characterwise(Position::new(0, 0), Position::new(0, 5));
+        state.set_textobj_range(range);
+
+        assert!(state.take_textobj_range().is_some());
+        assert!(state.take_textobj_range().is_none()); // Second take returns None
+    }
+
+    #[test]
+    fn test_debug() {
+        let state = OperatorPendingState::new();
+        let debug = format!("{state:?}");
+        assert!(debug.contains("OperatorPendingState"));
+    }
+
+    #[test]
+    fn test_default_vs_new() {
+        let default = OperatorPendingState::default();
+        let new = OperatorPendingState::new();
+        assert!(!default.has_textobj_range());
+        assert!(!new.has_textobj_range());
+    }
 }

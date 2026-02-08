@@ -209,4 +209,83 @@ mod tests {
         // Note: This test depends on the actual recovery directory state
         assert!(files.is_ok());
     }
+
+    // ========== save_buffer_for_recovery without original path ==========
+
+    #[test]
+    fn test_save_buffer_for_recovery_no_path() {
+        let content = "no path buffer content";
+        let result = save_buffer_for_recovery(888, None, content);
+
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.exists());
+
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("buffer 888"));
+        // Should NOT contain "Original path" since we passed None
+        assert!(!saved.contains("Original path"));
+        assert!(saved.contains(content));
+
+        // Cleanup
+        std::fs::remove_file(&path).ok();
+    }
+
+    // ========== list_recovery_files with actual files ==========
+
+    #[test]
+    fn test_list_recovery_files_with_files() {
+        // Save a file and then list
+        let content = "test list content";
+        let result = save_buffer_for_recovery(777, Some(Path::new("/tmp/list_test.rs")), content);
+        assert!(result.is_ok());
+        let saved_path = result.unwrap();
+
+        let files = list_recovery_files().unwrap();
+        // Should contain at least one file (the one we just saved)
+        assert!(!files.is_empty());
+
+        // Cleanup
+        std::fs::remove_file(&saved_path).ok();
+    }
+
+    // ========== cleanup_old_recovery_files ==========
+
+    #[test]
+    fn test_cleanup_old_recovery_files() {
+        // Save a file for cleanup test
+        let content = "cleanup test content";
+        let result = save_buffer_for_recovery(666, Some(Path::new("/tmp/cleanup.rs")), content);
+        assert!(result.is_ok());
+        let saved_path = result.unwrap();
+
+        // Cleanup with max_age of 0 should remove everything
+        // (since max_age_secs=0 means files with age > 0 are removed)
+        // However, the file was JUST created, so its age might be 0.
+        // Use a very large max_age to keep files and verify it works
+        let removed = cleanup_old_recovery_files(999_999).unwrap();
+        // We don't know the exact count, but it should not error
+        let _ = removed;
+
+        // If the file still exists, clean it up manually
+        std::fs::remove_file(&saved_path).ok();
+    }
+
+    // ========== RecoverySnapshot and UnsavedBuffer ==========
+
+    #[test]
+    fn test_recovery_snapshot_debug() {
+        let snapshot = RecoverySnapshot {
+            unsaved_buffers: vec![UnsavedBuffer {
+                id: 1,
+                path: Some(PathBuf::from("/test.rs")),
+                content_hash: 12345,
+                line_count: 42,
+            }],
+            timestamp: std::time::SystemTime::now(),
+        };
+        let debug = format!("{snapshot:?}");
+        assert!(debug.contains("RecoverySnapshot"));
+        assert!(debug.contains("UnsavedBuffer"));
+    }
 }

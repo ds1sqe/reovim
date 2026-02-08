@@ -15,9 +15,9 @@
 //! |-------|-----------|----------|
 //! | Kernel | Notification | `BufferCreated`, `CursorMoved`, `ModeChanged` |
 //! | Driver | Hardware | `DisplayResized`, `KeyInput`, `MouseInput` |
-//! | Core/Plugin | Request/Policy | `RequestOpenFile`, `RequestSetTheme` |
+//! | Module | Request/Policy | `RequestOpenFile`, `RequestSetTheme` |
 //!
-//! Request events (policy) stay in `lib/core` or plugins, not in the kernel.
+//! Request events (policy) stay in modules, not in the kernel.
 //!
 //! # Example
 //!

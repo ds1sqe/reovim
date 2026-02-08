@@ -96,4 +96,49 @@ mod tests {
         assert_eq!(version.minor, 9);
         assert_eq!(version.patch, 0);
     }
+
+    #[test]
+    fn test_module_default() {
+        let from_new = SearchModule::new();
+        let from_default = SearchModule;
+        assert_eq!(from_new.id(), from_default.id());
+        assert_eq!(from_new.version(), from_default.version());
+    }
+
+    #[test]
+    fn test_exit_succeeds() {
+        let mut module = SearchModule::new();
+        assert!(module.exit().is_ok());
+    }
+
+    #[test]
+    fn test_dependencies_default_empty() {
+        let module = SearchModule::new();
+        assert!(module.dependencies().is_empty());
+    }
+
+    #[test]
+    fn test_init_registers_search_provider() {
+        use {
+            reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+            std::{path::PathBuf, sync::Arc},
+        };
+
+        let kernel = KernelContext::default();
+        let services = Arc::new(ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            kernel,
+            services.clone(),
+            PathBuf::from("/tmp/test-data"),
+            PathBuf::from("/tmp/test-cache"),
+        );
+
+        let mut module = SearchModule::new();
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+
+        // Verify that SearchProviderRegistry was created in services
+        let registry = services.get::<SearchProviderRegistry>();
+        assert!(registry.is_some(), "SearchProviderRegistry should be registered in services");
+    }
 }

@@ -247,6 +247,7 @@ impl CommandHandler for OpenLineAbove {
 }
 
 #[cfg(test)]
+#[allow(clippy::uninlined_format_args, clippy::significant_drop_tightening)]
 mod tests {
     use super::*;
 
@@ -283,5 +284,1066 @@ mod tests {
     fn test_get_line_indent_whitespace_only() {
         assert_eq!(get_line_indent("    "), "    ");
         assert_eq!(get_line_indent("\t\t"), "\t\t");
+    }
+
+    // ========================================================================
+    // Command metadata tests
+    // ========================================================================
+
+    #[test]
+    fn test_enter_insert_first_non_blank_id() {
+        use reovim_driver_command::Command;
+        let cmd = EnterInsertFirstNonBlank;
+        assert_eq!(cmd.id(), ids::ENTER_INSERT_BOL);
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_description() {
+        use reovim_driver_command::Command;
+        let cmd = EnterInsertFirstNonBlank;
+        assert!(cmd.description().contains("first non-blank"));
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_id() {
+        use reovim_driver_command::Command;
+        let cmd = EnterInsertEndOfLine;
+        assert_eq!(cmd.id(), ids::ENTER_INSERT_EOL);
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_description() {
+        use reovim_driver_command::Command;
+        let cmd = EnterInsertEndOfLine;
+        assert!(cmd.description().contains("end of line"));
+    }
+
+    #[test]
+    fn test_open_line_below_id() {
+        use reovim_driver_command::Command;
+        let cmd = OpenLineBelow;
+        assert_eq!(cmd.id(), ids::OPEN_LINE_BELOW);
+    }
+
+    #[test]
+    fn test_open_line_below_description() {
+        use reovim_driver_command::Command;
+        let cmd = OpenLineBelow;
+        assert!(cmd.description().contains("below"));
+    }
+
+    #[test]
+    fn test_open_line_above_id() {
+        use reovim_driver_command::Command;
+        let cmd = OpenLineAbove;
+        assert_eq!(cmd.id(), ids::OPEN_LINE_ABOVE);
+    }
+
+    #[test]
+    fn test_open_line_above_description() {
+        use reovim_driver_command::Command;
+        let cmd = OpenLineAbove;
+        assert!(cmd.description().contains("above"));
+    }
+
+    #[test]
+    fn test_all_mode_entry_commands_debug() {
+        let debug = format!("{:?}", EnterInsertFirstNonBlank);
+        assert!(debug.contains("EnterInsertFirstNonBlank"));
+
+        let debug = format!("{:?}", EnterInsertEndOfLine);
+        assert!(debug.contains("EnterInsertEndOfLine"));
+
+        let debug = format!("{:?}", OpenLineBelow);
+        assert!(debug.contains("OpenLineBelow"));
+
+        let debug = format!("{:?}", OpenLineAbove);
+        assert!(debug.contains("OpenLineAbove"));
+    }
+
+    #[test]
+    fn test_all_mode_entry_commands_default() {
+        let _ = EnterInsertFirstNonBlank;
+        let _ = EnterInsertEndOfLine;
+        let _ = OpenLineBelow;
+        let _ = OpenLineAbove;
+    }
+
+    // ========================================================================
+    // Additional get_line_indent tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_line_indent_unicode() {
+        // Unicode content but ascii indent
+        assert_eq!(get_line_indent("  \u{1f600}hello"), "  ");
+    }
+
+    #[test]
+    fn test_get_line_indent_single_space() {
+        assert_eq!(get_line_indent(" x"), " ");
+    }
+
+    #[test]
+    fn test_get_line_indent_single_tab() {
+        assert_eq!(get_line_indent("\tx"), "\t");
+    }
+
+    // ========================================================================
+    // Execute tests
+    // ========================================================================
+
+    use {
+        reovim_driver_command::CommandHandler,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+                MarkBank, MotionEngine, OptionRegistry, RegisterBank, RwLock, ServiceRegistry,
+                TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    use reovim_driver_session::api::ModeApi;
+
+    /// Test buffer manager that actually stores buffers.
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<reovim_driver_command::CommandResult> {
+            Some(reovim_driver_command::CommandResult::Success)
+        }
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_buffer(buffer_id: Option<BufferId>) -> Self {
+            let home_mode = VimMode::NORMAL_ID;
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            let mut window = reovim_driver_session::Window::new();
+            if let Some(buffer_id) = buffer_id {
+                window.buffer_id = Some(buffer_id);
+            }
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                &StubExecutor,
+            )
+        }
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_execute() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("    hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+
+        // Cursor should be at column 4 (first non-blank)
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 4);
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_no_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // Cursor should be at column 0 (no indent)
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_without_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_execute() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+
+        // Cursor should be at column 5 (end of "hello")
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 5);
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_empty_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_open_line_below_execute() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+
+        // Cursor should be on line 1 (new line below)
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    fn test_open_line_below_without_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_open_line_below_with_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("    hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // Cursor should be at end of indent on the new line
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 4); // 4 spaces indent
+    }
+
+    #[test]
+    fn test_open_line_above_execute() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+
+        // Cursor should be on line 0 (new line above)
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+    }
+
+    #[test]
+    fn test_open_line_above_without_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_open_line_above_with_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("    hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // Cursor should be at end of indent on the new line (line 0)
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 4); // 4 spaces indent
+    }
+
+    // ========================================================================
+    // Additional get_line_indent edge cases
+    // ========================================================================
+
+    #[test]
+    fn test_get_line_indent_many_spaces() {
+        assert_eq!(get_line_indent("        deep"), "        ");
+    }
+
+    #[test]
+    fn test_get_line_indent_only_newline_chars() {
+        // \n is not considered whitespace by char::is_whitespace in this context
+        // since we parse line by line (no newlines in a line)
+        assert_eq!(get_line_indent("text"), "");
+    }
+
+    #[test]
+    fn test_get_line_indent_form_feed() {
+        // \x0c is a whitespace character
+        assert_eq!(get_line_indent("\x0chello"), "\x0c");
+    }
+
+    // ========================================================================
+    // Additional execute tests
+    // ========================================================================
+
+    #[test]
+    fn test_enter_insert_first_non_blank_all_whitespace() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("    ");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // When all whitespace, cursor goes to column 0
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_tab_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("\t\thello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 2); // 2 tab chars
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_multiline() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor on second line
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 5); // end of "world"
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_without_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+    }
+
+    #[test]
+    fn test_open_line_below_empty_buffer() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_open_line_below_tab_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("\thello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 1); // 1 tab char
+    }
+
+    #[test]
+    fn test_open_line_above_empty_buffer() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_open_line_above_tab_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("\thello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 1); // 1 tab char
+    }
+
+    #[test]
+    fn test_open_line_below_multiline_at_middle() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\n  bbb\nccc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor on second line (which has indent)
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 2);
+        assert_eq!(window.cursor.column, 2); // 2 spaces from "  bbb"
+    }
+
+    #[test]
+    fn test_open_line_above_multiline_at_middle() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\n  bbb\nccc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor on second line (which has indent)
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 2); // 2 spaces from "  bbb"
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_on_second_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\n    world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor on second line
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 4); // first non-blank on second line
+    }
+
+    // ========================================================================
+    // Undo batching tests (exercises begin_insert_batch path)
+    // ========================================================================
+
+    use {
+        reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
+        reovim_driver_vfs::VfsDriver,
+        reovim_kernel::api::v1::{Edit, OptionSpec, OptionValue, UndoResult, UndoTree},
+    };
+
+    struct MockUndoProvider {
+        batch_begins: RwLock<Vec<(BufferId, Position)>>,
+    }
+
+    impl MockUndoProvider {
+        fn new() -> Self {
+            Self {
+                batch_begins: RwLock::new(Vec::new()),
+            }
+        }
+    }
+
+    impl UndoProvider for MockUndoProvider {
+        fn undo(&self, _: BufferId) -> Option<UndoResult> {
+            None
+        }
+        fn redo(&self, _: BufferId) -> Option<UndoResult> {
+            None
+        }
+        fn redo_branch(&self, _: BufferId, _: usize) -> Option<UndoResult> {
+            None
+        }
+        fn record(&self, _: BufferId, _: Vec<Edit>, _: Position, _: Position) {}
+        fn has_history(&self, _: BufferId) -> bool {
+            false
+        }
+        fn remove(&self, _: BufferId) {}
+        fn buffer_count(&self) -> usize {
+            0
+        }
+        fn get_tree(&self, _: BufferId) -> Option<UndoTree> {
+            None
+        }
+        fn begin_batch(&self, buffer_id: BufferId, cursor_before: Position) {
+            self.batch_begins.write().push((buffer_id, cursor_before));
+        }
+        fn end_batch(&self, _: BufferId, _: Position) {}
+        fn is_batching(&self, _: BufferId) -> bool {
+            false
+        }
+        fn persist(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<(), UndoPersistError> {
+            Ok(())
+        }
+        fn load(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<bool, UndoPersistError> {
+            Ok(false)
+        }
+    }
+
+    fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
+        let services = Arc::new(ServiceRegistry::new());
+        let mock_undo = Arc::new(MockUndoProvider::new());
+        let undo_registry = Arc::new(UndoProviderRegistry::new());
+        undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
+        services.register(undo_registry);
+
+        let ctx = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            services,
+        );
+        (ctx, mock_undo)
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_calls_begin_batch() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("  hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let begins = mock_undo.batch_begins.read();
+        assert_eq!(begins.len(), 1);
+        assert_eq!(begins[0].0, buffer_id);
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_calls_begin_batch() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let begins = mock_undo.batch_begins.read();
+        assert_eq!(begins.len(), 1);
+    }
+
+    #[test]
+    fn test_open_line_below_calls_begin_batch() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let begins = mock_undo.batch_begins.read();
+        assert_eq!(begins.len(), 1);
+    }
+
+    #[test]
+    fn test_open_line_above_calls_begin_batch() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let begins = mock_undo.batch_begins.read();
+        assert_eq!(begins.len(), 1);
+    }
+
+    // ========================================================================
+    // Autoindent disabled tests
+    // ========================================================================
+
+    fn create_test_context_autoindent_disabled() -> KernelContext {
+        let options = Arc::new(OptionRegistry::default());
+        // Register the autoindent option
+        let _ = options.register(OptionSpec::new(
+            "autoindent",
+            "Enable auto-indentation",
+            OptionValue::Bool(false),
+        ));
+
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            options,
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    #[test]
+    fn test_open_line_below_autoindent_disabled() {
+        let ctx = create_test_context_autoindent_disabled();
+        let buffer = Buffer::from_string("    hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // With autoindent disabled, new line should have NO indent
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 0); // No indent
+    }
+
+    #[test]
+    fn test_open_line_above_autoindent_disabled() {
+        let ctx = create_test_context_autoindent_disabled();
+        let buffer = Buffer::from_string("    hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        // With autoindent disabled, new line should have NO indent
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 0); // No indent
+    }
+
+    // ========================================================================
+    // No-window edge cases (exercises get_cursor_position returning None)
+    // ========================================================================
+
+    #[test]
+    fn test_open_line_below_no_active_window() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Create state with no active window
+        let home_mode = VimMode::NORMAL_ID;
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        // Should fail because no cursor position available
+        assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_open_line_above_no_active_window() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Create state with no active window
+        let home_mode = VimMode::NORMAL_ID;
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        // Should fail because no cursor position available
+        assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_enter_insert_first_non_blank_no_active_window() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("  hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Create state with no active window
+        let home_mode = VimMode::NORMAL_ID;
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        // Should still succeed (enters insert mode) but skips cursor movement
+        let result = EnterInsertFirstNonBlank.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+    }
+
+    #[test]
+    fn test_enter_insert_end_of_line_no_active_window() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Create state with no active window
+        let home_mode = VimMode::NORMAL_ID;
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        // Should still succeed but skip cursor movement
+        let result = EnterInsertEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+        assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
+    }
+
+    #[test]
+    fn test_open_line_below_multiline_last_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\n  world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineBelow.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 2);
+        assert_eq!(window.cursor.column, 2); // indent from "  world"
+    }
+
+    #[test]
+    fn test_open_line_above_multiline_first_line_with_indent() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("  hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor on first line
+        let mut runtime = state.runtime(&ctx);
+        let result = OpenLineAbove.execute(&mut runtime, &args);
+        assert_eq!(result, reovim_driver_command::CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 2); // indent from "  hello"
     }
 }

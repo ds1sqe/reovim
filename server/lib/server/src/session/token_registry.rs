@@ -228,4 +228,17 @@ mod tests {
         registry.register(ClientId::new(2));
         assert_eq!(registry.len(), 2);
     }
+
+    #[test]
+    fn session_token_display() {
+        let token = SessionToken::from("test-token-123");
+        assert_eq!(format!("{token}"), "test-token-123");
+    }
+
+    #[test]
+    fn default_creates_empty_registry() {
+        let registry = TokenRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
 }

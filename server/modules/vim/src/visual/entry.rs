@@ -135,3 +135,524 @@ impl CommandHandler for EnterVisualBlockMode {
         CommandResult::Success
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
+mod tests {
+    use {super::*, reovim_driver_command::Command};
+
+    #[test]
+    fn test_enter_visual_mode_id() {
+        let cmd = EnterVisualMode;
+        assert_eq!(cmd.id(), ids::ENTER_VISUAL);
+    }
+
+    #[test]
+    fn test_enter_visual_mode_description() {
+        let cmd = EnterVisualMode;
+        assert!(cmd.description().contains("visual"));
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_id() {
+        let cmd = EnterVisualLineMode;
+        assert_eq!(cmd.id(), ids::ENTER_VISUAL_LINE);
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_description() {
+        let cmd = EnterVisualLineMode;
+        assert!(cmd.description().contains("visual line"));
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_id() {
+        let cmd = EnterVisualBlockMode;
+        assert_eq!(cmd.id(), ids::ENTER_VISUAL_BLOCK);
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_description() {
+        let cmd = EnterVisualBlockMode;
+        assert!(cmd.description().contains("visual block"));
+    }
+
+    #[test]
+    fn test_all_visual_entry_debug() {
+        assert!(format!("{:?}", EnterVisualMode).contains("EnterVisualMode"));
+        assert!(format!("{:?}", EnterVisualLineMode).contains("EnterVisualLineMode"));
+        assert!(format!("{:?}", EnterVisualBlockMode).contains("EnterVisualBlockMode"));
+    }
+
+    #[test]
+    fn test_all_visual_entry_default() {
+        let _ = EnterVisualMode;
+        let _ = EnterVisualLineMode;
+        let _ = EnterVisualBlockMode;
+    }
+
+    // ========================================================================
+    // Execute tests
+    // ========================================================================
+
+    use {
+        reovim_driver_command::CommandHandler,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
+                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                ServiceRegistry, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_buffer(buffer_id: Option<BufferId>) -> Self {
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            let mut window = reovim_driver_session::Window::new();
+            if let Some(buffer_id) = buffer_id {
+                window.buffer_id = Some(buffer_id);
+            }
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                &StubExecutor,
+            )
+        }
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    // --- EnterVisualMode execute ---
+
+    #[test]
+    fn test_enter_visual_mode_execute_sets_character_selection() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Selection should be set to character mode at cursor position (0,0) to (0,1)
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(0, 0));
+        assert_eq!(sel.end, Position::new(0, 1));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Character);
+    }
+
+    #[test]
+    fn test_enter_visual_mode_execute_at_nonzero_cursor() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Move cursor to column 5
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(0, 5));
+        assert_eq!(sel.end, Position::new(0, 6));
+    }
+
+    #[test]
+    fn test_enter_visual_mode_execute_no_active_window() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty(); // No windows at all
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        let result = EnterVisualMode.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    // --- EnterVisualLineMode execute ---
+
+    #[test]
+    fn test_enter_visual_line_mode_execute_sets_line_selection() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(0, 0));
+        assert_eq!(sel.end, Position::new(1, 0));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_execute_at_line_2() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(2, 1).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(2, 0));
+        assert_eq!(sel.end, Position::new(3, 0));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_execute_no_active_window() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        let result = EnterVisualLineMode.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    // --- EnterVisualBlockMode execute ---
+
+    #[test]
+    fn test_enter_visual_block_mode_execute_sets_block_selection() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualBlockMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(0, 0));
+        assert_eq!(sel.end, Position::new(0, 1));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_execute_at_nonzero_cursor() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 3).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualBlockMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(1, 3));
+        assert_eq!(sel.end, Position::new(1, 4));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_execute_no_active_window() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &StubExecutor,
+        );
+
+        let result = EnterVisualBlockMode.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_enter_visual_mode_sets_mode_to_visual() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        EnterVisualMode.execute(&mut runtime, &args);
+
+        assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_ID.name());
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_sets_mode() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        EnterVisualLineMode.execute(&mut runtime, &args);
+
+        assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_LINE_ID.name());
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_sets_mode() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+
+        EnterVisualBlockMode.execute(&mut runtime, &args);
+
+        assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_BLOCK_ID.name());
+    }
+
+    #[test]
+    fn test_enter_visual_mode_at_line_2_col_3() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(2, 1).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(2, 1));
+        assert_eq!(sel.end, Position::new(2, 2));
+    }
+
+    #[test]
+    fn test_enter_visual_block_mode_at_line_1() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualBlockMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(1, 0));
+        assert_eq!(sel.end, Position::new(1, 1));
+        assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_enter_visual_line_mode_selection_starts_at_col_0() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("  hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let args = CommandContext::new();
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor at column 5 but line selection always starts at col 0
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = EnterVisualLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        let sel = window.selection.as_ref().unwrap();
+        assert_eq!(sel.start, Position::new(0, 0));
+        assert_eq!(sel.end, Position::new(1, 0));
+    }
+
+    #[test]
+    fn test_all_entry_commands_clone_copy() {
+        let _: EnterVisualMode = EnterVisualMode;
+        let _: EnterVisualLineMode = EnterVisualLineMode;
+        let _: EnterVisualBlockMode = EnterVisualBlockMode;
+    }
+}

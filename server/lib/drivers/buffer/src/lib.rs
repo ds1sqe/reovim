@@ -12,9 +12,9 @@
 //! # Architecture
 //!
 //! ```text
-//! lib/kernel/           → BufferManager trait (MECHANISM)
-//! lib/drivers/buffer/   → Key + Registry (MECHANISM)
-//! modules/buffer-simple/→ SimpleBufferManager implementation (POLICY)
+//! server/lib/kernel/           → BufferManager trait (MECHANISM)
+//! server/lib/drivers/buffer/   → Key + Registry (MECHANISM)
+//! server/modules/buffer-simple/→ SimpleBufferManager implementation (POLICY)
 //! ```
 
 mod key;

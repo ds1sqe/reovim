@@ -338,4 +338,69 @@ mod tests {
         let decoded2: Input = serde_json::from_str(&json2).unwrap();
         assert!(decoded2.is_pong());
     }
+
+    #[test]
+    fn test_input_all_is_methods_exclusive() {
+        let key = Input::key(KeyEvent::new(KeyCode::Char('a')));
+        assert!(key.is_key());
+        assert!(!key.is_click());
+        assert!(!key.is_scroll());
+        assert!(!key.is_resize());
+        assert!(!key.is_focus());
+        assert!(!key.is_paste());
+        assert!(!key.is_attach());
+        assert!(!key.is_detach());
+        assert!(!key.is_ping());
+        assert!(!key.is_pong());
+    }
+
+    #[test]
+    fn test_input_scroll_variant_is_methods() {
+        let scroll = Input::scroll(ScrollEvent::new(ScrollDirection::Down, 0, 0));
+        assert!(scroll.is_scroll());
+        assert!(!scroll.is_key());
+    }
+
+    #[test]
+    fn test_input_focus_variant_is_methods() {
+        let focus = Input::focus(FocusEvent::lost());
+        assert!(focus.is_focus());
+        assert!(!scroll_input_is_not_focus(&focus));
+    }
+
+    fn scroll_input_is_not_focus(input: &Input) -> bool {
+        input.is_scroll()
+    }
+
+    #[test]
+    fn test_input_paste_variant() {
+        let paste = Input::paste(PasteEvent::new("text"));
+        assert!(paste.is_paste());
+        assert!(!paste.is_key());
+    }
+
+    #[test]
+    fn test_input_equality() {
+        let a = Input::key(KeyEvent::new(KeyCode::Char('a')));
+        let b = Input::key(KeyEvent::new(KeyCode::Char('a')));
+        assert_eq!(a, b);
+
+        let c = Input::key(KeyEvent::new(KeyCode::Char('b')));
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn test_input_all_constructors() {
+        // Verify all constructors compile and produce correct variants
+        let _ = Input::key(KeyEvent::new(KeyCode::Escape));
+        let _ = Input::click(ClickEvent::moved(0, 0));
+        let _ = Input::scroll(ScrollEvent::new(ScrollDirection::Up, 0, 0));
+        let _ = Input::resize(ResizeEvent::new(80, 24));
+        let _ = Input::focus(FocusEvent::gained());
+        let _ = Input::paste(PasteEvent::new(""));
+        let _ = Input::attach(AttachEvent::new());
+        let _ = Input::detach(DetachEvent::normal());
+        let _ = Input::ping(PingEvent::new());
+        let _ = Input::pong(PongEvent::new());
+    }
 }

@@ -15,7 +15,7 @@ use crate::{EmptySessionHandler, handler_key::SessionHandlerKey};
 ///
 /// Following the VFS pattern (mechanism/policy separation):
 /// - **Mechanism (driver)**: This registry type + `EmptySessionHandler` trait
-/// - **Policy (module)**: `ScratchBufferHandler` in `modules/scratch-buffer`
+/// - **Policy (module)**: `ScratchBufferHandler` in `server/modules/scratch-buffer`
 ///
 /// # Example
 ///
@@ -84,5 +84,59 @@ mod tests {
         };
         let action = handler.handle(&ctx);
         assert!(matches!(action, EmptySessionAction::None));
+    }
+
+    #[test]
+    fn test_registry_get_nonexistent() {
+        let registry = SessionHandlerRegistry::new();
+        assert!(registry.get(&SessionHandlerKey::Empty).is_none());
+    }
+
+    #[test]
+    fn test_registry_handler_metadata() {
+        let registry = SessionHandlerRegistry::new();
+        registry.register(SessionHandlerKey::Empty, Arc::new(MockHandler));
+
+        let handler = registry.get(&SessionHandlerKey::Empty).unwrap();
+        assert_eq!(handler.id(), "mock:handler");
+        assert_eq!(handler.description(), "Mock handler for testing");
+        assert_eq!(handler.priority(), 100); // default priority
+    }
+
+    #[test]
+    fn test_registry_replace_handler() {
+        struct AltHandler;
+
+        impl EmptySessionHandler for AltHandler {
+            fn handle(&self, _ctx: &EmptySessionContext) -> EmptySessionAction {
+                EmptySessionAction::CreateBuffer {
+                    name: Some("alt".to_string()),
+                    content: String::new(),
+                }
+            }
+            fn id(&self) -> &'static str {
+                "alt:handler"
+            }
+            fn description(&self) -> &'static str {
+                "Alt handler"
+            }
+        }
+
+        let registry = SessionHandlerRegistry::new();
+        registry.register(SessionHandlerKey::Empty, Arc::new(MockHandler));
+        registry.register(SessionHandlerKey::Empty, Arc::new(AltHandler));
+
+        let handler = registry.get(&SessionHandlerKey::Empty).unwrap();
+        assert_eq!(handler.id(), "alt:handler");
+    }
+
+    #[test]
+    fn test_registry_keys() {
+        let registry = SessionHandlerRegistry::new();
+        registry.register(SessionHandlerKey::Empty, Arc::new(MockHandler));
+
+        let keys = registry.keys();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&SessionHandlerKey::Empty));
     }
 }

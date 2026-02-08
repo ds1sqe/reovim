@@ -9,7 +9,7 @@
 //!
 //! Following "mechanism, not policy":
 //! - Kernel events = notifications (something happened)
-//! - Request events = policy (stay in lib/core or plugins)
+//! - Request events = policy (stay in modules)
 //!
 //! # Priority Constants
 //!

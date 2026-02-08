@@ -651,4 +651,125 @@ mod tests {
         let _ = format!("{tx:?}");
         let _ = format!("{rx:?}");
     }
+
+    // === BoundedReceiver recv_timeout ===
+
+    #[test]
+    fn test_bounded_recv_timeout() {
+        let (tx, rx) = bounded::<i32>(2);
+        let start = std::time::Instant::now();
+        let result = rx.recv_timeout(Duration::from_millis(10));
+        assert!(result.is_err());
+        assert!(start.elapsed() >= Duration::from_millis(10));
+
+        tx.send(42).unwrap();
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).unwrap(), 42);
+    }
+
+    // === BoundedReceiver iter ===
+
+    #[test]
+    fn test_bounded_iter() {
+        let (tx, rx) = bounded::<i32>(5);
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        tx.send(3).unwrap();
+        drop(tx); // close the channel so iter terminates
+
+        let values: Vec<_> = rx.iter().collect();
+        assert_eq!(values, vec![1, 2, 3]);
+    }
+
+    // === BoundedReceiver try_iter ===
+
+    #[test]
+    fn test_bounded_try_iter() {
+        let (tx, rx) = bounded::<i32>(5);
+        tx.send(10).unwrap();
+        tx.send(20).unwrap();
+        let values: Vec<_> = rx.try_iter().collect();
+        assert_eq!(values, vec![10, 20]);
+    }
+
+    // === BoundedSender send disconnected ===
+
+    #[test]
+    fn test_bounded_send_disconnected() {
+        let (tx, rx) = bounded::<i32>(2);
+        drop(rx);
+        assert!(tx.send(42).is_err());
+    }
+
+    // === BoundedReceiver try_recv disconnected ===
+
+    #[test]
+    fn test_bounded_try_recv_disconnected() {
+        let (tx, rx) = bounded::<i32>(2);
+        drop(tx);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    }
+
+    // === Receiver iter ===
+
+    #[test]
+    fn test_receiver_iter() {
+        let (tx, rx) = channel::<i32>();
+        tx.send(1).unwrap();
+        tx.send(2).unwrap();
+        drop(tx); // close channel
+
+        let values: Vec<_> = rx.iter().collect();
+        assert_eq!(values, vec![1, 2]);
+    }
+
+    // === OneshotReceiver recv_timeout ===
+
+    #[test]
+    fn test_oneshot_recv_timeout() {
+        let (_tx, rx) = oneshot::<i32>();
+        let start = std::time::Instant::now();
+        let result = rx.recv_timeout(Duration::from_millis(10));
+        assert!(result.is_err());
+        assert!(start.elapsed() >= Duration::from_millis(10));
+
+        // Now send and verify recv_timeout works
+        let (tx2, rx2) = oneshot::<i32>();
+        tx2.send(42).unwrap();
+        assert_eq!(rx2.recv_timeout(Duration::from_secs(1)).unwrap(), 42);
+    }
+
+    // === OneshotReceiver try_recv disconnected ===
+
+    #[test]
+    fn test_oneshot_try_recv_disconnected() {
+        let (tx, rx) = oneshot::<i32>();
+        drop(tx);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
+    }
+
+    // === Error trait impls ===
+
+    #[test]
+    fn test_send_error_is_std_error() {
+        let err: Box<dyn std::error::Error> = Box::new(SendError(42));
+        assert!(err.to_string().contains("closed"));
+    }
+
+    #[test]
+    fn test_recv_error_is_std_error() {
+        let err: Box<dyn std::error::Error> = Box::new(RecvError);
+        assert!(err.to_string().contains("closed"));
+    }
+
+    #[test]
+    fn test_try_recv_error_is_std_error() {
+        let err: Box<dyn std::error::Error> = Box::new(TryRecvError::Empty);
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_try_send_error_is_std_error() {
+        let err: Box<dyn std::error::Error> = Box::new(TrySendError::Full(42));
+        assert!(err.to_string().contains("full"));
+    }
 }

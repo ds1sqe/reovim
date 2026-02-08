@@ -10,7 +10,7 @@
 //!   - Section types and layout
 //!   - Component trait and context
 //!   - Rendering primitives
-//! - **Policy** (modules/statusline): Defines HOW things behave
+//! - **Policy** (server/modules/statusline): Defines HOW things behave
 //!   - Default configuration
 //!   - Built-in components
 //!   - Theme/color choices

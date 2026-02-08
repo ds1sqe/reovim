@@ -337,4 +337,58 @@ mod tests {
         manager.return_to_panel();
         assert!(!manager.has_overlay_focus());
     }
+
+    #[test]
+    fn test_focus_manager_compositor_accessor() {
+        let manager = test_manager();
+        let comp = manager.compositor();
+        let guard = comp.lock().unwrap();
+        assert_eq!(guard.focused(), Some(WindowId::from_raw(1)));
+    }
+
+    #[test]
+    fn test_focus_overlay_preserves_last_panel_from_different_panels() {
+        let mut manager = test_manager();
+
+        // Focus panel 3, then switch to overlay
+        manager.focus_panel(3);
+        manager.focus_overlay("menu");
+
+        // Return should go to panel 3
+        manager.return_to_panel();
+        assert!(manager.is_panel_focused(3));
+    }
+
+    #[test]
+    fn test_focus_overlay_twice_remembers_first_panel() {
+        let mut manager = test_manager();
+
+        // Start at panel 1, go to overlay A, then overlay B
+        manager.focus_overlay("a");
+        manager.focus_overlay("b");
+
+        // Return should go to panel 1 (the last panel before first overlay)
+        manager.return_to_panel();
+        assert!(manager.is_panel_focused(1));
+    }
+
+    #[test]
+    fn test_focus_panel_after_overlay_updates_last_panel() {
+        let mut manager = test_manager();
+
+        manager.focus_overlay("completion");
+        // Going directly to panel 5 (not via return_to_panel)
+        manager.focus_panel(5);
+        manager.focus_overlay("hover");
+        manager.return_to_panel();
+
+        // Should return to panel 5 (the last panel focused)
+        assert!(manager.is_panel_focused(5));
+    }
+
+    #[test]
+    fn test_u64_to_window_id_conversion() {
+        let wid = TuiFocusManager::<MockCompositor>::u64_to_window_id(42);
+        assert_eq!(wid, WindowId::from_raw(42));
+    }
 }

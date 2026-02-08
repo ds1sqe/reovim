@@ -229,4 +229,108 @@ mod tests {
         let logical = layout.to_logical();
         assert!(logical.is_leaf());
     }
+
+    #[test]
+    fn test_layout_to_logical_multiple() {
+        let mut layout = MockLayout::new();
+        layout.split(SplitDirection::Vertical);
+        layout.split(SplitDirection::Vertical);
+        let logical = layout.to_logical();
+        assert!(!logical.is_leaf());
+        assert_eq!(logical.window_count(), 3);
+    }
+
+    #[test]
+    fn test_layout_apply_layout() {
+        let mut layout = MockLayout::new();
+        let logical = LogicalLayout::vsplit(vec![
+            LogicalLayout::single(10, 10),
+            LogicalLayout::single(20, 20),
+            LogicalLayout::single(30, 30),
+        ]);
+        layout.apply_layout(&logical);
+        assert_eq!(layout.window_count(), 3);
+        assert_eq!(layout.focused, 0);
+        assert_eq!(layout.windows, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn test_layout_apply_layout_tabs() {
+        let mut layout = MockLayout::new();
+        let logical = LogicalLayout::tabs(
+            vec![LogicalLayout::single(10, 10), LogicalLayout::single(20, 20)],
+            0,
+        );
+        layout.apply_layout(&logical);
+        assert_eq!(layout.window_count(), 2);
+    }
+
+    #[test]
+    fn test_layout_focus_direction_left() {
+        let mut layout = MockLayout::new();
+        layout.split(SplitDirection::Vertical);
+
+        // Move to second window
+        assert!(layout.focus_direction(Direction::Right));
+        assert_eq!(layout.focused, 1);
+
+        // Move back left
+        assert!(layout.focus_direction(Direction::Left));
+        assert_eq!(layout.focused, 0);
+
+        // Can't go further left
+        assert!(!layout.focus_direction(Direction::Left));
+        assert_eq!(layout.focused, 0);
+    }
+
+    #[test]
+    fn test_layout_focus_direction_up() {
+        let mut layout = MockLayout::new();
+        layout.split(SplitDirection::Horizontal);
+
+        // Move down
+        assert!(layout.focus_direction(Direction::Down));
+        assert_eq!(layout.focused, 1);
+
+        // Move up
+        assert!(layout.focus_direction(Direction::Up));
+        assert_eq!(layout.focused, 0);
+
+        // Can't go further up
+        assert!(!layout.focus_direction(Direction::Up));
+        assert_eq!(layout.focused, 0);
+    }
+
+    #[test]
+    fn test_layout_close_adjusts_focused() {
+        let mut layout = MockLayout::new();
+        let id2 = layout.split(SplitDirection::Vertical);
+        let id3 = layout.split(SplitDirection::Vertical);
+
+        // Focus the last window
+        assert!(layout.focus(id3));
+        assert_eq!(layout.focused, 2);
+
+        // Close the last window - focused should adjust
+        assert!(layout.close(id3));
+        assert_eq!(layout.focused, 1);
+        assert_eq!(layout.focused_viewport(), id2);
+    }
+
+    #[test]
+    fn test_layout_close_middle_window() {
+        let mut layout = MockLayout::new();
+        let id2 = layout.split(SplitDirection::Vertical);
+        let id3 = layout.split(SplitDirection::Vertical);
+
+        // Focus the last window
+        assert!(layout.focus(id3));
+        assert_eq!(layout.focused, 2);
+
+        // Close the middle window
+        assert!(layout.close(id2));
+        // focused was 2, after removing index 1, the window at index 2 becomes index 1
+        // but focused (2) >= windows.len() (2), so it adjusts to len-1 = 1
+        assert_eq!(layout.window_count(), 2);
+    }
 }

@@ -146,7 +146,183 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::TEXTOBJECTS_MODULE};
+    use {
+        super::*,
+        crate::TEXTOBJECTS_MODULE,
+        reovim_driver_command::ArgValue,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, OperatorPendingState, Session, Window, WindowLayout,
+            api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ModeStack, ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
+                Position, RegisterBank, RwLock, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    // =========================================================================
+    // Test Infrastructure
+    // =========================================================================
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
+        let buffer = Buffer::from_string(content);
+        ctx.buffers.register(buffer)
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_window(buffer_id: BufferId, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(Window::with_buffer(buffer_id));
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn with_custom_window(window: Window, mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(window);
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn empty(mode: ModeId) -> Self {
+            let session = Session::new(ClientId::new(1), mode.clone());
+            let mode_stack = ModeStack::new(mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+            windows.add(Window::new());
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a dyn CommandExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
+    // Command ID Tests
+    // =========================================================================
 
     #[test]
     fn test_inner_paragraph_id() {
@@ -165,5 +341,457 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 2);
+    }
+
+    // =========================================================================
+    // Description Tests
+    // =========================================================================
+
+    #[test]
+    fn test_paragraph_descriptions() {
+        assert_eq!(InnerParagraph.description(), "Inner paragraph text object");
+        assert_eq!(AroundParagraph.description(), "Around paragraph text object");
+    }
+
+    // =========================================================================
+    // Command Args Tests
+    // =========================================================================
+
+    #[test]
+    fn test_paragraph_commands_have_count_arg() {
+        for cmd in all_commands() {
+            let args = cmd.args();
+            assert!(!args.is_empty(), "Command {} should have count arg", cmd.id());
+            assert_eq!(args[0].name, "count");
+            assert_eq!(args[0].kind, ArgKind::Count);
+        }
+    }
+
+    // =========================================================================
+    // Error Handling Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_paragraph_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_paragraph_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_paragraph_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // Paragraph Execution Tests
+    // =========================================================================
+
+    #[test]
+    fn test_inner_paragraph_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_basic() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_paragraph_stores_linewise_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Paragraph text objects store linewise ranges
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_paragraph_stores_linewise_range() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_paragraph_with_cursor_position() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four\nline five");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(3, 0).into(); // on "line four"
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    // =========================================================================
+    // Edge Cases
+    // =========================================================================
+
+    #[test]
+    fn test_empty_buffer_paragraph() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_single_line_paragraph() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "only one line");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_all_blank_lines_paragraph() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "\n\n\n");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_multiple_paragraphs() {
+        let kernel = create_test_context();
+        let buffer_id =
+            setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(3, 0).into(); // on "para two"
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Additional coverage tests
+    // =========================================================================
+
+    #[test]
+    fn test_around_paragraph_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_paragraph_with_count() {
+        let kernel = create_test_context();
+        let buffer_id =
+            setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_with_count() {
+        let kernel = create_test_context();
+        let buffer_id =
+            setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_single_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "only one line");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_all_blank_lines() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "\n\n\n");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_with_cursor_position() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\nline two\n\nline four\nline five");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(3, 0).into(); // on "line four"
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_paragraph_cursor_on_blank_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\n\nline three");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(1, 0).into(); // on blank line
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_around_paragraph_cursor_on_blank_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\n\nline three");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(1, 0).into(); // on blank line
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_paragraph_at_last_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\n\nlast line");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(2, 0).into(); // on last line
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_around_paragraph_at_last_line() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "line one\n\nlast line");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(2, 0).into(); // on last line
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_paragraph_cursor_mid_column() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world\nfoo bar");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 5).into(); // on space in "hello world"
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
     }
 }

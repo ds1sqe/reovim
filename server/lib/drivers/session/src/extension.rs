@@ -513,4 +513,140 @@ mod tests {
         let result = map.get_text_input_sink_by_id(type_id);
         assert!(result.is_none()); // Should return None (default as_text_input_sink returns None)
     }
+
+    // ========================================================================
+    // TextInputSink full flow tests (#482)
+    // ========================================================================
+
+    /// Extension that implements `TextInputSink`
+    #[derive(Debug, Default)]
+    struct SinkExtension {
+        buffer: String,
+    }
+
+    impl SessionExtension for SinkExtension {
+        fn create() -> Self {
+            Self {
+                buffer: String::new(),
+            }
+        }
+
+        fn as_text_input_sink(&mut self) -> Option<&mut dyn TextInputSink> {
+            Some(self)
+        }
+    }
+
+    impl TextInputSink for SinkExtension {
+        fn insert_char(&mut self, ch: char) {
+            self.buffer.push(ch);
+        }
+    }
+
+    #[test]
+    fn test_text_input_sink_via_extension_map() {
+        let mut map = ExtensionMap::new();
+        map.get_or_insert::<SinkExtension>();
+
+        let type_id = std::any::TypeId::of::<SinkExtension>();
+        let sink = map.get_text_input_sink_by_id(type_id);
+        assert!(sink.is_some());
+
+        // Insert characters via sink
+        let sink = sink.unwrap();
+        sink.insert_char('h');
+        sink.insert_char('i');
+
+        // Verify via get
+        let ext = map.get::<SinkExtension>().unwrap();
+        assert_eq!(ext.buffer, "hi");
+    }
+
+    #[test]
+    fn test_extension_default_as_text_input_sink_returns_none() {
+        let mut ext = TestExtension { value: 42 };
+        assert!(SessionExtension::as_text_input_sink(&mut ext).is_none());
+    }
+
+    #[test]
+    fn test_extension_dyn_as_any() {
+        let ext = TestExtension { value: 42 };
+        let boxed: Box<dyn SessionExtensionDyn> = Box::new(ext);
+
+        // Should be able to downcast
+        let any = boxed.as_any();
+        assert!(any.downcast_ref::<TestExtension>().is_some());
+    }
+
+    #[test]
+    fn test_extension_dyn_as_any_mut() {
+        let ext = TestExtension { value: 42 };
+        let mut boxed: Box<dyn SessionExtensionDyn> = Box::new(ext);
+
+        let any = boxed.as_any_mut();
+        let concrete = any.downcast_mut::<TestExtension>().unwrap();
+        concrete.value = 100;
+        assert_eq!(concrete.value, 100);
+    }
+
+    #[test]
+    fn test_extension_dyn_as_text_input_sink_none() {
+        let ext = TestExtension { value: 42 };
+        let mut boxed: Box<dyn SessionExtensionDyn> = Box::new(ext);
+
+        assert!(boxed.as_text_input_sink().is_none());
+    }
+
+    #[test]
+    fn test_extension_dyn_as_text_input_sink_some() {
+        let ext = SinkExtension::create();
+        let mut boxed: Box<dyn SessionExtensionDyn> = Box::new(ext);
+
+        let sink = boxed.as_text_input_sink();
+        assert!(sink.is_some());
+    }
+
+    #[test]
+    fn test_extension_map_default() {
+        let map = ExtensionMap::default();
+        assert!(map.is_empty());
+        assert_eq!(map.len(), 0);
+    }
+
+    #[test]
+    fn test_get_mut_nonexistent() {
+        let mut map = ExtensionMap::new();
+        assert!(map.get_mut::<TestExtension>().is_none());
+    }
+
+    #[test]
+    fn test_remove_nonexistent() {
+        let mut map = ExtensionMap::new();
+        assert!(!map.remove::<TestExtension>());
+    }
+
+    #[test]
+    fn test_extension_independence() {
+        // Verify different extension types don't interfere
+        let mut map = ExtensionMap::new();
+
+        map.get_or_insert::<TestExtension>().value = 10;
+        map.get_or_insert::<AnotherExtension>().name = "test".to_string();
+
+        // Removing one doesn't affect the other
+        assert!(map.remove::<TestExtension>());
+        assert!(map.contains::<AnotherExtension>());
+        assert_eq!(map.get::<AnotherExtension>().unwrap().name, "test");
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn test_clear_then_reinsert() {
+        let mut map = ExtensionMap::new();
+        map.get_or_insert::<TestExtension>().value = 99;
+        map.clear();
+
+        // After clear, get_or_insert should create fresh
+        let ext = map.get_or_insert::<TestExtension>();
+        assert_eq!(ext.value, 42); // Default from create()
+    }
 }

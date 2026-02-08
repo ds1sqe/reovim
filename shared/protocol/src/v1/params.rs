@@ -260,4 +260,133 @@ mod tests {
         assert!(json.contains("\"number\""));
         assert!(!json.contains("\"window_id\""));
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_input_keys_params_deserialization() {
+        let json = r#"{"keys":"dd"}"#;
+        let params: InputKeysParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.keys, "dd");
+    }
+
+    #[test]
+    fn test_command_execute_params_default_args() {
+        let json = r#"{"cmd":"w"}"#;
+        let params: CommandExecuteParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.cmd, "w");
+        assert!(params.args.is_empty());
+    }
+
+    #[test]
+    fn test_command_execute_params_with_args() {
+        let params = CommandExecuteParams {
+            cmd: "e".to_string(),
+            args: vec!["/tmp/test.txt".to_string()],
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"cmd\":\"e\""));
+        assert!(json.contains("\"/tmp/test.txt\""));
+    }
+
+    #[test]
+    fn test_state_cursor_params_with_buffer() {
+        let params = StateCursorParams {
+            buffer_id: Some(42),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"buffer_id\":42"));
+    }
+
+    #[test]
+    fn test_state_selection_params_default() {
+        let params = StateSelectionParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_state_selection_params_with_buffer() {
+        let params = StateSelectionParams { buffer_id: Some(5) };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"buffer_id\":5"));
+    }
+
+    #[test]
+    fn test_state_screen_content_params_default() {
+        let params = StateScreenContentParams::default();
+        // Default format is PlainText
+        assert_eq!(params.format, ScreenFormat::PlainText);
+    }
+
+    #[test]
+    fn test_buffer_get_content_params_default() {
+        let params = BufferGetContentParams::default();
+        let json = serde_json::to_string(&params).unwrap();
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_buffer_get_content_params_with_id() {
+        let params = BufferGetContentParams { buffer_id: Some(3) };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"buffer_id\":3"));
+    }
+
+    #[test]
+    fn test_buffer_set_content_params_without_buffer_id() {
+        let params = BufferSetContentParams {
+            content: "new content".to_string(),
+            buffer_id: None,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(!json.contains("\"buffer_id\""));
+        assert!(json.contains("\"content\":\"new content\""));
+    }
+
+    #[test]
+    fn test_buffer_open_file_params_roundtrip() {
+        let params = BufferOpenFileParams {
+            path: "/home/user/file.rs".to_string(),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        let decoded: BufferOpenFileParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.path, "/home/user/file.rs");
+    }
+
+    #[test]
+    fn test_editor_resize_params_roundtrip() {
+        let params = EditorResizeParams {
+            width: 200,
+            height: 50,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        let decoded: EditorResizeParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.width, 200);
+        assert_eq!(decoded.height, 50);
+    }
+
+    #[test]
+    fn test_state_window_content_params_roundtrip() {
+        use crate::v1::types::WireWindowId;
+        let params = StateWindowContentParams {
+            window_id: WireWindowId(5),
+            format: ScreenFormat::RawAnsi,
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        let decoded: StateWindowContentParams = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.window_id, WireWindowId(5));
+        assert_eq!(decoded.format, ScreenFormat::RawAnsi);
+    }
+
+    #[test]
+    fn test_state_options_params_with_both() {
+        let params = StateOptionsParams {
+            window_id: Some(1),
+            names: Some(vec!["number".to_string()]),
+        };
+        let json = serde_json::to_string(&params).unwrap();
+        assert!(json.contains("\"window_id\":1"));
+        assert!(json.contains("\"names\""));
+    }
 }

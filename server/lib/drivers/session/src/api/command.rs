@@ -78,4 +78,44 @@ mod tests {
         fn _accepts_ref(_: &dyn CommandExecutor) {}
         fn _accepts_box(_: Box<dyn CommandExecutor>) {}
     }
+
+    #[test]
+    fn test_command_api_object_safe() {
+        fn _accepts_ref(_: &dyn CommandApi) {}
+        fn _accepts_box(_: Box<dyn CommandApi>) {}
+    }
+
+    #[test]
+    fn test_command_executor_impl() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct TestExecutor;
+
+        impl CommandExecutor for TestExecutor {
+            fn execute(
+                &self,
+                cmd: &CommandId,
+                _ctx: &CommandContext,
+                _kernel: &KernelContext,
+            ) -> Option<CommandResult> {
+                if cmd.name() == "known" {
+                    Some(CommandResult::Success)
+                } else {
+                    None
+                }
+            }
+        }
+
+        let executor = TestExecutor;
+        let kernel = KernelContext::default();
+
+        let known = CommandId::new(ModuleId::new("test"), "known");
+        let unknown = CommandId::new(ModuleId::new("test"), "unknown");
+
+        assert_eq!(
+            executor.execute(&known, &CommandContext::new(), &kernel),
+            Some(CommandResult::Success)
+        );
+        assert_eq!(executor.execute(&unknown, &CommandContext::new(), &kernel), None);
+    }
 }

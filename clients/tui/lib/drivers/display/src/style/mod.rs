@@ -9,7 +9,7 @@
 //!
 //! - **Mechanism** (this module): Defines `ThemeProvider`, `IconProvider` traits
 //!   and provides `ThemeManager`, `IconRegistry` implementations.
-//! - **Policy** (runner/plugins): Runner decides which theme to use, plugins
+//! - **Policy** (server/modules): Server decides which theme to use, modules
 //!   provide custom icon mappings.
 //!
 //! # Theme System

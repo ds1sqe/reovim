@@ -425,4 +425,90 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_mapper_default() {
+        let mapper = CaptureMapper::default();
+        assert!(!mapper.is_empty());
+        assert!(mapper.len() >= 120);
+    }
+
+    #[test]
+    fn test_mapper_not_empty() {
+        let mapper = CaptureMapper::new();
+        assert!(!mapper.is_empty());
+    }
+
+    #[test]
+    fn test_mapper_diagnostics() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("error"), HighlightGroup::Error);
+        assert_eq!(mapper.map("warning"), HighlightGroup::Warning);
+        assert_eq!(mapper.map("info"), HighlightGroup::Info);
+        assert_eq!(mapper.map("hint"), HighlightGroup::Hint);
+        assert_eq!(mapper.map("diagnostic.error"), HighlightGroup::Error);
+        assert_eq!(mapper.map("diagnostic.warning"), HighlightGroup::Warning);
+    }
+
+    #[test]
+    fn test_mapper_diff() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("diff.plus"), HighlightGroup::String);
+        assert_eq!(mapper.map("diff.minus"), HighlightGroup::Error);
+        assert_eq!(mapper.map("diff.delta"), HighlightGroup::Warning);
+    }
+
+    #[test]
+    fn test_mapper_variables() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("variable"), HighlightGroup::Variable);
+        assert_eq!(mapper.map("variable.builtin"), HighlightGroup::VariableBuiltin);
+        assert_eq!(mapper.map("variable.parameter"), HighlightGroup::Parameter);
+        assert_eq!(mapper.map("variable.member"), HighlightGroup::Field);
+        assert_eq!(mapper.map("property"), HighlightGroup::Field);
+        assert_eq!(mapper.map("field"), HighlightGroup::Field);
+    }
+
+    #[test]
+    fn test_mapper_operators() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("operator"), HighlightGroup::Operator);
+        assert_eq!(mapper.map("operator.binary"), HighlightGroup::Operator);
+        assert_eq!(mapper.map("operator.unary"), HighlightGroup::Operator);
+        assert_eq!(mapper.map("operator.logical"), HighlightGroup::Operator);
+        assert_eq!(mapper.map("operator.deref"), HighlightGroup::Operator);
+    }
+
+    #[test]
+    fn test_mapper_functions() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("function"), HighlightGroup::Function);
+        assert_eq!(mapper.map("function.builtin"), HighlightGroup::FunctionBuiltin);
+        assert_eq!(mapper.map("function.call"), HighlightGroup::Function);
+        assert_eq!(mapper.map("function.method"), HighlightGroup::Method);
+        assert_eq!(mapper.map("method"), HighlightGroup::Method);
+        assert_eq!(mapper.map("method.call"), HighlightGroup::Method);
+    }
+
+    #[test]
+    fn test_mapper_tags() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("tag"), HighlightGroup::Tag);
+        assert_eq!(mapper.map("tag.builtin"), HighlightGroup::Tag);
+        assert_eq!(mapper.map("tag.attribute"), HighlightGroup::Attribute);
+        assert_eq!(mapper.map("tag.delimiter"), HighlightGroup::Punctuation);
+    }
+
+    #[test]
+    fn test_mapper_deep_fallback() {
+        let mapper = CaptureMapper::new();
+        // Very deep nesting should still fall back correctly
+        assert_eq!(mapper.map("keyword.storage.modifier.mut.extra.deep"), HighlightGroup::Keyword);
+    }
+
+    #[test]
+    fn test_mapper_no_dots_unknown() {
+        let mapper = CaptureMapper::new();
+        assert_eq!(mapper.map("xyzunknown"), HighlightGroup::Custom);
+    }
 }

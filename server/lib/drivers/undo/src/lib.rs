@@ -9,8 +9,8 @@
 //! # Architecture
 //!
 //! ```text
-//! lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
-//! modules/undo/         → UndoRegistry implementation (POLICY)
+//! server/lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
+//! server/modules/undo/         → UndoRegistry implementation (POLICY)
 //! ```
 
 mod error;

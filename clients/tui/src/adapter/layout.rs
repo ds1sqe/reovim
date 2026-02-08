@@ -387,4 +387,106 @@ mod tests {
             reovim_driver_display::SplitDirection::Vertical
         ));
     }
+
+    #[test]
+    fn test_layout_adapter_compositor_accessor() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let adapter = TuiLayoutAdapter::new(compositor.clone(), LayerId::new(0));
+
+        let comp_ref = adapter.compositor();
+        assert_eq!(Arc::strong_count(&compositor), 3);
+        drop(comp_ref);
+    }
+
+    #[test]
+    fn test_layout_adapter_set_active_layer() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+        assert_eq!(adapter.active_layer(), LayerId::new(0));
+
+        adapter.set_active_layer(LayerId::new(5));
+        assert_eq!(adapter.active_layer(), LayerId::new(5));
+    }
+
+    #[test]
+    fn test_layout_adapter_split_no_layer() {
+        // MockCompositor returns None for layer_compositor_mut, so split should return 0
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+
+        let result = adapter.split(SplitDirection::Horizontal);
+        assert_eq!(result, 0); // No layer compositor -> failure
+    }
+
+    #[test]
+    fn test_layout_adapter_close_no_layer() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+
+        let result = adapter.close(1);
+        assert!(!result); // No layer compositor -> failure
+    }
+
+    #[test]
+    fn test_layout_adapter_focus_direction_no_layer() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+
+        let result = adapter.focus_direction(Direction::Left);
+        assert!(!result); // No layer compositor -> failure
+    }
+
+    #[test]
+    fn test_layout_adapter_focus_returns_true() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor.clone(), LayerId::new(0));
+
+        // Focus should always return true
+        assert!(adapter.focus(99));
+        // The compositor might not track the window, but focus() unconditionally returns true
+    }
+
+    #[test]
+    fn test_layout_adapter_apply_layout_noop() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+
+        let layout = LogicalLayout::single(1, 1);
+        // apply_layout is a no-op but should not panic
+        adapter.apply_layout(&layout);
+    }
+
+    #[test]
+    fn test_layout_adapter_to_logical_no_focus() {
+        let compositor = Arc::new(Mutex::new(MockCompositor {
+            windows: vec![],
+            focused: None,
+            next_id: 1,
+        }));
+        let adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
+
+        let logical = adapter.to_logical();
+        // With no focus, should return single(0, 0)
+        assert!(logical.is_leaf());
+    }
+
+    #[test]
+    fn test_window_id_conversion_zero() {
+        let id = WindowId::from_raw(0);
+        let u64_id = TuiLayoutAdapter::<MockCompositor>::window_id_to_u64(id);
+        assert_eq!(u64_id, 0);
+
+        let back = TuiLayoutAdapter::<MockCompositor>::u64_to_window_id(0);
+        assert_eq!(back, id);
+    }
+
+    #[test]
+    fn test_window_id_conversion_large() {
+        let id = WindowId::from_raw(999_999);
+        let u64_id = TuiLayoutAdapter::<MockCompositor>::window_id_to_u64(id);
+        assert_eq!(u64_id, 999_999);
+
+        let back = TuiLayoutAdapter::<MockCompositor>::u64_to_window_id(u64_id);
+        assert_eq!(back, id);
+    }
 }

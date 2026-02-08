@@ -1104,4 +1104,313 @@ mod tests {
         // Exact limit (16 chars)
         assert_eq!(label_text("exactly16chars!!"), " exactly16chars!! ");
     }
+
+    #[test]
+    fn test_mode_style_command() {
+        let style = mode_style("COMMAND");
+        assert_eq!(style.bg, Some(Color::Yellow));
+        assert_eq!(style.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_mode_style_cmdline() {
+        let style = mode_style("CMDLINE");
+        assert_eq!(style.bg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_mode_style_replace() {
+        let style = mode_style("REPLACE");
+        assert_eq!(style.bg, Some(Color::Red));
+        assert_eq!(style.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_mode_style_case_insensitive() {
+        // mode_style lowercases before checking
+        let insert = mode_style("Insert");
+        assert_eq!(insert.bg, Some(Color::Green));
+
+        let visual = mode_style("Visual Line");
+        assert_eq!(visual.bg, Some(Color::Magenta));
+    }
+
+    #[test]
+    fn test_render_config_default() {
+        let config = RenderConfig::default();
+        assert!(!config.show_line_numbers);
+        assert!(!config.render_self_cursor);
+        assert_eq!(config.gutter_width, 0);
+        assert_eq!(config.line_number_mode, LineNumberMode::None);
+    }
+
+    #[test]
+    fn test_render_config_debug() {
+        let config = RenderConfig::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("RenderConfig"));
+    }
+
+    #[test]
+    fn test_render_frame_with_buffer_content() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Add buffer content
+        state
+            .buffer_cache
+            .insert(100, vec!["hello world".to_string(), "second line".to_string()]);
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // First line should contain 'h' at position (0, 0)
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'h');
+
+        // Second line should contain 's' at position (0, 1)
+        let cell = fb.get(0, 1).unwrap();
+        assert_eq!(cell.char, 's');
+    }
+
+    #[test]
+    fn test_render_frame_tilde_for_empty_lines() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Buffer with just one line - rest should show '~'
+        state.buffer_cache.insert(100, vec!["hello".to_string()]);
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Row 1 should have tilde (line beyond buffer content)
+        let cell = fb.get(0, 1).unwrap();
+        assert_eq!(cell.char, '~');
+        assert_eq!(cell.style.fg, Some(Color::DarkGrey));
+    }
+
+    #[test]
+    fn test_render_frame_with_line_numbers_absolute() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.buffer_cache.insert(
+            100,
+            vec![
+                "line one".to_string(),
+                "line two".to_string(),
+                "line three".to_string(),
+            ],
+        );
+
+        let config = RenderConfig {
+            show_line_numbers: true,
+            line_number_mode: LineNumberMode::Absolute,
+            gutter_width: 4,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config);
+
+        // Content should be offset by gutter_width
+        let cell = fb.get(4, 0).unwrap();
+        assert_eq!(cell.char, 'l');
+    }
+
+    #[test]
+    fn test_render_frame_with_line_numbers_relative() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.update_local_cursor(1, 1, 0); // Cursor on line 1
+        state.buffer_cache.insert(
+            100,
+            vec![
+                "first".to_string(),
+                "second".to_string(),
+                "third".to_string(),
+            ],
+        );
+
+        let config = RenderConfig {
+            show_line_numbers: true,
+            line_number_mode: LineNumberMode::Relative,
+            gutter_width: 4,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config);
+
+        // Should render without panicking
+        let cell = fb.get(4, 0).unwrap();
+        assert_eq!(cell.char, 'f');
+    }
+
+    #[test]
+    fn test_render_frame_with_line_numbers_hybrid() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.update_local_cursor(1, 2, 0);
+        state.buffer_cache.insert(
+            100,
+            vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "d".to_string(),
+            ],
+        );
+
+        let config = RenderConfig {
+            show_line_numbers: true,
+            line_number_mode: LineNumberMode::Hybrid,
+            gutter_width: 4,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config);
+
+        // Content at gutter offset
+        let cell = fb.get(4, 0).unwrap();
+        assert_eq!(cell.char, 'a');
+    }
+
+    #[test]
+    fn test_render_self_cursor_headless() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.update_local_cursor(1, 2, 5);
+        state
+            .buffer_cache
+            .insert(100, vec!["aaaa".to_string(), "bbbb".to_string(), "cccccc".to_string()]);
+
+        let config = RenderConfig {
+            render_self_cursor: true,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config);
+
+        // Self cursor at (5, 2) should have inverse video style
+        let cell = fb.get(5, 2).unwrap();
+        assert_eq!(cell.style.bg, Some(Color::White));
+        assert_eq!(cell.style.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_render_statusline_with_cursor() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.mode_display = "NORMAL".to_string();
+        state.focused_window_id = 1;
+        state.update_local_cursor(1, 3, 7);
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Statusline at row 9 (height - 1)
+        // Should contain mode indicator
+        let cell = fb.get(1, 9).unwrap();
+        assert_eq!(cell.char, 'N'); // " NORMAL " starts at x=0 with space, 'N' at x=1
+    }
+
+    #[test]
+    fn test_render_statusline_without_cursor() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.mode_display = "INSERT".to_string();
+        // No cursor set - should show "?:?"
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Statusline should be rendered (row 9)
+        let last_row = fb.row(9).unwrap();
+        assert!(last_row.iter().any(|c| c.char != ' '));
+    }
+
+    #[test]
+    fn test_render_frame_no_windows() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let state = TuiCoreState::new(1);
+        let config = RenderConfig::default();
+
+        // Should not panic with no windows
+        render_frame(&mut fb, &state, &config);
+    }
+
+    #[test]
+    fn test_render_self_cursor_no_cursor_data() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        // No cursor data set
+
+        let config = RenderConfig {
+            render_self_cursor: true,
+            ..RenderConfig::default()
+        };
+
+        // Should not panic (skips cursor rendering when no data)
+        render_frame(&mut fb, &state, &config);
+    }
+
+    #[test]
+    fn test_cbf8_palette_size() {
+        assert_eq!(CBF8_PALETTE.len(), 8);
+        assert_eq!(CBF8_DIMMED.len(), 8);
+    }
+
+    #[test]
+    fn test_client_color_all_palette() {
+        // All 8 palette entries should be distinct
+        let colors: Vec<Color> = (0..8).map(client_color).collect();
+        for i in 0..8 {
+            for j in (i + 1)..8 {
+                assert_ne!(colors[i], colors[j], "Colors at {i} and {j} should differ");
+            }
+        }
+    }
+
+    #[test]
+    fn test_dimmed_client_color_all_palette() {
+        let colors: Vec<Color> = (0..8).map(dimmed_client_color).collect();
+        for i in 0..8 {
+            for j in (i + 1)..8 {
+                assert_ne!(colors[i], colors[j], "Dimmed colors at {i} and {j} should differ");
+            }
+        }
+    }
+
+    #[test]
+    fn test_render_line_content_truncation() {
+        let mut fb = FrameBuffer::new(10, 5);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Line longer than screen width
+        state
+            .buffer_cache
+            .insert(100, vec!["abcdefghijklmnop".to_string()]);
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // First character should be 'a'
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'a');
+
+        // Last visible column (9) should be 'j' (index 9 of "abcdefghij...")
+        let cell = fb.get(9, 0).unwrap();
+        assert_eq!(cell.char, 'j');
+    }
 }

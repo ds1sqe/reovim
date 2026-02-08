@@ -1966,6 +1966,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-search",
  "reovim-driver-undo",
+ "reovim-driver-vfs",
  "reovim-kernel",
 ]
 
@@ -2072,6 +2073,7 @@ dependencies = [
  "reovim-arch",
  "reovim-driver-command",
  "reovim-driver-display",
+ "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "tracing",
@@ -2246,6 +2248,7 @@ dependencies = [
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-undo",
+ "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",
@@ -2314,6 +2317,7 @@ dependencies = [
  "tonic-web",
  "tower-http 0.6.8",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -99,8 +99,8 @@ pub trait Event: Send + Sync + Debug + 'static {
 /// # Design Note
 ///
 /// The kernel uses `&str` for target identifiers (mechanism), not `ComponentId`
-/// (which is a policy-level type in lib/core). Modules convert their
-/// `ComponentId` to `&str` when interacting with the kernel API.
+/// (which is a policy-level type). Modules convert their identifiers to `&str`
+/// when interacting with the kernel API.
 ///
 /// # Example
 ///
@@ -679,5 +679,63 @@ mod tests {
     fn test_dyn_event_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<DynEvent>();
+    }
+
+    // === Coverage: CacheUpdated event ===
+
+    #[test]
+    fn test_cache_updated_priority() {
+        let event = CacheUpdated {
+            buffer_id: crate::mm::BufferId::new(),
+            kind: CacheKind::Highlights,
+        };
+        assert_eq!(event.priority(), 50);
+    }
+
+    #[test]
+    fn test_cache_updated_clone_debug() {
+        let event = CacheUpdated {
+            buffer_id: crate::mm::BufferId::new(),
+            kind: CacheKind::Decorations,
+        };
+        let cloned = event.clone();
+        assert_eq!(cloned.kind, CacheKind::Decorations);
+        let debug = format!("{event:?}");
+        assert!(debug.contains("CacheUpdated"));
+    }
+
+    // === Coverage: CacheKind all variants ===
+
+    #[test]
+    fn test_cache_kind_all_variants() {
+        assert_eq!(CacheKind::Highlights, CacheKind::Highlights);
+        assert_ne!(CacheKind::Highlights, CacheKind::Decorations);
+        assert_ne!(CacheKind::Highlights, CacheKind::Both);
+
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(CacheKind::Highlights);
+        set.insert(CacheKind::Decorations);
+        set.insert(CacheKind::Both);
+        assert_eq!(set.len(), 3);
+    }
+
+    // === Coverage: into_inner error preserves event ===
+
+    #[test]
+    fn test_dyn_event_into_inner_error_preserves() {
+        let event = DynEvent::new(TestEvent { value: 42 });
+        let result = event.into_inner::<OtherEvent>();
+        assert!(result.is_err());
+        let original = result.unwrap_err();
+        assert!(original.is::<TestEvent>());
+    }
+
+    // === Coverage: take_scope when no scope set ===
+
+    #[test]
+    fn test_dyn_event_take_scope_none() {
+        let mut event = DynEvent::new(TestEvent { value: 1 });
+        assert!(event.take_scope().is_none());
     }
 }

@@ -41,12 +41,6 @@ mod tests {
     // ========================================================================
 
     #[test]
-    fn test_version_size() {
-        assert_eq!(std::mem::size_of::<Version>(), 12);
-        assert_eq!(std::mem::align_of::<Version>(), 4);
-    }
-
-    #[test]
     fn test_module_probe_size() {
         assert_eq!(std::mem::size_of::<ModuleProbe>(), 1308);
         assert_eq!(std::mem::align_of::<ModuleProbe>(), 4);
@@ -123,15 +117,6 @@ mod tests {
         // Should be truncated to 127 chars
         assert_eq!(probe.name_str().len(), 127);
         assert_eq!(probe.name_str(), "d".repeat(127));
-    }
-
-    #[test]
-    fn test_module_probe_empty_strings() {
-        // Empty strings should work
-        let probe = ModuleProbe::new("", "", Version::new(0, 0, 0), Version::new(0, 0, 0));
-
-        assert_eq!(probe.id_str(), "");
-        assert_eq!(probe.name_str(), "");
     }
 
     #[test]

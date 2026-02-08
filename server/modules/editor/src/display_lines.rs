@@ -891,4 +891,102 @@ mod tests {
         assert_eq!(display_line_count_unicode(line, 10, 4), 1); // 10 / 10 = 1
         assert_eq!(display_line_count_unicode(line, 4, 4), 3); // 10 / 4 = 3
     }
+
+    // ========================================================================
+    // Edge case tests
+    // ========================================================================
+
+    #[test]
+    fn test_char_display_width_tab() {
+        // Tab is reported as 1 by char_display_width (contextual width
+        // should use char_display_width_at instead)
+        assert_eq!(char_display_width('\t'), 1);
+    }
+
+    #[test]
+    fn test_char_display_width_at_tab() {
+        // Tab width depends on position
+        assert_eq!(char_display_width_at('\t', 0, 4), 4);
+        assert_eq!(char_display_width_at('\t', 1, 4), 3);
+        assert_eq!(char_display_width_at('\t', 2, 4), 2);
+        assert_eq!(char_display_width_at('\t', 3, 4), 1);
+        assert_eq!(char_display_width_at('\t', 4, 4), 4);
+        // Zero tabstop treated as 1
+        assert_eq!(char_display_width_at('\t', 0, 0), 1);
+    }
+
+    #[test]
+    fn test_display_line_count_with_tabs_zero_width() {
+        // Terminal width 0 always returns 1
+        assert_eq!(display_line_count_with_tabs("hello\tworld", 0, 4), 1);
+    }
+
+    #[test]
+    fn test_display_line_count_with_tabs_empty_line() {
+        // Empty line returns 1 (display_width_with_tabs returns 0, so width == 0 branch)
+        assert_eq!(display_line_count_with_tabs("", 80, 4), 1);
+    }
+
+    #[test]
+    fn test_display_position_with_tabs_zero_width() {
+        // Terminal width 0: returns (0, display_col)
+        let line = "a\tb";
+        let (dl, dc) = display_position_with_tabs(line, 2, 0, 4);
+        assert_eq!(dl, 0);
+        assert_eq!(dc, 4); // 'a' + tab(3) = 4
+    }
+
+    #[test]
+    fn test_display_line_count_unicode_zero_width() {
+        // Terminal width 0 always returns 1
+        assert_eq!(display_line_count_unicode("中文", 0, 4), 1);
+    }
+
+    #[test]
+    fn test_display_line_count_unicode_empty() {
+        // Empty line returns 1
+        assert_eq!(display_line_count_unicode("", 80, 4), 1);
+    }
+
+    #[test]
+    fn test_display_position_unicode_zero_width() {
+        // Terminal width 0: returns (0, display_col)
+        let line = "a中b";
+        let (dl, dc) = display_position_unicode(line, 2, 0, 4);
+        assert_eq!(dl, 0);
+        assert_eq!(dc, 3); // 'a'(1) + '中'(2) = 3
+    }
+
+    #[test]
+    fn test_display_width_unicode_empty() {
+        assert_eq!(display_width_unicode("", 4), 0);
+    }
+
+    #[test]
+    fn test_buffer_col_from_display_col_past_end() {
+        // Target display col beyond line length
+        let line = "abc";
+        assert_eq!(buffer_col_from_display_col(line, 100, 4), 3);
+    }
+
+    #[test]
+    fn test_buffer_col_from_display_col_unicode_past_end() {
+        // Target display col beyond line length
+        let line = "a中";
+        assert_eq!(buffer_col_from_display_col_unicode(line, 100, 4), 2);
+    }
+
+    #[test]
+    fn test_display_col_from_buffer_col_past_end() {
+        // Buffer col beyond line length
+        let line = "abc";
+        assert_eq!(display_col_from_buffer_col(line, 100, 4), 3);
+    }
+
+    #[test]
+    fn test_display_col_from_buffer_col_unicode_past_end() {
+        // Buffer col beyond line length
+        let line = "a中";
+        assert_eq!(display_col_from_buffer_col_unicode(line, 100, 4), 3);
+    }
 }

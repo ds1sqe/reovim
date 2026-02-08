@@ -962,4 +962,192 @@ mod tests {
         assert!(tasks.is_empty());
         assert_eq!(wheel.pending_count(), 0);
     }
+
+    // === is_pending ===
+
+    #[test]
+    fn test_timer_wheel_is_pending() {
+        let wheel = Arc::new(TimerWheel::new());
+
+        let handle = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});
+        assert!(wheel.is_pending(handle.id()));
+
+        // Cancel the timer
+        wheel.cancel(handle.id());
+        assert!(!wheel.is_pending(handle.id()));
+    }
+
+    #[test]
+    fn test_timer_wheel_is_pending_nonexistent() {
+        let wheel = Arc::new(TimerWheel::new());
+        assert!(!wheel.is_pending(TimerId::from_raw(99999)));
+    }
+
+    // === Debug impls ===
+
+    #[test]
+    fn test_timer_wheel_debug() {
+        let wheel = Arc::new(TimerWheel::new());
+        let debug = format!("{wheel:?}");
+        assert!(debug.contains("TimerWheel"));
+        assert!(debug.contains("pending"));
+        assert!(debug.contains("max_timers"));
+    }
+
+    #[test]
+    fn test_timer_wheel_default() {
+        let wheel = TimerWheel::default();
+        assert_eq!(wheel.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_timer_entry_debug() {
+        let entry = TimerEntry {
+            id: TimerId::from_raw(42),
+            deadline: Instant::now(),
+            interval: Some(Duration::from_millis(100)),
+            priority: Priority::HIGH,
+            work: TimerWork::Periodic(Arc::new(|| {})),
+            cancelled: AtomicBool::new(false),
+        };
+        let debug = format!("{entry:?}");
+        assert!(debug.contains("TimerEntry"));
+        assert!(debug.contains("42"));
+    }
+
+    // === handle drop with live wheel ===
+
+    #[test]
+    fn test_timer_handle_drop_with_dead_wheel() {
+        let id;
+        {
+            let wheel = Arc::new(TimerWheel::new());
+            let handle = wheel.schedule_oneshot(Duration::from_mins(1), Priority::NORMAL, || {});
+            id = handle.id();
+            // wheel is dropped here while handle still has weak ref
+            drop(wheel);
+            // handle drops here - should not panic even though wheel is gone
+        }
+        let _ = id; // Suppress unused
+    }
+
+    // === timer not yet expired ===
+
+    #[test]
+    fn test_timer_not_expired_on_tick() {
+        let wheel = Arc::new(TimerWheel::new());
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+
+        let handle = wheel.schedule_oneshot(Duration::from_mins(1), Priority::NORMAL, move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
+        let _ = handle.detach();
+
+        // Tick with current time - timer hasn't expired
+        let tasks = wheel.tick(Instant::now());
+        assert!(tasks.is_empty());
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+        assert_eq!(wheel.pending_count(), 1);
+    }
+
+    // === Coverage: TimerConfig Clone/Debug ===
+
+    #[test]
+    fn test_timer_config_clone() {
+        let config = TimerConfig {
+            delay: Duration::from_millis(50),
+            interval: Some(Duration::from_millis(100)),
+            priority: Priority::HIGH,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.delay, Duration::from_millis(50));
+        assert_eq!(cloned.interval, Some(Duration::from_millis(100)));
+        assert_eq!(cloned.priority, Priority::HIGH);
+    }
+
+    #[test]
+    fn test_timer_config_debug() {
+        let config = TimerConfig::default();
+        let debug = format!("{config:?}");
+        assert!(debug.contains("TimerConfig"));
+        assert!(debug.contains("delay"));
+        assert!(debug.contains("interval"));
+    }
+
+    // === Coverage: TimerHandle debug with alive wheel ===
+
+    #[test]
+    fn test_timer_handle_debug_with_alive_wheel() {
+        let wheel = Arc::new(TimerWheel::new());
+        let handle = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});
+        let debug = format!("{handle:?}");
+        assert!(debug.contains("TimerHandle"));
+        assert!(debug.contains("wheel_alive: true"));
+        assert!(debug.contains("failed: false"));
+    }
+
+    // === Coverage: tick with already-taken OneShot (work is None) ===
+
+    #[test]
+    fn test_timer_tick_oneshot_already_taken() {
+        let wheel = Arc::new(TimerWheel::new());
+
+        // Schedule a one-shot that fires immediately
+        let handle = wheel.schedule_oneshot(Duration::ZERO, Priority::NORMAL, || {});
+        let _ = handle.detach();
+
+        // First tick takes the work
+        let tasks = wheel.tick(Instant::now() + Duration::from_millis(1));
+        assert_eq!(tasks.len(), 1);
+
+        // Timer should be removed after first tick
+        assert_eq!(wheel.pending_count(), 0);
+    }
+
+    // === Coverage: periodic timer scheduled with different interval ===
+
+    #[test]
+    fn test_timer_periodic_with_nonzero_interval() {
+        let wheel = Arc::new(TimerWheel::new());
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+
+        let handle =
+            wheel.schedule_periodic(Duration::from_millis(100), Priority::HIGH, move || {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            });
+        let _ = handle.detach();
+
+        // Schedule fires at now + 100ms, tick at now + 200ms fires it
+        let mut tasks = wheel.tick(Instant::now() + Duration::from_millis(200));
+        assert_eq!(tasks.len(), 1);
+        let _ = tasks[0].execute();
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+        // Should still be pending after periodic fire
+        assert_eq!(wheel.pending_count(), 1);
+    }
+
+    // === Coverage: max_timers exceeded for periodic timer ===
+
+    #[test]
+    fn test_timer_max_timers_exceeded_periodic() {
+        let wheel = Arc::new(TimerWheel::with_max_timers(1));
+
+        let _h1 = wheel.schedule_oneshot(Duration::from_secs(1), Priority::NORMAL, || {});
+
+        // Second timer (periodic) should fail
+        let h2 = wheel.schedule_periodic(Duration::from_secs(1), Priority::NORMAL, || {});
+        assert!(h2.is_failed());
+        assert_eq!(wheel.dropped_count(), 1);
+    }
+
+    // === Coverage: cancel nonexistent timer ===
+
+    #[test]
+    fn test_timer_cancel_nonexistent() {
+        let wheel = Arc::new(TimerWheel::new());
+        assert!(!wheel.cancel(TimerId::from_raw(99999)));
+    }
 }

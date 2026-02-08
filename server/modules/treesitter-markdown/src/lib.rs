@@ -223,6 +223,30 @@ mod tests {
     }
 
     #[test]
+    fn test_factory_default() {
+        let factory = MarkdownSyntaxFactory::default();
+        assert!(factory.supports("markdown"));
+        assert!(!factory.supports("rust"));
+    }
+
+    #[test]
+    fn test_factory_supports_negative_cases() {
+        let factory = MarkdownSyntaxFactory::new();
+        assert!(!factory.supports(""));
+        assert!(!factory.supports("Markdown"));
+        assert!(!factory.supports("MARKDOWN"));
+        assert!(!factory.supports("md"));
+        assert!(!factory.supports("html"));
+    }
+
+    #[test]
+    fn test_factory_capture_mapper_accessor() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mapper = factory.capture_mapper();
+        let _clone = Arc::clone(mapper);
+    }
+
+    #[test]
     fn test_create_driver() {
         let factory = MarkdownSyntaxFactory::new();
 
@@ -231,6 +255,23 @@ mod tests {
 
         let driver = factory.create("rust");
         assert!(driver.is_none());
+    }
+
+    #[test]
+    fn test_create_driver_unsupported_languages() {
+        let factory = MarkdownSyntaxFactory::new();
+        assert!(factory.create("").is_none());
+        assert!(factory.create("Markdown").is_none());
+        assert!(factory.create("md").is_none());
+        assert!(factory.create("rust").is_none());
+        assert!(factory.create("html").is_none());
+    }
+
+    #[test]
+    fn test_driver_not_parsed_before_parse() {
+        let factory = MarkdownSyntaxFactory::new();
+        let driver = factory.create("markdown").unwrap();
+        assert!(!driver.is_parsed());
     }
 
     #[test]
@@ -247,8 +288,6 @@ mod tests {
 
         // Should have highlights for heading
         assert!(!highlights.is_empty(), "Expected highlights for Markdown");
-
-        tracing::debug!("Highlights: {highlights:?}");
     }
 
     #[test]
@@ -274,6 +313,23 @@ mod tests {
             .find(|h| h.group == HighlightGroup::MarkupHeading);
 
         assert!(heading_highlight.is_some(), "Expected heading highlight");
+    }
+
+    #[test]
+    fn test_highlights_h2_heading() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        driver.parse("## Sub Heading");
+        let highlights = driver.highlights(0..100);
+
+        let heading_highlight = highlights
+            .iter()
+            .find(|h| h.group == HighlightGroup::MarkupHeading);
+
+        assert!(heading_highlight.is_some(), "Expected heading highlight for h2");
     }
 
     #[test]
@@ -313,6 +369,80 @@ mod tests {
     }
 
     #[test]
+    fn test_highlights_empty_range() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        driver.parse("# Hello");
+        let highlights = driver.highlights(0..0);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_highlights_partial_range() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        let code = "# Heading 1\n\n## Heading 2";
+        driver.parse(code);
+
+        // Only query first line
+        let highlights = driver.highlights(0..11);
+        for h in &highlights {
+            assert!(
+                h.start_byte < 11,
+                "Highlight starts at {} which is outside requested range",
+                h.start_byte
+            );
+        }
+    }
+
+    #[test]
+    fn test_reparse_updates_highlights() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        // First parse: heading (with trailing newline for proper parsing)
+        driver.parse("# Hello\n\nSome text.");
+        let h1 = driver.highlights(0..100);
+        assert!(
+            h1.iter().any(|h| h.group == HighlightGroup::MarkupHeading),
+            "Should have heading highlight"
+        );
+
+        // Re-parse: list
+        driver.parse("- item 1\n- item 2");
+        let h2 = driver.highlights(0..100);
+        assert!(
+            h2.iter().any(|h| h.group == HighlightGroup::MarkupList),
+            "Should have list highlight after re-parse"
+        );
+    }
+
+    #[test]
+    fn test_incremental_update() {
+        use reovim_driver_syntax::SyntaxEdit;
+
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        // Initial parse
+        driver.parse("# Hello");
+        assert!(driver.is_parsed());
+
+        // Insert " World" at the end
+        let updated = "# Hello World";
+        let edit = SyntaxEdit::insert(7, 0, 7, 13, 0, 13);
+        driver.update(updated, &edit);
+        assert!(driver.is_parsed());
+
+        let highlights = driver.highlights(0..updated.len());
+        assert!(!highlights.is_empty(), "Should have highlights after incremental update");
+    }
+
+    #[test]
     fn test_injections_detects_language() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -342,6 +472,51 @@ mod tests {
     }
 
     #[test]
+    fn test_injections_no_language_tag() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        // Code block without language tag should have no injections
+        driver.parse("```\nsome code\n```");
+        let injections = driver.injections();
+        assert!(
+            injections.is_empty(),
+            "Code block without language tag should have no injections"
+        );
+    }
+
+    #[test]
+    fn test_injections_empty_for_plain_text() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        driver.parse("Just some plain text.\n\nAnother paragraph.");
+        let injections = driver.injections();
+        assert!(injections.is_empty(), "Plain text should have no injections");
+    }
+
+    #[test]
+    fn test_folds_returns_empty_for_markdown() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        // Markdown factory does not configure folds query
+        driver.parse("# Heading\n\nParagraph.\n\n## Sub heading");
+        let folds = driver.folds();
+        assert!(folds.is_empty(), "Markdown should not have folds (no folds query configured)");
+    }
+
+    #[test]
+    fn test_indent_returns_none_for_markdown() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        driver.parse("# Heading\n\nParagraph.");
+        let indent = driver.indent_for(0);
+        assert!(indent.is_none(), "Markdown should not have indent hints (no indents query)");
+    }
+
+    #[test]
     fn test_empty_file() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -359,7 +534,7 @@ mod tests {
         let mut driver = factory.create("markdown").unwrap();
 
         // Parse Markdown with Unicode
-        let code = "# 日本語見出し\n\n- émoji 🎉";
+        let code = "# \u{65e5}\u{672c}\u{8a9e}\u{898b}\u{51fa}\u{3057}\n\n- \u{00e9}moji \u{1f389}";
         driver.parse(code);
         let highlights = driver.highlights(0..code.len());
 
@@ -367,16 +542,225 @@ mod tests {
         for span in &highlights {
             assert!(
                 code.is_char_boundary(span.start_byte),
-                "start_byte {} is not a char boundary in '{}'",
+                "start_byte {} is not a char boundary in '{code}'",
                 span.start_byte,
-                code
             );
             assert!(
                 code.is_char_boundary(span.end_byte),
-                "end_byte {} is not a char boundary in '{}'",
+                "end_byte {} is not a char boundary in '{code}'",
                 span.end_byte,
-                code
             );
         }
+    }
+
+    // ========================================================================
+    // Injection Layer Factory Tests
+    // ========================================================================
+
+    #[test]
+    fn test_injection_layer_factory() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let layer = factory.create_layer(mapper);
+        assert!(layer.is_some(), "Should create Markdown injection layer");
+
+        let layer = layer.unwrap();
+        assert_eq!(layer.language_id(), "markdown");
+    }
+
+    #[test]
+    fn test_injection_layer_factory_language_id() {
+        let factory = MarkdownSyntaxFactory::new();
+        assert_eq!(factory.language_id(), "markdown");
+    }
+
+    #[test]
+    fn test_injection_layer_factory_multiple_mappers() {
+        let factory = MarkdownSyntaxFactory::new();
+        let mapper1 = Arc::new(CaptureMapper::new());
+        let mapper2 = Arc::new(CaptureMapper::new());
+
+        let layer1 = factory.create_layer(mapper1);
+        let layer2 = factory.create_layer(mapper2);
+        assert!(layer1.is_some());
+        assert!(layer2.is_some());
+    }
+
+    // ========================================================================
+    // Module Trait Tests
+    // ========================================================================
+
+    #[test]
+    fn test_module_new() {
+        let module = TreesitterMarkdownModule::new();
+        let _id = module.id();
+    }
+
+    #[test]
+    fn test_module_default() {
+        fn takes_default<T: Default>(val: T) -> T {
+            drop(val);
+            T::default()
+        }
+        let module = takes_default(TreesitterMarkdownModule::new());
+        assert_eq!(module.name(), "Treesitter Markdown");
+    }
+
+    #[test]
+    fn test_module_id() {
+        let module = TreesitterMarkdownModule::new();
+        assert_eq!(module.id(), ModuleId::new("treesitter-markdown"));
+    }
+
+    #[test]
+    fn test_module_name() {
+        let module = TreesitterMarkdownModule::new();
+        assert_eq!(module.name(), "Treesitter Markdown");
+    }
+
+    #[test]
+    fn test_module_version() {
+        let module = TreesitterMarkdownModule::new();
+        let version = module.version();
+        assert_eq!(version, Version::new(0, 9, 0));
+    }
+
+    #[test]
+    fn test_module_init() {
+        use reovim_kernel::api::v1::ServiceRegistry;
+
+        let mut module = TreesitterMarkdownModule::new();
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let services = Arc::new(ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            kernel,
+            services.clone(),
+            std::path::PathBuf::from("/tmp/test-data"),
+            std::path::PathBuf::from("/tmp/test-cache"),
+        );
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+
+        // Verify that the factory was registered
+        let syntax_store = services.get_or_create::<SyntaxFactoryStore>();
+        let factory = syntax_store.find("markdown");
+        assert!(factory.is_some(), "Markdown factory should be available after module init");
+    }
+
+    #[test]
+    fn test_module_exit() {
+        let mut module = TreesitterMarkdownModule::new();
+        let result = module.exit();
+        assert!(result.is_ok());
+    }
+
+    // ========================================================================
+    // Send + Sync Tests
+    // ========================================================================
+
+    #[test]
+    fn test_factory_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<MarkdownSyntaxFactory>();
+    }
+
+    #[test]
+    fn test_driver_send_sync() {
+        fn assert_send_sync<T: Send + Sync + ?Sized>(_: &T) {}
+        let factory = MarkdownSyntaxFactory::new();
+        let driver = factory.create("markdown").unwrap();
+        assert_send_sync(&*driver);
+    }
+
+    // ========================================================================
+    // Multiple Factory Instances
+    // ========================================================================
+
+    #[test]
+    fn test_multiple_factory_instances() {
+        let factory1 = MarkdownSyntaxFactory::new();
+        let factory2 = MarkdownSyntaxFactory::new();
+
+        let mut driver1 = factory1.create("markdown").unwrap();
+        let mut driver2 = factory2.create("markdown").unwrap();
+
+        driver1.parse("# Heading 1");
+        driver2.parse("- list item");
+
+        assert!(driver1.is_parsed());
+        assert!(driver2.is_parsed());
+
+        let h1 = driver1.highlights(0..100);
+        let h2 = driver2.highlights(0..100);
+
+        assert!(!h1.is_empty());
+        assert!(!h2.is_empty());
+    }
+
+    // ========================================================================
+    // Realistic Markdown Tests
+    // ========================================================================
+
+    #[test]
+    fn test_realistic_markdown_document() {
+        use reovim_driver_syntax::HighlightGroup;
+
+        let factory = MarkdownSyntaxFactory::new();
+        let mut driver = factory.create("markdown").unwrap();
+
+        let code = r#"# Project Title
+
+A short description.
+
+## Features
+
+- Feature one
+- Feature two
+- Feature three
+
+## Code Example
+
+```rust
+fn main() {
+    println!("Hello!");
+}
+```
+
+## License
+
+MIT
+"#;
+        driver.parse(code);
+        let highlights = driver.highlights(0..code.len());
+
+        // Should have heading highlights
+        assert!(
+            highlights
+                .iter()
+                .any(|h| h.group == HighlightGroup::MarkupHeading),
+            "Expected heading highlights in realistic document"
+        );
+
+        // Should have list highlights
+        assert!(
+            highlights
+                .iter()
+                .any(|h| h.group == HighlightGroup::MarkupList),
+            "Expected list highlights in realistic document"
+        );
+
+        // Should have code block highlights
+        assert!(
+            highlights
+                .iter()
+                .any(|h| h.group == HighlightGroup::MarkupRaw),
+            "Expected code block highlights in realistic document"
+        );
+
+        // Injection detection
+        let injections = driver.injections();
+        assert_eq!(injections.len(), 1, "Expected one injection for rust code block");
+        assert_eq!(injections[0].language_id, "rust");
     }
 }

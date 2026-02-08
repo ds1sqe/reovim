@@ -70,6 +70,7 @@ mod tests {
         assert!(result.is_success());
         assert!(!result.is_error());
         assert!(!result.is_quit());
+        assert!(!result.is_detach());
     }
 
     #[test]
@@ -78,11 +79,101 @@ mod tests {
         assert!(!result.is_success());
         assert!(result.is_error());
         assert!(!result.is_quit());
+        assert!(!result.is_detach());
+    }
+
+    #[test]
+    fn test_command_result_error_direct_construction() {
+        let result = CommandResult::Error("direct error".to_string());
+        assert!(result.is_error());
+        assert!(!result.is_success());
     }
 
     #[test]
     fn test_command_result_quit() {
-        assert!(CommandResult::Quit.is_quit());
-        assert!(CommandResult::ForceQuit.is_quit());
+        let quit = CommandResult::Quit;
+        assert!(quit.is_quit());
+        assert!(!quit.is_success());
+        assert!(!quit.is_error());
+        assert!(!quit.is_detach());
+    }
+
+    #[test]
+    fn test_command_result_force_quit() {
+        let fq = CommandResult::ForceQuit;
+        assert!(fq.is_quit());
+        assert!(!fq.is_success());
+        assert!(!fq.is_error());
+        assert!(!fq.is_detach());
+    }
+
+    #[test]
+    fn test_command_result_detach() {
+        let detach = CommandResult::Detach;
+        assert!(detach.is_detach());
+        assert!(!detach.is_success());
+        assert!(!detach.is_error());
+        assert!(!detach.is_quit());
+    }
+
+    #[test]
+    fn test_command_result_error_factory() {
+        let result = CommandResult::error("test message");
+        assert_eq!(result, CommandResult::Error("test message".to_string()));
+    }
+
+    #[test]
+    fn test_command_result_error_factory_empty_message() {
+        let result = CommandResult::error("");
+        assert_eq!(result, CommandResult::Error(String::new()));
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_command_result_equality() {
+        assert_eq!(CommandResult::Success, CommandResult::Success);
+        assert_eq!(CommandResult::Quit, CommandResult::Quit);
+        assert_eq!(CommandResult::ForceQuit, CommandResult::ForceQuit);
+        assert_eq!(CommandResult::Detach, CommandResult::Detach);
+        assert_eq!(CommandResult::Error("x".to_string()), CommandResult::Error("x".to_string()));
+
+        assert_ne!(CommandResult::Success, CommandResult::Quit);
+        assert_ne!(CommandResult::Quit, CommandResult::ForceQuit);
+        assert_ne!(CommandResult::Success, CommandResult::Detach);
+        assert_ne!(CommandResult::Error("a".to_string()), CommandResult::Error("b".to_string()));
+    }
+
+    #[test]
+    fn test_command_result_clone() {
+        let results = [
+            CommandResult::Success,
+            CommandResult::Error("err".to_string()),
+            CommandResult::Quit,
+            CommandResult::ForceQuit,
+            CommandResult::Detach,
+        ];
+        for result in &results {
+            let cloned = result.clone();
+            assert_eq!(result, &cloned);
+        }
+    }
+
+    #[test]
+    fn test_command_result_debug() {
+        let debug_str = format!("{:?}", CommandResult::Success);
+        assert_eq!(debug_str, "Success");
+
+        let debug_str = format!("{:?}", CommandResult::Quit);
+        assert_eq!(debug_str, "Quit");
+
+        let debug_str = format!("{:?}", CommandResult::ForceQuit);
+        assert_eq!(debug_str, "ForceQuit");
+
+        let debug_str = format!("{:?}", CommandResult::Detach);
+        assert_eq!(debug_str, "Detach");
+
+        let debug_str = format!("{:?}", CommandResult::Error("msg".to_string()));
+        assert!(debug_str.contains("Error"));
+        assert!(debug_str.contains("msg"));
     }
 }

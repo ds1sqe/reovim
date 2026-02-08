@@ -9,9 +9,9 @@
 //! ```text
 //! AnnotationSource (mechanism trait - this module)
 //!        ↓ implements
-//! LineNumberSource (policy - in modules/vim)
-//! DiagnosticSource (policy - in modules/lsp)
-//! GitDiffSource    (policy - in modules/git)
+//! LineNumberSource (policy - in server/modules/vim)
+//! DiagnosticSource (policy - in server/modules/lsp)
+//! GitDiffSource    (policy - in server/modules/git)
 //! ```
 //!
 //! # Example

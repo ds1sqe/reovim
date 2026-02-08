@@ -447,4 +447,69 @@ mod tests {
             "ResolverRegistry should be registered by VimModule"
         );
     }
+
+    #[test]
+    fn test_resolve_mode_str_valid() {
+        let state = create_session_state();
+        let mode_reg = {
+            let services = Arc::new(ServiceRegistry::new());
+            let kernel = create_kernel_context(Arc::clone(&services));
+            let ctx = create_module_context(kernel, Arc::clone(&services));
+            initialize_modules(&ctx);
+            let (mode_registry, _, _, _) = extract_registries(&services);
+            mode_registry
+        };
+        // vim:normal should exist after module init
+        let result = resolve_mode_str("vim:normal", &mode_reg);
+        assert!(result.is_some());
+        drop(state);
+    }
+
+    #[test]
+    fn test_resolve_mode_str_no_colon() {
+        let mode_reg = ModeRegistry::new();
+        let result = resolve_mode_str("normal", &mode_reg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_mode_str_not_found() {
+        let mode_reg = ModeRegistry::new();
+        let result = resolve_mode_str("nonexistent:mode", &mode_reg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_default_data_dir() {
+        let dir = default_data_dir();
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("reovim"));
+        assert!(dir_str.contains("modules"));
+    }
+
+    #[test]
+    fn test_default_cache_dir() {
+        let dir = default_cache_dir();
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("reovim"));
+        assert!(dir_str.contains("modules"));
+    }
+
+    #[test]
+    fn test_extract_ex_command_registry_empty() {
+        let services = Arc::new(ServiceRegistry::new());
+        // Should not panic even without store
+        extract_ex_command_registry(&services);
+        // Should have created empty ExCommandRegistry
+        let reg = services.get::<ExCommandRegistry>();
+        assert!(reg.is_some());
+    }
+
+    #[test]
+    fn test_create_kernel_context_valid() {
+        let services = Arc::new(ServiceRegistry::new());
+        let kernel = create_kernel_context(Arc::clone(&services));
+        // The kernel should have been constructed successfully
+        drop(kernel);
+    }
 }

@@ -1323,4 +1323,609 @@ mod tests {
         assert_eq!(result.edits.len(), 1);
         assert!(matches!(&result.edits[0], Edit::Insert { text, .. } if text == "AAA"));
     }
+
+    // ========================================================================
+    // Additional Coverage Tests
+    // ========================================================================
+
+    #[test]
+    fn test_default_registry() {
+        let registry = UndoRegistry::default();
+        assert_eq!(registry.buffer_count(), 0);
+    }
+
+    #[test]
+    fn test_with_data_dir() {
+        let registry = UndoRegistry::with_data_dir(Path::new("/custom/path"));
+        assert_eq!(registry.undo_dir(), Path::new("/custom/path/undo"));
+    }
+
+    #[test]
+    fn test_set_tree() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // No tree initially
+        assert!(registry.get_tree_cloned(buffer_id).is_none());
+
+        // Set a tree directly
+        let tree = UndoTree::default();
+        registry.set_tree(buffer_id, tree);
+
+        // Now it should exist
+        assert!(registry.get_tree_cloned(buffer_id).is_some());
+        assert!(registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_redo_nonexistent_buffer_returns_none() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(999);
+        assert!(registry.redo(buffer_id).is_none());
+    }
+
+    #[test]
+    fn test_redo_without_undo_returns_none() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        // Redo without prior undo should return None
+        assert!(registry.redo(buffer_id).is_none());
+    }
+
+    #[test]
+    fn test_redo_branch_nonexistent_buffer() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(999);
+        assert!(registry.redo_branch(buffer_id, 0).is_none());
+    }
+
+    #[test]
+    fn test_remove_nonexistent_buffer_is_noop() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(999);
+        // Should not panic
+        registry.remove(buffer_id);
+        assert_eq!(registry.buffer_count(), 0);
+    }
+
+    #[test]
+    fn test_begin_end_batch_empty() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Begin batch with no edits
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+        assert!(registry.is_batching(buffer_id));
+
+        // End batch with no edits - should not create a tree entry
+        registry.end_batch(buffer_id, Position::new(0, 0));
+        assert!(!registry.is_batching(buffer_id));
+        assert!(!registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_begin_end_batch_with_edits() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // Record during batch - should accumulate
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        // During batch, tree should not have entries yet
+        // (record accumulates into batch instead of directly into tree)
+        assert!(!registry.has_history(buffer_id));
+
+        // End batch
+        registry.end_batch(buffer_id, Position::new(0, 5));
+
+        // Now tree should exist with the edit
+        assert!(registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_is_batching_false_by_default() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        assert!(!registry.is_batching(buffer_id));
+    }
+
+    #[test]
+    fn test_record_for_client_empty_edits_is_noop() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        registry.record_for_client(buffer_id, 1, vec![], Position::new(0, 0), Position::new(0, 0));
+
+        assert!(!registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_init_client_no_tree() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_id = 1_usize;
+
+        // Init client before any edits - should set cursor to 0
+        registry.init_client(buffer_id, client_id);
+        assert!(
+            registry
+                .client_cursors
+                .read()
+                .contains_key(&(buffer_id, client_id))
+        );
+    }
+
+    #[test]
+    fn test_undo_for_client_nonexistent_buffer() {
+        let registry = UndoRegistry::new();
+        let result = registry.undo_for_client(BufferId::from_raw(999), 1);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_redo_for_client_nonexistent_buffer() {
+        let registry = UndoRegistry::new();
+        let result = registry.redo_for_client(BufferId::from_raw(999), 1);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_redo_for_client_no_child() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+
+        // Client A makes an edit (no undo, so no redo target)
+        let edit = Edit::insert(Position::new(0, 0), "AAA");
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![edit],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        // Without undo, redo should return None
+        let result = registry.redo_for_client(buffer_id, client_a);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_encode_path_component_percent() {
+        assert_eq!(encode_path_component("100%done"), "100%25done");
+    }
+
+    #[test]
+    fn test_encode_path_component_all_special_chars() {
+        let encoded = encode_path_component(r#"/<>"|?*:\test"#);
+        assert!(encoded.contains("%2F"));
+        assert!(encoded.contains("%3C"));
+        assert!(encoded.contains("%3E"));
+        assert!(encoded.contains("%22"));
+        assert!(encoded.contains("%7C"));
+        assert!(encoded.contains("%3F"));
+        assert!(encoded.contains("%2A"));
+        assert!(encoded.contains("%3A"));
+        assert!(encoded.contains("%5C"));
+    }
+
+    #[test]
+    fn test_encode_path_component_no_special_chars() {
+        assert_eq!(encode_path_component("hello.rs"), "hello.rs");
+    }
+
+    #[test]
+    fn test_decode_path_component_invalid_hex() {
+        // Invalid hex after % - should keep as-is
+        let decoded = decode_path_component("%ZZ");
+        assert_eq!(decoded, "%ZZ");
+    }
+
+    #[test]
+    fn test_decode_path_component_truncated_percent() {
+        // Only one char after % instead of two
+        let decoded = decode_path_component("%2");
+        assert_eq!(decoded, "%2");
+    }
+
+    #[test]
+    fn test_decode_path_component_plain_text() {
+        assert_eq!(decode_path_component("hello.rs"), "hello.rs");
+    }
+
+    #[test]
+    fn test_undo_file_path_windows() {
+        let registry = UndoRegistry::with_data_dir(Path::new("/data"));
+        let undo_path = registry.undo_file_path("C:\\Users\\file.txt");
+        let path_str = undo_path.to_str().unwrap();
+        assert!(path_str.starts_with("/data/undo/"));
+        assert!(
+            Path::new(path_str)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("undo"))
+        );
+        assert!(path_str.contains("%3A"));
+        assert!(path_str.contains("%5C"));
+    }
+
+    #[test]
+    fn test_multiple_undo_redo_cycles() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Record two edits
+        let edit1 = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit1], Position::new(0, 0), Position::new(0, 5));
+
+        let edit2 = Edit::insert(Position::new(0, 5), " world");
+        registry.record(buffer_id, vec![edit2], Position::new(0, 5), Position::new(0, 11));
+
+        // Undo twice
+        let r1 = registry.undo(buffer_id);
+        assert!(r1.is_some());
+        let r2 = registry.undo(buffer_id);
+        assert!(r2.is_some());
+
+        // Undo a third time should fail (at root)
+        let r3 = registry.undo(buffer_id);
+        assert!(r3.is_none());
+
+        // Redo twice
+        let r4 = registry.redo(buffer_id);
+        assert!(r4.is_some());
+        let r5 = registry.redo(buffer_id);
+        assert!(r5.is_some());
+
+        // Redo a third time should fail (at latest)
+        let r6 = registry.redo(buffer_id);
+        assert!(r6.is_none());
+    }
+
+    #[test]
+    fn test_buffer_count_tracks_correctly() {
+        let registry = UndoRegistry::new();
+        assert_eq!(registry.buffer_count(), 0);
+
+        let b1 = BufferId::from_raw(1);
+        let b2 = BufferId::from_raw(2);
+
+        registry.record(
+            b1,
+            vec![Edit::insert(Position::new(0, 0), "a")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        assert_eq!(registry.buffer_count(), 1);
+
+        registry.record(
+            b2,
+            vec![Edit::insert(Position::new(0, 0), "b")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        assert_eq!(registry.buffer_count(), 2);
+
+        registry.remove(b1);
+        assert_eq!(registry.buffer_count(), 1);
+
+        registry.remove(b2);
+        assert_eq!(registry.buffer_count(), 0);
+    }
+
+    #[test]
+    fn test_record_for_client_during_batch_sets_origin() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_id = 42_usize;
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        registry.record_for_client(
+            buffer_id,
+            client_id,
+            vec![Edit::insert(Position::new(0, 0), "a")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        registry.end_batch(buffer_id, Position::new(0, 1));
+
+        // Verify origin was set on the batch
+        let tree = registry.get_tree(buffer_id).expect("tree should exist");
+        let current = tree.current_node();
+        assert_eq!(current.origin(), EditOrigin::Client(client_id));
+    }
+
+    // ========================================================================
+    // Persistence Tests (persist/load via MockVfs)
+    // ========================================================================
+
+    #[test]
+    fn test_persist_and_load_roundtrip() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let buffer_path = "/home/user/file.rs";
+
+        // Record some edits
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        let vfs = MockVfs::new();
+
+        // Persist the undo tree
+        let result = registry.persist(buffer_id, buffer_path, &vfs);
+        assert!(result.is_ok(), "persist should succeed");
+
+        // Verify directory was created and file was written
+        let undo_path = registry.undo_file_path(buffer_path);
+        assert!(vfs.exists(&undo_path), "undo file should exist after persist");
+
+        // Load into a new registry
+        let registry2 = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id2 = BufferId::from_raw(2);
+        let loaded = registry2.load(buffer_id2, buffer_path, &vfs);
+        assert!(loaded.is_ok());
+        assert!(loaded.unwrap(), "load should return true for existing file");
+        assert!(registry2.has_history(buffer_id2));
+    }
+
+    #[test]
+    fn test_persist_no_history_is_noop() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(99);
+        let vfs = MockVfs::new();
+
+        // Persist with no history - should succeed without writing
+        let result = registry.persist(buffer_id, "/some/file.rs", &vfs);
+        assert!(result.is_ok());
+        assert!(vfs.write_calls().is_empty(), "no writes should occur for empty history");
+    }
+
+    #[test]
+    fn test_load_nonexistent_file_returns_false() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let vfs = MockVfs::new();
+
+        let loaded = registry.load(buffer_id, "/no/such/file.rs", &vfs);
+        assert!(loaded.is_ok());
+        assert!(!loaded.unwrap(), "load should return false for nonexistent file");
+    }
+
+    #[test]
+    fn test_load_invalid_data_returns_error() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let vfs = MockVfs::new();
+
+        // Write garbage data to the undo file
+        let undo_path = registry.undo_file_path("/file.rs");
+        vfs.add_file(&undo_path, b"not a valid undo file");
+
+        let loaded = registry.load(buffer_id, "/file.rs", &vfs);
+        assert!(loaded.is_err(), "load of invalid data should return error");
+    }
+
+    #[test]
+    fn test_persist_with_io_error() {
+        use reovim_driver_vfs::{MockErrorKind, MockVfs};
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let buffer_path = "/file.rs";
+
+        let edit = Edit::insert(Position::new(0, 0), "hello");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 5));
+
+        let vfs = MockVfs::new();
+        // Make the undo file path fail on write
+        let undo_path = registry.undo_file_path(buffer_path);
+        vfs.set_error(&undo_path, MockErrorKind::PermissionDenied);
+
+        let result = registry.persist(buffer_id, buffer_path, &vfs);
+        assert!(result.is_err(), "persist should fail on write error");
+    }
+
+    #[test]
+    fn test_load_with_io_error() {
+        use reovim_driver_vfs::{MockErrorKind, MockVfs};
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let buffer_path = "/file.rs";
+        let vfs = MockVfs::new();
+
+        // Add file but make read fail
+        let undo_path = registry.undo_file_path(buffer_path);
+        vfs.add_file(&undo_path, b"dummy");
+        vfs.set_error(&undo_path, MockErrorKind::PermissionDenied);
+
+        let loaded = registry.load(buffer_id, buffer_path, &vfs);
+        assert!(loaded.is_err(), "load should fail on read error");
+    }
+
+    #[test]
+    fn test_end_batch_without_begin_is_noop() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // end_batch with no active batch should be a no-op
+        registry.end_batch(buffer_id, Position::new(0, 0));
+        assert!(!registry.has_history(buffer_id));
+    }
+
+    #[test]
+    fn test_end_batch_with_client_origin_updates_cursor() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_id = 7_usize;
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // Record via client so origin gets set
+        registry.record_for_client(
+            buffer_id,
+            client_id,
+            vec![Edit::insert(Position::new(0, 0), "abc")],
+            Position::new(0, 0),
+            Position::new(0, 3),
+        );
+
+        registry.end_batch(buffer_id, Position::new(0, 3));
+
+        // Verify client cursor was updated
+        let key = (buffer_id, client_id);
+        let contains = registry.client_cursors.read().contains_key(&key);
+        assert!(contains, "client cursor should be set after batch end");
+    }
+
+    #[test]
+    fn test_record_for_client_during_batch_first_origin_wins() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // First client contributes
+        registry.record_for_client(
+            buffer_id,
+            1,
+            vec![Edit::insert(Position::new(0, 0), "a")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // Second client contributes to same batch
+        registry.record_for_client(
+            buffer_id,
+            2,
+            vec![Edit::insert(Position::new(0, 1), "b")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        registry.end_batch(buffer_id, Position::new(0, 2));
+
+        // First contributor's origin should win
+        let tree = registry.get_tree(buffer_id).expect("tree should exist");
+        let current = tree.current_node();
+        assert_eq!(current.origin(), EditOrigin::Client(1));
+    }
+
+    #[test]
+    fn test_redo_for_client_finds_recursive_child() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client A makes edit, then client B, then client A again
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 0), "A1")],
+            Position::new(0, 0),
+            Position::new(0, 2),
+        );
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 2), "B1")],
+            Position::new(0, 2),
+            Position::new(0, 4),
+        );
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 4), "A2")],
+            Position::new(0, 4),
+            Position::new(0, 6),
+        );
+
+        // Undo A2 and A1
+        let r1 = registry.undo_for_client(buffer_id, client_a);
+        assert!(r1.is_some(), "first undo should succeed");
+        let r2 = registry.undo_for_client(buffer_id, client_a);
+        assert!(r2.is_some(), "second undo should succeed");
+
+        // Redo should find A1 (not B1, skipping over B1)
+        let redo = registry.redo_for_client(buffer_id, client_a);
+        assert!(redo.is_some(), "redo should find client A's edit");
+    }
+
+    #[test]
+    fn test_persist_load_path_mismatch_still_loads() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let original_path = "/home/user/original.rs";
+
+        let edit = Edit::insert(Position::new(0, 0), "test");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 4));
+
+        let vfs = MockVfs::new();
+        registry.persist(buffer_id, original_path, &vfs).unwrap();
+
+        // Load using a different buffer path but same undo file
+        // We manually move the undo file to simulate path mismatch
+        let undo_path = registry.undo_file_path(original_path);
+        let undo_bytes = vfs.read(&undo_path).unwrap();
+
+        let different_path = "/home/user/moved.rs";
+        let different_undo_path = registry.undo_file_path(different_path);
+        vfs.add_file(&different_undo_path, &undo_bytes);
+
+        let registry2 = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id2 = BufferId::from_raw(2);
+        // This will trigger the path mismatch warning but should still load
+        let loaded = registry2.load(buffer_id2, different_path, &vfs);
+        assert!(loaded.is_ok());
+        assert!(loaded.unwrap(), "load should succeed despite path mismatch");
+        assert!(registry2.has_history(buffer_id2));
+    }
+
+    #[test]
+    fn test_ensure_dir_already_exists() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let buffer_path = "/file.rs";
+
+        let edit = Edit::insert(Position::new(0, 0), "x");
+        registry.record(buffer_id, vec![edit], Position::new(0, 0), Position::new(0, 1));
+
+        let vfs = MockVfs::new();
+        // Pre-create the undo directory
+        vfs.add_dir("/test-data/undo");
+
+        let result = registry.persist(buffer_id, buffer_path, &vfs);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_transform_through_intervening_empty() {
+        // Test the helper directly with empty intervening edits
+        let inverse_edits = vec![Edit::delete(Position::new(0, 5), "AAA")];
+        let cursor = Position::new(0, 5);
+        let (edits, pos) = transform_through_intervening(&[], inverse_edits, cursor);
+        assert_eq!(edits.len(), 1);
+        assert_eq!(pos, Position::new(0, 5));
+    }
 }

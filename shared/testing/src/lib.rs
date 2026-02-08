@@ -6,14 +6,14 @@
 //! # Architecture (Mechanism vs Policy)
 //!
 //! ```text
-//! lib/testing/            ← MECHANISM (this crate)
-//! ├── harness.rs          - Server process lifecycle
-//! ├── integration.rs      - Single-client test builder
-//! ├── multi_client.rs     - Multi-client test builder
-//! ├── step_test.rs        - Per-key state tracking
-//! └── assertions.rs       - Assertion macros
+//! shared/testing/            ← MECHANISM (this crate)
+//! ├── harness.rs             - Server process lifecycle
+//! ├── integration.rs         - Single-client test builder
+//! ├── multi_client.rs        - Multi-client test builder
+//! ├── step_test.rs           - Per-key state tracking
+//! └── assertions.rs          - Assertion macros
 //!
-//! modules/vim/tests/      ← POLICY (module-specific tests)
+//! server/modules/vim/tests/  ← POLICY (module-specific tests)
 //! ├── operators.rs        - What operators to test
 //! ├── registers.rs        - What register behaviors to verify
 //! └── cursor_movement.rs  - What cursor behaviors to verify

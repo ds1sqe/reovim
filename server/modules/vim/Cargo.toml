@@ -27,6 +27,7 @@ reovim-module-motions = { workspace = true }
 reovim-module-textobjects = { workspace = true }
 reovim-driver-clipboard = { workspace = true }
 reovim-driver-undo = { workspace = true }
+reovim-driver-vfs = { workspace = true }
 reovim-driver-search = { workspace = true }
 # Window-ops module for window command IDs (Epic #465 - layout archived)
 reovim-module-window-ops = { workspace = true }

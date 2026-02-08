@@ -9,7 +9,7 @@
 //!
 //! Following "mechanism, not policy":
 //! - Context provides emission and signaling mechanisms
-//! - Policy-specific methods (mode changes, etc.) stay in lib/core as extension traits
+//! - Policy-specific methods (mode changes, etc.) stay in modules as extension traits
 //!
 //! # Example
 //!
@@ -425,5 +425,88 @@ mod tests {
         assert!(result.render_requested);
         assert!(!result.quit_requested);
         assert_eq!(result.emitted_events.len(), 1);
+    }
+
+    // ========== emit_dyn tests ==========
+
+    #[test]
+    fn test_context_emit_dyn_collect_mode() {
+        let mut ctx = HandlerContext::new();
+        let dyn_event = DynEvent::new(TestEvent { value: 99 });
+        ctx.emit_dyn(dyn_event);
+
+        assert!(ctx.has_emitted_events());
+        assert_eq!(ctx.emitted_event_count(), 1);
+        let events = ctx.take_emitted_events();
+        assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn test_context_emit_dyn_direct_mode() {
+        use super::super::event_bus::EventBus;
+
+        let bus = EventBus::new_with_channel(16);
+        let tx = bus.sender().unwrap();
+        let rx = bus.take_receiver().unwrap();
+
+        let mut ctx = HandlerContext::new().with_sender(&tx);
+        let dyn_event = DynEvent::new(TestEvent { value: 77 });
+        ctx.emit_dyn(dyn_event);
+
+        // In direct mode, emitted_events stays empty
+        assert!(!ctx.has_emitted_events());
+        // Event was sent via channel
+        let evt = rx.try_recv().unwrap();
+        assert_eq!(evt.downcast_ref::<TestEvent>().unwrap().value, 77);
+    }
+
+    // ========== emit with sender (direct mode) ==========
+
+    #[test]
+    fn test_context_emit_with_sender() {
+        use super::super::event_bus::EventBus;
+
+        let bus = EventBus::new_with_channel(16);
+        let tx = bus.sender().unwrap();
+        let rx = bus.take_receiver().unwrap();
+
+        let mut ctx = HandlerContext::new().with_sender(&tx);
+        assert!(ctx.has_sender());
+
+        ctx.emit(TestEvent { value: 55 });
+
+        // Collect mode empty, sent via channel
+        assert!(!ctx.has_emitted_events());
+        let evt = rx.try_recv().unwrap();
+        assert_eq!(evt.downcast_ref::<TestEvent>().unwrap().value, 55);
+    }
+
+    // ========== with_sender / has_sender ==========
+
+    #[test]
+    fn test_context_has_sender_false_by_default() {
+        let ctx = HandlerContext::new();
+        assert!(!ctx.has_sender());
+    }
+
+    #[test]
+    fn test_context_emit_with_scope_and_sender() {
+        use super::super::event_bus::EventBus;
+
+        let bus = EventBus::new_with_channel(16);
+        let tx = bus.sender().unwrap();
+        let rx = bus.take_receiver().unwrap();
+        let scope = EventScope::new();
+
+        let mut ctx = HandlerContext::new()
+            .with_sender(&tx)
+            .with_scope(Some(scope.clone()));
+
+        assert_eq!(scope.in_flight(), 0);
+        ctx.emit(TestEvent { value: 33 });
+        assert_eq!(scope.in_flight(), 1);
+
+        let evt = rx.try_recv().unwrap();
+        assert!(evt.scope().is_some());
     }
 }

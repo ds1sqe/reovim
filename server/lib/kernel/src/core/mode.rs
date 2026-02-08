@@ -976,4 +976,40 @@ mod tests {
         assert_eq!(map.get(&mode_a), Some(&"from_a"), "Lookup with same ModeId should work");
         assert_eq!(map.get(&mode_b), Some(&"from_a"), "Lookup with equivalent ModeId should work");
     }
+
+    // === CommandId::from_qualified_leaked without colon ===
+
+    #[test]
+    fn test_command_id_from_qualified_leaked_with_colon() {
+        let cmd = CommandId::from_qualified_leaked("editor:cursor-down".to_string());
+        assert_eq!(cmd.module().as_str(), "editor");
+        assert_eq!(cmd.name(), "cursor-down");
+    }
+
+    #[test]
+    fn test_command_id_from_qualified_leaked_without_colon() {
+        let cmd = CommandId::from_qualified_leaked("cursor-down".to_string());
+        assert_eq!(cmd.module().as_str(), "unknown");
+        assert_eq!(cmd.name(), "cursor-down");
+    }
+
+    // === Mode::is_entry default ===
+
+    #[test]
+    fn test_mode_is_entry_default() {
+        // Default impl should return false
+        assert!(!TestMode::Normal.is_entry());
+        assert!(!TestMode::Insert.is_entry());
+        assert!(!TestMode::Visual.is_entry());
+    }
+
+    // === Mode::id() default impl ===
+
+    #[test]
+    fn test_mode_id_default_impl() {
+        let id = TestMode::Normal.id();
+        assert_eq!(id.module(), &TEST_MODULE);
+        assert_eq!(id.name(), "NORMAL");
+        assert_eq!(id.discriminant(), 0);
+    }
 }

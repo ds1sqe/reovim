@@ -146,4 +146,110 @@ mod tests {
         assert!(!factory.supports("unknown"));
         assert!(!factory.supports("javascript"));
     }
+
+    #[test]
+    fn test_factory_is_object_safe() {
+        fn _accepts_ref(_: &dyn SyntaxDriverFactory) {}
+        fn _accepts_box(_: Box<dyn SyntaxDriverFactory>) {}
+    }
+
+    #[test]
+    fn test_factory_created_driver_produces_highlights() {
+        let factory = TestFactory;
+        let mut driver = factory.create("rust").unwrap();
+
+        assert_eq!(driver.language(), "rust");
+
+        // MinimalDriver starts already parsed (is_parsed returns true)
+        driver.parse("some content");
+        assert!(driver.is_parsed());
+
+        let highlights = driver.highlights(0..10);
+        assert_eq!(highlights.len(), 1);
+    }
+
+    /// Factory that overrides the default `supports` method.
+    struct CustomSupportFactory;
+
+    impl SyntaxDriverFactory for CustomSupportFactory {
+        fn create(&self, language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+            if language_id == "custom" {
+                Some(Box::new(MinimalDriver { language: "custom" }))
+            } else {
+                None
+            }
+        }
+
+        fn supported_languages(&self) -> Vec<&str> {
+            vec!["custom"]
+        }
+
+        // Uses default supports() implementation
+    }
+
+    #[test]
+    fn test_factory_default_supports_implementation() {
+        let factory = CustomSupportFactory;
+
+        // Default supports() checks supported_languages()
+        assert!(factory.supports("custom"));
+        assert!(!factory.supports("other"));
+    }
+
+    #[test]
+    fn test_factory_created_driver_update_and_highlights() {
+        let factory = TestFactory;
+        let mut driver = factory.create("python").unwrap();
+
+        assert_eq!(driver.language(), "python");
+        driver.parse("x = 1");
+
+        let edit = SyntaxEdit {
+            start_byte: 0,
+            old_end_byte: 1,
+            new_end_byte: 2,
+            start_row: 0,
+            start_col: 0,
+            old_end_row: 0,
+            old_end_col: 1,
+            new_end_row: 0,
+            new_end_col: 2,
+        };
+        driver.update("xx = 1", &edit);
+
+        // MinimalDriver always returns a highlight
+        let highlights = driver.highlights(0..100);
+        assert_eq!(highlights.len(), 1);
+        assert_eq!(highlights[0].group, HighlightGroup::Comment);
+    }
+
+    #[test]
+    fn test_custom_factory_create_supported() {
+        let factory = CustomSupportFactory;
+        let driver = factory.create("custom");
+        assert!(driver.is_some());
+        assert_eq!(driver.unwrap().language(), "custom");
+    }
+
+    #[test]
+    fn test_custom_factory_create_unsupported() {
+        let factory = CustomSupportFactory;
+        let driver = factory.create("unknown");
+        assert!(driver.is_none());
+    }
+
+    #[test]
+    fn test_custom_factory_supported_languages() {
+        let factory = CustomSupportFactory;
+        let langs = factory.supported_languages();
+        assert_eq!(langs.len(), 1);
+        assert!(langs.contains(&"custom"));
+    }
+
+    #[test]
+    fn test_factory_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<TestFactory>();
+        assert_send_sync::<CustomSupportFactory>();
+    }
 }

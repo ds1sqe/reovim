@@ -9,8 +9,8 @@
 //! # Architecture
 //!
 //! ```text
-//! lib/drivers/search/   → Trait + Types + Key + Registry (MECHANISM)
-//! modules/search/       → SearchEngine implementation (POLICY)
+//! server/lib/drivers/search/   → Trait + Types + Key + Registry (MECHANISM)
+//! server/modules/search/       → SearchEngine implementation (POLICY)
 //! ```
 
 mod key;

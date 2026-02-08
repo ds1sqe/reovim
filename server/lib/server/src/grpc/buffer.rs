@@ -427,4 +427,246 @@ mod tests {
         assert!(response.is_err());
         assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
     }
+
+    #[tokio::test]
+    async fn test_get_raw_content_with_specific_buffer_id() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        let buffer_id = session
+            .with_state_mut(|state| state.create_buffer("alpha\nbeta\ngamma"))
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        #[allow(clippy::cast_possible_truncation)]
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: Some(buffer_id.as_usize() as u64),
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.lines.len(), 3);
+        assert_eq!(resp.lines[0], "alpha");
+        assert_eq!(resp.lines[2], "gamma");
+    }
+
+    #[tokio::test]
+    async fn test_get_raw_content_with_line_range() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("line0\nline1\nline2\nline3\nline4");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: Some(1),
+            end_line: Some(3),
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.start_line, 1);
+        assert_eq!(resp.lines.len(), 2); // lines 1 and 2
+        assert_eq!(resp.lines[0], "line1");
+        assert_eq!(resp.lines[1], "line2");
+    }
+
+    #[tokio::test]
+    async fn test_get_raw_content_nonexistent_specific_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create a buffer so there's an active one, but query a different ID
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("content");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: Some(999),
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_annotations_with_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("fn main() {}");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetAnnotationsRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_annotations(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        // Currently returns empty annotations
+        assert!(resp.annotations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_annotations_with_specific_buffer_id() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        let buffer_id = session
+            .with_state_mut(|state| state.create_buffer("content"))
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        #[allow(clippy::cast_possible_truncation)]
+        let request = Request::new(GetAnnotationsRequest {
+            buffer_id: Some(buffer_id.as_usize() as u64),
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_annotations(request).await;
+
+        assert!(response.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_get_annotations_no_buffer() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetAnnotationsRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_annotations(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_get_line_count_with_specific_buffer_id() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        let buffer_id = session
+            .with_state_mut(|state| state.create_buffer("a\nb\nc\nd"))
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        #[allow(clippy::cast_possible_truncation)]
+        let request = Request::new(GetLineCountRequest {
+            buffer_id: Some(buffer_id.as_usize() as u64),
+        });
+        let response = service.get_line_count(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.line_count, 4);
+    }
+
+    #[tokio::test]
+    async fn test_get_line_count_nonexistent_buffer() {
+        let (registry, _session) = test_registry_with_buffer_manager();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetLineCountRequest {
+            buffer_id: Some(999),
+        });
+        let response = service.get_line_count(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_list_buffers_multiple() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                state.create_buffer("first");
+                state.create_buffer("second\nlines");
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(ListBuffersRequest {});
+        let response = service.list(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.buffers.len(), 2);
+    }
+
+    #[test]
+    fn test_buffer_service_new() {
+        let registry = Arc::new(SessionRegistry::new());
+        let service = BufferServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+        let _ = service;
+    }
+
+    #[tokio::test]
+    async fn test_list_buffers_with_file_path() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        session
+            .with_state_mut(|state| {
+                let id = state.create_buffer("content");
+                let buf = state.app.kernel.buffers.get(id).unwrap();
+                buf.write()
+                    .set_file_path(Some("/home/user/hello.rs".to_string()));
+            })
+            .await;
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(ListBuffersRequest {});
+        let response = service.list(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.buffers.len(), 1);
+        assert_eq!(resp.buffers[0].name, "hello.rs");
+        assert_eq!(resp.buffers[0].path.as_deref(), Some("/home/user/hello.rs"));
+    }
+
+    #[test]
+    fn test_buffer_service_get_session_not_found() {
+        let registry = Arc::new(SessionRegistry::new());
+        let service = BufferServiceImpl::new(registry, SessionId::new("nonexistent"));
+        let result = service.get_session();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_buffer_service_get_session_found() {
+        let registry = test_registry();
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+        let result = service.get_session();
+        assert!(result.is_ok());
+    }
 }

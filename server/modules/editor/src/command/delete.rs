@@ -304,3 +304,890 @@ impl CommandHandler for DeleteToEndOfLine {
         CommandResult::Success
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_driver_command::{ArgValue, CommandContext},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+            api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
+                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    struct StubExecutor;
+
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_window(buffer_id: BufferId) -> Self {
+            let home_mode = test_mode();
+            let mut state = Self {
+                session: Session::new(ClientId::new(1), home_mode.clone()),
+                mode_stack: ModeStack::new(home_mode),
+                windows: WindowLayout::empty(),
+                extensions: ExtensionMap::new(),
+            };
+            let mut window = Window::new();
+            window.buffer_id = Some(buffer_id);
+            state.windows.add(window);
+            state.session.set_active_buffer(Some(buffer_id));
+            state
+        }
+
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a StubExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
+    // DeleteChar tests
+    // =========================================================================
+
+    #[test]
+    fn test_delete_char_id() {
+        let cmd = DeleteChar;
+        assert_eq!(cmd.id().name(), "delete-char");
+    }
+
+    #[test]
+    fn test_delete_char_description() {
+        let cmd = DeleteChar;
+        assert_eq!(cmd.description(), "Delete character under cursor");
+    }
+
+    #[test]
+    fn test_delete_char_args() {
+        let cmd = DeleteChar;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_delete_char_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_char_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_char_single() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("ello"));
+    }
+
+    #[test]
+    fn test_delete_char_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("lo"));
+    }
+
+    #[test]
+    fn test_delete_char_count_clamped_to_eol() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hi");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(100));
+
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn test_delete_char_empty_line_is_noop() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_delete_char_at_eol_is_noop() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("ab");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 2).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("ab"));
+    }
+
+    // =========================================================================
+    // DeleteCharBefore tests
+    // =========================================================================
+
+    #[test]
+    fn test_delete_char_before_id() {
+        let cmd = DeleteCharBefore;
+        assert_eq!(cmd.id().name(), "delete-char-before");
+    }
+
+    #[test]
+    fn test_delete_char_before_description() {
+        let cmd = DeleteCharBefore;
+        assert_eq!(cmd.description(), "Delete character before cursor");
+    }
+
+    #[test]
+    fn test_delete_char_before_args() {
+        let cmd = DeleteCharBefore;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_delete_char_before_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_char_before_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_char_before_at_col_zero_first_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        // Cursor at (0, 0) - can't delete before first line
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn test_delete_char_before_joins_with_previous_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line one\nline two");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        // Set cursor to start of second line
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Lines should be joined
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("line oneline two"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_delete_char_before_single() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 3).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("helo"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.column, 2);
+    }
+
+    #[test]
+    fn test_delete_char_before_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 4).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("ho"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.column, 1);
+    }
+
+    #[test]
+    fn test_delete_char_before_count_clamped() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 2).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(100));
+
+        let result = DeleteCharBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("llo"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    // =========================================================================
+    // DeleteLine tests
+    // =========================================================================
+
+    #[test]
+    fn test_delete_line_id() {
+        let cmd = DeleteLine;
+        assert_eq!(cmd.id().name(), "delete-line");
+    }
+
+    #[test]
+    fn test_delete_line_description() {
+        let cmd = DeleteLine;
+        assert_eq!(cmd.description(), "Delete current line");
+    }
+
+    #[test]
+    fn test_delete_line_args() {
+        let cmd = DeleteLine;
+        let args = cmd.args();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+        assert_eq!(args[1].name, "register");
+        assert_eq!(args[1].kind, ArgKind::Register);
+    }
+
+    #[test]
+    fn test_delete_line_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_line_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer = Buffer::new();
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_delete_line_single_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("only line");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Check register has deleted content
+        let registers = kernel.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "only line\n");
+    }
+
+    #[test]
+    fn test_delete_line_middle_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        assert_eq!(buf_read.line(0), Some("line 1"));
+        assert_eq!(buf_read.line(1), Some("line 3"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_delete_line_last_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(2, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        assert_eq!(buf_read.line(0), Some("line 1"));
+        assert_eq!(buf_read.line(1), Some("line 2"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_delete_line_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        assert_eq!(buf_read.line(0), Some("line 3"));
+        assert_eq!(buf_read.line(1), Some("line 4"));
+        drop(buf_read);
+
+        // Check register content
+        let registers = kernel.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "line 1\nline 2\n");
+    }
+
+    #[test]
+    fn test_delete_line_with_indented_remaining() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("first\n    indented\nthird");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Cursor should be at first non-blank of remaining line
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 4); // First non-blank in "    indented"
+    }
+
+    // =========================================================================
+    // DeleteToEndOfLine tests
+    // =========================================================================
+
+    #[test]
+    fn test_delete_to_eol_id() {
+        let cmd = DeleteToEndOfLine;
+        assert_eq!(cmd.id().name(), "delete-to-eol");
+    }
+
+    #[test]
+    fn test_delete_to_eol_description() {
+        let cmd = DeleteToEndOfLine;
+        assert_eq!(cmd.description(), "Delete to end of line");
+    }
+
+    #[test]
+    fn test_delete_to_eol_args() {
+        let cmd = DeleteToEndOfLine;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "register");
+        assert_eq!(args[0].kind, ArgKind::Register);
+    }
+
+    #[test]
+    fn test_delete_to_eol_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = DeleteToEndOfLine.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_to_eol_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = DeleteToEndOfLine.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_delete_to_eol_from_start() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteToEndOfLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some(""));
+
+        // Check register content
+        let registers = kernel.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(!content.is_linewise());
+        assert_eq!(content.text, "hello world");
+    }
+
+    #[test]
+    fn test_delete_to_eol_from_middle() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 5).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteToEndOfLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn test_delete_to_eol_at_eol_is_noop() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hi");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 2).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteToEndOfLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hi"));
+    }
+
+    // =========================================================================
+    // DeleteLine - delete all content from first line (else branch)
+    // =========================================================================
+
+    #[test]
+    fn test_delete_line_all_from_first_line() {
+        // This tests the else branch at lines 222-228:
+        // Deleting to end of buffer from the first line - delete just the content
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("only line here");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Check register has the deleted content
+        let registers = kernel.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "only line here\n");
+    }
+
+    #[test]
+    fn test_delete_line_all_lines_from_first_with_count() {
+        // Delete all lines from the first line using count
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("first\nsecond\nthird");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(10)); // More than available lines
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // All lines should be deleted
+        let registers = kernel.registers.read();
+        let content = registers.get().clone();
+        drop(registers);
+        assert!(content.is_linewise());
+        assert_eq!(content.text, "first\nsecond\nthird\n");
+    }
+}
