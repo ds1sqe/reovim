@@ -455,6 +455,57 @@ impl UndoTree {
         self.seq_counter
     }
 
+    /// Collect all edits applied between a node and the current head.
+    ///
+    /// Walks from the current position back to `from_idx` via parent links,
+    /// collecting all edits from intermediate nodes in forward (application)
+    /// order. The edits from the `from_idx` node itself are NOT included.
+    ///
+    /// Returns `Some(empty_vec)` if `from_idx` is the current position.
+    /// Returns `None` if `from_idx` is not an ancestor of the current position
+    /// or is out of bounds.
+    #[must_use]
+    pub fn edits_since(&self, from_idx: usize) -> Option<Vec<&Edit>> {
+        if from_idx >= self.nodes.len() {
+            return None;
+        }
+
+        if from_idx == self.current {
+            return Some(Vec::new());
+        }
+
+        // Walk from current back to from_idx via parent links.
+        let mut path_indices = Vec::new();
+        let mut idx = self.current;
+
+        loop {
+            if idx == from_idx {
+                break;
+            }
+            path_indices.push(idx);
+            match self.nodes[idx].parent {
+                Some(parent) => idx = parent,
+                None => return None, // Reached root without finding from_idx
+            }
+        }
+
+        // path_indices is in reverse order (current -> ... -> from_idx+1).
+        // Reverse to get forward order (from_idx+1 -> ... -> current).
+        path_indices.reverse();
+
+        // Collect non-empty edits from each node in forward order.
+        let mut edits = Vec::new();
+        for node_idx in path_indices {
+            for edit in &self.nodes[node_idx].edits {
+                if !edit.is_empty() {
+                    edits.push(edit);
+                }
+            }
+        }
+
+        Some(edits)
+    }
+
     /// Prune old nodes if over the limit.
     ///
     /// This is a simple pruning strategy that removes the oldest

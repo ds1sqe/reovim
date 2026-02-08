@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **OT-lite conflict resolution for multi-client undo (#495)**: When multiple
+  clients edit a shared buffer, each client's undo now correctly adjusts
+  positions through intervening edits from other clients. Kernel provides
+  general-purpose `transform_position()` (inclusion transformation),
+  `TextDimensions`, `delete_end()`, `Edit::transform()`, and
+  `UndoTree::edits_since()`. The undo module's `undo_for_client()` uses these
+  to transform inverse edits and cursor positions through all edits that
+  occurred after the target node. Without this, Client 0 undoing after Client 1
+  inserted text before Client 0's edit would incorrectly remove Client 1's text.
+
 - **Code coverage infrastructure**: Added `scripts/coverage.sh` for local
   coverage with four modes (`line`, `branch`, `mcdc`, `server`) using
   `cargo-llvm-cov`. CI generates MC/DC coverage for non-server crates and

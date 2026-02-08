@@ -65,7 +65,7 @@ pub use {
     buffer_id::BufferId,
     cache::LineCache,
     delimiter::{find_delimiter_pair, find_matching_delimiter},
-    edit::Edit,
+    edit::{Edit, TextDimensions, delete_end, text_dimensions, transform_position},
     position::{Cursor, Position},
     saturator::{
         RequestPriority, SaturationRequest, SaturatorConfig, SaturatorHandle, spawn_saturator,
