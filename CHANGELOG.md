@@ -67,6 +67,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Cursor position not updating during insert mode (#505)**: The TUI statusline
+  showed 1:1 for the cursor position throughout insert mode, only updating after
+  leaving insert mode with Esc. Root cause: the fallback cursor recording in
+  `send_keys` had a flawed guard `!affected_buffers.contains(&buffer_id)` that
+  was defeated when `record_buffer_modified()` already added the buffer. Fix:
+  always record cursor movement when any key is handled (the call is idempotent).
+  Also added explicit `record_cursor_move` in the InsertChar handler.
+
 - **One-way presence visibility (#474)**: When Client B joined after Client A,
   A could not see B's cursor. Root cause: `ClientPresence::new()` initialized
   `buffer_id: None`, so the `PresenceJoined` notification lacked the buffer_id.
