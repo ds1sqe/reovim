@@ -690,7 +690,7 @@ mod tests {
         assert!(handle.is_valid());
 
         let during = reovim_timer_count();
-        assert!(during >= before + 1);
+        assert!(during > before);
 
         reovim_cancel_timer(handle);
     }

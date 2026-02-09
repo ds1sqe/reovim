@@ -544,9 +544,11 @@ mod tests {
 
     #[test]
     fn test_to_tui_style_colors() {
-        let mut style = Style::default();
-        style.fg = Some(reovim_arch::Color::Red);
-        style.bg = Some(reovim_arch::Color::Blue);
+        let style = Style {
+            fg: Some(reovim_arch::Color::Red),
+            bg: Some(reovim_arch::Color::Blue),
+            ..Style::default()
+        };
 
         let tui_style = to_tui_style(&style);
         assert_eq!(tui_style.fg, Some(reovim_arch::Color::Red));

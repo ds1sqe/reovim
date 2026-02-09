@@ -514,6 +514,21 @@ impl Window {
             selection: None,
         }
     }
+
+    /// Create a window with a specific ID and buffer (#474).
+    ///
+    /// Used when creating per-client windows that must match compositor window IDs.
+    /// Unlike `with_buffer()`, this does NOT generate a new `WindowId`.
+    #[must_use]
+    pub fn with_id_and_buffer(id: WindowId, buffer_id: BufferId) -> Self {
+        Self {
+            id,
+            buffer_id: Some(buffer_id),
+            cursor: CursorPosition::origin(),
+            viewport: Viewport::default(),
+            selection: None,
+        }
+    }
 }
 
 impl Default for Window {
@@ -639,6 +654,35 @@ impl WindowLayout {
     /// Get window by ID mutably.
     pub fn get_mut(&mut self, id: WindowId) -> Option<&mut Window> {
         self.windows.iter_mut().find(|w| w.id == id)
+    }
+
+    /// Remove a window by ID (#474).
+    ///
+    /// Returns `true` if the window was found and removed. If the removed
+    /// window was active, the active index is adjusted.
+    pub fn remove(&mut self, id: WindowId) -> bool {
+        if let Some(idx) = self.windows.iter().position(|w| w.id == id) {
+            self.windows.remove(idx);
+            // Adjust active index after removal
+            match self.active_index {
+                Some(active) if active == idx => {
+                    // Active window was removed - reset to first window (if any)
+                    self.active_index = if self.windows.is_empty() {
+                        None
+                    } else {
+                        Some(0)
+                    };
+                }
+                Some(active) if active > idx => {
+                    // Active was after removed - shift down
+                    self.active_index = Some(active - 1);
+                }
+                _ => {}
+            }
+            true
+        } else {
+            false
+        }
     }
 }
 

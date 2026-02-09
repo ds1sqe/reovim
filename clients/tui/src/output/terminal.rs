@@ -90,7 +90,13 @@ impl TuiOutput for TerminalOutput {
         }
 
         // Render to terminal with diff optimization
-        self.screen.render(&mut self.terminal)
+        self.screen.render(&mut self.terminal)?;
+
+        // screen.render() leaves the terminal cursor at the last updated cell,
+        // so force re-positioning on the next apply() call.
+        self.cursor.invalidate_position();
+
+        Ok(())
     }
 
     fn position_cursor(&mut self, x: u16, y: u16) {

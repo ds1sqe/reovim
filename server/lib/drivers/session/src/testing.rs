@@ -85,6 +85,10 @@ pub struct TestSessionRuntime {
     ///
     /// Commands use this via `runtime.ext::<T>()`, `runtime.ext_mut::<T>()`.
     pub extensions: ExtensionMap,
+    /// Per-client compositor (#474).
+    ///
+    /// `None` for tests that don't need compositor. Matches `EditingState.compositor`.
+    compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
     kernel: KernelContext,
     executor: StubExecutor,
     /// Accumulated changes from operations.
@@ -126,6 +130,7 @@ impl TestSessionRuntime {
             mode_stack: ModeStack::new(home_mode),                      // Per-client state
             windows: WindowLayout::empty(),                             // Per-client state
             extensions: ExtensionMap::new(),                            // Per-client state
+            compositor: None,                                           // Per-client (#474)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -140,6 +145,7 @@ impl TestSessionRuntime {
             mode_stack: ModeStack::new(mode),                      // Per-client state
             windows: WindowLayout::empty(),                        // Per-client state
             extensions: ExtensionMap::new(),                       // Per-client state
+            compositor: None,                                      // Per-client (#474)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -198,6 +204,7 @@ impl TestSessionRuntime {
             &mut self.mode_stack, // Separate field (no conflict)
             &mut self.windows,    // Separate field (no conflict)
             &mut self.extensions, // Separate field (no conflict)
+            &mut self.compositor, // Per-client compositor (#474)
             &self.kernel,
             &self.executor,
         );
@@ -222,6 +229,7 @@ impl TestSessionRuntime {
             &mut self.mode_stack,
             &mut self.windows,
             &mut self.extensions,
+            &mut self.compositor,
             &self.kernel,
             &self.executor,
         )
@@ -401,7 +409,7 @@ impl TestSessionRuntime {
         &mut self,
         compositor: Box<dyn reovim_driver_display::layout::RootCompositor>,
     ) {
-        self.session.set_compositor(compositor);
+        self.compositor = Some(compositor);
     }
 }
 

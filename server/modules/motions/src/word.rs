@@ -468,6 +468,7 @@ mod tests {
         mode_stack: ModeStack,
         windows: WindowLayout,
         extensions: ExtensionMap,
+        compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         buffer_id: BufferId,
     }
 
@@ -507,6 +508,7 @@ mod tests {
                 mode_stack,
                 windows,
                 extensions,
+                compositor: None,
                 buffer_id,
             }
         }
@@ -543,6 +545,7 @@ mod tests {
                 &mut self.mode_stack,
                 &mut self.windows,
                 &mut self.extensions,
+                &mut self.compositor,
                 &self.ctx,
                 &executor,
             );
@@ -566,11 +569,13 @@ mod tests {
         windows.add(Window::new());
 
         let executor = StubExecutor;
+        let mut compositor = None;
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &executor,
         );
@@ -1126,6 +1131,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1134,6 +1140,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &executor,
         );
@@ -1151,6 +1158,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty(); // No windows
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1158,6 +1166,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &executor,
         );

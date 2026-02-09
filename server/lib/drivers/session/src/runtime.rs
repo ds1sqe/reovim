@@ -99,7 +99,7 @@ pub struct SessionRuntime<'a> {
     /// When `Some`, makes explicit which client's state we're operating on.
     /// When `None`, this is a test runtime without explicit client binding.
     owner: Option<crate::ClientId>,
-    /// Shared session state (compositor, `terminal_size`, `active_buffer`).
+    /// Shared session state (`terminal_size`, `active_buffer`, template compositor).
     ///
     /// Per-client state is stored in SEPARATE fields below, not in session.
     session: &'a mut Session,
@@ -118,6 +118,12 @@ pub struct SessionRuntime<'a> {
     /// Extension operations use this directly. Per-client module state
     /// isolation is enforced by requiring this field at construction time.
     extensions: &'a mut crate::ExtensionMap,
+    /// Per-client compositor for window layout (#474).
+    ///
+    /// Each client owns their own compositor cloned from the shared template.
+    /// `CompositorApi` methods use this instead of `session.shared.compositor`.
+    /// `None` when compositor is not set (tests, headless mode).
+    compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
     /// Kernel context (buffers, registers, marks).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
@@ -171,11 +177,13 @@ impl<'a> SessionRuntime<'a> {
     /// runtime.windows().active();              // This client's active window
     /// runtime.ext_mut::<VimSessionState>();    // This client's vim state
     /// ```
+    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn new(
         session: &'a mut Session,
         mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
+        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -189,6 +197,7 @@ impl<'a> SessionRuntime<'a> {
             mode_stack,
             windows,
             extensions,
+            compositor,
             kernel,
             executor,
             screen,
@@ -230,12 +239,14 @@ impl<'a> SessionRuntime<'a> {
     ///
     /// [`new`]: Self::new
     /// [`owner()`]: Self::owner
+    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn with_owner(
         owner: crate::ClientId,
         session: &'a mut Session,
         mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
+        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -249,6 +260,7 @@ impl<'a> SessionRuntime<'a> {
             mode_stack,
             windows,
             extensions,
+            compositor,
             kernel,
             executor,
             screen,
@@ -285,7 +297,7 @@ impl<'a> SessionRuntime<'a> {
     /// Check if compositor is available.
     #[must_use]
     pub fn has_compositor(&self) -> bool {
-        self.session.shared.compositor.is_some()
+        self.compositor.is_some()
     }
 
     /// Get direct access to the session.
@@ -1089,8 +1101,6 @@ impl SessionRuntime<'_> {
     /// Emit a `LayoutChanged` event via the kernel's event bus.
     fn emit_layout_event(&self, kind: LayoutChangeKind) {
         let (window_count, focused_window) = self
-            .session
-            .shared
             .compositor
             .as_ref()
             .map_or((0, None), |c| (c.window_count(), c.focused().map(|id| id.as_usize() as u64)));
@@ -1105,8 +1115,6 @@ impl SessionRuntime<'_> {
 impl CompositorApi for SessionRuntime<'_> {
     fn navigate(&self, direction: NavigateDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_ref()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1128,8 +1136,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn split(&mut self, direction: SplitDirection) -> Result<WindowId, CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1164,8 +1170,6 @@ impl CompositorApi for SessionRuntime<'_> {
         use reovim_driver_display::layout::Zone;
 
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1205,8 +1209,6 @@ impl CompositorApi for SessionRuntime<'_> {
         use reovim_driver_display::layout::Zone;
 
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1248,8 +1250,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn resize(&mut self, direction: NavigateDirection, delta: i16) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1277,8 +1277,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn equalize(&mut self) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1302,8 +1300,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn cycle(&self, forward: bool) -> Result<WindowId, CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_ref()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1325,8 +1321,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn focus(&mut self, window: WindowId) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1350,32 +1344,26 @@ impl CompositorApi for SessionRuntime<'_> {
     }
 
     fn focused_window(&self) -> Option<WindowId> {
-        self.session.shared.compositor.as_ref()?.focused()
+        self.compositor.as_ref()?.focused()
     }
 
     fn compositor_window_count(&self) -> usize {
-        self.session
-            .shared
-            .compositor
-            .as_ref()
-            .map_or(0, |c| c.window_count())
+        self.compositor.as_ref().map_or(0, |c| c.window_count())
     }
 
     fn arrange(&self, screen: Rect) -> Vec<WindowPlacement> {
-        self.session
-            .shared
-            .compositor
+        self.compositor
             .as_ref()
             .map_or_else(Vec::new, |c| c.composite(screen).placements)
     }
 
     fn active_layer(&self) -> Option<LayerId> {
-        self.session.shared.compositor.as_ref()?.active_layer()
+        self.compositor.as_ref()?.active_layer()
     }
 
     fn set_screen(&mut self, screen: Rect) {
         self.screen = screen;
-        if let Some(compositor) = self.session.shared.compositor.as_mut() {
+        if let Some(compositor) = self.compositor.as_mut() {
             compositor.set_screen(screen);
         }
     }
@@ -1386,8 +1374,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn toggle_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1410,8 +1396,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn raise_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1433,8 +1417,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn lower_float(&mut self) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1463,8 +1445,6 @@ impl CompositorApi for SessionRuntime<'_> {
         constraints: OverlayConstraints,
     ) -> Result<WindowId, CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1484,8 +1464,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn hide_overlay(&mut self, window: WindowId) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1509,8 +1487,6 @@ impl CompositorApi for SessionRuntime<'_> {
         height: u16,
     ) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1529,8 +1505,6 @@ impl CompositorApi for SessionRuntime<'_> {
 
     fn hide_all_overlays(&mut self) -> Result<(), CompositorError> {
         let compositor = self
-            .session
-            .shared
             .compositor
             .as_mut()
             .ok_or(CompositorError::NoActiveLayer)?;
@@ -1586,12 +1560,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1638,6 +1614,7 @@ mod tests {
         let mut client_mode_stack = ModeStack::new(test_mode());
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
+        let mut client_compositor = None;
 
         // #491: Session no longer has mode_stack field - use home_mode() from shared
         let session_home_mode = session.shared.home_mode().clone();
@@ -1650,6 +1627,7 @@ mod tests {
                 &mut client_mode_stack,
                 &mut client_windows,
                 &mut client_extensions,
+                &mut client_compositor,
                 &kernel,
                 &executor,
             );
@@ -1684,6 +1662,7 @@ mod tests {
         let mut client_stack = ModeStack::new(test_mode());
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
+        let mut client_compositor = None;
 
         // Runtime created with new() has no owner
         {
@@ -1692,6 +1671,7 @@ mod tests {
                 &mut client_stack,
                 &mut client_windows,
                 &mut client_extensions,
+                &mut client_compositor,
                 &kernel,
                 &executor,
             );
@@ -1707,6 +1687,7 @@ mod tests {
                 &mut client_stack,
                 &mut client_windows,
                 &mut client_extensions,
+                &mut client_compositor,
                 &kernel,
                 &executor,
             );
@@ -1727,9 +1708,11 @@ mod tests {
         let mut client1_stack = ModeStack::new(test_mode());
         let mut client1_windows = crate::WindowLayout::empty();
         let mut client1_extensions = crate::ExtensionMap::new();
+        let mut client1_compositor = None;
         let mut client2_stack = ModeStack::new(test_mode());
         let mut client2_windows = crate::WindowLayout::empty();
         let mut client2_extensions = crate::ExtensionMap::new();
+        let mut client2_compositor = None;
 
         // Client 1 enters insert mode (#471 Phase 0: use new())
         {
@@ -1738,6 +1721,7 @@ mod tests {
                 &mut client1_stack,
                 &mut client1_windows,
                 &mut client1_extensions,
+                &mut client1_compositor,
                 &kernel,
                 &executor,
             );
@@ -1751,6 +1735,7 @@ mod tests {
                 &mut client2_stack,
                 &mut client2_windows,
                 &mut client2_extensions,
+                &mut client2_compositor,
                 &kernel,
                 &executor,
             );
@@ -1776,12 +1761,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1838,12 +1825,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1872,12 +1861,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2432,12 +2423,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2454,12 +2447,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2476,12 +2471,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2499,12 +2496,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2522,12 +2521,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -2544,12 +2545,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3100,12 +3103,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3335,12 +3340,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3367,12 +3374,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3491,12 +3500,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3516,12 +3527,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3545,12 +3558,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3574,12 +3589,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3601,12 +3618,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3778,12 +3797,14 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3812,12 +3833,14 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3839,12 +3862,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3871,6 +3896,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3878,6 +3904,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3907,6 +3934,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3914,6 +3942,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -3938,6 +3967,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3945,6 +3975,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -4085,7 +4116,7 @@ mod tests {
         make_kernel_with_services(services)
     }
 
-    /// Undo with Delete edits covers the Edit::Delete branch in undo() (lines 829-831, 835).
+    /// Undo with Delete edits covers the `Edit::Delete` branch in `undo()` (lines 829-831, 835).
     #[test]
     fn test_undo_with_delete_edits() {
         use reovim_kernel::api::v1::ModeStack;
@@ -4103,12 +4134,14 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -4121,7 +4154,7 @@ mod tests {
         assert!(runtime.changes.buffer_modified);
     }
 
-    /// Redo with Insert edits covers the Edit::Insert branch in redo() (lines 863-865, 872).
+    /// Redo with Insert edits covers the `Edit::Insert` branch in `redo()` (lines 863-865, 872).
     #[test]
     fn test_redo_with_insert_edits() {
         use reovim_kernel::api::v1::ModeStack;
@@ -4139,12 +4172,14 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -4157,7 +4192,7 @@ mod tests {
         assert!(runtime.changes.buffer_modified);
     }
 
-    /// undo_mine with Delete edits covers the Edit::Delete branch (lines 938-940, 943).
+    /// `undo_mine` with Delete edits covers the `Edit::Delete` branch (lines 938-940, 943).
     #[test]
     fn test_undo_mine_with_delete_edits() {
         use reovim_kernel::api::v1::ModeStack;
@@ -4176,6 +4211,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -4183,6 +4219,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -4195,7 +4232,7 @@ mod tests {
         assert!(runtime.changes.buffer_modified);
     }
 
-    /// redo_mine with Insert edits covers the Edit::Insert branch (lines 974-976, 982).
+    /// `redo_mine` with Insert edits covers the `Edit::Insert` branch (lines 974-976, 982).
     #[test]
     fn test_redo_mine_with_insert_edits() {
         use reovim_kernel::api::v1::ModeStack;
@@ -4214,6 +4251,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -4221,6 +4259,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -4477,11 +4516,12 @@ mod tests {
         mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
+        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         kernel: &'a KernelContext,
         executor: &'a StubExecutor,
     ) -> SessionRuntime<'a> {
-        session.set_compositor(Box::new(MockRootCompositor::new()));
-        SessionRuntime::new(session, mode_stack, windows, extensions, kernel, executor)
+        *compositor = Some(Box::new(MockRootCompositor::new()));
+        SessionRuntime::new(session, mode_stack, windows, extensions, compositor, kernel, executor)
     }
 
     #[test]
@@ -4493,8 +4533,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.navigate(NavigateDirection::Right);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), WindowId::from_raw(2));
@@ -4509,9 +4558,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.split(reovim_driver_display::SplitDirection::Horizontal);
         assert!(result.is_ok());
         assert!(rt.changes.windows_created.contains(&result.unwrap()));
@@ -4526,9 +4583,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.close_current_window();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), WindowId::from_raw(2));
@@ -4543,9 +4608,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.close_others();
         assert!(result.is_ok());
         assert!(rt.changes.windows_closed.contains(&WindowId::from_raw(2)));
@@ -4560,9 +4633,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.resize(NavigateDirection::Right, 5);
         assert!(result.is_ok());
         assert!(rt.changes.window_changed);
@@ -4577,9 +4658,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.equalize();
         assert!(result.is_ok());
         assert!(rt.changes.window_changed);
@@ -4594,8 +4683,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.cycle(true);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), WindowId::from_raw(2));
@@ -4610,9 +4708,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.focus(WindowId::from_raw(2));
         assert!(result.is_ok());
         assert!(rt.changes.focus_changed);
@@ -4627,9 +4733,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         // Focus the already-focused window - LayoutChanged event should NOT fire
         let result = rt.focus(WindowId::from_raw(1));
         assert!(result.is_ok());
@@ -4645,8 +4759,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert_eq!(rt.focused_window(), Some(WindowId::from_raw(1)));
     }
 
@@ -4659,8 +4782,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert_eq!(rt.compositor_window_count(), 2);
     }
 
@@ -4673,8 +4805,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.active_layer().is_some());
     }
 
@@ -4687,9 +4828,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.toggle_float().is_ok());
         assert!(rt.changes.window_changed);
     }
@@ -4703,9 +4852,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.raise_float().is_ok());
     }
 
@@ -4718,9 +4875,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.lower_float().is_ok());
     }
 
@@ -4733,9 +4898,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let result = rt.show_overlay(
             reovim_driver_display::layout::OverlayConstraints::centered().with_size(20, 10),
         );
@@ -4751,9 +4924,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.hide_overlay(WindowId::from_raw(99)).is_ok());
     }
 
@@ -4766,9 +4947,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.resize_overlay(WindowId::from_raw(99), 40, 20).is_ok());
     }
 
@@ -4781,9 +4970,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         assert!(rt.hide_all_overlays().is_ok());
     }
 
@@ -4796,9 +4993,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let mut rt =
-            make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         rt.set_screen(Rect::new(0, 0, 120, 40));
     }
 
@@ -4811,8 +5016,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         rt.emit_layout_event(reovim_kernel::api::v1::events::kernel::LayoutChangeKind::Equalize);
     }
 
@@ -4825,8 +5039,17 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
-        let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
         let placements = rt.arrange(Rect::new(0, 0, 80, 24));
         assert!(placements.is_empty());
     }
@@ -4835,8 +5058,8 @@ mod tests {
     // CompositorApi: close_current_window with single window (CannotCloseLastWindow)
     // =========================================================================
 
-    /// Mock compositor with only ONE tiled window, so close_current_window
-    /// returns CannotCloseLastWindow (covers line 1176).
+    /// Mock compositor with only ONE tiled window, so `close_current_window`
+    /// returns `CannotCloseLastWindow` (covers line 1176).
     struct SingleWindowLayerCompositor {
         id: reovim_driver_display::layout::LayerId,
         window: WindowId,
@@ -4983,7 +5206,7 @@ mod tests {
             Some(reovim_driver_display::layout::LayerId::new(0))
         }
         fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
-            Box::new(SingleWindowRootCompositor::new())
+            Box::new(Self::new())
         }
     }
 
@@ -4996,9 +5219,10 @@ mod tests {
         let mut ms = ModeStack::new(test_mode());
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
-
-        session.set_compositor(Box::new(SingleWindowRootCompositor::new()));
-        let mut rt = SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+        let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> =
+            Some(Box::new(SingleWindowRootCompositor::new()));
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
 
         let result = rt.close_current_window();
         assert!(result.is_err());

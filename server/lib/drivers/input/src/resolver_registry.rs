@@ -796,9 +796,6 @@ mod tests {
 
     #[test]
     fn test_resolve_with_keymap_not_handled_no_parent() {
-        let registry = ResolverRegistry::new();
-        let mode = visual_mode();
-
         // NotHandledResolver without parent - just returns NotHandled
         struct NoParentResolver {
             mode: ModeId,
@@ -817,6 +814,9 @@ mod tests {
             }
         }
 
+        let registry = ResolverRegistry::new();
+        let mode = visual_mode();
+
         registry.register(NoParentResolver { mode: mode.clone() });
 
         let key = KeyEvent::new(crate::KeyCode::Char('x'));
@@ -830,9 +830,6 @@ mod tests {
 
     #[test]
     fn test_resolve_with_extensions_not_handled_no_parent() {
-        let registry = ResolverRegistry::new();
-        let mode = visual_mode();
-
         struct NoParentResolver {
             mode: ModeId,
         }
@@ -849,6 +846,9 @@ mod tests {
                 &self.mode
             }
         }
+
+        let registry = ResolverRegistry::new();
+        let mode = visual_mode();
 
         registry.register(NoParentResolver { mode: mode.clone() });
 
@@ -865,9 +865,6 @@ mod tests {
 
     #[test]
     fn test_resolve_with_session_not_handled_no_parent() {
-        let registry = ResolverRegistry::new();
-        let mode = visual_mode();
-
         struct NoParentResolver {
             mode: ModeId,
         }
@@ -884,6 +881,9 @@ mod tests {
                 &self.mode
             }
         }
+
+        let registry = ResolverRegistry::new();
+        let mode = visual_mode();
 
         registry.register(NoParentResolver { mode: mode.clone() });
 

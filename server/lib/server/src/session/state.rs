@@ -261,12 +261,14 @@ impl SessionState {
     /// * `id` - The command ID to execute
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
+    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn execute_command_for_client(
         &mut self,
         client_id: usize,
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
+        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
@@ -281,6 +283,7 @@ impl SessionState {
             client_mode_stack,
             client_windows,
             client_extensions,
+            client_compositor,
             &self.app,
             &self.vfs,
             args,
@@ -409,12 +412,14 @@ impl SessionState {
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
         let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut temp_compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             &mut temp_mode_stack,
             &mut temp_windows,
             &mut temp_extensions,
+            &mut temp_compositor,
             &self.app.kernel,
             &stub_executor,
         );
@@ -475,6 +480,7 @@ impl SessionState {
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
+        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         key: &reovim_driver_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
@@ -512,6 +518,7 @@ impl SessionState {
             client_mode_stack,
             client_windows,
             client_extensions,
+            client_compositor,
             &self.app.kernel,
             &stub_executor,
         );
@@ -572,12 +579,14 @@ impl SessionState {
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
         let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut temp_compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             &mut temp_mode_stack,
             &mut temp_windows,
             &mut temp_extensions,
+            &mut temp_compositor,
             &self.app.kernel,
             &stub_executor,
         );
@@ -605,6 +614,7 @@ impl SessionState {
         client_mode_stack: &mut ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
+        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
     ) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{
             ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
@@ -633,6 +643,7 @@ impl SessionState {
             client_mode_stack,
             client_windows,
             client_extensions,
+            client_compositor,
             &self.app.kernel,
             &stub_executor,
         );
@@ -774,6 +785,7 @@ mod tests {
         let mut client_mode_stack = ModeStack::new(insert_mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_compositor = None;
 
         // #491: Use home_mode() instead of removed current_mode()
         // Verify initial states
@@ -790,6 +802,7 @@ mod tests {
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,
+            &mut client_compositor,
             &key,
         );
 
@@ -1006,12 +1019,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let result = state.try_on_command_complete_for_client(
             1,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
         );
 
         assert!(result.is_none());
@@ -1027,6 +1042,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1039,6 +1055,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &cmd_id,
             &ctx,
         );
@@ -1187,10 +1204,17 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('x'));
-        let result =
-            state.resolve_key_for_client(1, &mut mode_stack, &mut windows, &mut extensions, &key);
+        let result = state.resolve_key_for_client(
+            1,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &mut compositor,
+            &key,
+        );
 
         // No resolver registered - should return None
         assert!(result.is_none());
@@ -1442,6 +1466,7 @@ mod tests {
         let mut client_mode_stack = ModeStack::new(insert_mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_compositor = None;
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
@@ -1449,6 +1474,7 @@ mod tests {
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,
+            &mut client_compositor,
             &key,
         );
 
@@ -1500,6 +1526,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let ctx = reovim_driver_command::CommandContext::new();
         let result = state.execute_command_for_client(
@@ -1507,6 +1534,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &cmd_id,
             &ctx,
         );
@@ -1800,7 +1828,7 @@ mod tests {
         }
 
         fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
-            Box::new(MockCompositor::new())
+            Box::new(Self::new())
         }
     }
 
@@ -1938,12 +1966,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let result = state.try_on_command_complete_for_client(
             1,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
         );
 
         assert!(result.is_some(), "Should return ModeTransition from resolver");
@@ -2029,12 +2059,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let result = state.try_on_command_complete_for_client(
             1,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
         );
 
         assert!(result.is_some());
@@ -2126,10 +2158,17 @@ mod tests {
         let mut mode_stack = ModeStack::new(test_mode_id());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut compositor = None;
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
-        let result =
-            state.resolve_key_for_client(1, &mut mode_stack, &mut windows, &mut extensions, &key);
+        let result = state.resolve_key_for_client(
+            1,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &mut compositor,
+            &key,
+        );
 
         assert!(result.is_some(), "Resolver should handle the key");
         let (resolve_result, _changes) = result.unwrap();

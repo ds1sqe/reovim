@@ -906,16 +906,17 @@ async fn connect_common(
     // Connect gRPC client
     let mut client = TuiGrpcClient::connect(addr).await?;
 
-    // Subscribe to all notifications
-    let notification_stream = client.subscribe_all().await?;
-
-    // Join presence session first to get session token.
-    // Resize must come AFTER join so the token is attached to the request
-    // and the server can set target_client_id in the resize notification.
+    // Join presence session FIRST to get session token.
+    // subscribe_all() and resize() must come AFTER join so the token is
+    // attached to requests. Without the token, the notification stream
+    // won't be wrapped in CleanupStream and disconnect cleanup won't run.
     let display_name = std::env::var("USER")
         .or_else(|_| std::env::var("USERNAME"))
         .map_or_else(|_| "TUI Client".to_string(), |user| format!("TUI@{user}"));
     let join_resp = client.presence_join("tui", &display_name).await?;
+
+    // Subscribe to all notifications (token now set by presence_join)
+    let notification_stream = client.subscribe_all().await?;
 
     // Notify server of viewport size (token now attached via make_request)
     client.resize(u64::from(width), u64::from(height)).await?;

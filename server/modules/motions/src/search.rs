@@ -558,6 +558,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -566,6 +567,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &executor,
         );
@@ -663,6 +665,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -671,6 +674,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -689,6 +693,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -697,6 +702,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -720,6 +726,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -728,6 +735,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -749,6 +757,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -757,6 +766,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -778,6 +788,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -786,6 +797,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -814,6 +826,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -822,6 +835,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -850,6 +864,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -858,6 +873,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -902,6 +918,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -910,6 +927,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -930,6 +948,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -938,6 +957,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -962,6 +982,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -970,6 +991,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1007,6 +1029,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1015,6 +1038,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1038,6 +1062,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1046,6 +1071,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1187,6 +1213,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -1195,6 +1222,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1222,6 +1250,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -1230,6 +1259,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1256,6 +1286,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12; // position past the second hello
@@ -1267,6 +1298,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1298,6 +1330,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -1306,6 +1339,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1326,6 +1360,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12; // At second 'hello'
@@ -1337,6 +1372,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1358,6 +1394,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 5; // On space between hello and world
@@ -1369,6 +1406,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1390,6 +1428,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 100; // way past end
@@ -1401,6 +1440,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1421,6 +1461,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 5; // On space
@@ -1432,6 +1473,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1453,6 +1495,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12;
@@ -1464,6 +1507,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1491,6 +1535,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -1499,6 +1544,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1528,6 +1574,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1536,6 +1583,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1564,6 +1612,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1572,6 +1621,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1594,6 +1644,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 0; // At 'h' of hello
@@ -1605,6 +1656,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1626,6 +1678,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 6; // At 'w' of world
@@ -1637,6 +1690,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1687,6 +1741,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty(); // No window added
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1694,6 +1749,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1711,6 +1767,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1718,6 +1775,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1736,6 +1794,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1743,6 +1802,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1763,6 +1823,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1770,6 +1831,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1796,6 +1858,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
@@ -1803,6 +1866,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1823,6 +1887,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
         let executor = StubExecutor;
@@ -1831,6 +1896,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1851,6 +1917,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
         windows.add(Window::new());
 
         let executor = StubExecutor;
@@ -1859,6 +1926,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1885,6 +1953,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 2; // 'l' in hello (middle of word)
@@ -1896,6 +1965,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );
@@ -1916,6 +1986,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 14; // 'l' in second hello
@@ -1927,6 +1998,7 @@ mod tests {
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &kernel,
             &executor,
         );

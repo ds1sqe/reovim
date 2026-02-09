@@ -209,6 +209,14 @@ impl Session {
         let state = self.state.read();
         let home_mode = state.home_mode().clone();
         let active_buffer = state.active_buffer();
+        let terminal_size = state.driver_session.terminal_size();
+        // #474: Clone shared compositor for per-client ownership
+        let compositor = state
+            .driver_session
+            .shared
+            .compositor
+            .as_ref()
+            .map(|c| c.boxed_clone());
         drop(state); // Release lock before acquiring clients lock
 
         tracing::debug!(
@@ -216,20 +224,36 @@ impl Session {
             mode_module = %home_mode.module(),
             mode_name = %home_mode.name(),
             ?active_buffer,
+            has_compositor = compositor.is_some(),
             "Initializing client with home mode and per-client windows"
         );
 
         let mode_stack = ModeStack::new(home_mode);
+        let mut client = Client::with_mode_stack(client_id, metadata, mode_stack);
 
-        // Phase #471/#480: Create per-client with metadata and initial window
-        let client = if let Some(buffer_id) = active_buffer {
-            // Session has an active buffer - create window for it
+        // #474: Set per-client compositor and create windows with matching IDs.
+        // The compositor's window IDs must match the per-client WindowLayout IDs
+        // so that cursor notifications (which use WindowLayout IDs) align with
+        // layout notifications (which use compositor IDs).
+        if let Some(compositor) = compositor {
+            if let Some(buffer_id) = active_buffer {
+                let screen =
+                    reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                let result = compositor.composite(screen);
+                for p in &result.placements {
+                    let window = Window::with_id_and_buffer(p.window_id, buffer_id);
+                    client.state.windows.add(window);
+                }
+                if let Some(focused) = result.focused {
+                    client.state.windows.set_active(focused);
+                }
+            }
+            client.state.compositor = Some(compositor);
+        } else if let Some(buffer_id) = active_buffer {
+            // No compositor — create window with new ID (fallback)
             let window = Window::with_buffer(buffer_id);
-            Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window)
-        } else {
-            // No buffer yet - empty windows
-            Client::with_mode_stack(client_id, metadata, mode_stack)
-        };
+            client.state.windows.add(window);
+        }
 
         let mut clients = self.clients.write();
         clients.insert(client_id, client);
@@ -561,8 +585,23 @@ impl Session {
         if editing_state.windows.is_empty()
             && let Some(buffer_id) = state.active_buffer()
         {
-            let window = Window::with_buffer(buffer_id);
-            editing_state.windows.add(window);
+            // #474: If per-client compositor exists, create windows with matching IDs
+            if let Some(ref compositor) = editing_state.compositor {
+                let terminal_size = state.driver_session.terminal_size();
+                let screen =
+                    reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                let result = compositor.composite(screen);
+                for p in &result.placements {
+                    let window = Window::with_id_and_buffer(p.window_id, buffer_id);
+                    editing_state.windows.add(window);
+                }
+                if let Some(focused) = result.focused {
+                    editing_state.windows.set_active(focused);
+                }
+            } else {
+                let window = Window::with_buffer(buffer_id);
+                editing_state.windows.add(window);
+            }
             tracing::debug!(?buffer_id, "Synced per-client windows with active buffer");
         }
     }
@@ -609,14 +648,22 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions) = (
+        let (mode_stack, windows, extensions, compositor) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
+            &mut editing_state.compositor,
         );
 
         // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
-        state.resolve_key_for_client(target_id.as_usize(), mode_stack, windows, extensions, key)
+        state.resolve_key_for_client(
+            target_id.as_usize(),
+            mode_stack,
+            windows,
+            extensions,
+            compositor,
+            key,
+        )
     }
 
     /// Try `on_command_complete` with per-client state (#471, #477).
@@ -641,10 +688,11 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions) = (
+        let (mode_stack, windows, extensions, compositor) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
+            &mut editing_state.compositor,
         );
 
         state.try_on_command_complete_for_client(
@@ -652,6 +700,7 @@ impl Session {
             mode_stack,
             windows,
             extensions,
+            compositor,
         )
     }
 
@@ -698,10 +747,11 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions) = (
+        let (mode_stack, windows, extensions, compositor) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
+            &mut editing_state.compositor,
         );
 
         // Execute command with per-client state, passing client_id for per-client undo (#471)
@@ -710,6 +760,7 @@ impl Session {
             mode_stack,
             windows,
             extensions,
+            compositor,
             cmd_id,
             args,
         )
@@ -2118,6 +2169,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_insert_char_for_client_with_undo_recording() {
         // This test covers lines 775-787: the undo recording path in
         // insert_char_for_client when an UndoProviderRegistry with a
@@ -2135,9 +2187,12 @@ mod tests {
             std::sync::{Arc, Mutex},
         };
 
-        /// Minimal mock undo provider that tracks record_for_client calls.
+        /// Recorded undo entries: (buffer, client, edits, `cursor_before`, `cursor_after`).
+        type UndoRecords = Mutex<Vec<(BufferId, usize, Vec<Edit>, Position, Position)>>;
+
+        /// Minimal mock undo provider that tracks `record_for_client` calls.
         struct MockUndoProvider {
-            recorded: Mutex<Vec<(BufferId, usize, Vec<Edit>, Position, Position)>>,
+            recorded: UndoRecords,
         }
 
         #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2265,6 +2320,7 @@ mod tests {
         assert_eq!(*cursor_after, Position::new(0, 1));
         // Buffer ID should match
         assert_eq!(buf_id.as_usize(), result.unwrap().as_usize());
+        drop(recorded);
     }
 
     // =========================================================================
@@ -2280,7 +2336,7 @@ mod tests {
             reovim_driver_session::{SessionExtension, TextInputSink},
         };
 
-        /// Test extension that implements TextInputSink.
+        /// Test extension that implements `TextInputSink`.
         #[derive(Default)]
         struct TestSinkExtension {
             buffer: String,
@@ -2341,7 +2397,7 @@ mod tests {
             reovim_driver_session::{SessionExtension, TextInputSink},
         };
 
-        /// Test extension that implements TextInputSink.
+        /// Test extension that implements `TextInputSink`.
         #[derive(Default)]
         struct SharedSinkExtension {
             buffer: String,

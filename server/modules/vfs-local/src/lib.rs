@@ -291,8 +291,7 @@ mod tests {
         // Read a known system file
         let result = vfs.read(std::path::Path::new("/proc/self/status"));
         // On Linux, this should succeed
-        if result.is_ok() {
-            let bytes = result.unwrap();
+        if let Ok(bytes) = result {
             assert!(!bytes.is_empty());
         }
     }

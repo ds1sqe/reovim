@@ -209,8 +209,6 @@ mod tests {
         let _compositor: Box<dyn Compositor> = Box::new(LayerCompositor::new());
     }
 
-    /// Verify `ZGroup` values match the specification.
-
     // =========================================================================
     // Compositor trait impl delegation tests (cover all delegating methods)
     // =========================================================================

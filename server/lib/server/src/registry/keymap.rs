@@ -918,7 +918,7 @@ mod tests {
         let mode = test_mode();
         let j = KeySequence::parse("j").unwrap();
 
-        registry.register_at_layer(BindingLayer::Policy, &mode, j.clone(), test_command("down"));
+        registry.register_at_layer(BindingLayer::Policy, &mode, j, test_command("down"));
         assert_eq!(registry.total_bindings(), 1);
 
         // Clearing the only layer should remove the mode entry entirely

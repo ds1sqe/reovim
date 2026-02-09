@@ -316,8 +316,8 @@ mod tests {
 
     #[test]
     fn test_client_metadata_with_joined_at() {
-        let metadata = ClientMetadata::new("tui", "laptop").with_joined_at(1234567890);
-        assert_eq!(metadata.joined_at_ms, 1234567890);
+        let metadata = ClientMetadata::new("tui", "laptop").with_joined_at(1_234_567_890);
+        assert_eq!(metadata.joined_at_ms, 1_234_567_890);
     }
 
     #[test]

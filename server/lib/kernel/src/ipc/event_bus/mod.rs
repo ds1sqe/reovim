@@ -1326,6 +1326,7 @@ mod tests {
         let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::Handled);
 
         let bus2 = bus.clone();
+        drop(bus);
         assert_eq!(bus2.handler_count::<TestEvent>(), 1);
     }
 

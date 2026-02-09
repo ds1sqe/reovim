@@ -227,6 +227,14 @@ impl Cursor {
         Ok(())
     }
 
+    /// Force position update on next apply.
+    ///
+    /// Call after operations that move the terminal cursor unpredictably
+    /// (e.g., `Screen::render()` leaves cursor at last updated cell).
+    pub const fn invalidate_position(&mut self) {
+        self.position_dirty = true;
+    }
+
     /// Force full update on next apply.
     pub const fn invalidate(&mut self) {
         self.position_dirty = true;
