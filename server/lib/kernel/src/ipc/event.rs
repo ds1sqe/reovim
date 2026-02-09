@@ -711,11 +711,11 @@ mod tests {
 
     #[test]
     fn test_cache_kind_all_variants() {
+        use std::collections::HashSet;
+
         assert_eq!(CacheKind::Highlights, CacheKind::Highlights);
         assert_ne!(CacheKind::Highlights, CacheKind::Decorations);
         assert_ne!(CacheKind::Highlights, CacheKind::Both);
-
-        use std::collections::HashSet;
         let mut set = HashSet::new();
         set.insert(CacheKind::Highlights);
         set.insert(CacheKind::Decorations);

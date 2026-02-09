@@ -432,21 +432,42 @@ fn render_remote_cursors<B: RenderBackend>(
 /// Maximum display width for cursor label names.
 const MAX_LABEL_WIDTH: usize = 16;
 
-/// Prepare label text from a display name.
+/// Prepare label text from a display name and mode.
 ///
-/// Returns a padded, truncated label string. Empty names show `" ? "`.
-fn label_text(display_name: &str) -> String {
-    if display_name.is_empty() {
-        return " ? ".to_string();
-    }
-    format!(" {} ", truncate_end(display_name, MAX_LABEL_WIDTH))
+/// Returns a padded, truncated label string with mode indicator.
+/// Empty names show `" ? "`, mode is abbreviated (e.g., `[N]`, `[I]`).
+fn label_text(display_name: &str, mode: &str) -> String {
+    let name = if display_name.is_empty() {
+        "?"
+    } else {
+        display_name
+    };
+    let mode_abbrev = mode_abbreviation(mode);
+    let name = truncate_end(name, MAX_LABEL_WIDTH);
+    format!(" {name} {mode_abbrev} ")
 }
 
-/// Render floating name labels for remote cursors.
+/// Abbreviate a mode name for compact display in cursor labels.
+fn mode_abbreviation(mode: &str) -> &'static str {
+    let lower = mode.to_lowercase();
+    if lower.contains("insert") {
+        "[I]"
+    } else if lower.contains("visual") {
+        "[V]"
+    } else if lower.contains("command") || lower.contains("cmdline") {
+        "[C]"
+    } else if lower.contains("replace") {
+        "[R]"
+    } else {
+        "[N]"
+    }
+}
+
+/// Render name labels for remote cursors after line content.
 ///
-/// Shows a colored tag with the client's display name near each remote
-/// cursor. Labels appear one line above the cursor, or one line below
-/// if the cursor is at line 0. Skipped if neither position is in viewport.
+/// Shows a colored, underlined tag with the client's display name and mode
+/// on the same line as the remote cursor, positioned after the end of the
+/// line text. Skipped if the label doesn't fit within the terminal width.
 #[allow(clippy::cast_possible_truncation)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_remote_cursor_labels<B: RenderBackend>(
@@ -459,50 +480,42 @@ fn render_remote_cursor_labels<B: RenderBackend>(
 
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
 
+    let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
+
     for remote in state.other_clients.values() {
         if remote.buffer_id != current_buffer_id {
             continue;
         }
 
         let cursor_line = remote.cursor_line;
-
-        // Determine label y position: prefer above, fallback below
-        let label_y = if cursor_line > 0 {
-            (cursor_line - 1) as u16
-        } else if cursor_line + 1 < u64::from(content_height) {
-            (cursor_line + 1) as u16
-        } else {
-            continue; // No room (single-line viewport)
-        };
-
-        if label_y >= content_height {
+        if cursor_line >= u64::from(content_height) {
             continue;
         }
+        let screen_y = cursor_line as u16;
 
-        let label = label_text(&remote.display_name);
+        // Calculate end-of-line position from buffer cache
+        let eol_col = lines
+            .and_then(|l| l.get(cursor_line as usize))
+            .map_or(0, |line| display_width(line) as u16);
+
+        // Place label after line content with 1-col gap
+        let label_x = gutter_width + eol_col + 1;
+
+        let label = label_text(&remote.display_name, &remote.mode);
         let label_width = display_width(&label) as u16;
 
-        // Skip if terminal is too narrow for the label
-        if label_width + gutter_width > width {
+        // Skip if label doesn't fit on screen
+        if label_x + label_width > width {
             continue;
         }
 
-        // Clamp x position: start at cursor column, keep label within screen
-        let label_x = (remote.cursor_col as u16 + gutter_width)
-            .min(width.saturating_sub(label_width))
-            .max(gutter_width);
-
         let label_color = client_color(remote.client_id);
-        let label_style = Style::default().bg(label_color).fg(Color::White);
+        let label_style = Style::default()
+            .fg(label_color)
+            .underline()
+            .underline_color(label_color);
 
-        // Use apply_style to overlay colored background without hiding buffer text.
-        // Characters underneath remain visible (white on colored bg).
-        for i in 0..label_width {
-            let x = label_x + i;
-            if x < width {
-                backend.apply_style(x, label_y, &label_style);
-            }
-        }
+        backend.write_str(label_x, screen_y, &label, &label_style);
     }
 }
 
@@ -692,6 +705,11 @@ mod tests {
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
 
+        // Provide buffer content so label renders after EOL, not over selection
+        state
+            .buffer_cache
+            .insert(100, vec!["0123456789".to_string()]);
+
         // Add remote client in same buffer with a char selection
         let remote = RemoteClient {
             client_id: 2,
@@ -745,7 +763,7 @@ mod tests {
 
         // Entire line 1 and 2 should be highlighted (col 0..40).
         // Cursor is at (2, 0), so skip that exact cell.
-        // Label " Remote " (8 chars) renders on row 1 at col 0, overwriting selection bg.
+        // Label renders on row 2 after EOL (col 1 if no content), safely past checked col.
         for row in 1..=2u16 {
             // Use col 20 (safely past label region) to check selection bg
             let cell_mid = fb.get(20, row).unwrap();
@@ -768,6 +786,16 @@ mod tests {
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
 
+        // Provide buffer content so label renders after EOL, not over selection
+        state.buffer_cache.insert(
+            100,
+            vec![
+                "0123456789".to_string(),
+                "0123456789".to_string(),
+                "0123456789".to_string(),
+            ],
+        );
+
         state.add_remote_client(RemoteClient {
             client_id: 4,
             display_name: "Remote".to_string(),
@@ -785,14 +813,10 @@ mod tests {
 
         // Columns 3..=7 on rows 0..=2 should be highlighted.
         // Cursor is at (2, 7), so skip that cell.
-        // Label " Remote " (8 chars) renders on row 1 at col 7, overwriting selection bg there.
         for row in 0..=2u16 {
             for col in 3..=7u16 {
                 if row == 2 && col == 7 {
                     continue; // cursor overwrites selection bg here
-                }
-                if row == 1 && col == 7 {
-                    continue; // label overwrites selection bg here
                 }
                 let cell = fb.get(col, row).unwrap();
                 assert_eq!(
@@ -875,10 +899,21 @@ mod tests {
     #[test]
     fn test_render_multiline_char_selection() {
         // Multi-line char selection: first line partial start, middle full, last line partial end.
-        let mut fb = FrameBuffer::new(20, 10);
+        // Use a wider terminal so the label fits after EOL without overlapping selections.
+        let mut fb = FrameBuffer::new(40, 10);
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
+
+        // Provide buffer content so label renders after EOL
+        state.buffer_cache.insert(
+            100,
+            vec![
+                "0123456789abcdef".to_string(), // 16 chars
+                "0123456789abcdef".to_string(),
+                "0123456789abcdef".to_string(),
+            ],
+        );
 
         state.add_remote_client(RemoteClient {
             client_id: 6,
@@ -917,11 +952,22 @@ mod tests {
 
     #[test]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_remote_cursor_label_rendered() {
+    fn test_remote_cursor_label_rendered_after_eol() {
         let mut fb = FrameBuffer::new(80, 24);
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
+
+        // Provide buffer content so EOL can be calculated
+        state.buffer_cache.insert(
+            100,
+            vec![
+                String::new(),
+                String::new(),
+                String::new(),
+                "hello world".to_string(), // line 3: 11 chars
+            ],
+        );
 
         state.add_remote_client(RemoteClient {
             client_id: 2,
@@ -936,23 +982,26 @@ mod tests {
         let config = RenderConfig::default();
         render_frame(&mut fb, &state, &config);
 
-        // Label is a background overlay on row 2 (one above cursor line 3).
-        // Characters are preserved; only bg+fg change.
-        let expected_bg = Some(client_color(2));
-        let label_x = 5u16; // cursor_col
+        // Label on cursor row (3), after "hello world" (len 11) + 1 gap = col 12
+        let expected_fg = Some(client_color(2));
+        let label = label_text("alice", "NORMAL");
+        let label_x = 12u16; // eol(11) + 1 gap
         #[allow(clippy::cast_possible_truncation)]
-        let label_width = display_width(&label_text("alice")) as u16;
+        let label_width = display_width(&label) as u16;
 
         for i in 0..label_width {
-            let cell = fb.get(label_x + i, 2).unwrap();
-            assert_eq!(cell.style.bg, expected_bg, "col {} should have label bg", label_x + i);
+            let cell = fb.get(label_x + i, 3).unwrap();
+            assert_eq!(cell.style.fg, expected_fg, "col {} should have label fg", label_x + i);
+            assert!(
+                cell.style.attributes.has_any_underline(),
+                "col {} should be underlined",
+                label_x + i,
+            );
         }
 
-        // Cell before label should NOT have label bg
-        if label_x > 0 {
-            let before = fb.get(label_x - 1, 2).unwrap();
-            assert_ne!(before.style.bg, expected_bg, "cell before label should not have label bg");
-        }
+        // Cell before label should NOT have label fg
+        let before = fb.get(label_x - 1, 3).unwrap();
+        assert_ne!(before.style.fg, expected_fg, "cell before label should not have label fg");
     }
 
     #[test]
@@ -961,6 +1010,10 @@ mod tests {
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
+
+        state
+            .buffer_cache
+            .insert(100, vec!["fn main()".to_string()]);
 
         state.add_remote_client(RemoteClient {
             client_id: 3,
@@ -975,14 +1028,17 @@ mod tests {
         let config = RenderConfig::default();
         render_frame(&mut fb, &state, &config);
 
-        // Label bg should appear on row 1 (one below cursor line 0)
-        let expected_bg = Some(client_color(3));
+        // Label on row 0 after "fn main()" (len 9) + 1 gap = col 10
+        let expected_fg = Some(client_color(3));
+        let label = label_text("bob", "NORMAL");
+        let label_x = 10u16;
         #[allow(clippy::cast_possible_truncation)]
-        let label_width = display_width(&label_text("bob")) as u16;
+        let label_width = display_width(&label) as u16;
 
         for i in 0..label_width {
-            let cell = fb.get(i, 1).unwrap();
-            assert_eq!(cell.style.bg, expected_bg, "col {i} on row 1 should have label bg");
+            let cell = fb.get(label_x + i, 0).unwrap();
+            assert_eq!(cell.style.fg, expected_fg, "col {i} on row 0 should have label fg");
+            assert!(cell.style.attributes.has_any_underline(), "col {i} should be underlined");
         }
     }
 
@@ -992,6 +1048,11 @@ mod tests {
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
+
+        state.buffer_cache.insert(
+            100,
+            vec![String::new(); 6], // 6 empty lines
+        );
 
         state.add_remote_client(RemoteClient {
             client_id: 4,
@@ -1006,35 +1067,40 @@ mod tests {
         let config = RenderConfig::default();
         render_frame(&mut fb, &state, &config);
 
-        // Label bg width should be based on truncated name, not the full name.
-        let expected_bg = Some(client_color(4));
-        let truncated_label = label_text("very-long-username-that-exceeds-limit");
+        // Label should be truncated to MAX_LABEL_WIDTH
+        let truncated_label = label_text("very-long-username-that-exceeds-limit", "NORMAL");
         #[allow(clippy::cast_possible_truncation)]
         let label_width = display_width(&truncated_label) as u16;
 
-        // Full name would be 39 chars; truncated should be <= MAX_LABEL_WIDTH + 2 + 3
+        // Full name would be 39 chars; truncated should be <= MAX_LABEL_WIDTH + padding + mode
         assert!(label_width < 39, "Label should be truncated, got width {label_width}");
 
-        // Verify bg applied for the truncated label width
+        // Label at col 1 (empty line EOL=0, +1 gap)
+        let expected_fg = Some(client_color(4));
         for i in 0..label_width {
-            let cell = fb.get(i, 4).unwrap();
-            assert_eq!(cell.style.bg, expected_bg, "col {i} should have label bg");
+            let cell = fb.get(1 + i, 5).unwrap();
+            assert_eq!(cell.style.fg, expected_fg, "col {i} should have label fg");
         }
     }
 
     #[test]
-    fn test_remote_cursor_label_clamped_to_screen() {
-        let mut fb = FrameBuffer::new(30, 10);
+    fn test_remote_cursor_label_skipped_when_no_room() {
+        // Narrow terminal: label should be skipped if it doesn't fit after EOL
+        let mut fb = FrameBuffer::new(20, 10);
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
 
-        // Cursor near right edge
+        // Line fills most of the 20-col screen
+        state
+            .buffer_cache
+            .insert(100, vec!["long content here!".to_string()]);
+
         state.add_remote_client(RemoteClient {
             client_id: 5,
             display_name: "charlie".to_string(),
-            cursor_line: 3,
-            cursor_col: 25,
+            cursor_line: 0,
+            cursor_col: 0,
             buffer_id: Some(100),
             mode: "NORMAL".to_string(),
             selection: None,
@@ -1043,22 +1109,17 @@ mod tests {
         let config = RenderConfig::default();
         render_frame(&mut fb, &state, &config);
 
-        // Label bg should be visible (clamped to fit within 30 columns)
-        let expected_bg = Some(client_color(5));
-        #[allow(clippy::cast_possible_truncation)]
-        let label_width = display_width(&label_text("charlie")) as u16;
-
-        // Label clamped: starts at min(25, 30 - label_width), must end before col 30
-        let mut found_label_cells = 0u16;
-        for col in 0..30u16 {
-            if fb.get(col, 2).map(|c| c.style.bg) == Some(expected_bg) {
-                found_label_cells += 1;
-            }
+        // "long content here!" is 18 chars, label_x = 19 (18+1).
+        // Label " charlie [N] " is 14 chars. 19 + 14 = 33 > 20.
+        // Label should be skipped entirely.
+        let label_fg = Some(client_color(5));
+        for x in 0..20u16 {
+            let cell = fb.get(x, 0).unwrap();
+            assert_ne!(
+                cell.style.fg, label_fg,
+                "No cell should have label fg at col {x} (label should be skipped)"
+            );
         }
-        assert_eq!(
-            found_label_cells, label_width,
-            "Should find exactly {label_width} label cells on row 2"
-        );
     }
 
     #[test]
@@ -1067,6 +1128,8 @@ mod tests {
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 100));
         state.focused_window_id = 1;
+
+        state.buffer_cache.insert(100, vec!["hello".to_string(); 5]);
 
         state.add_remote_client(RemoteClient {
             client_id: 6,
@@ -1081,14 +1144,14 @@ mod tests {
         let config = RenderConfig::default();
         render_frame(&mut fb, &state, &config);
 
-        // No label bg should appear anywhere (client is in a different buffer)
-        let label_bg = Some(client_color(6));
+        // No label should appear anywhere (client is in a different buffer)
+        let label_fg = Some(client_color(6));
         for y in 0..23u16 {
             for x in 0..80u16 {
                 let cell = fb.get(x, y).unwrap();
                 assert_ne!(
-                    cell.style.bg, label_bg,
-                    "No cell should have label bg at ({x}, {y}) for different-buffer client"
+                    cell.style.fg, label_fg,
+                    "No cell should have label fg at ({x}, {y}) for different-buffer client"
                 );
             }
         }
@@ -1096,20 +1159,28 @@ mod tests {
 
     #[test]
     fn test_label_text_helper() {
-        // Normal name
-        assert_eq!(label_text("alice"), " alice ");
+        // Normal name with mode
+        assert_eq!(label_text("alice", "NORMAL"), " alice [N] ");
 
         // Empty name
-        assert_eq!(label_text(""), " ? ");
+        assert_eq!(label_text("", "NORMAL"), " ? [N] ");
 
         // Long name triggers truncation
-        let long = label_text("very-long-username-that-exceeds");
+        let long = label_text("very-long-username-that-exceeds", "INSERT");
         assert!(long.contains("..."), "Long name should be truncated with '...'");
+        assert!(long.contains("[I]"), "Label should contain insert mode indicator");
         assert!(long.starts_with(' '), "Label should have leading space");
         assert!(long.ends_with(' '), "Label should have trailing space");
 
         // Exact limit (16 chars)
-        assert_eq!(label_text("exactly16chars!!"), " exactly16chars!! ");
+        assert_eq!(label_text("exactly16chars!!", "NORMAL"), " exactly16chars!! [N] ");
+
+        // Mode abbreviations
+        assert!(label_text("x", "INSERT").contains("[I]"));
+        assert!(label_text("x", "VISUAL").contains("[V]"));
+        assert!(label_text("x", "COMMAND").contains("[C]"));
+        assert!(label_text("x", "REPLACE").contains("[R]"));
+        assert!(label_text("x", "NORMAL").contains("[N]"));
     }
 
     #[test]

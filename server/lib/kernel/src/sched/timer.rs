@@ -1068,6 +1068,7 @@ mod tests {
             interval: Some(Duration::from_millis(100)),
             priority: Priority::HIGH,
         };
+        #[allow(clippy::redundant_clone)]
         let cloned = config.clone();
         assert_eq!(cloned.delay, Duration::from_millis(50));
         assert_eq!(cloned.interval, Some(Duration::from_millis(100)));

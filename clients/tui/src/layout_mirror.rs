@@ -447,7 +447,7 @@ mod tests {
             height: 24,
             focused: true,
         };
-        let cloned = placement.clone();
+        let cloned = placement;
         assert_eq!(cloned.window_id, 1);
         assert_eq!(cloned.buffer_id, Some(42));
         assert_eq!(cloned.x, 10);

@@ -223,8 +223,7 @@ mod tests {
         tracker.upsert(test_presence("a"));
         tracker.upsert(test_presence("b"));
 
-        let all: Vec<_> = tracker.all().collect();
-        assert_eq!(all.len(), 2);
+        assert_eq!(tracker.all().count(), 2);
     }
 
     #[test]

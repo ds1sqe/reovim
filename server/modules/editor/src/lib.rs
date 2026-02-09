@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_editor_module_default() {
-        let module: EditorModule = Default::default();
+        let module = EditorModule;
         assert_eq!(module.name(), "Editor");
     }
 

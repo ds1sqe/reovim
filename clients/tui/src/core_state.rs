@@ -604,6 +604,6 @@ mod tests {
             .buffer_cache
             .insert(100, vec!["line 1".to_string(), "line 2".to_string()]);
         assert_eq!(state.buffer_cache.get(&100).unwrap().len(), 2);
-        assert!(state.buffer_cache.get(&999).is_none());
+        assert!(!state.buffer_cache.contains_key(&999));
     }
 }

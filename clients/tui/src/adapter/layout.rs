@@ -441,7 +441,7 @@ mod tests {
     #[test]
     fn test_layout_adapter_focus_returns_true() {
         let compositor = Arc::new(Mutex::new(MockCompositor::new()));
-        let mut adapter = TuiLayoutAdapter::new(compositor.clone(), LayerId::new(0));
+        let mut adapter = TuiLayoutAdapter::new(compositor, LayerId::new(0));
 
         // Focus should always return true
         assert!(adapter.focus(99));

@@ -396,6 +396,7 @@ mod tests {
         let buffer = buffer_arc.read();
         assert_eq!(buffer.content(), "");
         assert!(!buffer.is_modified());
+        drop(buffer);
     }
 
     #[test]
@@ -420,6 +421,7 @@ mod tests {
         assert!(buffer.content().contains("line1"));
         assert!(buffer.content().contains("line3"));
         assert_eq!(buffer.file_path(), Some("/multi.txt"));
+        drop(buffer);
     }
 
     #[test]
@@ -442,13 +444,15 @@ mod tests {
         let buffer_arc = kernel.buffers.get(buffer_id).unwrap();
         let buffer = buffer_arc.read();
         assert_eq!(buffer.file_path(), Some("/path/to/file.rs"));
+        drop(buffer);
     }
 
     #[test]
     fn test_edit_command_clone_copy() {
         let cmd = EditCommand;
-        let _cloned = cmd;
+        let copy = cmd;
         // Both should be valid since it's Copy
         assert_eq!(cmd.id(), "edit");
+        assert_eq!(copy.id(), "edit");
     }
 }

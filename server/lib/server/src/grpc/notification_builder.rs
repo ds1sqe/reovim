@@ -260,47 +260,31 @@ fn build_buffer_list_notification(
 /// * `client_id` - Client for per-client focused window
 #[allow(clippy::cast_possible_truncation, clippy::option_if_let_else)]
 fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) -> Notification {
-    // Phase #486: Try per-client focused window first, fallback to compositor
-    // Phase #491: Removed driver_session.windows fallback (deprecated field removed)
-    let focused_id = session
-        .client_state(ClientId::new(client_id as usize))
-        .and_then(|s| s.windows.active_id())
-        .or_else(|| {
-            // Fallback to compositor focused window
-            session.with_state_sync(|state| {
-                state
-                    .driver_session
-                    .shared
-                    .compositor
-                    .as_ref()
-                    .and_then(|c| c.focused())
-            })
-        });
+    // #474: Use per-client compositor and windows (same ID namespace).
+    // Each client owns a cloned compositor — window IDs from compositor.composite()
+    // match the per-client WindowLayout IDs, fixing the cross-namespace mismatch.
+    let editing_state = session.client_state(ClientId::new(client_id as usize));
 
-    // Phase #491: Get per-client windows for buffer_id lookup
-    let client_windows = session
-        .client_state(ClientId::new(client_id as usize))
-        .map(|s| s.windows);
+    let focused_id = editing_state.as_ref().and_then(|s| s.windows.active_id());
 
-    // Build window info list from shared compositor (layout is session-wide)
-    let windows: Vec<WindowInfo> = session.with_state_sync(|state| {
-        if let Some(compositor) = &state.driver_session.shared.compositor {
-            // Get placements from compositor
-            let (width, height) = state.driver_session.terminal_size();
-            let screen = reovim_driver_display::Rect::new(0, 0, width, height);
+    // Build window info list from per-client compositor (#474)
+    let windows: Vec<WindowInfo> = if let Some(ref state) = editing_state {
+        if let Some(ref compositor) = state.compositor {
+            // Per-client compositor: IDs match per-client windows
+            let terminal_size = session.with_state_sync(|s| s.driver_session.terminal_size());
+            let screen = reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
             let composite = compositor.composite(screen);
 
-            // Phase #491: Use per-client windows or active_buffer for buffer_id
-            let active_buffer = state.driver_session.active_buffer();
+            let active_buffer = session.with_state_sync(|s| s.driver_session.active_buffer());
 
             composite
                 .placements
                 .iter()
                 .map(|p| {
-                    // Phase #491: Get buffer_id from per-client windows, fallback to active_buffer
-                    let buffer_id = client_windows
-                        .as_ref()
-                        .and_then(|w| w.get(p.window_id))
+                    // #474: w.get(p.window_id) now works — both use same ID namespace
+                    let buffer_id = state
+                        .windows
+                        .get(p.window_id)
                         .and_then(|w| w.buffer_id)
                         .or(active_buffer)
                         .map(|id| id.as_usize() as u64);
@@ -319,37 +303,35 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                 })
                 .collect()
         } else {
-            // Phase #491: Fallback when compositor is not set - use per-client windows
-            // or return empty (compositor should always be set in production)
-            if let Some(windows) = &client_windows {
-                windows
-                    .windows
-                    .iter()
-                    .map(|w| WindowInfo {
-                        window_id: w.id.as_usize() as u64,
-                        buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
-                        rect: Some(WindowRect {
-                            x: 0,
-                            y: 0,
-                            width: 80, // Default size
-                            height: 24,
-                        }),
-                        focused: focused_id == Some(w.id),
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            }
+            // No compositor — use per-client windows with default geometry
+            state
+                .windows
+                .windows
+                .iter()
+                .map(|w| WindowInfo {
+                    window_id: w.id.as_usize() as u64,
+                    buffer_id: w.buffer_id.map(|id| id.as_usize() as u64),
+                    rect: Some(WindowRect {
+                        x: 0,
+                        y: 0,
+                        width: 80,
+                        height: 24,
+                    }),
+                    focused: focused_id == Some(w.id),
+                })
+                .collect()
         }
-    });
+    } else {
+        Vec::new()
+    };
 
     Notification {
         event_type: "layout_changed".to_string(),
         timestamp_ms: timestamp,
         payload: Some(notification::Payload::LayoutChanged(LayoutChangedPayload {
-            // Phase #479: focused_window_id is now Option<u64>
             focused_window_id: focused_id.map(|id| id.as_usize() as u64),
             windows,
+            client_id,
         })),
     }
 }
@@ -1392,6 +1374,7 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_build_layout_notification_with_compositor() {
         use reovim_driver_display::{
             Rect, RootCompositor, WindowId,
@@ -1473,13 +1456,8 @@ mod tests {
             }
         }
 
-        // Create a session state with the compositor
-        let compositor: Box<dyn RootCompositor> = Box::new(TestCompositor {
-            focused: Some(WindowId::from_raw(1)),
-        });
-
-        let mut state = crate::session::SessionState::default();
-        state.driver_session.shared.compositor = Some(compositor);
+        // Create a session state (compositor is now per-client, not shared)
+        let state = crate::session::SessionState::default();
 
         let session = Session::from_state(SessionId::new("compositor-test"), state);
 
@@ -1495,9 +1473,13 @@ mod tests {
         // Override the window id to match the compositor placement
         window.id = reovim_kernel::api::v1::WindowId::from_raw(1);
         let metadata = crate::session::ClientMetadata::default();
-        let client = crate::session::Client::with_mode_stack_and_window(
+        let mut client = crate::session::Client::with_mode_stack_and_window(
             client_id, metadata, mode_stack, window,
         );
+        // #474: Set compositor on per-client state (not shared)
+        client.state.compositor = Some(Box::new(TestCompositor {
+            focused: Some(WindowId::from_raw(1)),
+        }));
         session.add_client_with_state(client);
 
         // Build layout notification - this should hit the compositor branch
@@ -1528,105 +1510,18 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_build_layout_notification_compositor_no_client() {
-        // Test compositor branch when client is NOT registered (no per-client windows)
-        use reovim_driver_display::{
-            Rect, RootCompositor, WindowId,
-            layout::{
-                CompositeResult, Layer, LayerConfig, LayerId, WindowLayerCompositor,
-                WindowPlacement, ZOrder, Zone,
-            },
-        };
-
-        struct TestCompositorNoFocus;
-
-        #[cfg_attr(coverage_nightly, coverage(off))]
-        impl RootCompositor for TestCompositorNoFocus {
-            fn composite(&self, screen: Rect) -> CompositeResult {
-                let placement = WindowPlacement::new(
-                    WindowId::from_raw(5),
-                    LayerId::new(0),
-                    Zone::Tiled,
-                    Rect::new(2, 3, 40, 20),
-                    ZOrder::new(100),
-                );
-                CompositeResult {
-                    placements: vec![placement],
-                    focused: None,
-                    active_layer: None,
-                    screen,
-                }
-            }
-
-            fn create_layer(&mut self, _config: LayerConfig) -> LayerId {
-                LayerId::new(0)
-            }
-            fn remove_layer(&mut self, _layer: LayerId) {}
-            fn layer_by_label(&self, _label: &str) -> Option<LayerId> {
-                None
-            }
-            fn layers(&self) -> Vec<&Layer> {
-                Vec::new()
-            }
-            fn set_layer_visible(&mut self, _layer: LayerId, _visible: bool) {}
-            fn set_layer_opacity(&mut self, _layer: LayerId, _opacity: f32) {}
-            fn reorder_layer(&mut self, _layer: LayerId, _new_z: u16) {}
-            fn set_active_layer(&mut self, _layer: LayerId) {}
-            fn active_layer(&self) -> Option<LayerId> {
-                None
-            }
-            fn set_focus(&mut self, _window: WindowId) {}
-            fn focused(&self) -> Option<WindowId> {
-                None
-            }
-            fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
-                None
-            }
-            fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
-                None
-            }
-            fn layer_compositor_mut(
-                &mut self,
-                _layer: LayerId,
-            ) -> Option<&mut dyn WindowLayerCompositor> {
-                None
-            }
-            fn window_count(&self) -> usize {
-                1
-            }
-            fn set_screen(&mut self, _screen: Rect) {}
-            fn layer_of(&self, _window: WindowId) -> Option<LayerId> {
-                Some(LayerId::new(0))
-            }
-            fn boxed_clone(&self) -> Box<dyn RootCompositor> {
-                Box::new(Self)
-            }
-        }
-
-        let compositor: Box<dyn RootCompositor> = Box::new(TestCompositorNoFocus);
-        let mut state = crate::session::SessionState::default();
-        state.driver_session.shared.compositor = Some(compositor);
+        // #474: Compositor is now per-client. With no client registered,
+        // there is no per-client state and no compositor, so the result is empty windows.
+        let state = crate::session::SessionState::default();
 
         let session = Session::from_state(SessionId::new("compositor-no-client"), state);
 
-        // No client registered - client_windows will be None,
-        // and active_buffer will be None, so buffer_id in WindowInfo should be None
+        // No client registered - editing_state is None, so windows list is empty
         let notification = build_layout_notification(&session, 54321, 999);
         assert_eq!(notification.event_type, "layout_changed");
 
         if let Some(notification::Payload::LayoutChanged(payload)) = notification.payload {
-            assert_eq!(payload.windows.len(), 1);
-            let win = &payload.windows[0];
-            assert_eq!(win.window_id, 5);
-            // No client_windows and no active_buffer -> buffer_id is None
-            assert!(win.buffer_id.is_none());
-            // No focused window
-            assert!(!win.focused);
-            // Verify rect from compositor
-            let rect = win.rect.as_ref().expect("rect should be present");
-            assert_eq!(rect.x, 2);
-            assert_eq!(rect.y, 3);
-            assert_eq!(rect.width, 40);
-            assert_eq!(rect.height, 20);
+            assert_eq!(payload.windows.len(), 0);
             assert!(payload.focused_window_id.is_none());
         } else {
             panic!("Expected LayoutChangedPayload");
@@ -1635,6 +1530,7 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
         // Test compositor branch where client_windows has no matching window
         // but active_buffer is set as fallback
@@ -1739,9 +1635,7 @@ mod tests {
             Arc::new(ServiceRegistry::new()),
         );
 
-        let compositor: Box<dyn RootCompositor> = Box::new(TestCompositorTwoWindows);
         let mut state = crate::session::SessionState::with_kernel(kernel);
-        state.driver_session.shared.compositor = Some(compositor);
 
         // Create a buffer so active_buffer is set
         let buffer_id = state.create_buffer("test content");
@@ -1758,9 +1652,11 @@ mod tests {
         let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
         window.id = reovim_kernel::api::v1::WindowId::from_raw(10);
         let metadata = crate::session::ClientMetadata::default();
-        let client = crate::session::Client::with_mode_stack_and_window(
+        let mut client = crate::session::Client::with_mode_stack_and_window(
             client_id, metadata, mode_stack, window,
         );
+        // #474: Set compositor on per-client state (not shared)
+        client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
         session.add_client_with_state(client);
 
         let notification = build_layout_notification(&session, 99999, 1);

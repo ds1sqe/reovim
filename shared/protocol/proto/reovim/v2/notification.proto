@@ -92,6 +92,8 @@ message LayoutChangedPayload {
   optional uint64 focused_window_id = 1;
   // Window list with positions (simplified from full tree)
   repeated WindowInfo windows = 2;
+  // Client ID that triggered this layout change (for multi-client filtering)
+  uint64 client_id = 3;
 }
 
 message WindowInfo {

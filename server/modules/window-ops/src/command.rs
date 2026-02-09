@@ -848,7 +848,7 @@ mod tests {
         }
 
         fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
-            Box::new(MockRootCompositor {
+            Box::new(Self {
                 layer: MockLayerCompositor {
                     id: self.layer.id,
                     windows: self.layer.windows.clone(),

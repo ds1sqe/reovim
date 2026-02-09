@@ -377,6 +377,7 @@ mod tests {
         mode_stack: ModeStack,
         windows: WindowLayout,
         extensions: ExtensionMap,
+        compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
     }
 
     impl TestState {
@@ -394,6 +395,7 @@ mod tests {
                 mode_stack,
                 windows,
                 extensions,
+                compositor: None,
             }
         }
 
@@ -411,6 +413,7 @@ mod tests {
                 mode_stack,
                 windows,
                 extensions,
+                compositor: None,
             }
         }
 
@@ -428,6 +431,7 @@ mod tests {
                 mode_stack,
                 windows,
                 extensions,
+                compositor: None,
             }
         }
 
@@ -442,6 +446,7 @@ mod tests {
                 &mut self.mode_stack,
                 &mut self.windows,
                 &mut self.extensions,
+                &mut self.compositor,
                 kernel,
                 executor,
             )
@@ -1197,6 +1202,7 @@ mod tests {
             mode_stack,
             windows,
             extensions,
+            compositor: None,
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1221,6 +1227,7 @@ mod tests {
             mode_stack,
             windows,
             extensions,
+            compositor: None,
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1245,6 +1252,7 @@ mod tests {
             mode_stack,
             windows,
             extensions,
+            compositor: None,
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1269,6 +1277,7 @@ mod tests {
             mode_stack,
             windows,
             extensions,
+            compositor: None,
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);

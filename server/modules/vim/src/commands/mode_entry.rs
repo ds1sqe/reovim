@@ -503,6 +503,7 @@ mod tests {
         mode_stack: ModeStack,
         windows: WindowLayout,
         extensions: ExtensionMap,
+        compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
     }
 
     impl TestState {
@@ -524,6 +525,7 @@ mod tests {
                 mode_stack,
                 windows,
                 extensions,
+                compositor: None,
             }
         }
 
@@ -533,6 +535,7 @@ mod tests {
                 &mut self.mode_stack,
                 &mut self.windows,
                 &mut self.extensions,
+                &mut self.compositor,
                 kernel,
                 &StubExecutor,
             )
@@ -1254,12 +1257,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &StubExecutor,
         );
@@ -1285,12 +1290,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &StubExecutor,
         );
@@ -1316,12 +1323,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &StubExecutor,
         );
@@ -1348,12 +1357,14 @@ mod tests {
         let mut mode_stack = ModeStack::new(home_mode);
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
+            &mut compositor,
             &ctx,
             &StubExecutor,
         );

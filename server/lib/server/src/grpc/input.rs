@@ -2406,8 +2406,10 @@ mod tests {
         use reovim_driver_input::{InputTarget, KeyCode};
 
         // Need a real BufferManager (not StubBufferManager) so buffers are actually stored
-        let mut kernel = reovim_kernel::api::v1::KernelContext::default();
-        kernel.buffers = std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new());
+        let kernel = reovim_kernel::api::v1::KernelContext {
+            buffers: std::sync::Arc::new(reovim_driver_buffer::TestBufferManager::new()),
+            ..Default::default()
+        };
         let state = crate::session::SessionState::with_kernel(kernel);
         let session =
             crate::session::Session::from_state(SessionId::new("insertchar-modified-test"), state);

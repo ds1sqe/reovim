@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Per-client compositor refactor (#474)**: Each client now owns an independent
+  compositor clone, eliminating the cross-namespace window ID mismatch between
+  shared compositor IDs and per-client WindowLayout IDs. The compositor moves
+  from `SessionShared` into per-client `EditingState` at join time via
+  `boxed_clone()`. `SessionRuntime` accepts the per-client compositor as a
+  parameter, and all `CompositorApi` methods operate on it. Notification builder
+  reads per-client compositor for layout notifications. This is foundational
+  for multi-client TUI rendering where each client has independent viewports.
+
 - **Comprehensive unit test suite (#497)**: Added ~4500 unit tests across the
   entire workspace, bringing the total from ~3250 to 7752 passing tests (0
   failures). Coverage spans all layers: kernel (mm, ipc, core, block, sched,

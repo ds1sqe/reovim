@@ -893,7 +893,7 @@ mod tests {
         let debug = format!("{cloned:?}");
         assert!(debug.contains("NopProfiler"));
 
-        let default_nop = NopProfiler::default();
+        let default_nop = NopProfiler;
         assert!(!default_nop.enabled("test"));
     }
 

@@ -464,7 +464,7 @@ mod tests {
         queue.push(Task::new(|| {})); // Dropped
         let debug_str = format!("{queue:?}");
         assert!(debug_str.contains("dropped"));
-        assert!(debug_str.contains("1")); // dropped count
+        assert!(debug_str.contains('1')); // dropped count
     }
 
     // === Coverage: try_pop on empty returns None ===

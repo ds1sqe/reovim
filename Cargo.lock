@@ -2146,6 +2146,7 @@ name = "reovim-module-motions"
 version = "0.9.4-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-display",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-kernel",
@@ -2186,6 +2187,7 @@ name = "reovim-module-textobjects"
 version = "0.9.4-dev"
 dependencies = [
  "reovim-driver-command",
+ "reovim-driver-display",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",

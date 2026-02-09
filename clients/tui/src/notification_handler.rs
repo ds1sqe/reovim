@@ -152,7 +152,12 @@ pub async fn handle_notification<C: NotificationContext>(
 
             if let Some(pos) = cursor.position {
                 if is_local {
-                    state.update_local_cursor(cursor.window_id, pos.line, pos.column);
+                    // Use focused_window_id as storage key: when per-client compositor
+                    // is active (#474) the IDs match, but this also handles edge cases
+                    // where cursor.window_id differs from focused_window_id (e.g., when
+                    // no compositor is loaded).
+                    let key = state.focused_window_id;
+                    state.update_local_cursor(key, pos.line, pos.column);
                 } else {
                     state.update_remote_cursor(cursor.client_id, pos.line, pos.column);
                 }
@@ -188,7 +193,20 @@ pub async fn handle_notification<C: NotificationContext>(
 
         Payload::LayoutChanged(layout) => {
             let state = ctx.state_mut();
-            apply_layout_notification(state, layout.focused_window_id, layout.windows);
+            let is_local = layout.client_id == 0 || layout.client_id == state.my_client_id;
+
+            if is_local {
+                // Local client: apply full layout update (windows + focus)
+                apply_layout_notification(state, layout.focused_window_id, layout.windows);
+            } else {
+                // Remote client changed layout: update window list but keep our focus
+                let our_focus = state.focused_window_id;
+                apply_layout_notification(state, layout.focused_window_id, layout.windows);
+                state.focused_window_id = our_focus;
+                for w in &mut state.windows {
+                    w.focused = w.window_id == our_focus;
+                }
+            }
             Ok(NotificationResult::Redraw)
         }
 
@@ -209,7 +227,7 @@ pub async fn handle_notification<C: NotificationContext>(
             if let Some(client) = p.client {
                 let state = ctx.state_mut();
                 if client.client_id != state.my_client_id {
-                    tracing::info!(
+                    tracing::debug!(
                         client_id = client.client_id,
                         display_name = %client.display_name,
                         buffer_id = ?client.buffer_id,
@@ -683,6 +701,7 @@ mod tests {
                     focused: false,
                 },
             ],
+            client_id: 1,
         }));
 
         let result = handle_notification(&mut ctx, notif).await.unwrap();

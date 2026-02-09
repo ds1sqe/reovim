@@ -19,5 +19,8 @@ reovim-driver-command = { workspace = true }
 reovim-driver-session = { workspace = true }
 reovim-module-macros = { workspace = true }
 
+[dev-dependencies]
+reovim-driver-display = { workspace = true }
+
 [lints]
 workspace = true

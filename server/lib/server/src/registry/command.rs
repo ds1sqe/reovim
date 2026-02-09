@@ -138,6 +138,7 @@ impl CommandRegistry {
         client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
+        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
         app: &AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
@@ -163,6 +164,7 @@ impl CommandRegistry {
                 client_mode_stack,
                 client_windows,
                 client_extensions,
+                client_compositor,
                 &app.kernel,
                 &stub_executor,
             );
@@ -424,6 +426,7 @@ mod tests {
         let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_compositor = None;
 
         let result = registry.execute_for_client(
             1, // test client_id for per-client undo (#471)
@@ -432,6 +435,7 @@ mod tests {
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,
+            &mut client_compositor,
             &app,
             &vfs,
             &args,
@@ -615,6 +619,7 @@ mod tests {
         let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_compositor = None;
 
         let result = registry.execute_for_client(
             1,
@@ -623,6 +628,7 @@ mod tests {
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,
+            &mut client_compositor,
             &app,
             &vfs,
             &args,
@@ -699,6 +705,7 @@ mod tests {
         let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_compositor = None;
 
         let result = registry.execute_for_client(
             1,
@@ -707,6 +714,7 @@ mod tests {
             &mut client_mode_stack,
             &mut client_windows,
             &mut client_extensions,
+            &mut client_compositor,
             &app,
             &vfs,
             &args,

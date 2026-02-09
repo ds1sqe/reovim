@@ -42,6 +42,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
+    reovim_driver_display::layout::RootCompositor,
     reovim_driver_session::{
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, Viewport, Window,
         WindowLayout,
@@ -563,7 +564,6 @@ impl Client {
 /// selection, and module extensions. Each client has independent state
 /// to prevent cross-client interference (e.g., Client A's pending count
 /// affecting Client B's motions).
-#[derive(Debug)]
 pub struct EditingState {
     /// Mode stack (current mode on top).
     pub mode_stack: ModeStack,
@@ -595,6 +595,31 @@ pub struct EditingState {
     /// cause Client B's `j` to move 5 lines instead of 1. This field
     /// ensures complete module state isolation.
     pub extensions: ExtensionMap,
+
+    /// Per-client compositor for window layout (#474).
+    ///
+    /// Each client owns their own compositor, cloned from the shared template
+    /// at join time. This ensures window IDs are consistent between the
+    /// compositor (geometry) and per-client windows (cursor/viewport).
+    ///
+    /// Before this field, the shared compositor and per-client windows used
+    /// independent ID namespaces, causing cross-namespace mismatches in
+    /// notifications and state queries.
+    pub compositor: Option<Box<dyn RootCompositor>>,
+}
+
+impl std::fmt::Debug for EditingState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EditingState")
+            .field("mode_stack", &self.mode_stack)
+            .field("pending_keys", &self.pending_keys)
+            .field("windows", &self.windows)
+            .field("viewport", &self.viewport)
+            .field("selection", &self.selection)
+            .field("extensions", &self.extensions)
+            .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .finish()
+    }
 }
 
 // Manual Clone implementation (#477).
@@ -611,6 +636,7 @@ impl Clone for EditingState {
             viewport: self.viewport, // Copy type
             selection: self.selection.clone(),
             extensions: ExtensionMap::new(), // Fresh extensions for cloned state
+            compositor: self.compositor.as_ref().map(|c| c.boxed_clone()), // #474
         }
     }
 }
@@ -625,10 +651,11 @@ impl Default for EditingState {
         Self {
             mode_stack: ModeStack::new(placeholder_mode),
             pending_keys: KeySequence::new(),
-            windows: WindowLayout::empty(), // Per-client windows (#471)
+            windows: WindowLayout::empty(),
             viewport: Viewport::default(),
             selection: None,
-            extensions: ExtensionMap::new(), // Per-client extensions (#477)
+            extensions: ExtensionMap::new(),
+            compositor: None,
         }
     }
 }
@@ -643,7 +670,8 @@ impl EditingState {
             windows: WindowLayout::empty(),
             viewport: Viewport::default(),
             selection: None,
-            extensions: ExtensionMap::new(), // Per-client extensions (#477)
+            extensions: ExtensionMap::new(),
+            compositor: None,
         }
     }
 
@@ -660,7 +688,8 @@ impl EditingState {
             windows,
             viewport: Viewport::default(),
             selection: None,
-            extensions: ExtensionMap::new(), // Per-client extensions (#477)
+            extensions: ExtensionMap::new(),
+            compositor: None,
         }
     }
 

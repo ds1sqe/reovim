@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn test_noop_fallback_default_trait() {
-        let handler = NoOpFallback::default();
+        let handler = NoOpFallback;
         let mut ctx = MockContext::normal();
         let key = KeyEvent::new(KeyCode::Char('z'));
         assert_eq!(handler.handle_unmatched(key, &mut ctx), FallbackResult::Ignored);
@@ -574,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_beep_fallback_default_trait() {
-        let handler = BeepFallback::default();
+        let handler = BeepFallback;
         let mut ctx = MockContext::normal();
         let key = KeyEvent::new(KeyCode::Char('z'));
         assert_eq!(handler.handle_unmatched(key, &mut ctx), FallbackResult::Beep);
