@@ -82,6 +82,7 @@ impl InjectionLayer {
     ///
     /// The highlights are offset-adjusted to match positions in the parent document.
     #[allow(clippy::cast_possible_truncation)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn highlight_injection(
         &mut self,
         injection: &Injection,
@@ -505,6 +506,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_layer_highlight() {
         // Test highlighting embedded Rust code
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -542,6 +544,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_manager_with_layer() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
@@ -582,6 +585,7 @@ mod tests {
         language: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl InjectionLayerFactory for MockLayerFactory {
         fn create_layer(&self, _capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
             // For testing, we don't actually create a layer
@@ -732,6 +736,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_manager_get_or_create_layer_no_layer() {
         use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
 
@@ -757,6 +762,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_manager_get_or_create_layer_supported_but_no_implementation() {
         use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
 
@@ -787,6 +793,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_manager_get_or_create_layer_cached() {
         use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
 

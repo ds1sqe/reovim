@@ -175,6 +175,7 @@ impl TuiLogBuffer {
     /// Get the last N entries (newest first).
     #[must_use]
     #[allow(clippy::cast_possible_truncation)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn tail(&self, n: usize) -> Vec<&TuiLogEntry> {
         let len = self.entries.len();
         let count = n.min(len);

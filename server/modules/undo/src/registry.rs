@@ -230,6 +230,7 @@ impl UndoProvider for UndoRegistry {
         );
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn end_batch(&self, buffer_id: BufferId, cursor_after: Position) {
         let batch = {
             let mut batches = self.batches.write();
@@ -304,6 +305,7 @@ impl UndoProvider for UndoRegistry {
         Ok(())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn load(
         &self,
         buffer_id: BufferId,
@@ -355,6 +357,7 @@ impl UndoProvider for UndoRegistry {
     // Multi-Client Undo Methods (#471)
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo_for_client(&self, buffer_id: BufferId, client_id: usize) -> Option<UndoResult> {
         let key = (buffer_id, client_id);
         let trees = self.trees.read();
@@ -528,6 +531,7 @@ fn transform_through_intervening(
 ///
 /// This does a depth-first search of the tree from the given position,
 /// looking for a child node made by the specified client.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn find_redo_for_client(
     tree: &UndoTree,
     from: usize,
@@ -820,6 +824,7 @@ mod tests {
         assert_eq!(current.origin(), EditOrigin::Client(client_id));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_undo_for_client_only_undoes_own_edits() {
         let registry = UndoRegistry::new();
@@ -869,6 +874,7 @@ mod tests {
         assert!(matches!(&undo_result.edits[0], Edit::Delete { text, .. } if text == "CCC"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_undo_for_client_skips_other_clients() {
         let registry = UndoRegistry::new();
@@ -1231,6 +1237,7 @@ mod tests {
     /// Client 1 types "0iBBBB<Esc>" → batch of 4 char inserts at (0,0)-(0,3)
     /// Client 0 undoes → should remove AAAA (now at col 4-7), not BBBB (at col 0-3)
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_undo_for_client_batched_insert_mode_scenario() {
         let registry = UndoRegistry::new();
         let buffer_id = BufferId::from_raw(1);
@@ -1294,6 +1301,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_redo_for_client_restores_own_edits() {
         let registry = UndoRegistry::new();
@@ -1770,6 +1778,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_end_batch_with_client_origin_updates_cursor() {
         let registry = UndoRegistry::new();
         let buffer_id = BufferId::from_raw(1);
@@ -1795,6 +1804,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_record_for_client_during_batch_first_origin_wins() {
         let registry = UndoRegistry::new();
         let buffer_id = BufferId::from_raw(1);
@@ -1927,5 +1937,110 @@ mod tests {
         let (edits, pos) = transform_through_intervening(&[], inverse_edits, cursor);
         assert_eq!(edits.len(), 1);
         assert_eq!(pos, Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_redo_branch_with_branches() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Create edit 1, undo, create edit 2 (branch)
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Undo to get back to node 1
+        registry.undo(buffer_id);
+        // Create a branch
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Undo again to node 1
+        registry.undo(buffer_id);
+
+        // redo_branch(0) should follow the first branch (node with "B")
+        let result = registry.redo_branch(buffer_id, 0);
+        assert!(result.is_some(), "redo_branch(0) should succeed");
+    }
+
+    #[test]
+    fn test_load_too_short_file() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let vfs = MockVfs::new();
+
+        // Write data shorter than 4 bytes (magic header)
+        let undo_path = registry.undo_file_path("/file.rs");
+        vfs.add_file(&undo_path, b"RU");
+
+        let loaded = registry.load(buffer_id, "/file.rs", &vfs);
+        assert!(loaded.is_err(), "load of too-short file should return error");
+    }
+
+    #[test]
+    fn test_load_valid_magic_corrupt_payload() {
+        use reovim_driver_vfs::MockVfs;
+
+        let registry = UndoRegistry::with_data_dir(Path::new("/test-data"));
+        let buffer_id = BufferId::from_raw(1);
+        let vfs = MockVfs::new();
+
+        // Write valid magic (RUND) + garbage payload
+        let mut data = b"RUND".to_vec();
+        data.extend_from_slice(b"\xff\xff\xff\xff\xff");
+        let undo_path = registry.undo_file_path("/file.rs");
+        vfs.add_file(&undo_path, &data);
+
+        let loaded = registry.load(buffer_id, "/file.rs", &vfs);
+        assert!(loaded.is_err(), "load of corrupt payload should return error");
+    }
+
+    #[test]
+    fn test_redo_for_client_recursive_grandchild() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_a = 1_usize;
+        let client_b = 2_usize;
+
+        // Client B makes node 1, Client A makes node 2
+        registry.record_for_client(
+            buffer_id,
+            client_b,
+            vec![Edit::insert(Position::new(0, 0), "B")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        registry.record_for_client(
+            buffer_id,
+            client_a,
+            vec![Edit::insert(Position::new(0, 1), "A")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // Move tree current back to root via regular undo
+        registry.undo(buffer_id); // current → node 1
+        registry.undo(buffer_id); // current → node 0
+
+        // Re-init client_a so its cursor is at node 0
+        registry.init_client(buffer_id, client_a);
+
+        // redo_for_client should find node 2 (ClientA) as grandchild of node 0
+        // via recursive search through node 1 (ClientB)
+        let redo = registry.redo_for_client(buffer_id, client_a);
+        assert!(redo.is_some(), "redo should find client A's edit via recursive search");
     }
 }

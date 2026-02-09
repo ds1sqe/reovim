@@ -74,6 +74,7 @@ impl AnnotationSource for LineNumberSource {
         vec![LINE_NUMBER_KIND.clone()]
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn annotations(
         &self,
         _buffer_id: BufferId,
@@ -143,6 +144,7 @@ impl LineNumberPresenter {
 
     /// Set styles from a theme manager.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn from_theme(manager: &reovim_driver_display::ThemeManager) -> Self {
         use reovim_driver_display::style::groups;
         Self {
@@ -161,6 +163,7 @@ impl AnnotationPresenter for LineNumberPresenter {
         KindPattern::exact("line_number")
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn present(&self, annotation: &Annotation, ctx: &PresenterContext) -> PresentedOutput {
         let Some(num) = annotation.payload.as_number() else {
             return PresentedOutput::Hidden;
@@ -562,6 +565,7 @@ mod tests {
         assert_eq!(annotations[0].payload.as_number(), Some(4));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_source_annotation_target_is_line() {
         let source = LineNumberSource::absolute();

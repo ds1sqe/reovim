@@ -120,6 +120,7 @@ mod tests {
 
     /// Verify the trait is object-safe (can use `dyn EmptySessionHandler`).
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn trait_is_object_safe() {
         struct TestHandler;
 
@@ -152,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn default_priority_is_100() {
         struct TestHandler;
 
@@ -172,6 +174,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn custom_priority() {
         struct HighPriorityHandler;
 
@@ -195,6 +198,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_creates_buffer_with_content() {
         struct ContentHandler;
 
@@ -229,6 +233,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_creates_unnamed_buffer() {
         struct ScratchHandler;
 
@@ -263,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_with_file_args_returns_none() {
         struct ConditionalHandler;
 
@@ -306,6 +312,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_id_and_description() {
         struct TestHandler;
 
@@ -327,6 +334,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn empty_session_context_debug() {
         let ctx = EmptySessionContext {
             session_id: 42,
@@ -339,6 +347,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn empty_session_action_debug() {
         let action = EmptySessionAction::None;
         let debug = format!("{action:?}");
@@ -353,6 +362,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn empty_session_action_clone() {
         let action = EmptySessionAction::CreateBuffer {
             name: Some("test".to_string()),
@@ -401,6 +411,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_multiple_on_same_context() {
         struct FirstHandler;
         impl EmptySessionHandler for FirstHandler {
@@ -455,6 +466,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_with_zero_priority() {
         struct ZeroPriority;
         impl EmptySessionHandler for ZeroPriority {
@@ -477,6 +489,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_buffer_with_none_name_and_content() {
         let action = EmptySessionAction::CreateBuffer {
             name: None,
@@ -491,6 +504,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_send_sync_bounds() {
         fn assert_send_sync<T: Send + Sync + 'static>() {}
 
@@ -511,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_uses_cwd_from_context() {
         struct CwdHandler;
         impl EmptySessionHandler for CwdHandler {
@@ -543,6 +558,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_uses_session_id_from_context() {
         struct SessionIdHandler;
         impl EmptySessionHandler for SessionIdHandler {
@@ -575,6 +591,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn empty_session_context_debug_with_file_args() {
         let files = vec!["file1.rs".to_string(), "file2.rs".to_string()];
         let ctx = EmptySessionContext {
@@ -589,6 +606,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_with_max_priority() {
         struct MaxPriorityHandler;
         impl EmptySessionHandler for MaxPriorityHandler {
@@ -611,6 +629,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_buffer_action_debug_with_none_name() {
         let action = EmptySessionAction::CreateBuffer {
             name: None,
@@ -622,6 +641,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_description_is_not_empty() {
         struct DescribedHandler;
         impl EmptySessionHandler for DescribedHandler {
@@ -642,6 +662,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handler_id_follows_naming_convention() {
         struct WellNamedHandler;
         impl EmptySessionHandler for WellNamedHandler {
@@ -661,6 +682,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clone_create_buffer_with_long_content() {
         let action = EmptySessionAction::CreateBuffer {
             name: Some("long-content".to_string()),

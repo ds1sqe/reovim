@@ -128,6 +128,7 @@ fn to_tui_style(style: &Style) -> TuiStyle {
     tui_style
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl RenderBackend for Screen {
     fn set_cell(&mut self, x: u16, y: u16, ch: char, style: &Style) {
         let tui_style = to_tui_style(style);
@@ -236,6 +237,7 @@ pub fn format_frame_buffer(fb: &FrameBuffer, format: &str) -> String {
 }
 
 /// Convert frame buffer to ANSI-colored string.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn frame_to_ansi(fb: &FrameBuffer) -> String {
     use reovim_driver_display::ColorMode;
 
@@ -273,6 +275,7 @@ fn frame_to_ansi(fb: &FrameBuffer) -> String {
 }
 
 /// Convert frame buffer to plain text (no ANSI codes).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn frame_to_plain_text(fb: &FrameBuffer) -> String {
     let mut output = String::new();
     let height = fb.height();
@@ -364,6 +367,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_format_frame_buffer_ansi_empty() {
         let fb = FrameBuffer::new(3, 1);
         let ansi = format_frame_buffer(&fb, "ansi");
@@ -373,6 +377,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_format_frame_buffer_rawansi_alias() {
         let fb = FrameBuffer::new(3, 1);
         let raw = format_frame_buffer(&fb, "raw_ansi");
@@ -549,6 +554,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_format_frame_buffer_multiline() {
         let mut fb = FrameBuffer::new(5, 3);
         let style = Style::default();
@@ -567,6 +573,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_format_frame_buffer_ansi_with_styled_content() {
         let mut fb = FrameBuffer::new(3, 1);
         let style = Style::default().fg(reovim_arch::Color::Green);

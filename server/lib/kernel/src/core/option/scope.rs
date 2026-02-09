@@ -89,6 +89,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_display() {
         assert_eq!(format!("{}", OptionScope::Global), "global");
         assert_eq!(format!("{}", OptionScope::Buffer), "buffer");
@@ -96,6 +97,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_debug() {
         let debug = format!("{:?}", OptionScope::Global);
         assert_eq!(debug, "Global");
@@ -134,11 +136,13 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_id_display_global() {
         assert_eq!(format!("{}", OptionScopeId::Global), "global");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_id_display_buffer() {
         let id = BufferId::from_raw(42);
         let display = format!("{}", OptionScopeId::Buffer(id));
@@ -146,6 +150,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_id_display_window() {
         let id = WindowId::from_raw(7);
         let display = format!("{}", OptionScopeId::Window(id));
@@ -153,6 +158,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_scope_id_debug() {
         let scope_id = OptionScopeId::Global;
         let debug = format!("{scope_id:?}");

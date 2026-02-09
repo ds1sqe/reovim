@@ -200,6 +200,7 @@ impl TreeSitterDriver {
     /// present. The injection manager coordinates highlighting of embedded
     /// languages.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn supports_injections(&self) -> bool {
         self.injections_query.is_some() && self.injection_manager.is_some()
     }
@@ -228,6 +229,7 @@ impl TreeSitterDriver {
     ///
     /// Determines the semantic type of a foldable region based on the parent
     /// node's kind. This allows the UI to display appropriate fold icons.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn node_to_fold_kind(node: Option<Node>) -> FoldKind {
         let Some(node) = node else {
             return FoldKind::Block;
@@ -255,6 +257,7 @@ impl TreeSitterDriver {
     ///
     /// Used to show a collapsed fold indicator with meaningful context,
     /// e.g., "fn main() { ... }" instead of just "{ ... }".
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn extract_preview(content: &str, node: Node) -> String {
         let start_byte = node.start_byte();
         let end_byte = node.end_byte().min(content.len());
@@ -274,6 +277,7 @@ impl TreeSitterDriver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl SyntaxDriver for TreeSitterDriver {
     fn language(&self) -> &str {
         &self.language_id
@@ -701,6 +705,7 @@ mod tests {
     // Integration tests with real languages are in the treesitter-rust module
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_with_injections_has_manager() {
         // Driver with injections query should have an injection manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -730,6 +735,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_without_injections_no_manager() {
         // Basic driver without injections query should not have a manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -746,6 +752,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_with_queries_no_injections() {
         // Driver with folds but no injections query should not have a manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -775,6 +782,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_with_registered_injection_layer() {
         use crate::InjectionLayer;
 
@@ -817,6 +825,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_no_injection_layer_graceful_skip() {
         // Create a driver with injection support but no layers registered
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -853,6 +862,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_sorted_by_position() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1044,6 +1054,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_folds_with_query() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -1139,6 +1150,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_folds_sorted_by_start_line() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());

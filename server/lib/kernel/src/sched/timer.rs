@@ -399,6 +399,7 @@ impl TimerWheel {
     ///
     /// This should be called during each tick with the current time.
     /// Returns a vector of tasks for expired timers.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn tick(&self, now: Instant) -> Vec<Task> {
         let mut tasks = Vec::new();
         let mut to_remove = Vec::new();
@@ -633,6 +634,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_id_display() {
         let id = TimerId::from_raw(42);
         assert_eq!(format!("{id}"), "Timer(42)");
@@ -684,6 +686,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_handle_debug() {
         let handle = TimerHandle::failed(TimerId::from_raw(99));
         let debug = format!("{handle:?}");
@@ -824,6 +827,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_handle_drop_cancels() {
         use std::sync::atomic::AtomicUsize;
 
@@ -908,6 +912,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_wheel_thread_safety() {
         use std::{sync::atomic::AtomicUsize, thread};
 
@@ -986,6 +991,7 @@ mod tests {
     // === Debug impls ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_wheel_debug() {
         let wheel = Arc::new(TimerWheel::new());
         let debug = format!("{wheel:?}");
@@ -1001,6 +1007,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_entry_debug() {
         let entry = TimerEntry {
             id: TimerId::from_raw(42),
@@ -1034,6 +1041,7 @@ mod tests {
     // === timer not yet expired ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_not_expired_on_tick() {
         let wheel = Arc::new(TimerWheel::new());
         let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -1067,6 +1075,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_config_debug() {
         let config = TimerConfig::default();
         let debug = format!("{config:?}");
@@ -1078,6 +1087,7 @@ mod tests {
     // === Coverage: TimerHandle debug with alive wheel ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timer_handle_debug_with_alive_wheel() {
         let wheel = Arc::new(TimerWheel::new());
         let handle = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});

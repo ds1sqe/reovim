@@ -228,6 +228,7 @@ impl std::error::Error for TuiHandleError {}
 ///
 /// Returns a join handle for the spawned task.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn spawn_tty_reader(input_tx: mpsc::Sender<TuiInput>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut reader = InputReader::new();

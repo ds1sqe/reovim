@@ -333,6 +333,7 @@ mod tests {
     /// This demonstrates the design's flexibility - the same handler
     /// implementation works with any type implementing `FallbackContext`.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_handler_works_with_different_contexts() {
         /// Alternative context with different internal structure.
         struct AltContext {
@@ -382,6 +383,7 @@ mod tests {
     /// This demonstrates the mechanism vs policy separation - handlers
     /// define policy while the trait defines mechanism.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_custom_handler_implementation() {
         /// Custom handler that handles 'y' specially, beeps on others.
         struct CustomHandler;
@@ -411,6 +413,7 @@ mod tests {
 
     /// Test that `record_edit` is properly called by handlers.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_record_edit_tracking() {
         /// Handler that records an edit when handling a key.
         struct EditRecordingHandler;
@@ -440,6 +443,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_fallback_result_debug() {
         assert_eq!(format!("{:?}", FallbackResult::Handled), "Handled");
         assert_eq!(format!("{:?}", FallbackResult::Ignored), "Ignored");
@@ -458,6 +462,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_noop_fallback_debug() {
         let handler = NoOpFallback;
         let debug = format!("{handler:?}");
@@ -465,6 +470,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_noop_fallback_clone_copy_default() {
         let handler = NoOpFallback;
         let cloned = handler;
@@ -476,6 +482,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_beep_fallback_debug() {
         let handler = BeepFallback;
         let debug = format!("{handler:?}");
@@ -483,6 +490,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_beep_fallback_clone_copy_default() {
         let handler = BeepFallback;
         let cloned = handler;

@@ -109,6 +109,7 @@ pub enum NotificationResult {
 ///
 /// Returns an error if buffer refetch fails.
 #[allow(clippy::too_many_lines)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn handle_notification<C: NotificationContext>(
     ctx: &mut C,
     notif: Notification,
@@ -426,6 +427,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl NotificationContext for MockContext {
         fn state_mut(&mut self) -> &mut TuiCoreState {
             &mut self.state
@@ -476,6 +478,7 @@ mod tests {
         struct MinimalContext {
             state: TuiCoreState,
         }
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl NotificationContext for MinimalContext {
             fn state_mut(&mut self) -> &mut TuiCoreState {
                 &mut self.state

@@ -112,6 +112,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_id_dynamic() {
         let name = format!("user-plugin-{}", 42);
         let id = ModuleId::from_string(name);

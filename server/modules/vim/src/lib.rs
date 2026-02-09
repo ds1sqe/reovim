@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim policy module.
 //!
 //! This module provides Vim-style behavior for reovim:
@@ -147,12 +148,14 @@ impl VimModule {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for VimModule {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Module for VimModule {
     fn id(&self) -> ModuleId {
         ModuleId::new("vim")
@@ -522,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handlers_all_have_ids() {
         let module = VimModule::new();
         let handlers = module.command_handlers();

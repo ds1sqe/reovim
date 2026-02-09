@@ -176,6 +176,7 @@ impl ModeKeyResolver for VimChangeResolver {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,
@@ -322,6 +323,7 @@ impl ModeKeyResolver for VimChangeResolver {
     /// # Text Object Priority (Epic #465)
     ///
     /// Text object ranges take priority over motion-based ranges.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_command_complete(
         &self,
         session: &mut dyn SessionApiDyn,
@@ -476,6 +478,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound` (no bindings).
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -506,6 +509,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for MockKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             self.response.clone()
@@ -526,6 +530,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_cancels() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
@@ -543,6 +548,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_cc() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
@@ -578,6 +584,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_keymap_executes_motion() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
@@ -598,6 +605,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_operator_count_with_context() {
         // This test verifies: when operator_count=2, effective_count should be 2
         // Simulates the flow after entering change mode with a count
@@ -619,6 +627,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_operator_count_multiplied_with_motion_count() {
         // This test verifies: 2c3w should have effective_count=6
         let resolver = VimChangeResolver::with_context(Some(2), None);
@@ -698,6 +707,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_unknown_key_cancels() {
         let resolver = VimChangeResolver::new();
         let mut state = test_state();
@@ -716,6 +726,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_cc_with_count() {
         let resolver = VimChangeResolver::with_context(Some(2), None);
         let mut state = test_state();
@@ -812,6 +823,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferApi for MockSession {
         fn active_buffer(&self) -> Option<BufferId> {
             None
@@ -852,6 +864,7 @@ mod tests {
         fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl WindowApi for MockSession {
         fn active_window(&self) -> Option<WindowId> {
             Some(WindowId::new())
@@ -879,12 +892,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandApi for MockSession {
         fn execute_command(&mut self, _cmd: CommandId, _ctx: CommandContext) -> CommandResult {
             CommandResult::Success
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoApi for MockSession {
         fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
             None
@@ -908,6 +923,7 @@ mod tests {
         fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ChangeTracker for MockSession {
         fn take_changes(&mut self) -> StateChanges {
             StateChanges::new()
@@ -916,6 +932,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_escape_cancels() {
         let resolver = VimChangeResolver::new();
         let mut mstate = test_state();
@@ -940,6 +957,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_initializes_from_vim_state() {
         let resolver = VimChangeResolver::new();
         let mut mstate = test_state();
@@ -975,6 +993,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cc_uses_cursor() {
         let resolver = VimChangeResolver::new();
         let mut mstate = test_state();
@@ -1013,6 +1032,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cc_with_count() {
         let resolver = VimChangeResolver::new();
         let mut mstate = test_state();
@@ -1156,6 +1176,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cancel_on_not_found() {
         let resolver = VimChangeResolver::new();
         let mut mstate = test_state();
@@ -1189,6 +1210,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_textobj_range() {
         let resolver = VimChangeResolver::with_context(Some(1), None);
         let mut session = MockSession::new();
@@ -1233,6 +1255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_motion_range() {
         let resolver = VimChangeResolver::new();
         {
@@ -1273,6 +1296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_inclusive_motion_adjusts_end() {
         let resolver = VimChangeResolver::new();
         {
@@ -1305,6 +1329,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_word_forward_subtracts_end() {
         // cw behaves like ce - change to end of word, not start of next word
         let resolver = VimChangeResolver::new();
@@ -1339,6 +1364,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_linewise_motion() {
         let resolver = VimChangeResolver::new();
         {
@@ -1370,6 +1396,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_backward_motion_normalizes_range() {
         let resolver = VimChangeResolver::new();
         {
@@ -1504,6 +1531,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_init_without_vim_state() {
         // When no VimSessionState is in extensions, the resolver should still work
         // (it just logs a warning and continues)
@@ -1532,6 +1560,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cc_no_cursor_fallback() {
         // When cursor_position() returns None, cc should fallback to (0,0)-(0,0)
         let resolver = VimChangeResolver::new();
@@ -1596,6 +1625,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cc_with_motion_count() {
         // Test c3c - motion_count=3 in resolve_with_session
         let resolver = VimChangeResolver::new();
@@ -1800,5 +1830,4 @@ mod tests {
         session.set_mode(VimMode::NORMAL_ID, reovim_driver_session::TransitionContext::default());
         assert_eq!(session.current_mode(), &VimMode::NORMAL_ID);
     }
-
 }

@@ -20,6 +20,7 @@ impl UnixInputSource {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for UnixInputSource {
     fn default() -> Self {
         Self::new()
@@ -27,10 +28,12 @@ impl Default for UnixInputSource {
 }
 
 impl InputSource for UnixInputSource {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn poll(&mut self, timeout: Duration) -> io::Result<bool> {
         event::poll(timeout)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn read_event(&mut self) -> io::Result<InputEvent> {
         let ct_event = event::read()?;
         Ok(convert_event(ct_event))

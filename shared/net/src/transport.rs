@@ -67,6 +67,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_transport_config_unix() {
         let config = TransportConfig::unix_socket("/tmp/test.sock");
         match config {
@@ -78,6 +79,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_transport_config_tcp() {
         let config = TransportConfig::tcp("localhost", 9999);
         match config {
@@ -90,6 +92,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_transport_config_tcp_localhost() {
         let config = TransportConfig::tcp_localhost(8080);
         match config {
@@ -131,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_transport_config_clone() {
         let original = TransportConfig::tcp("192.168.1.1", 3000);
         let cloned = original;
@@ -144,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_unix_socket_from_string() {
         let config = TransportConfig::unix_socket(String::from("/var/run/reovim.sock"));
         match config {
@@ -155,6 +160,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tcp_from_string_host() {
         let config = TransportConfig::tcp(String::from("0.0.0.0"), 5000);
         match config {
@@ -167,6 +173,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tcp_port_zero() {
         let config = TransportConfig::tcp_localhost(0);
         match config {
@@ -179,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tcp_port_max() {
         let config = TransportConfig::tcp("localhost", u16::MAX);
         match config {
@@ -191,6 +199,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_unix_socket_clone() {
         let original = TransportConfig::unix_socket("/tmp/clone-test.sock");
         let cloned = original;

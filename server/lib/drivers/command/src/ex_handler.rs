@@ -268,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_range_debug() {
         let range = ExCommandRange::new(Position::new(1, 0), Position::new(5, 0));
         let debug_str = format!("{range:?}");
@@ -329,6 +330,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_error_debug() {
         let err = ExCommandError::NoBuffer;
         let debug_str = format!("{err:?}");
@@ -358,7 +360,9 @@ mod tests {
     // === ExCommandHandler trait tests ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_object_safe() {
+        // Inner fns verify compilation only, never called
         fn _accepts_ref(_: &dyn ExCommandHandler) {}
         fn _accepts_box(_: Box<dyn ExCommandHandler>) {}
     }
@@ -397,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_custom_help() {
         struct HelpHandler;
 
@@ -424,6 +429,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_custom_complete() {
         struct CompleteHandler;
 
@@ -575,6 +581,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_failing_execute() {
         struct FailHandler;
         impl ExCommandHandler for FailHandler {
@@ -603,6 +610,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_no_buffer_error() {
         struct NeedBufferHandler;
         impl ExCommandHandler for NeedBufferHandler {
@@ -637,6 +645,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_no_window_error() {
         struct NeedWindowHandler;
         impl ExCommandHandler for NeedWindowHandler {
@@ -669,6 +678,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_invalid_arguments_error() {
         struct ValidatingHandler;
         impl ExCommandHandler for ValidatingHandler {
@@ -717,6 +727,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_handler_custom_complete_with_context() {
         struct ContextCompleteHandler;
         impl ExCommandHandler for ContextCompleteHandler {
@@ -810,6 +821,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_error_debug_invalid_arguments() {
         let err = ExCommandError::InvalidArguments("bad arg".to_string());
         let debug = format!("{err:?}");
@@ -818,6 +830,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_error_debug_execution_failed() {
         let err = ExCommandError::ExecutionFailed("crash".to_string());
         let debug = format!("{err:?}");
@@ -826,6 +839,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_error_debug_unknown_command() {
         let err = ExCommandError::UnknownCommand("xyz".to_string());
         let debug = format!("{err:?}");
@@ -877,6 +891,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_range_debug_contains_positions() {
         let range = ExCommandRange::new(Position::new(1, 2), Position::new(3, 4));
         let debug = format!("{range:?}");
@@ -910,6 +925,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_context_bang_accessible_in_handler() {
         struct BangHandler;
         impl ExCommandHandler for BangHandler {
@@ -947,6 +963,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_context_range_accessible_in_handler() {
         struct RangeHandler;
         impl ExCommandHandler for RangeHandler {

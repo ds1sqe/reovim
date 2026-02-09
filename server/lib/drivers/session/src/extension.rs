@@ -424,6 +424,7 @@ mod tests {
         assert_eq!(ext.unwrap().value, 99);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_mut() {
         let mut map = ExtensionMap::new();
@@ -479,6 +480,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug_impl() {
         let mut map = ExtensionMap::new();
         map.get_or_insert::<TestExtension>();

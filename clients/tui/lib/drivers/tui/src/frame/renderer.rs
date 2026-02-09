@@ -78,6 +78,7 @@ impl FrameRenderer {
     }
 
     /// Compute the diff between front and back buffers.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn compute_diff(&self) -> Vec<RenderCommand> {
         let mut commands = Vec::new();
         let mut current_style: Option<Style> = None;

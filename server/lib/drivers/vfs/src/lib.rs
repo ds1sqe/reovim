@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Virtual filesystem driver for reovim.
 //!
 //! Linux equivalent: `fs/`

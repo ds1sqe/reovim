@@ -134,6 +134,7 @@ impl ConfigValue {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl fmt::Display for ConfigValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -147,36 +148,42 @@ impl fmt::Display for ConfigValue {
 }
 
 // Convenient From implementations
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<bool> for ConfigValue {
     fn from(b: bool) -> Self {
         Self::Bool(b)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<i64> for ConfigValue {
     fn from(i: i64) -> Self {
         Self::Integer(i)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<i32> for ConfigValue {
     fn from(i: i32) -> Self {
         Self::Integer(i64::from(i))
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<String> for ConfigValue {
     fn from(s: String) -> Self {
         Self::String(s)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<&str> for ConfigValue {
     fn from(s: &str) -> Self {
         Self::String(s.to_string())
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<T: Into<Self>> From<Vec<T>> for ConfigValue {
     fn from(v: Vec<T>) -> Self {
         Self::Array(v.into_iter().map(Into::into).collect())
@@ -211,6 +218,7 @@ pub enum ConfigError {
     Serialize(String),
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -702,6 +710,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_config_paths() {
         // These should succeed on all platforms with a home directory
         let config_dir = ConfigPaths::config_dir();
@@ -722,6 +731,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_config_file_path() {
         if let Ok(path) = ConfigPaths::config_file() {
             assert!(path.ends_with("config.toml"));
@@ -729,6 +739,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_profiles_dir_path() {
         if let Ok(path) = ConfigPaths::profiles_dir() {
             assert!(path.ends_with("profiles"));

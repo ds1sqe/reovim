@@ -216,6 +216,36 @@ mod tests {
     }
 
     #[test]
+    fn test_visible_line_count_inverted_range() {
+        // When end < start, count should be 0
+        let mut state = PanelState::new(1, 100);
+        state.visible_start = 30;
+        state.visible_end = 10;
+        assert_eq!(state.visible_line_count(), 0);
+    }
+
+    #[test]
+    fn test_scroll_percentage_zero_total_lines() {
+        let state = PanelState::new(1, 100).with_total_lines(0);
+        assert!((state.scroll_percentage() - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_scroll_percentage_all_visible() {
+        // When all lines fit in view, max_start = 0
+        let state = PanelState::new(1, 100)
+            .with_visible_range(0, 9)
+            .with_total_lines(10);
+        assert!((state.scroll_percentage() - 0.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_visible_range() {
+        let state = PanelState::new(1, 100).with_visible_range(5, 25);
+        assert_eq!(state.visible_range(), (5, 25));
+    }
+
+    #[test]
     fn test_visible_range_inclusive() {
         let state = PanelState::new(1, 100).with_visible_range(10, 30);
         let range = state.visible_range_inclusive();

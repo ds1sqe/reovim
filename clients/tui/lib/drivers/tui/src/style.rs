@@ -20,6 +20,7 @@ pub enum ColorMode {
 impl ColorMode {
     /// Detect terminal color capability from environment variables.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn detect() -> Self {
         // Check COLORTERM first (most specific)
         if let Ok(colorterm) = std::env::var("COLORTERM") {
@@ -490,6 +491,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_style_to_ansi_rgb_ansi16() {
         let style = Style::new().with_fg(Color::Rgb { r: 255, g: 0, b: 0 });
         let ansi = style.to_ansi_start(ColorMode::Ansi16);

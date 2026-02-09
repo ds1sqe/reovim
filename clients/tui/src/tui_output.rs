@@ -93,4 +93,3 @@ pub trait TuiOutput {
     /// - Headless: no-op
     fn invalidate(&mut self);
 }
-

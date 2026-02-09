@@ -1909,8 +1909,7 @@ mod tests {
 
     #[test]
     fn test_capture_error_to_status_all_variants() {
-        use crate::session::CaptureError;
-        use super::capture_error_to_status;
+        use {super::capture_error_to_status, crate::session::CaptureError};
 
         // NoTuiClient → UNAVAILABLE
         let status = capture_error_to_status(CaptureError::NoTuiClient);

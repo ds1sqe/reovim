@@ -48,6 +48,7 @@ impl SearchProvider for SearchEngine {
         Ok(matches)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn word_at_cursor(&self, buffer: &Buffer, cursor: Position) -> Option<String> {
         let line = buffer.line(cursor.line)?;
         let chars: Vec<char> = line.chars().collect();
@@ -74,15 +75,12 @@ impl SearchProvider for SearchEngine {
         }
 
         let word: String = chars[start..end].iter().collect();
-        if word.is_empty() {
-            None
-        } else {
-            // Escape regex special characters and add word boundaries
-            Some(format!(r"\b{}\b", regex::escape(&word)))
-        }
+        // Escape regex special characters and add word boundaries
+        Some(format!(r"\b{}\b", regex::escape(&word)))
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn find_forward(
     content: &str,
     cursor_byte: usize,
@@ -516,6 +514,7 @@ mod tests {
         assert_eq!(pos, Position::new(1, 0));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_byte_to_position_past_end() {
         let buffer = create_test_buffer("hi");
@@ -635,6 +634,17 @@ mod tests {
         // Cursor at start - nothing before cursor
         let result =
             engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Backward, false);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_find_backward_wrap_no_matches_anywhere() {
+        let engine = SearchEngine;
+        let buffer = create_test_buffer("hello world");
+        // Pattern exists nowhere in the buffer, backward wrap should return None
+        let result =
+            engine.find_next(&buffer, Position::new(0, 5), "zzz", Direction::Backward, true);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }

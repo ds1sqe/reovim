@@ -478,6 +478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_vim_mode_all_discriminants_unique() {
         use std::collections::HashSet;
         let mut discriminants = HashSet::new();
@@ -500,6 +501,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_vim_mode_all_display_names_unique() {
         use std::collections::HashSet;
         let mut names = HashSet::new();

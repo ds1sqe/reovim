@@ -46,6 +46,7 @@ impl Default for UnixSignalHandler {
 }
 
 impl SignalHandler for UnixSignalHandler {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_resize(&mut self, handler: Box<dyn Fn(TerminalSize) + Send + Sync>) {
         // Note: With crossterm, resize events are delivered through the
         // event stream as InputEvent::Resize, not through signal handlers.
@@ -54,12 +55,14 @@ impl SignalHandler for UnixSignalHandler {
         self.resize_handler = Some(handler);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_interrupt(&mut self, handler: Box<dyn Fn() + Send + Sync>) {
         // Note: In raw mode, Ctrl+C is delivered as a key event.
         // We store the handler for compatibility.
         self.interrupt_handler = Some(handler);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_suspend(&mut self, handler: Box<dyn Fn() + Send + Sync>) {
         // Note: In raw mode, Ctrl+Z is delivered as a key event.
         // We store the handler for compatibility.
@@ -77,6 +80,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_register_handlers() {
         let mut handler = UnixSignalHandler::new();
 
@@ -102,6 +106,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_register_handlers_replaces_previous() {
         let mut handler = UnixSignalHandler::new();
 

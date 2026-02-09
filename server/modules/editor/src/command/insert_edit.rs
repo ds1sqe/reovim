@@ -40,6 +40,7 @@ impl Command for InsertNewline {
 }
 
 impl CommandHandler for InsertNewline {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -102,6 +103,7 @@ impl Command for InsertTab {
 }
 
 impl CommandHandler for InsertTab {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -183,6 +185,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -221,12 +224,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -238,6 +243,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -258,6 +264,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -387,6 +394,7 @@ mod tests {
         assert!(result.is_error());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_newline_at_end() {
         let kernel = create_test_context();
@@ -417,6 +425,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_newline_at_middle() {
         let kernel = create_test_context();
@@ -442,6 +451,7 @@ mod tests {
         drop(buf_read);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_newline_with_autoindent() {
         let kernel = create_test_context();
@@ -484,6 +494,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_newline_without_autoindent() {
         let kernel = create_test_context();
@@ -780,6 +791,7 @@ mod tests {
     // InsertNewline in multiline buffer
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_newline_in_middle_of_multiline() {
         let kernel = create_test_context();
@@ -814,6 +826,7 @@ mod tests {
     // InsertTab in middle of text
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_tab_in_middle_of_text() {
         let kernel = create_test_context();

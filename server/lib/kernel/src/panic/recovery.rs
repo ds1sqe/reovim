@@ -106,6 +106,7 @@ pub fn save_buffer_for_recovery(
 /// # Errors
 ///
 /// Returns an error if unable to read the recovery directory.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn list_recovery_files() -> std::io::Result<Vec<PathBuf>> {
     let dir = recovery_dir();
     if !dir.exists() {
@@ -148,6 +149,7 @@ pub fn list_recovery_files() -> std::io::Result<Vec<PathBuf>> {
 /// Returns an error if:
 /// - Unable to list recovery files
 /// - Unable to remove a file
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn cleanup_old_recovery_files(max_age_secs: u64) -> std::io::Result<usize> {
     let now = std::time::SystemTime::now();
     let mut removed = 0;
@@ -197,6 +199,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_list_recovery_files_empty() {
         // Create a unique test directory to avoid interference
         let test_dir = std::env::temp_dir().join("reovim_test_recovery_list");

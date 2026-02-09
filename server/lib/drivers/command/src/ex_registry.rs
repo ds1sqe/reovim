@@ -159,10 +159,12 @@ mod tests {
             self.name
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn names(&self) -> &[&'static str] {
             &[]
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn execute(
             &self,
             _ctx: &mut ExCommandContext<'_>,
@@ -268,6 +270,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug() {
         let store = ExCommandHandlerStore::new();
         store.add(Box::new(TestExCommand::new("test1")));
@@ -279,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug_empty() {
         let store = ExCommandHandlerStore::new();
         let debug_str = format!("{store:?}");

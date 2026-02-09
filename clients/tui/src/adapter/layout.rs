@@ -105,6 +105,7 @@ impl<C: RootCompositor + 'static> TuiLayoutAdapter<C> {
 }
 
 #[allow(clippy::significant_drop_tightening)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<C: RootCompositor + 'static> Layout for TuiLayoutAdapter<C> {
     fn split(&mut self, direction: SplitDirection) -> u64 {
         let mut compositor = self.lock();
@@ -215,6 +216,7 @@ mod tests {
     }
 
     // Minimal RootCompositor implementation for testing
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl RootCompositor for MockCompositor {
         fn composite(
             &self,

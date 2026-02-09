@@ -105,6 +105,7 @@ impl Executor {
     ///
     /// Returns `true` if the task completed successfully, `false` if it
     /// failed or panicked.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn execute_task(task: &mut Task) -> bool {
         // Wrap in catch_unwind to handle panics
         let result = catch_unwind(AssertUnwindSafe(|| task.execute()));

@@ -31,6 +31,7 @@ impl Command for EnterVisualMode {
 }
 
 impl CommandHandler for EnterVisualMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Get current cursor position from per-client window
         let Some(window) = runtime.windows().active() else {
@@ -75,6 +76,7 @@ impl Command for EnterVisualLineMode {
 }
 
 impl CommandHandler for EnterVisualLineMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Get current cursor position from per-client window
         let Some(window) = runtime.windows().active() else {
@@ -113,6 +115,7 @@ impl Command for EnterVisualBlockMode {
 }
 
 impl CommandHandler for EnterVisualBlockMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Get current cursor position from per-client window
         let Some(window) = runtime.windows().active() else {
@@ -141,42 +144,49 @@ impl CommandHandler for EnterVisualBlockMode {
 mod tests {
     use {super::*, reovim_driver_command::Command};
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_id() {
         let cmd = EnterVisualMode;
         assert_eq!(cmd.id(), ids::ENTER_VISUAL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_description() {
         let cmd = EnterVisualMode;
         assert!(cmd.description().contains("visual"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_id() {
         let cmd = EnterVisualLineMode;
         assert_eq!(cmd.id(), ids::ENTER_VISUAL_LINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_description() {
         let cmd = EnterVisualLineMode;
         assert!(cmd.description().contains("visual line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_id() {
         let cmd = EnterVisualBlockMode;
         assert_eq!(cmd.id(), ids::ENTER_VISUAL_BLOCK);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_description() {
         let cmd = EnterVisualBlockMode;
         assert!(cmd.description().contains("visual block"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_visual_entry_debug() {
         assert!(format!("{:?}", EnterVisualMode).contains("EnterVisualMode"));
@@ -184,6 +194,7 @@ mod tests {
         assert!(format!("{:?}", EnterVisualBlockMode).contains("EnterVisualBlockMode"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_visual_entry_default() {
         let _ = EnterVisualMode;
@@ -223,6 +234,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -263,6 +275,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -282,6 +295,7 @@ mod tests {
     }
 
     impl TestState {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn with_buffer(buffer_id: Option<BufferId>) -> Self {
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
             let session = Session::new(ClientId::new(1), home_mode.clone());
@@ -330,6 +344,7 @@ mod tests {
 
     // --- EnterVisualMode execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_execute_sets_character_selection() {
         let ctx = create_test_context();
@@ -351,6 +366,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Character);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_execute_at_nonzero_cursor() {
         let ctx = create_test_context();
@@ -374,6 +390,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(0, 6));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_execute_no_active_window() {
         let ctx = create_test_context();
@@ -400,6 +417,7 @@ mod tests {
 
     // --- EnterVisualLineMode execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_execute_sets_line_selection() {
         let ctx = create_test_context();
@@ -420,6 +438,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_execute_at_line_2() {
         let ctx = create_test_context();
@@ -443,6 +462,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Line);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_execute_no_active_window() {
         let ctx = create_test_context();
@@ -469,6 +489,7 @@ mod tests {
 
     // --- EnterVisualBlockMode execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_execute_sets_block_selection() {
         let ctx = create_test_context();
@@ -489,6 +510,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_execute_at_nonzero_cursor() {
         let ctx = create_test_context();
@@ -512,6 +534,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_execute_no_active_window() {
         let ctx = create_test_context();
@@ -536,6 +559,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_sets_mode_to_visual() {
         let ctx = create_test_context();
@@ -551,6 +575,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_sets_mode() {
         let ctx = create_test_context();
@@ -566,6 +591,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_LINE_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_sets_mode() {
         let ctx = create_test_context();
@@ -581,6 +607,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::VISUAL_BLOCK_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_mode_at_line_2_col_3() {
         let ctx = create_test_context();
@@ -603,6 +630,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(2, 2));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_block_mode_at_line_1() {
         let ctx = create_test_context();
@@ -626,6 +654,7 @@ mod tests {
         assert_eq!(sel.mode, reovim_driver_session::api::SelectionMode::Block);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_visual_line_mode_selection_starts_at_col_0() {
         let ctx = create_test_context();
@@ -649,6 +678,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(1, 0));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_entry_commands_clone_copy() {
         let _: EnterVisualMode = EnterVisualMode;

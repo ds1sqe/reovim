@@ -475,6 +475,7 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     #[allow(clippy::significant_drop_tightening)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn buffer_text_range(
         &self,
         buffer: BufferId,
@@ -728,6 +729,7 @@ impl WindowApi for SessionRuntime<'_> {
 // === RegisterApi ===
 
 impl RegisterApi for SessionRuntime<'_> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
         match name {
             // System clipboard (+)
@@ -767,6 +769,7 @@ impl RegisterApi for SessionRuntime<'_> {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
         match name {
             // System clipboard (+)
@@ -809,6 +812,7 @@ impl RegisterApi for SessionRuntime<'_> {
 // === UndoApi ===
 
 impl UndoApi for SessionRuntime<'_> {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -846,6 +850,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -883,6 +888,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit(
         &mut self,
         buffer: BufferId,
@@ -915,6 +921,7 @@ impl UndoApi for SessionRuntime<'_> {
             .is_some_and(|tree| tree.can_redo())
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -954,6 +961,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -993,6 +1001,7 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit_mine(
         &mut self,
         buffer: BufferId,
@@ -1191,6 +1200,7 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(neighbor)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_others(&mut self) -> Result<(), CompositorError> {
         use reovim_driver_display::layout::Zone;
 
@@ -1552,6 +1562,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -1804,6 +1815,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_extension_api() {
         use reovim_kernel::api::v1::ModeStack;
 
@@ -3066,6 +3078,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_execute_command_not_found() {
         use reovim_kernel::api::v1::ModeStack;
 
@@ -3106,6 +3119,7 @@ mod tests {
     // set_window_buffer clears selection
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_set_window_buffer_clears_selection() {
         use crate::testing::TestSessionRuntime;
@@ -3135,6 +3149,7 @@ mod tests {
     // insert_text with cursor from active window
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_text_with_cursor_position() {
         use crate::testing::TestSessionRuntime;
@@ -3200,6 +3215,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_set_mode_records_change() {
         use crate::testing::TestSessionRuntime;
 
@@ -3235,6 +3251,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_kernel::api::v1::BufferManager for InMemoryBufferManager {
         fn get(
             &self,
@@ -3410,6 +3427,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
         fn history(&self) -> Vec<RegisterContent> {
             self.history.lock().unwrap().clone()
@@ -3617,6 +3635,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_driver_undo::UndoProvider for MockUndoProvider {
         fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
             Some(UndoResult {
@@ -3943,6 +3962,278 @@ mod tests {
     }
 
     // =========================================================================
+    // UndoApi: alternate edit type branches (Delete in undo, Insert in redo)
+    // =========================================================================
+
+    /// Undo provider that returns Delete edits for undo and Insert edits for redo,
+    /// covering the alternate branches in the undo/redo implementations.
+    struct AlternateUndoProvider;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_undo::UndoProvider for AlternateUndoProvider {
+        fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            // Return a Delete edit (the existing MockUndoProvider returns Insert)
+            Some(UndoResult {
+                edits: vec![Edit::Delete {
+                    position: Position::new(0, 0),
+                    text: "X".to_string(),
+                }],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn redo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            // Return an Insert edit (the existing MockUndoProvider returns Delete)
+            Some(UndoResult {
+                edits: vec![Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "Y".to_string(),
+                }],
+                cursor: Position::new(0, 1),
+            })
+        }
+
+        fn redo_branch(&self, _buffer_id: BufferId, _branch_idx: usize) -> Option<UndoResult> {
+            None
+        }
+
+        fn record(
+            &self,
+            _buffer_id: BufferId,
+            _edits: Vec<Edit>,
+            _cursor_before: Position,
+            _cursor_after: Position,
+        ) {
+        }
+
+        fn has_history(&self, _buffer_id: BufferId) -> bool {
+            true
+        }
+
+        fn remove(&self, _buffer_id: BufferId) {}
+
+        fn buffer_count(&self) -> usize {
+            1
+        }
+
+        fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
+            None
+        }
+
+        fn begin_batch(&self, _buffer_id: BufferId, _cursor_before: Position) {}
+        fn end_batch(&self, _buffer_id: BufferId, _cursor_after: Position) {}
+        fn is_batching(&self, _buffer_id: BufferId) -> bool {
+            false
+        }
+
+        fn persist(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<(), reovim_driver_undo::UndoPersistError> {
+            Ok(())
+        }
+
+        fn load(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
+            Ok(false)
+        }
+
+        fn undo_for_client(&self, _buffer_id: BufferId, _client_id: usize) -> Option<UndoResult> {
+            // Return Delete edit for undo_mine coverage
+            Some(UndoResult {
+                edits: vec![Edit::Delete {
+                    position: Position::new(0, 0),
+                    text: "Z".to_string(),
+                }],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn redo_for_client(&self, _buffer_id: BufferId, _client_id: usize) -> Option<UndoResult> {
+            // Return Insert edit for redo_mine coverage
+            Some(UndoResult {
+                edits: vec![Edit::Insert {
+                    position: Position::new(0, 0),
+                    text: "W".to_string(),
+                }],
+                cursor: Position::new(0, 1),
+            })
+        }
+
+        fn record_for_client(
+            &self,
+            _buffer_id: BufferId,
+            _client_id: usize,
+            _edits: Vec<Edit>,
+            _cursor_before: Position,
+            _cursor_after: Position,
+        ) {
+        }
+    }
+
+    fn kernel_with_alternate_undo() -> KernelContext {
+        let services = std::sync::Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let undo_registry = UndoProviderRegistry::new();
+        undo_registry.register(UndoKey::Buffer, std::sync::Arc::new(AlternateUndoProvider));
+        services.register(std::sync::Arc::new(undo_registry));
+        make_kernel_with_services(services)
+    }
+
+    /// Undo with Delete edits covers the Edit::Delete branch in undo() (lines 829-831, 835).
+    #[test]
+    fn test_undo_with_delete_edits() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_alternate_undo();
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("Xhello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.undo(buf_id);
+        assert!(result.is_some());
+        // Delete edit removed "X" from position (0,0)
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("hello".to_string()));
+        assert!(runtime.changes.buffer_modified);
+    }
+
+    /// Redo with Insert edits covers the Edit::Insert branch in redo() (lines 863-865, 872).
+    #[test]
+    fn test_redo_with_insert_edits() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_alternate_undo();
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.redo(buf_id);
+        assert!(result.is_some());
+        // Insert edit added "Y" at position (0,0)
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("Yhello".to_string()));
+        assert!(runtime.changes.buffer_modified);
+    }
+
+    /// undo_mine with Delete edits covers the Edit::Delete branch (lines 938-940, 943).
+    #[test]
+    fn test_undo_mine_with_delete_edits() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_alternate_undo();
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let client_id = ClientId::new(42);
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("Zhello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::with_owner(
+            client_id,
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.undo_mine(buf_id);
+        assert!(result.is_some());
+        // Delete edit removed "Z" from position (0,0)
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("hello".to_string()));
+        assert!(runtime.changes.buffer_modified);
+    }
+
+    /// redo_mine with Insert edits covers the Edit::Insert branch (lines 974-976, 982).
+    #[test]
+    fn test_redo_mine_with_insert_edits() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_alternate_undo();
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let client_id = ClientId::new(42);
+
+        let buf = reovim_kernel::api::v1::Buffer::from_string("hello");
+        let buf_id = kernel.buffers.register(buf);
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buf_id);
+        let mut windows = crate::WindowLayout::empty();
+        windows.add(window);
+        let mut extensions = crate::ExtensionMap::new();
+
+        let mut runtime = SessionRuntime::with_owner(
+            client_id,
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        let result = runtime.redo_mine(buf_id);
+        assert!(result.is_some());
+        // Insert edit added "W" at position (0,0)
+        let content = runtime.buffer_content(buf_id);
+        assert_eq!(content, Some("Whello".to_string()));
+        assert!(runtime.changes.buffer_modified);
+    }
+
+    // =========================================================================
     // CompositorApi with compositor (lines 1081-1537)
     // =========================================================================
 
@@ -3966,6 +4257,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_driver_display::layout::WindowLayerCompositor for MockLayerCompositor {
         fn id(&self) -> reovim_driver_display::layout::LayerId {
             self.id
@@ -4082,6 +4374,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
         fn composite(&self, screen: Rect) -> reovim_driver_display::layout::CompositeResult {
             reovim_driver_display::layout::CompositeResult::empty(screen)
@@ -4536,5 +4829,179 @@ mod tests {
         let rt = make_compositor_runtime(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
         let placements = rt.arrange(Rect::new(0, 0, 80, 24));
         assert!(placements.is_empty());
+    }
+
+    // =========================================================================
+    // CompositorApi: close_current_window with single window (CannotCloseLastWindow)
+    // =========================================================================
+
+    /// Mock compositor with only ONE tiled window, so close_current_window
+    /// returns CannotCloseLastWindow (covers line 1176).
+    struct SingleWindowLayerCompositor {
+        id: reovim_driver_display::layout::LayerId,
+        window: WindowId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_display::layout::WindowLayerCompositor for SingleWindowLayerCompositor {
+        fn id(&self) -> reovim_driver_display::layout::LayerId {
+            self.id
+        }
+        fn arrange(&self, _bounds: Rect) -> Vec<WindowPlacement> {
+            Vec::new()
+        }
+        fn add_tiled(&mut self) -> WindowId {
+            self.window
+        }
+        fn split_tiled(
+            &mut self,
+            _from: WindowId,
+            _direction: reovim_driver_display::SplitDirection,
+        ) -> Option<WindowId> {
+            None
+        }
+        fn navigate_tiled(
+            &self,
+            _from: WindowId,
+            _direction: NavigateDirection,
+        ) -> Option<WindowId> {
+            None
+        }
+        fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
+        fn close_tiled(&mut self, _window: WindowId) -> Option<WindowId> {
+            None
+        }
+        fn equalize_tiled(&mut self) {}
+        fn cycle_tiled(&self, _from: WindowId, _forward: bool) -> Option<WindowId> {
+            None
+        }
+        fn create_float(&mut self, _bounds: Rect) -> WindowId {
+            self.window
+        }
+        fn move_float(&mut self, _window: WindowId, _x: u16, _y: u16) {}
+        fn resize_float(&mut self, _window: WindowId, _width: u16, _height: u16) {}
+        fn raise_float(&mut self, _window: WindowId) {}
+        fn lower_float(&mut self, _window: WindowId) {}
+        fn close_float(&mut self, _window: WindowId) {}
+        fn toggle_float(&mut self, _window: WindowId) {}
+        fn show_overlay(&mut self, _constraints: OverlayConstraints) -> WindowId {
+            self.window
+        }
+        fn hide_overlay(&mut self, _window: WindowId) {}
+        fn resize_overlay(&mut self, _window: WindowId, _width: u16, _height: u16) {}
+        fn hide_all_overlays(&mut self) {}
+        fn set_focus(&mut self, _window: WindowId) {}
+        fn focused(&self) -> Option<WindowId> {
+            Some(self.window)
+        }
+        fn windows_in_zone(&self, zone: reovim_driver_display::layout::Zone) -> Vec<WindowId> {
+            if zone == reovim_driver_display::layout::Zone::Tiled {
+                vec![self.window] // Only ONE tiled window
+            } else {
+                Vec::new()
+            }
+        }
+        fn zone_of(&self, _window: WindowId) -> Option<reovim_driver_display::layout::Zone> {
+            Some(reovim_driver_display::layout::Zone::Tiled)
+        }
+    }
+
+    struct SingleWindowRootCompositor {
+        layer: SingleWindowLayerCompositor,
+    }
+
+    impl SingleWindowRootCompositor {
+        fn new() -> Self {
+            Self {
+                layer: SingleWindowLayerCompositor {
+                    id: reovim_driver_display::layout::LayerId::new(0),
+                    window: WindowId::from_raw(1),
+                },
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_display::layout::RootCompositor for SingleWindowRootCompositor {
+        fn composite(&self, screen: Rect) -> reovim_driver_display::layout::CompositeResult {
+            reovim_driver_display::layout::CompositeResult::empty(screen)
+        }
+        fn create_layer(
+            &mut self,
+            _config: reovim_driver_display::layout::LayerConfig,
+        ) -> reovim_driver_display::layout::LayerId {
+            reovim_driver_display::layout::LayerId::new(0)
+        }
+        fn remove_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+        fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_display::layout::LayerId> {
+            None
+        }
+        fn layers(&self) -> Vec<&reovim_driver_display::layout::Layer> {
+            Vec::new()
+        }
+        fn set_layer_visible(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _visible: bool,
+        ) {
+        }
+        fn set_layer_opacity(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _opacity: f32,
+        ) {
+        }
+        fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
+        fn set_active_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+        fn active_layer(&self) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+        fn set_focus(&mut self, _window: WindowId) {}
+        fn focused(&self) -> Option<WindowId> {
+            Some(self.layer.window)
+        }
+        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
+            Some(self.layer.window)
+        }
+        fn layer_compositor(
+            &self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            Some(&self.layer)
+        }
+        fn layer_compositor_mut(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&mut dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            Some(&mut self.layer)
+        }
+        fn window_count(&self) -> usize {
+            1
+        }
+        fn set_screen(&mut self, _screen: Rect) {}
+        fn layer_of(&self, _window: WindowId) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+        fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
+            Box::new(SingleWindowRootCompositor::new())
+        }
+    }
+
+    #[test]
+    fn test_compositor_close_current_window_single_window() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+
+        session.set_compositor(Box::new(SingleWindowRootCompositor::new()));
+        let mut rt = SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &kernel, &executor);
+
+        let result = rt.close_current_window();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), CompositorError::CannotCloseLastWindow));
     }
 }

@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Clipboard module for reovim.
 //!
 //! Provides system clipboard access and yank history.
@@ -136,8 +137,11 @@ mod tests {
 
     #[test]
     fn test_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
         let from_new = ClipboardModule::new();
-        let from_default = ClipboardModule;
+        let from_default: ClipboardModule = create_default();
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }

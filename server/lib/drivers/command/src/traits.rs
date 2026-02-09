@@ -138,20 +138,23 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_trait_object_safety() {
-        // Verify Command trait is object-safe
+        // Verify Command trait is object-safe (inner fns never called)
         fn _accepts_ref(_: &dyn Command) {}
         fn _accepts_box(_: Box<dyn Command>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_trait_object_safety() {
-        // Verify CommandHandler trait is object-safe
+        // Verify CommandHandler trait is object-safe (inner fns never called)
         fn _accepts_ref(_: &dyn CommandHandler) {}
         fn _accepts_box(_: Box<dyn CommandHandler>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_signature() {
         // Verify the new signature compiles with SessionRuntime
         use reovim_kernel::api::v1::ModuleId;
@@ -183,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_default_args_is_empty() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -202,6 +206,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_default_names_is_empty() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -221,6 +226,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_with_custom_args() {
         use {crate::ArgKind, reovim_kernel::api::v1::ModuleId};
 
@@ -249,6 +255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_with_custom_names() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -272,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_upcasts_to_command() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -309,6 +317,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_default_args_returns_empty_vec() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -329,6 +338,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_default_names_returns_empty_slice() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -353,6 +363,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_with_multiple_args() {
         use {crate::ArgKind, reovim_kernel::api::v1::ModuleId};
 
@@ -385,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_with_single_name() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -411,6 +423,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_returns_error() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -439,6 +452,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_returns_force_quit() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -466,6 +480,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_returns_detach() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -497,6 +512,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_id_module_and_name() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -520,6 +536,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_as_boxed_trait_object() {
         use reovim_kernel::api::v1::ModuleId;
 
@@ -547,6 +564,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_handler_as_boxed_trait_object() {
         use reovim_kernel::api::v1::ModuleId;
 

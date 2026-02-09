@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tracing/profiling driver for reovim.
 //!
 //! This driver implements the kernel's `Profiler` trait using the tracing ecosystem.
@@ -643,12 +644,11 @@ mod tests {
         assert_eq!(PROFILE_ENV_VAR, "REOVIM_PROFILE");
     }
 
+    // The Ok(val) branch requires REOVIM_PROFILE env var to be set,
+    // which needs unsafe set_var in Rust 2024 (deny(unsafe_code)).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_profiling_filter_returns_option() {
-        // profiling_filter() reads REOVIM_PROFILE env var.
-        // In test environment, it's typically not set, so it returns None.
-        // We cannot set/unset env vars because deny(unsafe_code) is active
-        // and set_var/remove_var are unsafe in Rust 2024.
         // Instead, we verify the function runs and returns a valid Option.
         let filter = profiling_filter();
         // Whether set or not, the result should be consistent with env var
@@ -656,5 +656,21 @@ mod tests {
             Ok(val) => assert_eq!(filter, Some(val)),
             Err(_) => assert!(filter.is_none()),
         }
+    }
+
+    #[test]
+    fn test_enter_with_trace_subscriber_covers_span_fields() {
+        // Set up a TRACE-level subscriber so span! macro body executes
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_test_writer()
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let prof = TracingProfiler::with_filter("test");
+        let data = SpanData::new("coverage_span", "test::target");
+        let id = prof.enter(&data);
+        assert_eq!(id, data.id);
+        prof.exit(id, 42);
     }
 }

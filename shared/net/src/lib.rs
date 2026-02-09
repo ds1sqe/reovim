@@ -60,6 +60,8 @@
 //! let error = RpcError::method_not_found("unknown");
 //! ```
 
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+
 // ============================================================================
 // Modules
 // ============================================================================

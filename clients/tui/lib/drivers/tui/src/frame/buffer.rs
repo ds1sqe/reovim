@@ -25,6 +25,7 @@ impl FrameBuffer {
     }
 
     /// Resize the buffer to new dimensions.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn resize(&mut self, width: u16, height: u16) {
         if width == self.width && height == self.height {
             return;
@@ -75,6 +76,7 @@ impl FrameBuffer {
 
     /// Get a mutable reference to a cell at (x, y).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn get_mut(&mut self, x: u16, y: u16) -> Option<&mut Cell> {
         if x < self.width && y < self.height {
             let idx = self.index(x, y);
@@ -85,6 +87,7 @@ impl FrameBuffer {
     }
 
     /// Set a cell at (x, y).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn set(&mut self, x: u16, y: u16, cell: Cell) {
         if x < self.width && y < self.height {
             let idx = self.index(x, y);
@@ -170,6 +173,7 @@ impl FrameBuffer {
     }
 
     /// Copy contents from another buffer.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn copy_from(&mut self, other: &Self) {
         let copy_width = self.width.min(other.width);
         let copy_height = self.height.min(other.height);

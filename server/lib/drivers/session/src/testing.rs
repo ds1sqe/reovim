@@ -257,6 +257,7 @@ impl TestSessionRuntime {
     /// # Panics
     ///
     /// Panics if the mode name doesn't match.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn assert_mode_name(&self, expected_name: &str) {
         let current = self.mode_stack.current(); // Use separate field
         assert_eq!(
@@ -391,6 +392,17 @@ impl TestSessionRuntime {
     pub const fn session(&self) -> &Session {
         &self.session
     }
+
+    /// Set the compositor for layout testing.
+    ///
+    /// Required for testing commands that need window navigation, splitting,
+    /// or other compositor operations (e.g., window-ops commands).
+    pub fn set_compositor(
+        &mut self,
+        compositor: Box<dyn reovim_driver_display::layout::RootCompositor>,
+    ) {
+        self.session.set_compositor(compositor);
+    }
 }
 
 /// Test buffer manager that actually stores buffers.
@@ -409,6 +421,7 @@ impl TestBufferManager {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl BufferManager for TestBufferManager {
     fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
         self.buffers.read().get(&id).cloned()
@@ -452,6 +465,7 @@ impl BufferManager for TestBufferManager {
 /// Always returns `Success` for any command execution.
 struct StubExecutor;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandExecutor for StubExecutor {
     fn execute(
         &self,
@@ -502,6 +516,7 @@ mod tests {
         assert!(changes.mode_changed);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_buffer_operations() {
         use crate::api::BufferApi;

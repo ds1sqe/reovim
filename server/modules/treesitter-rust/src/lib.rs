@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Rust syntax highlighting module for reovim.
 //!
 //! This module provides Rust language support for syntax highlighting
@@ -306,6 +307,7 @@ mod tests {
         assert!(!driver.is_parsed());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_driver_parse_and_highlights() {
         let factory = RustSyntaxFactory::new();
@@ -335,6 +337,7 @@ mod tests {
         assert_eq!(driver.language(), "rust");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_contain_keyword_function() {
         use reovim_driver_syntax::HighlightGroup;
@@ -358,6 +361,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_contain_function_name() {
         use reovim_driver_syntax::HighlightGroup;
@@ -783,6 +787,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_indent_for_out_of_range_line() {
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
@@ -798,6 +803,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_indent_for_empty_file() {
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
@@ -1037,6 +1043,7 @@ impl Foo {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_init() {
         use reovim_kernel::api::v1::ServiceRegistry;
 
@@ -1070,6 +1077,7 @@ impl Foo {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_folds_realistic_rust_file() {
         use reovim_driver_syntax::FoldKind;
 
@@ -1163,6 +1171,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_and_folds_combined() {
         use reovim_driver_syntax::HighlightGroup;
@@ -1204,6 +1213,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_nested_folds() {
         use reovim_driver_syntax::FoldKind;
 

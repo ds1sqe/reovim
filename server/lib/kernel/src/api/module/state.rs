@@ -114,6 +114,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_state_display() {
         assert_eq!(format!("{}", ModuleState::Loaded), "loaded");
         assert_eq!(format!("{}", ModuleState::Initializing), "initializing");
@@ -201,6 +202,7 @@ mod tests {
         // Create a test module implementation
         struct TestModule;
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl Module for TestModule {
             fn id(&self) -> ModuleId {
                 ModuleId::new("test-module")

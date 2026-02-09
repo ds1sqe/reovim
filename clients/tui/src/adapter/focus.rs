@@ -62,6 +62,7 @@ impl<C: RootCompositor + 'static> TuiFocusManager<C> {
     ///
     /// Only syncs if the current focus is on a panel (compositor doesn't
     /// know about overlay focus).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn sync_with_compositor(&self) {
         if let Focus::Panel(viewport_id) = &self.current {
             let window_id = Self::u64_to_window_id(*viewport_id);
@@ -126,6 +127,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl RootCompositor for MockCompositor {
         fn composite(&self, screen: Rect) -> CompositeResult {
             CompositeResult::empty(screen)
@@ -280,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_focus_manager_compositor_sync() {
         let mut manager = test_manager();
 

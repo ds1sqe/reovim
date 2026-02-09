@@ -313,5 +313,4 @@ mod tests {
     fn test_interactor_config_exported() {
         let _config = InteractorConfig::accepting_input();
     }
-
 }

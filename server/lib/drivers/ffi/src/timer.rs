@@ -69,6 +69,7 @@ static TIMER_WHEEL: OnceLock<Arc<TimerWheel>> = OnceLock::new();
 /// # Panics
 ///
 /// Panics if called more than once.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn init_timer_wheel(wheel: Arc<TimerWheel>) {
     TIMER_WHEEL
         .set(wheel)
@@ -152,6 +153,7 @@ pub type ReovimTimerCallback = Option<unsafe extern "C" fn(user_data: *mut libc:
 ///
 /// - `user_data` must remain valid until the timer fires or is cancelled
 /// - The callback must be a valid function pointer (or null)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_schedule_delayed(
     delay_ms: u64,
@@ -173,10 +175,15 @@ pub unsafe extern "C" fn reovim_schedule_delayed(
     // Wrap the FFI callback in a Rust closure
     // Safety: We trust the caller to keep user_data valid
     let user_data_ptr = user_data as usize; // Convert to usize for Send
-    let handle = wheel.schedule_oneshot(delay, Priority::NORMAL, move || {
-        // Safety: caller guarantees user_data is valid
-        unsafe { cb(user_data_ptr as *mut libc::c_void) };
-    });
+    let handle = wheel.schedule_oneshot(
+        delay,
+        Priority::NORMAL,
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        move || {
+            // Safety: caller guarantees user_data is valid
+            unsafe { cb(user_data_ptr as *mut libc::c_void) };
+        },
+    );
 
     if handle.is_failed() {
         tracing::warn!("Failed to schedule delayed timer (capacity exceeded?)");
@@ -211,6 +218,7 @@ pub unsafe extern "C" fn reovim_schedule_delayed(
 ///
 /// - `user_data` must remain valid for the lifetime of the timer
 /// - The callback must be a valid function pointer (or null)
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_schedule_periodic(
     interval_ms: u64,
@@ -232,10 +240,15 @@ pub unsafe extern "C" fn reovim_schedule_periodic(
     // Wrap the FFI callback in a Rust closure
     // Safety: We trust the caller to keep user_data valid
     let user_data_ptr = user_data as usize; // Convert to usize for Send
-    let handle = wheel.schedule_periodic(interval, Priority::NORMAL, move || {
-        // Safety: caller guarantees user_data is valid
-        unsafe { cb(user_data_ptr as *mut libc::c_void) };
-    });
+    let handle = wheel.schedule_periodic(
+        interval,
+        Priority::NORMAL,
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        move || {
+            // Safety: caller guarantees user_data is valid
+            unsafe { cb(user_data_ptr as *mut libc::c_void) };
+        },
+    );
 
     if handle.is_failed() {
         tracing::warn!("Failed to schedule periodic timer (capacity exceeded?)");
@@ -262,6 +275,7 @@ pub unsafe extern "C" fn reovim_schedule_periodic(
 ///
 /// `true` if the timer was found and cancelled, `false` if the timer was
 /// already cancelled, has fired, or the handle was invalid.
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[unsafe(no_mangle)]
 pub extern "C" fn reovim_cancel_timer(handle: ReovimTimerHandle) -> bool {
     if !handle.is_valid() {
@@ -287,6 +301,7 @@ pub extern "C" fn reovim_cancel_timer(handle: ReovimTimerHandle) -> bool {
 /// `true` if the timer is still scheduled and hasn't fired yet,
 /// `false` if the timer has fired, was cancelled, or the handle is invalid.
 #[unsafe(no_mangle)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub extern "C" fn reovim_timer_is_pending(handle: ReovimTimerHandle) -> bool {
     if !handle.is_valid() {
         return false;
@@ -340,8 +355,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_schedule_without_init_returns_null() {
         // Timer wheel not initialized, should return null handle
+        #[cfg_attr(coverage_nightly, coverage(off))]
         unsafe extern "C" fn dummy_callback(_: *mut libc::c_void) {}
 
         let handle =
@@ -393,6 +410,7 @@ mod tests {
         assert_eq!(handle.id, cloned.id);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_timer_count_without_init() {
         // Without initialization, timer count should be 0
@@ -478,6 +496,7 @@ mod tests {
     }
 
     // FFI callbacks declared at module level to avoid items_after_statements lint
+    #[cfg_attr(coverage_nightly, coverage(off))]
     unsafe extern "C" fn noop_callback(_user_data: *mut libc::c_void) {}
 
     /// Ensure the timer wheel is initialized for tests that need it.

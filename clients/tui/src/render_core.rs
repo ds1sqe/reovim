@@ -139,6 +139,7 @@ pub fn build_frame_content(
 }
 
 /// Write frame buffer content with ANSI color codes.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn write_ansi_content(output: &mut String, buffer: &FrameBuffer, buf_height: u16) {
     for y in 0..buf_height {
         let mut line = String::new();
@@ -180,6 +181,7 @@ fn write_ansi_content(output: &mut String, buffer: &FrameBuffer, buf_height: u16
 }
 
 /// Write frame buffer content as plain text (no ANSI codes).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn write_plain_content(output: &mut String, buffer: &FrameBuffer, buf_height: u16) {
     for y in 0..buf_height {
         let mut line = String::new();

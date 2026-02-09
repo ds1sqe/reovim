@@ -359,6 +359,7 @@ pub struct ProfileScope {
     active: bool,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ProfileScope {
     /// Create a new profile scope.
     ///
@@ -393,6 +394,7 @@ impl ProfileScope {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for ProfileScope {
     #[allow(clippy::cast_possible_truncation)] // Nanosecond truncation acceptable for profiling
     fn drop(&mut self) {
@@ -431,6 +433,7 @@ pub struct ProfileGuard {
 }
 
 #[allow(deprecated)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl ProfileGuard {
     /// Create a new profile guard that will record to the named histogram.
     #[must_use]
@@ -443,6 +446,7 @@ impl ProfileGuard {
 }
 
 #[allow(deprecated)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for ProfileGuard {
     #[allow(clippy::cast_possible_truncation)] // Microsecond truncation acceptable
     fn drop(&mut self) {
@@ -685,6 +689,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_custom_profiler() {
         // Test that we can implement the Profiler trait
         struct CountingProfiler {
@@ -747,6 +752,7 @@ mod tests {
     // ========== ProfileScope with active profiler ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_profile_scope_with_active_profiler() {
         // We cannot set the global profiler in tests (it's a OnceLock),
         // but we can test the custom profiler logic directly.
@@ -813,6 +819,7 @@ mod tests {
     // ========== SpanData Clone and Debug ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_span_data_clone_and_debug() {
         let data = SpanData::new("test_clone", "test::clone_mod");
         let cloned = data.clone();
@@ -879,6 +886,7 @@ mod tests {
     // ========== NopProfiler Debug and Clone ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_nop_profiler_debug_clone_default() {
         let nop = NopProfiler;
         let cloned = nop;

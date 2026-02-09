@@ -227,4 +227,12 @@ mod tests {
         let word = provider.word_at_cursor(&buffer, Position::new(0, 5));
         assert!(word.is_none());
     }
+
+    #[test]
+    fn test_search_provider_find_all_invalid_pattern() {
+        let provider = MockSearch;
+        let buffer = Buffer::from_string("hello");
+        let result = provider.find_all(&buffer, "[invalid");
+        assert!(result.is_err());
+    }
 }

@@ -95,18 +95,21 @@ mod tests {
     // ========== OptionError Display tests ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_not_found_display() {
         let err = OptionError::NotFound("tabwidth".to_string());
         assert_eq!(format!("{err}"), "option not found: tabwidth");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_already_exists_display() {
         let err = OptionError::AlreadyExists("number".to_string());
         assert_eq!(format!("{err}"), "option already exists: number");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_validation_failed_display() {
         let err = OptionError::ValidationFailed {
             name: "tabwidth".to_string(),
@@ -116,6 +119,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_type_mismatch_display() {
         let err = OptionError::TypeMismatch {
             name: "number".to_string(),
@@ -126,12 +130,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_alias_conflict_display() {
         let err = OptionError::AliasConflict("nu".to_string());
         assert_eq!(format!("{err}"), "alias conflicts with existing name: nu");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_scope_mismatch_display() {
         let err = OptionError::ScopeMismatch {
             name: "number".to_string(),
@@ -144,6 +150,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_debug() {
         let err = OptionError::NotFound("test".to_string());
         let debug = format!("{err:?}");
@@ -168,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_option_error_is_std_error() {
         let err: Box<dyn std::error::Error> = Box::new(OptionError::NotFound("test".to_string()));
         let _ = format!("{err}");
@@ -196,6 +204,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_set_result_debug() {
         let result = SetResult {
             old_value: None,

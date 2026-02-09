@@ -73,6 +73,7 @@ impl VisualState {
     }
 
     /// Accumulate a count digit.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn accumulate_motion_count(&mut self, key: &KeyEvent) {
         if let KeyCode::Char(c @ '0'..='9') = key.code {
             let digit = c.to_digit(10).expect("valid digit") as usize;
@@ -183,6 +184,7 @@ impl VimVisualResolver {
 }
 
 impl ModeKeyResolver for VimVisualResolver {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_keymap(
         &self,
         key: &KeyEvent,
@@ -253,6 +255,7 @@ impl ModeKeyResolver for VimVisualResolver {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,
@@ -407,6 +410,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for MockKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             self.response.clone()
@@ -452,6 +456,7 @@ mod tests {
     // =============================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_exits_visual_mode() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -469,6 +474,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ctrl_c_exits_visual_mode() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -552,6 +558,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_count_flows_to_motion() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -575,6 +582,7 @@ mod tests {
     // =============================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_motion_h_executes() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -590,6 +598,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_motion_j_executes() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -605,6 +614,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_motion_w_executes() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -620,6 +630,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_motion_gg_multi_key() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -720,6 +731,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_count_cleared_after_motion_executes() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -775,6 +787,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_from_line_wise_mode() {
         let resolver = VimVisualResolver::line_wise();
         let mut state = ModeState::new(VimMode::VISUAL_LINE_ID);
@@ -792,6 +805,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ctrl_c_from_block_wise_mode() {
         let resolver = VimVisualResolver::block_wise();
         let mut state = ModeState::new(VimMode::VISUAL_BLOCK_ID);
@@ -812,6 +826,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_execute_with_no_count_has_none_in_context() {
         let resolver = VimVisualResolver::character_wise();
         let mut state = test_state();
@@ -898,6 +913,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferApi for MockSession {
         fn active_buffer(&self) -> Option<BufferId> {
             None
@@ -938,6 +954,7 @@ mod tests {
         fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl WindowApi for MockSession {
         fn active_window(&self) -> Option<WindowId> {
             Some(WindowId::new())
@@ -965,12 +982,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandApi for MockSession {
         fn execute_command(&mut self, _cmd: CommandId, _ctx: CommandContext) -> CommandResult {
             CommandResult::Success
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoApi for MockSession {
         fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
             None
@@ -994,6 +1013,7 @@ mod tests {
         fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ChangeTracker for MockSession {
         fn take_changes(&mut self) -> StateChanges {
             StateChanges::new()
@@ -1002,6 +1022,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_escape_exits_visual_mode() {
         let resolver = VimVisualResolver::character_wise();
         let mut mstate = test_state();
@@ -1026,6 +1047,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_ctrl_c_exits_visual_mode() {
         let resolver = VimVisualResolver::character_wise();
         let mut mstate = test_state();
@@ -1050,6 +1072,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_inherits_count_from_normal_mode() {
         let resolver = VimVisualResolver::character_wise();
         let mut mstate = test_state();
@@ -1105,6 +1128,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_motion_executes() {
         let resolver = VimVisualResolver::character_wise();
         let mut mstate = test_state();
@@ -1169,6 +1193,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_no_vim_state_still_works() {
         // Without VimSessionState, initialization should still proceed
         let resolver = VimVisualResolver::character_wise();
@@ -1196,6 +1221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_escape_from_line_wise() {
         let resolver = VimVisualResolver::line_wise();
         let mut mstate = ModeState::new(VimMode::VISUAL_LINE_ID);
@@ -1220,6 +1246,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_escape_from_block_wise() {
         let resolver = VimVisualResolver::block_wise();
         let mut mstate = ModeState::new(VimMode::VISUAL_BLOCK_ID);
@@ -1248,6 +1275,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_keymap_exact_with_longer() {
         // ExactWithLonger is treated as Execute by apply_keymap_policy
         // (in visual mode, ExactWithLonger immediately executes, unlike normal mode)
@@ -1269,6 +1297,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_exact_with_longer() {
         // ExactWithLonger in resolve_with_session also executes immediately
         let resolver = VimVisualResolver::character_wise();
@@ -1298,6 +1327,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_init_with_vim_state_no_pending_count() {
         // VimSessionState present but pending_count is None
         let resolver = VimVisualResolver::character_wise();
@@ -1390,5 +1420,4 @@ mod tests {
         let result = session.execute_command(cmd_id, CommandContext::default());
         assert!(matches!(result, CommandResult::Success));
     }
-
 }

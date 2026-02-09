@@ -33,6 +33,7 @@ pub struct TestClient {
     client: Option<GrpcClient>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TestClient {
     /// Get or create a gRPC connection.
     async fn get_client(&mut self) -> Result<&mut GrpcClient, String> {
@@ -130,6 +131,7 @@ pub struct MultiClientTest {
     initial_content: Option<String>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MultiClientTest {
     /// Create test with N clients.
     ///

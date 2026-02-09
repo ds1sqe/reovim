@@ -183,6 +183,7 @@ pub fn render_frame<B: RenderBackend>(
 
 /// Render buffer content.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_buffer_content<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
@@ -235,6 +236,7 @@ fn render_buffer_content<B: RenderBackend>(
 }
 
 /// Render a line number in the gutter.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_line_number<B: RenderBackend>(
     backend: &mut B,
     x: u16,
@@ -342,6 +344,7 @@ fn render_local_selection<B: RenderBackend>(
 /// - **line**: Entire lines highlighted
 /// - **block**: Rectangular column range on each line
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_selection_range<B: RenderBackend>(
     backend: &mut B,
     sel: &SelectionState,
@@ -393,6 +396,7 @@ fn normalize_selection(sel: &SelectionState) -> (u64, u64, u64, u64) {
 
 /// Render remote client cursors.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_remote_cursors<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
@@ -444,6 +448,7 @@ fn label_text(display_name: &str) -> String {
 /// cursor. Labels appear one line above the cursor, or one line below
 /// if the cursor is at line 0. Skipped if neither position is in viewport.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_remote_cursor_labels<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
@@ -503,6 +508,7 @@ fn render_remote_cursor_labels<B: RenderBackend>(
 
 /// Render self cursor in the backend (for headless mode).
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn render_self_cursor<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
@@ -910,6 +916,7 @@ mod tests {
     // ── Cursor Label Tests ──────────────────────────────────────────
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_remote_cursor_label_rendered() {
         let mut fb = FrameBuffer::new(80, 24);
         let mut state = TuiCoreState::new(1);

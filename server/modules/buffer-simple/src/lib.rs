@@ -223,8 +223,11 @@ mod tests {
 
     #[test]
     fn test_default_creates_same_as_new() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: BufferSimpleModule = create_default();
         let from_new = BufferSimpleModule::new();
-        let from_default = BufferSimpleModule;
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }

@@ -273,6 +273,7 @@ impl<T> BoundedReceiver<T> {
     ///
     /// Returns `Err(TryRecvError::Empty)` if no message is available,
     /// or `Err(TryRecvError::Disconnected)` if the channel is closed.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.0.try_recv().map_err(|e| match e {
             mpsc::TryRecvError::Empty => TryRecvError::Empty,
@@ -353,6 +354,7 @@ impl<T> OneshotSender<T> {
     /// # Errors
     ///
     /// Returns `Err(value)` if the receiver has been dropped.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn send(self, value: T) -> Result<(), T> {
         let sender = self.inner.lock().take();
         match sender {
@@ -771,5 +773,14 @@ mod tests {
     fn test_try_send_error_is_std_error() {
         let err: Box<dyn std::error::Error> = Box::new(TrySendError::Full(42));
         assert!(err.to_string().contains("full"));
+    }
+
+    // === Unbounded try_recv disconnected ===
+
+    #[test]
+    fn test_unbounded_try_recv_disconnected() {
+        let (tx, rx) = channel::<i32>();
+        drop(tx);
+        assert_eq!(rx.try_recv(), Err(TryRecvError::Disconnected));
     }
 }

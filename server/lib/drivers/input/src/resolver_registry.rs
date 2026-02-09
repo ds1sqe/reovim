@@ -462,6 +462,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound`.
     struct NoOpKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NoOpKeymap {
         fn query(&self, _mode: &ModeId, _keys: &crate::KeySequence) -> crate::KeyLookupState {
             crate::KeyLookupState::NotFound

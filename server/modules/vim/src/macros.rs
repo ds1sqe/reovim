@@ -53,6 +53,7 @@ use reovim_driver_input::{KeyCode, KeyEvent, KeySequence, Modifiers};
 /// - `KeyCode::Escape` → `"<Esc>"`
 /// - `KeyCode::Char('w')` + Ctrl → `"<C-w>"`
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn key_to_notation(key: &KeyEvent) -> String {
     let has_ctrl = key.modifiers.contains(Modifiers::CTRL);
     let has_alt = key.modifiers.contains(Modifiers::ALT);

@@ -33,6 +33,7 @@ mod buffer_id_tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_display() {
         let id = BufferId::from_raw(123);
         assert_eq!(format!("{id}"), "Buffer(123)");
@@ -95,6 +96,7 @@ mod position_tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_display() {
         let pos = Position::new(0, 5);
         // Display uses 1-indexed for human readability

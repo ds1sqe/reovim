@@ -328,6 +328,7 @@ impl crate::VfsDriver for MockVfs {
         )))
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn list_dir(&self, path: &Path) -> Result<Vec<DirEntry>, VfsError> {
         if let Some(err) = self.check_error(path) {
             return Err(err);

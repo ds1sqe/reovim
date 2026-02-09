@@ -155,6 +155,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_sync_mode_follow() {
         let mode = SyncMode::follow("client-1");
         assert!(mode.is_receiving());

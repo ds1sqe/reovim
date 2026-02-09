@@ -304,6 +304,7 @@ pub trait ModeKeyResolver: Send + Sync {
     ///
     /// A `ResolveResult` indicating what action to take.
     #[deprecated(since = "0.9.5", note = "Override resolve_with_keymap() instead")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve(&self, _key: &KeyEvent, _state: &mut ModeState) -> ResolveResult {
         panic!("resolve() is removed - implement resolve_with_keymap() instead")
     }
@@ -1126,6 +1127,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_key_resolver_is_object_safe() {
         // Verify the trait is object-safe by accepting trait objects
         fn _accepts_ref(_: &dyn ModeKeyResolver) {}
@@ -1138,6 +1140,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_execute() {
         let cmd = test_command();
         let ctx = ResolveContext::new().count(3);
@@ -1164,6 +1167,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_insert_char() {
         // Test the helper method (buffer target)
         let result = ResolveResult::insert_char('x');
@@ -1191,6 +1195,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_insert_char_helper_creates_buffer_target() {
         let result = ResolveResult::insert_char('a');
         if let ResolveResult::InsertChar { char: c, target } = result {
@@ -1202,6 +1207,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_insert_char_to_creates_extension_target() {
         // Test that insert_char_to creates an Extension target with correct TypeId
         // We need a type that implements both SessionExtension and TextInputSink
@@ -1230,6 +1236,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_mode_transition() {
         let mode = test_mode();
         let mode_clone = mode.clone();
@@ -1309,6 +1316,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arg_value_range() {
         let v = ArgValue::Range {
             start: Position::new(0, 0),
@@ -1335,6 +1343,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_push() {
         let mode = test_mode();
         let mode_clone = mode.clone();
@@ -1354,6 +1363,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_pop() {
         let mut args = HashMap::new();
         args.insert("linewise".to_string(), CmdArgValue::Bang(false));
@@ -1382,6 +1392,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_set() {
         let mode = test_mode();
         let trans = ModeTransition::Set {
@@ -1538,6 +1549,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arg_value_debug() {
         let v = ArgValue::Bool(true);
         let debug = format!("{v:?}");
@@ -1616,6 +1628,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_inject_keys() {
         let keys = vec![
             crate::KeyEvent::new(crate::KeyCode::Char('d')),
@@ -1638,6 +1651,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_inject_keys_no_exit() {
         let result = ResolveResult::InjectKeys {
             keys: vec![],
@@ -1660,6 +1674,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_pop_none_result() {
         let trans = ModeTransition::Pop { result: None };
         if let ModeTransition::Pop { result } = trans {
@@ -1670,6 +1685,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_debug() {
         let mode = test_mode();
         let trans = ModeTransition::Push {
@@ -1685,6 +1701,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_target_debug() {
         let target = InputTarget::Buffer;
         let debug = format!("{target:?}");
@@ -1744,6 +1761,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_input_new() {
         struct NoOpKeymap;
         impl crate::KeymapQuery for NoOpKeymap {
@@ -1766,6 +1784,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_input_with_registers() {
         struct NoOpKeymap;
         impl crate::KeymapQuery for NoOpKeymap {
@@ -1801,6 +1820,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_operator_args_debug() {
         let args = OperatorArgs::new().count(5);
         let debug = format!("{args:?}");
@@ -1813,6 +1833,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_default_inherits_from_is_none() {
         struct TestResolver {
             mode: ModeId,
@@ -1830,6 +1851,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_reset_is_noop_by_default() {
         struct TestResolver {
             mode: ModeId,
@@ -1852,6 +1874,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_resolve_with_keymap_delegates_to_resolve() {
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1896,6 +1919,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_resolve_with_extensions_delegates_to_keymap() {
         struct DelegatingResolver {
             mode: ModeId,
@@ -1937,6 +1961,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_resolve_with_session_delegates_to_extensions() {
         struct SessionResolver {
             mode: ModeId,
@@ -1984,6 +2009,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_on_command_complete_returns_none_by_default() {
         struct TestResolver {
             mode: ModeId,
@@ -2019,6 +2045,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_context_debug() {
         let ctx = ResolveContext::new().count(3).register('a');
         let debug = format!("{ctx:?}");
@@ -2045,6 +2072,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_state_debug() {
         let state = ModeState::new(test_mode());
         let debug = format!("{state:?}");
@@ -2093,6 +2121,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_debug() {
         let result = ResolveResult::Completed;
         let debug = format!("{result:?}");
@@ -2100,6 +2129,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_insert_char_debug() {
         let result = ResolveResult::insert_char('z');
         let debug = format!("{result:?}");
@@ -2143,6 +2173,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arg_value_range_debug() {
         let v = ArgValue::Range {
             start: Position::new(0, 0),
@@ -2174,6 +2205,7 @@ mod tests {
     /// Resolver that only implements `resolve_with_keymap` to test that
     /// `resolve_with_extensions` properly delegates to it.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_default_resolve_with_extensions_delegates_through_keymap_to_resolve() {
         // Test the full chain: resolve_with_extensions -> resolve_with_keymap -> resolve
         use std::sync::atomic::{AtomicU8, Ordering};
@@ -2221,6 +2253,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolver_default_resolve_with_session_full_chain() {
         // Test that resolve_with_session -> resolve_with_extensions -> resolve_with_keymap
         // all default implementations chain correctly.
@@ -2277,6 +2310,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_push_with_count() {
         let trans = ModeTransition::Push {
             mode: test_mode(),
@@ -2290,6 +2324,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_set_with_operator() {
         let op = test_command();
         let trans = ModeTransition::Set {
@@ -2308,6 +2343,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_result_mode_transition_push() {
         let result = ResolveResult::ModeTransition(ModeTransition::Push {
             mode: test_mode(),
@@ -2400,6 +2436,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_target_extension_debug() {
         let type_id = std::any::TypeId::of::<String>();
         let target = InputTarget::Extension(type_id);

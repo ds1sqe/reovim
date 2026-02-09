@@ -119,6 +119,7 @@ mod tests {
     /// Stub command executor for tests.
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -259,6 +260,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -924,6 +926,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_all_visual_commands_have_vim_module() {
         let cmds = visual_commands();
         for cmd in &cmds {
@@ -967,6 +970,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_all_visual_commands_unique_ids() {
         let cmds = visual_commands();
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();

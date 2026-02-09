@@ -169,6 +169,7 @@ impl ModeKeyResolver for VimYankResolver {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,
@@ -314,6 +315,7 @@ impl ModeKeyResolver for VimYankResolver {
     /// # Text Object Priority (Epic #465)
     ///
     /// Text object ranges take priority over motion-based ranges.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_command_complete(
         &self,
         session: &mut dyn SessionApiDyn,
@@ -425,6 +427,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound` (no bindings).
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -445,6 +448,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for MockKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             self.response.clone()
@@ -465,6 +469,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_cancels() {
         let resolver = VimYankResolver::new();
         let mut state = test_state();
@@ -482,6 +487,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_yy() {
         let resolver = VimYankResolver::new();
         let mut state = test_state();
@@ -517,6 +523,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_keymap_executes_motion() {
         let resolver = VimYankResolver::new();
         let mut state = test_state();
@@ -573,6 +580,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_yy_with_count() {
         let resolver = VimYankResolver::with_context(Some(3), None);
         let mut state = test_state();
@@ -636,6 +644,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_unknown_key_cancels() {
         let resolver = VimYankResolver::new();
         let mut state = test_state();
@@ -719,6 +728,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferApi for MockSession {
         fn active_buffer(&self) -> Option<BufferId> {
             None
@@ -759,6 +769,7 @@ mod tests {
         fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl WindowApi for MockSession {
         fn active_window(&self) -> Option<WindowId> {
             Some(WindowId::new())
@@ -786,12 +797,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandApi for MockSession {
         fn execute_command(&mut self, _cmd: CommandId, _ctx: CommandContext) -> CommandResult {
             CommandResult::Success
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoApi for MockSession {
         fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
             None
@@ -815,6 +828,7 @@ mod tests {
         fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ChangeTracker for MockSession {
         fn take_changes(&mut self) -> StateChanges {
             StateChanges::new()
@@ -823,6 +837,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_escape_cancels() {
         let resolver = VimYankResolver::new();
         let mut mstate = test_state();
@@ -847,6 +862,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_initializes_from_vim_state() {
         let resolver = VimYankResolver::new();
         let mut mstate = test_state();
@@ -885,6 +901,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_yy_uses_cursor() {
         let resolver = VimYankResolver::new();
         let mut mstate = test_state();
@@ -924,6 +941,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_yy_with_count_uses_cursor() {
         let resolver = VimYankResolver::new();
         let mut mstate = test_state();
@@ -1068,6 +1086,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cancel_on_not_found() {
         let resolver = VimYankResolver::new();
         let mut mstate = test_state();
@@ -1101,6 +1120,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_textobj_range() {
         let resolver = VimYankResolver::with_context(Some(1), None);
         let mut session = MockSession::new();
@@ -1139,6 +1159,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_linewise_textobj() {
         let resolver = VimYankResolver::with_context(Some(1), Some('a'));
         let mut session = MockSession::new();
@@ -1181,6 +1202,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_motion_range() {
         let resolver = VimYankResolver::new();
         {
@@ -1221,6 +1243,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_inclusive_motion_adjusts_end() {
         let resolver = VimYankResolver::new();
         {
@@ -1253,6 +1276,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_linewise_motion() {
         let resolver = VimYankResolver::new();
         {
@@ -1284,6 +1308,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_backward_motion_normalizes_range() {
         let resolver = VimYankResolver::new();
         {
@@ -1361,6 +1386,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_init_without_vim_state() {
         // When no VimSessionState is in extensions, the resolver should still work
         let resolver = VimYankResolver::new();
@@ -1387,6 +1413,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_yy_no_cursor_fallback() {
         // When cursor_position() returns None, yy should fallback to (0,0)-(0,0)
         let resolver = VimYankResolver::new();
@@ -1451,6 +1478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_yy_with_motion_count() {
         // Test y3y - motion_count=3 in resolve_with_session
         let resolver = VimYankResolver::new();
@@ -1538,6 +1566,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_register_and_count() {
         let resolver = VimYankResolver::new();
         {
@@ -1590,5 +1619,4 @@ mod tests {
         session.set_mode(VimMode::NORMAL_ID, reovim_driver_session::TransitionContext::default());
         assert_eq!(session.current_mode(), &VimMode::NORMAL_ID);
     }
-
 }

@@ -369,6 +369,7 @@ mod tests {
     /// Verify Module trait is object-safe (can be used as `dyn Module`).
     /// This is critical for dynamic module loading via libloading.
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_trait_object_safety() {
         // These function signatures compile = trait is object safe
         fn _accepts_module_ref(_: &dyn Module) {}
@@ -378,6 +379,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_deferred_probing() {
         // Test module that uses deferred probing pattern
         struct DeferredModule {
@@ -419,6 +421,7 @@ mod tests {
     // ========== Module default impls ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_default_impls() {
         struct MinimalModule;
 
@@ -465,6 +468,7 @@ mod tests {
     // ========== Lifecycle hooks via trait object ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_lifecycle_hooks_via_dyn() {
         use std::sync::{
             Arc,
@@ -528,6 +532,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_default_lifecycle_hooks_via_dyn() {
         struct DefaultModule;
 
@@ -573,6 +578,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_init_exit_via_dyn() {
         struct InitExitModule {
             initialized: bool,
@@ -616,6 +622,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_hot_reload_via_dyn() {
         struct HotReloadModule {
             state: u32,
@@ -672,6 +679,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_with_dependencies_via_dyn() {
         struct DepModule;
 
@@ -720,6 +728,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_deferred_module_init_both_paths() {
         struct DeferredModule {
             ready: bool,
@@ -766,6 +775,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_minimal_module_full_lifecycle() {
         struct MinimalModule;
 
@@ -820,6 +830,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_hook_module_init_exit_exercised() {
         use std::sync::{
             Arc,
@@ -893,6 +904,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_default_module_full_exercise() {
         struct DefaultModule;
 
@@ -946,6 +958,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_hot_reload_module_full_exercise() {
         struct HotReloadModule {
             state: u32,
@@ -1019,6 +1032,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_failed_init() {
         struct FailingModule;
 
@@ -1055,6 +1069,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_on_unload_error() {
         struct UnloadFailModule;
 
@@ -1096,6 +1111,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_with_custom_api_version() {
         struct CustomApiModule;
 
@@ -1132,6 +1148,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_with_registrations() {
         struct RegistrationModule;
 
@@ -1195,6 +1212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_restore_state_default_error_message() {
         struct NoHotReload;
 
@@ -1227,6 +1245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_multiple_buffer_focus_calls() {
         struct CountingModule {
             focus_count: u32,

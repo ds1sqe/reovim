@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim TUI Client - terminal user interface (gRPC v2 only).
 //!
 //! This crate provides the terminal user interface for connecting
@@ -328,6 +329,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tui_args_debug_config_defaults() {
         let args = TuiArgs {
             grpc_addr: None,

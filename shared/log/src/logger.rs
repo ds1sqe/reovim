@@ -45,6 +45,7 @@ use reovim_kernel::api::v1::{Level, Logger, Record};
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TracingLogger;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Logger for TracingLogger {
     fn log(&self, record: &Record) {
         // Emit tracing event with all metadata from kernel Record.

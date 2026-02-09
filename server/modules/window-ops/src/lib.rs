@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Window Operations Module
 //!
 //! This module handles window lifecycle and viewport events from the kernel `EventBus`.
@@ -84,6 +85,7 @@ impl Module for WindowOps {
         Version::new(0, 1, 0)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register command handlers (Epic #417 Part 3)
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();

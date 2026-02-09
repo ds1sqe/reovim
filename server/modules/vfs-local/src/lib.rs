@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Local filesystem VFS provider module.
 //!
 //! This module provides the [`LocalFsProvider`] which handles the `file://` scheme
@@ -197,16 +198,22 @@ mod tests {
 
     #[test]
     fn test_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: VfsLocalModule = create_default();
         let from_new = VfsLocalModule::new();
-        let from_default = VfsLocalModule;
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }
 
     #[test]
     fn test_provider_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: LocalFsProvider = create_default();
         let from_new = LocalFsProvider::new();
-        let from_default = LocalFsProvider;
         assert_eq!(from_new.provider_id(), from_default.provider_id());
     }
 
@@ -276,6 +283,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_provider_create_returns_functional_driver() {
         let provider = LocalFsProvider::new();
         let vfs = provider.create("file").unwrap();

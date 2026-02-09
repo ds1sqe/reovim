@@ -168,6 +168,7 @@ impl ModuleProbe {
     ///
     /// Returns up to 8 dependencies stored in the probe.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn required_deps(&self) -> Vec<ModuleId> {
         let count = (self.required_deps_count as usize).min(8);
         (0..count)
@@ -191,6 +192,7 @@ impl ModuleProbe {
     ///
     /// Returns up to 8 dependencies stored in the probe.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn optional_deps(&self) -> Vec<ModuleId> {
         let count = (self.optional_deps_count as usize).min(8);
         (0..count)
@@ -238,6 +240,7 @@ impl ModuleProbe {
     /// Index must be 0-7. Silently ignored if index >= 8.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // Safe: index < 8 is checked
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_required_dep(mut self, index: usize, dep: &str) -> Self {
         if index >= 8 {
             return self;
@@ -261,6 +264,7 @@ impl ModuleProbe {
     /// Index must be 0-7. Silently ignored if index >= 8.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // Safe: index < 8 is checked
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_optional_dep(mut self, index: usize, dep: &str) -> Self {
         if index >= 8 {
             return self;

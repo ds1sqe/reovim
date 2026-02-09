@@ -1221,6 +1221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_brace_textobjects_in_all_modes() {
         for mode_name in ["delete", "yank", "change"] {
             let bindings = match mode_name {
@@ -1240,6 +1241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_bracket_textobjects_in_all_modes() {
         for mode_name in ["delete", "yank", "change"] {
             let bindings = match mode_name {
@@ -1257,6 +1259,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_paren_textobjects_with_aliases_in_all_modes() {
         for mode_name in ["delete", "yank", "change"] {
             let bindings = match mode_name {

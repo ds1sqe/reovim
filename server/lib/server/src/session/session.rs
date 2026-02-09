@@ -67,21 +67,14 @@ pub struct Session {
 /// Log client disconnect with crash dump path.
 ///
 /// Dumps the client's ring buffer to a file and logs the path via `pr_info!`.
-/// The `pr_info!` macro requires a global logger (OnceLock) which is not
+/// The `pr_info!` macro requires a global logger (`OnceLock`) which is not
 /// reliably initialized in unit tests, making this path untestable.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn log_client_disconnect(
-    client_id: ClientId,
-    ring_buffer: &super::ring_buffer::ClientRingBuffer,
-) {
+fn log_client_disconnect(client_id: ClientId, ring_buffer: &super::ring_buffer::ClientRingBuffer) {
     use reovim_kernel::api::v1::pr_info;
 
     if let Some(path) = super::crash_dump::try_dump_client_to_file(client_id, ring_buffer) {
-        pr_info!(
-            "CLIENT_DISCONNECT client_id={} dump={}",
-            client_id.as_usize(),
-            path.display()
-        );
+        pr_info!("CLIENT_DISCONNECT client_id={} dump={}", client_id.as_usize(), path.display());
     }
 }
 

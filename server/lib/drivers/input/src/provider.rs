@@ -100,6 +100,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_provider_priority_debug() {
         let debug = format!("{:?}", ProviderPriority::Default);
         assert_eq!(debug, "Default");
@@ -173,6 +174,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_default_mode_provider_is_object_safe() {
         fn _accepts_ref(_: &dyn DefaultModeProvider) {}
         fn _accepts_box(_: Box<dyn DefaultModeProvider>) {}

@@ -23,7 +23,7 @@ use crate::debug::try_debug_ring;
 /// Get the global debug ring buffer, returning `Status::unavailable` if not initialized.
 ///
 /// The ring buffer is initialized once during server startup via `init_debug_ring()`.
-/// In unit tests the initialization order is non-deterministic (OnceLock), so this
+/// In unit tests the initialization order is non-deterministic (`OnceLock`), so this
 /// path cannot be reliably covered.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn require_debug_ring() -> Result<&'static crate::debug::DebugRingBuffer, Status> {

@@ -287,6 +287,69 @@ mod tests {
     }
 
     #[test]
+    fn test_window_tree_focused_none() {
+        // No focused window
+        let tree = WindowTree::leaf(test_window(1, 0, 0, 80, 24));
+        assert!(tree.focused_window().is_none());
+    }
+
+    #[test]
+    fn test_window_tree_tabs_empty() {
+        let tree = WindowTree::tabs(Vec::new(), 0, Rect::new(0, 0, 80, 24));
+        assert!(tree.focused_window().is_none());
+        assert_eq!(tree.window_count(), 0);
+    }
+
+    #[test]
+    fn test_window_tree_tabs_out_of_bounds_active() {
+        // Active index beyond tabs length
+        let tree = WindowTree::tabs(
+            vec![WindowTree::leaf(
+                test_window(1, 0, 0, 80, 24).with_focus(true),
+            )],
+            5, // out of bounds
+            Rect::new(0, 0, 80, 24),
+        );
+        // focused_window should return None since tabs.get(5) returns None
+        assert!(tree.focused_window().is_none());
+    }
+
+    #[test]
+    fn test_window_tree_find_by_viewport_tabs() {
+        let tree = WindowTree::tabs(
+            vec![
+                WindowTree::leaf(Window::new(1, 100, 1, Rect::new(0, 0, 80, 24))),
+                WindowTree::leaf(Window::new(2, 200, 2, Rect::new(0, 0, 80, 24))),
+            ],
+            0,
+            Rect::new(0, 0, 80, 24),
+        );
+        assert!(tree.find_by_viewport(200).is_some());
+        assert!(tree.find_by_viewport(999).is_none());
+    }
+
+    #[test]
+    fn test_window_tree_all_windows_tabs() {
+        let tree = WindowTree::tabs(
+            vec![
+                WindowTree::leaf(test_window(1, 0, 0, 80, 24)),
+                WindowTree::leaf(test_window(2, 0, 0, 80, 24)),
+            ],
+            0,
+            Rect::new(0, 0, 80, 24),
+        );
+        assert_eq!(tree.all_windows().len(), 2);
+    }
+
+    #[test]
+    fn test_window_tree_tabs_bounds() {
+        let bounds = Rect::new(0, 0, 80, 24);
+        let tree =
+            WindowTree::tabs(vec![WindowTree::leaf(test_window(1, 0, 0, 80, 24))], 0, bounds);
+        assert_eq!(tree.bounds(), bounds);
+    }
+
+    #[test]
     fn test_window_tree_tabs() {
         let tree = WindowTree::tabs(
             vec![

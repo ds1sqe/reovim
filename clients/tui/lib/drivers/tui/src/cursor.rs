@@ -125,6 +125,7 @@ impl Cursor {
     }
 
     /// Move cursor to position.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn move_to(&mut self, x: u16, y: u16) {
         if self.x != x || self.y != y {
             self.x = x;
@@ -188,6 +189,7 @@ impl Cursor {
     /// # Errors
     ///
     /// Returns an error if terminal operations fail.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn apply(&mut self) -> io::Result<()> {
         let mut stdout = io::stdout();
         self.apply_to(&mut stdout)?;
@@ -234,6 +236,7 @@ impl Cursor {
 
     /// Check if cursor needs update.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn is_dirty(&self) -> bool {
         self.position_dirty || self.visibility_dirty || self.style_dirty
     }

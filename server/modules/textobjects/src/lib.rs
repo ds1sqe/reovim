@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim text objects module - POLICY.
 //!
 //! This module implements text object commands for operator-pending mode:
@@ -171,5 +172,40 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 20); // 4 + 6 + 8 + 2
+    }
+
+    #[test]
+    fn test_module_default_impl() {
+        fn make_default<T: Default>() -> T {
+            T::default()
+        }
+        let module: TextObjectsModule = make_default();
+        assert_eq!(module.id().as_str(), "textobjects");
+    }
+
+    #[test]
+    fn test_all_commands_have_valid_ids() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            assert_eq!(cmd.id().module().as_str(), "textobjects");
+            assert!(!cmd.id().name().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_all_commands_have_descriptions() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            assert!(!cmd.description().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_all_commands_have_args() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            let args = cmd.args();
+            assert!(!args.is_empty(), "Command {} should have args", cmd.id());
+        }
     }
 }

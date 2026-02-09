@@ -104,6 +104,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_registry_replace_handler() {
         struct AltHandler;
 

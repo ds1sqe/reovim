@@ -99,6 +99,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_normal_bindings_count() {
         let bindings = normal::bindings();
         // Should have a reasonable number of normal mode bindings
@@ -110,6 +111,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_insert_bindings_count() {
         let bindings = insert::bindings();
         // Should have insert mode bindings
@@ -121,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_visual_bindings_count() {
         let bindings = visual::bindings();
         // Should have visual mode bindings

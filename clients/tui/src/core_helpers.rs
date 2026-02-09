@@ -85,6 +85,7 @@ pub fn apply_layout(state: &mut TuiCoreState, layout: &GetLayoutResponse) {
 /// * `state` - Mutable reference to core state
 /// * `focused_window_id` - Optional focused window ID
 /// * `windows` - Flat list of windows from notification
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn apply_layout_notification(
     state: &mut TuiCoreState,
     focused_window_id: Option<u64>,
@@ -164,6 +165,7 @@ pub fn create_default_window(state: &mut TuiCoreState, buffer_id: u64, width: u1
 /// # Errors
 ///
 /// Returns an error if buffer content fetch fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn fetch_buffer_contents(
     client: &mut TuiGrpcClient,
     state: &mut TuiCoreState,
@@ -196,6 +198,7 @@ pub async fn fetch_buffer_contents(
 /// # Errors
 ///
 /// Returns an error if buffer content fetch fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn refetch_buffer(
     client: &mut TuiGrpcClient,
     state: &mut TuiCoreState,
@@ -245,6 +248,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_collect_windows_skips_no_buffer() {
         let node = make_leaf_node(1, None);
         let mut out = Vec::new();

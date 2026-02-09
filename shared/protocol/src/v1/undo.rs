@@ -655,6 +655,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_edit_kernel_conversion() {
         let insert = Edit::insert(Position::new(5, 10), "test");
         let serializable = SerializableEdit::from(&insert);
@@ -710,6 +711,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timestamp_ordering_preserved() {
         // Create a tree with nodes that have increasing relative times
         let serializable = SerializableUndoTree {
@@ -929,6 +931,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_edit_from_kernel() {
         // Test the Delete branch of &Edit -> SerializableEdit conversion
         let kernel_delete = Edit::delete(Position::new(2, 5), "removed");

@@ -29,6 +29,7 @@ use {
 ///
 /// Returns `true` if the content was stored somewhere, `false` if the register
 /// was invalid (e.g., trying to write to numbered registers).
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn store_to_register(
     kernel: &KernelContext,
     register: Option<char>,
@@ -86,6 +87,7 @@ pub fn store_to_register(
 /// Note: We always push to history regardless of target register.
 /// This matches vim behavior where `"ayy` yanks to register 'a' AND
 /// updates the history.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn push_to_history(kernel: &KernelContext, content: &RegisterContent) {
     if let Some(registry) = kernel.services.get::<ClipboardProviderRegistry>()
         && let Some(provider) = registry.get(&ClipboardKey::Default)

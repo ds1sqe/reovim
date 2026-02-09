@@ -126,6 +126,9 @@ impl OptionValue {
     }
 }
 
+// LLVM coverage artifact: match arm headers and closing brace in Display impl
+// are marked DA:0 despite all variants being exercised in test_option_value_display.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl fmt::Display for OptionValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

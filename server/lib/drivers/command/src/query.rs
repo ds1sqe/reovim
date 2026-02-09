@@ -230,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_info_debug() {
         let cmd = MockCommand::simple(&["write", "w"]);
         let info = CommandInfo::from_command(&cmd);
@@ -256,13 +257,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_query_service_object_safe() {
-        // Verify trait is object-safe
+        // Inner fn verifies compilation only, never called
         fn _accepts_dyn(_: &dyn CommandQueryService) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_query_service_box_object_safe() {
+        // Inner fn verifies compilation only, never called
         fn _accepts_box(_: Box<dyn CommandQueryService>) {}
     }
 }

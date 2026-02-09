@@ -49,6 +49,7 @@ use crate::modes::VimMode;
 pub struct VimFallbackHandler;
 
 impl<C: FallbackContext> InputFallbackHandler<C> for VimFallbackHandler {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_unmatched(&self, key: KeyEvent, ctx: &mut C) -> FallbackResult {
         let mode_id = ctx.current_mode();
 
@@ -165,6 +166,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl FallbackContext for TestContext {
         fn current_mode(&self) -> &ModeId {
             &self.mode

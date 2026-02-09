@@ -40,6 +40,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arch_error_io_display() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let arch_err = ArchError::Io(io_err);
@@ -62,6 +63,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arch_error_io_source() {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
         let arch_err = ArchError::Io(io_err);
@@ -75,6 +77,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arch_error_not_supported_source() {
         let arch_err = ArchError::NotSupported("signals");
         let source = std::error::Error::source(&arch_err);
@@ -82,6 +85,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arch_error_from_io_error() {
         let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe broken");
         let arch_err: ArchError = io_err.into();
@@ -94,6 +98,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_arch_error_debug() {
         let io_err = std::io::Error::other("test");
         let arch_err = ArchError::Io(io_err);

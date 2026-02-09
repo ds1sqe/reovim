@@ -193,6 +193,7 @@ mod tests {
     // ========== TraceSink trait ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_trace_sink_impl() {
         use std::sync::{Arc, Mutex};
 
@@ -228,6 +229,7 @@ mod tests {
     // ========== set_trace_sink ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_set_trace_sink_called() {
         // We can't actually set the global sink reliably in tests
         // (it's a OnceLock and might already be set by another test).
@@ -244,6 +246,7 @@ mod tests {
     // ========== TraceEvent Clone and Debug ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_trace_event_clone_and_debug() {
         let event = TraceEvent {
             timestamp_ns: 999,
@@ -301,6 +304,7 @@ mod tests {
     // === Coverage: emit_trace with sink set ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_emit_trace_with_sink_set() {
         // Try setting the global sink (may already be set by another test)
         struct CountingSink;

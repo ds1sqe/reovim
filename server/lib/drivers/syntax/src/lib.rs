@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Syntax highlighting driver for reovim.
 //!
 //! **IMPORTANT:** This crate defines ONLY the trait interface for syntax

@@ -235,6 +235,7 @@ pub fn word_bounds(chars: &[char], pos: usize, word_type: WordType) -> (usize, u
 /// The index of the first character of the next word, or `chars.len()`
 /// if no next word exists.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn next_word_start(chars: &[char], pos: usize, word_type: WordType) -> usize {
     if chars.is_empty() {
         return 0;
@@ -284,6 +285,7 @@ pub fn next_word_start(chars: &[char], pos: usize, word_type: WordType) -> usize
 ///
 /// The index of the last character of the next word.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn next_word_end(chars: &[char], pos: usize, word_type: WordType) -> usize {
     if chars.is_empty() {
         return 0;

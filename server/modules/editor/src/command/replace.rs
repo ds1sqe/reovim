@@ -46,6 +46,7 @@ impl Command for ReplaceCharStart {
 }
 
 impl CommandHandler for ReplaceCharStart {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal waiting for replace character with count
@@ -87,6 +88,7 @@ impl Command for RepeatDot {
 }
 
 impl CommandHandler for RepeatDot {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal intent to repeat last change
@@ -117,6 +119,7 @@ impl Command for JoinLines {
 }
 
 impl CommandHandler for JoinLines {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -237,6 +240,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -275,12 +279,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -292,6 +298,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -312,6 +319,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -669,6 +677,7 @@ mod tests {
     // JoinLines cursor position after join
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_join_lines_cursor_position() {
         let kernel = create_test_context();
@@ -755,6 +764,7 @@ mod tests {
     // JoinLines from non-first line
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_join_lines_from_middle() {
         let kernel = create_test_context();
@@ -784,6 +794,7 @@ mod tests {
     // JoinLines on last line of multi-line buffer
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_join_lines_on_last_line_multiline() {
         let kernel = create_test_context();

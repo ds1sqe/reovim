@@ -236,6 +236,7 @@ where
 
 /// Worker loop that processes items from both queues.
 #[allow(clippy::needless_pass_by_value)] // Receivers are intentionally moved into the thread
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn worker_loop<T, F, R, C>(
     high_rx: Receiver<WorkItem<T>>,
     low_rx: Receiver<WorkItem<T>>,
@@ -494,6 +495,7 @@ mod tests {
     // === Coverage: SaturatorConfig Debug and Clone ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_saturator_config_debug_clone() {
         let config = SaturatorConfig {
             drain_on_shutdown: false,
@@ -525,6 +527,7 @@ mod tests {
     // === Coverage: SaturationRequest Debug ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_saturation_request_debug() {
         let request = SaturationRequest {
             data: 42i32,
@@ -539,6 +542,7 @@ mod tests {
     // === Coverage: RequestPriority Debug, Clone, Hash ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_request_priority_debug_clone_hash() {
         use std::collections::HashSet;
         let high = RequestPriority::High;

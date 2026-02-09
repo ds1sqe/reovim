@@ -340,5 +340,4 @@ mod tests {
         let stack = ModeStack::new(mode_id.clone());
         assert_eq!(stack.current(), &mode_id);
     }
-
 }

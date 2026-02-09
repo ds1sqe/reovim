@@ -303,6 +303,52 @@ mod tests {
     }
 
     #[test]
+    fn test_rendered_overlay_with_z_index() {
+        let overlay = rendered("test", 0, 0, 10, 10).with_z_index(42);
+        assert_eq!(overlay.z_index, 42);
+    }
+
+    #[test]
+    fn test_rendered_overlay_kind() {
+        let overlay = rendered("test", 0, 0, 10, 10);
+        assert_eq!(overlay.kind(), "test");
+    }
+
+    #[test]
+    fn test_overlay_stack_get_mut() {
+        let mut stack = OverlayStack::new();
+        stack.push(rendered("test", 0, 0, 10, 10));
+
+        let entry = stack.get_mut("test");
+        assert!(entry.is_some());
+        entry.unwrap().is_modal = true;
+        assert!(stack.get("test").unwrap().is_modal);
+
+        assert!(stack.get_mut("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_overlay_stack_default() {
+        let stack = OverlayStack::default();
+        assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn test_overlay_stack_topmost_modal_none() {
+        let mut stack = OverlayStack::new();
+        stack.push(rendered("normal", 0, 0, 10, 10));
+        assert!(stack.topmost_modal().is_none());
+    }
+
+    #[test]
+    fn test_overlay_stack_push_preserves_higher_z() {
+        let mut stack = OverlayStack::new();
+        let high_z = rendered("high", 0, 0, 10, 10).with_z_index(100);
+        stack.push(high_z);
+        assert_eq!(stack.get("high").unwrap().z_index, 100);
+    }
+
+    #[test]
     fn test_overlay_stack_clear() {
         let mut stack = OverlayStack::new();
         stack.push(rendered("a", 0, 0, 10, 10));

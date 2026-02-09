@@ -26,6 +26,7 @@ use crate::ids;
 /// In operator-pending mode, returns an `OperatorRange` instead of moving the cursor.
 /// Word motions are characterwise.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn execute_word_motion(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -394,6 +395,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -406,6 +408,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn register(&self, buffer: Buffer) -> BufferId {
             let id = BufferId::new();
             let buffer = Arc::new(RwLock::new(buffer));
@@ -413,6 +416,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
             self.buffers
                 .write()
@@ -423,10 +427,12 @@ mod tests {
                 })
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn list(&self) -> Vec<BufferId> {
             self.buffers.read().keys().copied().collect()
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn count(&self) -> usize {
             self.buffers.read().len()
         }
@@ -439,6 +445,7 @@ mod tests {
     /// Stub command executor for tests.
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -505,6 +512,7 @@ mod tests {
         }
 
         /// Set cursor position explicitly.
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn set_cursor(&mut self, pos: Position) {
             if let Some(window) = self.windows.active_mut() {
                 window.cursor = pos.into();
@@ -512,6 +520,7 @@ mod tests {
         }
 
         /// Get current cursor position.
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn cursor(&self) -> Position {
             self.windows.active().map_or_else(
                 || Position::new(0, 0),

@@ -95,6 +95,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_data_local_dir_exists() {
         // Should return Some on all platforms
         let dir = data_local_dir();
@@ -102,24 +103,28 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cache_dir_exists() {
         let dir = cache_dir();
         assert!(dir.is_some(), "cache_dir should return Some");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_config_dir_exists() {
         let dir = config_dir();
         assert!(dir.is_some(), "config_dir should return Some");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_home_dir_exists() {
         let dir = home_dir();
         assert!(dir.is_some(), "home_dir should return Some");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_state_dir() {
         // state_dir may return None on macOS (returns None per the dirs crate docs),
         // but on Linux it should return Some
@@ -135,6 +140,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_dir() {
         // runtime_dir may return None (e.g., on macOS, Windows, or
         // when XDG_RUNTIME_DIR is not set)
@@ -149,6 +155,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_data_local_dir_is_absolute() {
         if let Some(dir) = data_local_dir() {
             assert!(
@@ -160,6 +167,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cache_dir_is_absolute() {
         if let Some(dir) = cache_dir() {
             assert!(
@@ -171,6 +179,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_config_dir_is_absolute() {
         if let Some(dir) = config_dir() {
             assert!(
@@ -182,6 +191,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_home_dir_is_absolute() {
         if let Some(dir) = home_dir() {
             assert!(
@@ -197,6 +207,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_state_dir_exists_on_linux() {
         // On Linux, state_dir should return Some
         let dir = state_dir();
@@ -236,6 +247,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_state_dir_is_absolute() {
         if let Some(dir) = state_dir() {
             assert!(
@@ -247,6 +259,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_dir_is_absolute() {
         if let Some(dir) = runtime_dir() {
             assert!(
@@ -258,6 +271,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_data_local_dir_contains_path_components() {
         if let Some(dir) = data_local_dir() {
             // On all platforms, the path should have at least one component
@@ -266,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cache_dir_contains_path_components() {
         if let Some(dir) = cache_dir() {
             assert!(dir.components().count() > 0);
@@ -273,6 +288,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_config_dir_contains_path_components() {
         if let Some(dir) = config_dir() {
             assert!(dir.components().count() > 0);
@@ -280,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_home_dir_contains_path_components() {
         if let Some(dir) = home_dir() {
             assert!(dir.components().count() > 0);

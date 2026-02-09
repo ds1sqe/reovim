@@ -74,12 +74,14 @@ mod tests {
 
     // Verify trait object safety
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_executor_object_safe() {
         fn _accepts_ref(_: &dyn CommandExecutor) {}
         fn _accepts_box(_: Box<dyn CommandExecutor>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_api_object_safe() {
         fn _accepts_ref(_: &dyn CommandApi) {}
         fn _accepts_box(_: Box<dyn CommandApi>) {}

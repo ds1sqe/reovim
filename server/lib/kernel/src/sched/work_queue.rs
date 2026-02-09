@@ -362,6 +362,7 @@ mod tests {
     // === Debug tests ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug() {
         let queue = WorkQueue::with_capacity(100);
         queue.push(Task::new(|| {}));
@@ -456,6 +457,7 @@ mod tests {
     // === Coverage: Debug impl shows dropped count ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug_with_dropped() {
         let queue = WorkQueue::with_capacity(1);
         queue.push(Task::new(|| {}));

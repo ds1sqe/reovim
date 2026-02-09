@@ -90,17 +90,17 @@ fi
 # Mode flag and environment
 # Note: cargo-llvm-cov --mcdc passes -Z coverage-options=mcdc, but nightly 1.95+
 # renamed it to "condition". We pass it via RUSTFLAGS instead.
-EXTRA_RUSTFLAGS=""
+EXTRA_RUSTFLAGS="--cfg coverage_nightly"
 case "$MODE" in
   line)   MODE_FLAG=() ;;
   branch) MODE_FLAG=(--branch) ;;
-  mcdc)   MODE_FLAG=(); EXTRA_RUSTFLAGS="-Z coverage-options=condition" ;;
+  mcdc)   MODE_FLAG=(); EXTRA_RUSTFLAGS="$EXTRA_RUSTFLAGS -Z coverage-options=condition" ;;
 esac
 
 echo -e "\033[1;33m==> Running $MODE coverage...\033[0m"
 
 if $LCOV; then
-  OUTPUT_PATH="target/llvm-cov/lcov.info"
+  OUTPUT_PATH="target/llvm-cov/lcov.${MODE}.info"
   RUSTFLAGS="$EXTRA_RUSTFLAGS" cargo +nightly llvm-cov "${MODE_FLAG[@]}" \
     --workspace "${EXCLUDE[@]}" \
     --lcov --output-path "$OUTPUT_PATH"

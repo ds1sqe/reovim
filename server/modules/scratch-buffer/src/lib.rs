@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Scratch buffer handler for reovim.
 //!
 //! Provides [`ScratchBufferHandler`] which creates an empty buffer
@@ -141,6 +142,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_content_is_empty() {
         let handler = ScratchBufferHandler;
         let ctx = EmptySessionContext {
@@ -226,8 +228,11 @@ mod tests {
 
     #[test]
     fn test_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: ScratchBufferModule = create_default();
         let from_new = ScratchBufferModule::new();
-        let from_default = ScratchBufferModule;
         assert_eq!(from_new.id(), from_default.id());
     }
 
@@ -238,6 +243,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_name_is_none() {
         let handler = ScratchBufferHandler;
         let ctx = EmptySessionContext {

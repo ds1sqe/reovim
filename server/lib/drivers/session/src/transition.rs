@@ -179,6 +179,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_pop_result_execute_command() {
         let mut args = HashMap::new();
         args.insert("count".to_string(), ArgValue::Count(2));
@@ -199,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_pop_result_data() {
         let mut values = HashMap::new();
         values.insert("pattern".to_string(), ArgValue::String("foo".to_string()));
@@ -221,6 +223,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_transition_context_debug() {
         let ctx = TransitionContext::new();
         let debug = format!("{ctx:?}");
@@ -264,6 +267,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_pop_result_debug() {
         let result = PopResult::Cancelled;
         let debug = format!("{result:?}");
@@ -285,6 +289,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_pop_result_execute_command_with_empty_args() {
         let result = PopResult::ExecuteCommand {
             command: test_command(),
@@ -300,6 +305,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_pop_result_data_empty() {
         let result = PopResult::Data {
             values: HashMap::new(),

@@ -271,6 +271,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug() {
         let store = ModeInfoStore::new();
         store.add_mode(TestMode);
@@ -335,6 +336,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_info_debug() {
         let info = ModeInfo::from_mode(TestMode);
         let debug = format!("{info:?}");
@@ -419,6 +421,18 @@ mod tests {
     }
 
     #[test]
+    fn test_test_mode_module_and_discriminant() {
+        assert_eq!(TestMode::module().as_str(), "test");
+        assert_eq!(TestMode.discriminant(), 0);
+    }
+
+    #[test]
+    fn test_insert_mode_module_and_discriminant() {
+        assert_eq!(InsertMode::module().as_str(), "test");
+        assert_eq!(InsertMode.discriminant(), 1);
+    }
+
+    #[test]
     fn test_mode_info_with_inherits_from() {
         let info = ModeInfo {
             id: ModeId::new(ModuleId::new("test"), "visual"),
@@ -435,6 +449,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug_empty() {
         let store = ModeInfoStore::new();
         let debug = format!("{store:?}");
@@ -443,6 +458,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug_with_multiple() {
         let store = ModeInfoStore::new();
         store.add_mode(TestMode);

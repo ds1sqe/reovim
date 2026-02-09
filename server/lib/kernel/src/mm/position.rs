@@ -262,6 +262,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn position_display() {
         let pos = Position::new(0, 0);
         assert_eq!(format!("{pos}"), "1:1");

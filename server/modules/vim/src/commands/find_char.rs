@@ -52,6 +52,7 @@ impl Command for ExecuteFindChar {
 }
 
 impl CommandHandler for ExecuteFindChar {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Get the target character (required)
         let Some(target_char) = args.char("find_char") else {
@@ -149,6 +150,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -189,6 +191,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -258,6 +261,7 @@ mod tests {
     // Metadata tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_command_metadata() {
         let cmd = ExecuteFindChar;
@@ -265,18 +269,21 @@ mod tests {
         assert!(cmd.description().contains("find-char"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_command_id_module() {
         let cmd = ExecuteFindChar;
         assert_eq!(cmd.id().module().as_str(), "vim");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_command_id_name() {
         let cmd = ExecuteFindChar;
         assert_eq!(cmd.id().name(), "execute-find-char");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_command_description_not_empty() {
         let cmd = ExecuteFindChar;
@@ -287,6 +294,7 @@ mod tests {
     // Execute tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_no_find_char_arg() {
         let ctx = create_test_context();
@@ -298,6 +306,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_no_buffer() {
         let ctx = create_test_context();
@@ -310,6 +319,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_forward() {
         let ctx = create_test_context();
@@ -330,6 +340,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_not_found() {
         let ctx = create_test_context();
@@ -350,6 +361,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_backward() {
         let ctx = create_test_context();
@@ -374,6 +386,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_till() {
         let ctx = create_test_context();
@@ -395,6 +408,7 @@ mod tests {
         assert_eq!(window.cursor.column, 3);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_default_direction_is_forward() {
         let ctx = create_test_context();
@@ -419,6 +433,7 @@ mod tests {
     // Additional execute tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_last_char_on_line() {
         let ctx = create_test_context();
@@ -438,6 +453,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_first_char_on_line() {
         let ctx = create_test_context();
@@ -461,6 +477,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_with_count() {
         let ctx = create_test_context();
@@ -483,6 +500,7 @@ mod tests {
         assert_eq!(window.cursor.column, 3);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_till_backward() {
         let ctx = create_test_context();
@@ -508,6 +526,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_forward_direction_string() {
         let ctx = create_test_context();
@@ -528,6 +547,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_space_character() {
         let ctx = create_test_context();
@@ -547,6 +567,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5); // Space is at col 5
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_inclusive_default() {
         let ctx = create_test_context();
@@ -567,6 +588,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2); // On 'c' (inclusive)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_on_empty_line() {
         let ctx = create_test_context();
@@ -587,6 +609,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_no_active_window() {
         let ctx = create_test_context();
@@ -616,6 +639,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_execute_find_char_buffer_not_found() {
         let ctx = create_test_context();

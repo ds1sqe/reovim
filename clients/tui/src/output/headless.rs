@@ -58,4 +58,26 @@ mod tests {
         let output = HeadlessOutput;
         assert!(!output.uses_terminal_cursor());
     }
+
+    #[test]
+    fn test_headless_output_position_cursor() {
+        let mut output = HeadlessOutput;
+        // No-op - should not panic
+        output.position_cursor(10, 20);
+    }
+
+    #[test]
+    fn test_headless_output_set_cursor_style() {
+        let mut output = HeadlessOutput;
+        // No-op - should not panic
+        output.set_cursor_style(CursorStyleHint::Block);
+    }
+
+    #[test]
+    fn test_headless_output_set_cursor_visible() {
+        let mut output = HeadlessOutput;
+        // No-op - should not panic
+        output.set_cursor_visible(true);
+        output.set_cursor_visible(false);
+    }
 }

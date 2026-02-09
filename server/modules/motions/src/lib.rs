@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim motions module - POLICY.
 //!
 //! This module implements motion commands that move the cursor:
@@ -137,7 +138,10 @@ mod tests {
 
     #[test]
     fn test_module_default() {
-        let module = MotionsModule;
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let module: MotionsModule = create_default();
         assert_eq!(module.name(), "Vim Motions");
     }
 

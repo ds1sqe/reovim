@@ -201,6 +201,7 @@ mod tests {
         assert_eq!(config.args, vec!["--log-file", "/tmp/ra.log"]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_uri_from_path_unix() {
         // Note: This test may behave differently on Windows
@@ -277,5 +278,14 @@ mod tests {
         let uri = uri_from_path(path);
         let uri_str = uri.as_str();
         assert!(uri_str.starts_with("file://"));
+    }
+
+    #[test]
+    fn test_uri_from_path_with_spaces_falls_back() {
+        // Spaces in path produce invalid URI (RFC 3986 forbids literal spaces)
+        // so uri_from_path should fall back to "file:///"
+        let path = Path::new("/nonexistent path with spaces/project");
+        let uri = uri_from_path(path);
+        assert_eq!(uri.as_str(), "file:///");
     }
 }

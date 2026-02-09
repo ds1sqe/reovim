@@ -231,6 +231,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_from_io_error_preserves_message() {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
         let net_err = NetError::from(io_err);
@@ -241,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_from_json_error_preserves_message() {
         let json_err: serde_json::Error =
             serde_json::from_str::<i32>("\"not a number\"").unwrap_err();

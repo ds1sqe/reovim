@@ -103,6 +103,7 @@ mod tests {
     // ========== BufferError tests ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_error_not_found_display() {
         let id = BufferId::from_raw(42);
         let err = BufferError::NotFound(id);
@@ -111,6 +112,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_error_already_exists_display() {
         let id = BufferId::from_raw(7);
         let err = BufferError::AlreadyExists(id);
@@ -119,6 +121,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_error_invalid_operation_display() {
         let err = BufferError::InvalidOperation("cannot delete last buffer");
         let display = format!("{err}");
@@ -126,6 +129,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_error_debug() {
         let id = BufferId::from_raw(1);
         let err = BufferError::NotFound(id);

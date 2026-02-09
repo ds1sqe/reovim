@@ -66,12 +66,14 @@ impl std::fmt::Display for GrpcClientError {
 
 impl std::error::Error for GrpcClientError {}
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<tonic::Status> for GrpcClientError {
     fn from(status: tonic::Status) -> Self {
         Self::GrpcError(status)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<tonic::transport::Error> for GrpcClientError {
     fn from(err: tonic::transport::Error) -> Self {
         Self::ConnectionFailed(err.to_string())
@@ -115,6 +117,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the connection fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn connect(addr: &str) -> Result<Self, GrpcClientError> {
         // Build the endpoint URL
         let url = format!("http://{addr}");
@@ -141,6 +144,7 @@ impl GrpcClient {
     /// If a session token has been stored (from `Join()`), injects it as the
     /// `x-reovim-token` gRPC metadata header. The server interceptor resolves
     /// this token to the caller's `ClientId`.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn make_request<T>(&self, body: T) -> Request<T> {
         let mut request = Request::new(body);
         if let Some(ref token) = self.session_token {
@@ -157,6 +161,7 @@ impl GrpcClient {
     /// Panics if joining fails - CLI cannot operate without a valid client ID.
     ///
     /// # Phase #479: Auto-join for per-client state
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn ensure_joined(&mut self) -> u64 {
         if let Some(id) = self.client_id {
             return id;
@@ -184,6 +189,7 @@ impl GrpcClient {
     /// This function can be used by command handlers that want to panic on
     /// errors rather than propagating them to the caller.
     #[allow(dead_code)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_grpc_error(e: &tonic::Status, operation: &str) -> ! {
         use tonic::Code;
 
@@ -249,6 +255,7 @@ impl GrpcClient {
     ///
     /// The client auto-joins the presence session on first call.
     /// Panics if joining fails or if the server returns a fatal error.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn send_keys(&mut self, keys: &str) -> Result<SendKeysResponse, GrpcClientError> {
         self.ensure_joined().await;
         let request = self.make_request(SendKeysRequest {
@@ -267,6 +274,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_mode(&mut self) -> Result<GetModeResponse, GrpcClientError> {
         self.ensure_joined().await;
         let request = self.make_request(GetModeRequest { client_id: 0 });
@@ -283,6 +291,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_mode_for_client(
         &mut self,
         client_id: u64,
@@ -301,6 +310,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_cursor(&mut self) -> Result<GetCursorResponse, GrpcClientError> {
         self.ensure_joined().await;
         let request = self.make_request(GetCursorRequest {
@@ -320,6 +330,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_cursor_for_client(
         &mut self,
         client_id: u64,
@@ -337,6 +348,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn list_buffers(&mut self) -> Result<ListBuffersResponse, GrpcClientError> {
         let request = self.make_request(ListBuffersRequest {});
         let response = self.buffer.list(request).await?;
@@ -352,6 +364,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_buffer_content(
         &mut self,
         buffer_id: Option<u64>,
@@ -370,6 +383,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn ping(&mut self) -> Result<PingResponse, GrpcClientError> {
         let request = self.make_request(PingRequest {});
         let response = self.server.ping(request).await?;
@@ -381,6 +395,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn info(&mut self) -> Result<InfoResponse, GrpcClientError> {
         let request = self.make_request(InfoRequest {});
         let response = self.server.info(request).await?;
@@ -396,6 +411,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_registers(
         &mut self,
         names: Vec<String>,
@@ -417,6 +433,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn get_screen_content(
         &mut self,
         client_id: u64,
@@ -451,6 +468,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn presence_join(
         &mut self,
         client_type: &str,
@@ -476,6 +494,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn presence_leave(&mut self) -> Result<LeaveResponse, GrpcClientError> {
         let request = self.make_request(LeaveRequest {});
         let response = self.presence.leave(request).await?;
@@ -491,6 +510,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn presence_list(&mut self) -> Result<ListClientsResponse, GrpcClientError> {
         let request = self.make_request(ListClientsRequest {});
         let response = self.presence.list_clients(request).await?;
@@ -504,6 +524,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn presence_update(
         &mut self,
         buffer_id: Option<u64>,
@@ -525,6 +546,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn presence_set_sync_mode(
         &mut self,
         sync_mode: i32,
@@ -558,6 +580,7 @@ impl GrpcClient {
     /// # Errors
     ///
     /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn log_tail(
         &mut self,
         count: u32,

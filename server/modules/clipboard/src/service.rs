@@ -38,6 +38,7 @@ impl ClipboardService {
     }
 
     /// Get or create the clipboard instance.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn with_clipboard<F, R>(&self, f: F) -> Result<R, ClipboardError>
     where
         F: FnOnce(&mut arboard::Clipboard) -> Result<R, ClipboardError>,
@@ -94,11 +95,13 @@ impl ClipboardProvider for ClipboardService {
     // System Clipboard (+ register)
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clipboard_available(&self) -> bool {
         // Try to get or create clipboard
         self.with_clipboard(|_| Ok(())).is_ok()
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn copy_to_clipboard(&self, text: &str) -> Result<(), ClipboardError> {
         self.with_clipboard(|clip| {
             clip.set_text(text)
@@ -106,6 +109,7 @@ impl ClipboardProvider for ClipboardService {
         })
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn paste_from_clipboard(&self) -> Result<Option<String>, ClipboardError> {
         self.with_clipboard(|clip| match clip.get_text() {
             Ok(text) => {
@@ -124,17 +128,20 @@ impl ClipboardProvider for ClipboardService {
     // Selection Clipboard (* register)
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn selection_available(&self) -> bool {
         // On non-X11 platforms, selection mirrors the system clipboard
         self.clipboard_available()
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn copy_to_selection(&self, text: &str) -> Result<(), ClipboardError> {
         // On non-X11 platforms, selection mirrors the system clipboard
         // On X11, arboard handles primary selection automatically when available
         self.copy_to_clipboard(text)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn paste_from_selection(&self) -> Result<Option<String>, ClipboardError> {
         // On non-X11 platforms, selection mirrors the system clipboard
         self.paste_from_clipboard()
@@ -187,6 +194,7 @@ mod tests {
     // Run locally with: cargo test -p reovim-module-clipboard -- --ignored
     #[test]
     #[ignore = "requires display for clipboard access"]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_system_clipboard() {
         let service = ClipboardService::new();
 

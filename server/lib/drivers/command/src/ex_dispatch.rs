@@ -361,6 +361,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_dispatch_context_debug() {
         let ctx = ExDispatchContext::default();
         let debug_str = format!("{ctx:?}");
@@ -413,6 +414,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_result_debug() {
         let debug_str = format!("{:?}", ExCommandResult::Success);
         assert_eq!(debug_str, "Success");
@@ -427,7 +429,9 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_command_dispatcher_object_safe() {
+        // Inner fns verify compilation only, never called
         fn _accepts_ref(_: &dyn ExCommandDispatcher) {}
         fn _accepts_box(_: Box<dyn ExCommandDispatcher>) {}
     }
@@ -571,6 +575,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_registry_debug() {
         let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
             id: "write",
@@ -585,6 +590,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_registry_debug_empty() {
         let registry = ExCommandRegistry::new();
         let debug_str = format!("{registry:?}");
@@ -630,6 +636,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dispatch_not_found_contains_name() {
         let registry = ExCommandRegistry::new();
         let kernel = KernelContext::default();
@@ -644,6 +651,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dispatch_error() {
         let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
             id: "fail",
@@ -863,21 +871,18 @@ mod tests {
         assert!(!registry.has_command(""));
     }
 
+    /// Shared VFS-checking command for VFS dispatch tests.
+    fn vfs_check_cmd(ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), ExCommandError> {
+        if ctx.vfs().is_some() {
+            Ok(())
+        } else {
+            Err(ExCommandError::ExecutionFailed("VFS not available".to_string()))
+        }
+    }
+
     #[test]
     fn test_dispatch_with_vfs_in_service_registry() {
         use reovim_driver_vfs::{MockVfs, VfsInstance};
-
-        // Create a command that verifies VFS is available in the context
-        fn vfs_check_cmd(
-            ctx: &mut ExCommandContext<'_>,
-            _args: &[&str],
-        ) -> Result<(), ExCommandError> {
-            if ctx.vfs().is_some() {
-                Ok(())
-            } else {
-                Err(ExCommandError::ExecutionFailed("VFS not available".to_string()))
-            }
-        }
 
         let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
             id: "check-vfs",
@@ -897,5 +902,23 @@ mod tests {
         let ctx = ExDispatchContext::default();
         let result = registry.dispatch("vfscheck", &kernel, &ctx);
         assert_eq!(result, ExCommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_dispatch_without_vfs_in_service_registry() {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(TestExCommand {
+            id: "check-vfs",
+            names: &["vfscheck"],
+            execute_fn: vfs_check_cmd,
+        })];
+
+        let registry = ExCommandRegistry::from_handlers(handlers);
+
+        // Kernel WITHOUT VFS registered - the else branch should execute
+        let kernel = KernelContext::default();
+        let ctx = ExDispatchContext::default();
+        let result = registry.dispatch("vfscheck", &kernel, &ctx);
+        assert!(matches!(result, ExCommandResult::Error(msg) if msg.contains("VFS not available")));
     }
 }

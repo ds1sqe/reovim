@@ -164,6 +164,7 @@ mod tests {
         available: bool,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ClipboardProvider for MockClipboard {
         fn history(&self) -> Vec<RegisterContent> {
             vec![
@@ -309,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn history_capacity_custom_override() {
         struct CustomClipboard;
         impl ClipboardProvider for CustomClipboard {
@@ -367,6 +369,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn any_clipboard_available_with_selection_only() {
         struct SelectionOnlyClipboard;
         impl ClipboardProvider for SelectionOnlyClipboard {
@@ -458,6 +461,7 @@ mod tests {
     // Clipboard errors from methods
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn copy_to_selection_error_message() {
         let clip = MockClipboard { available: true };
@@ -466,6 +470,7 @@ mod tests {
         assert!(msg.contains("not available") || msg.contains("no selection"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn paste_from_selection_error_message() {
         let clip = MockClipboard { available: true };
@@ -479,6 +484,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn clipboard_provider_is_object_safe() {
         fn _accepts_ref(_: &dyn ClipboardProvider) {}
         fn _accepts_box(_: Box<dyn ClipboardProvider>) {}
@@ -490,6 +496,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn paste_from_clipboard_empty() {
         struct EmptyClipboard;
         impl ClipboardProvider for EmptyClipboard {

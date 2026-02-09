@@ -143,6 +143,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_display() {
         assert_eq!(format!("{}", RuntimeState::Booting), "Booting");
         assert_eq!(format!("{}", RuntimeState::Running), "Running");

@@ -188,6 +188,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug() {
         let state = OperatorPendingState::new();
         let debug = format!("{state:?}");

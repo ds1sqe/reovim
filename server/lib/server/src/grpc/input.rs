@@ -2486,15 +2486,14 @@ mod tests {
         }
 
         // Use session_with_success_command to get a registered command
-        let (session, cmd_id) =
-            session_with_success_command("exec-operator-complete-test");
+        let (session, cmd_id) = session_with_success_command("exec-operator-complete-test");
 
         // Replace the default resolver with our CompletionResolver
         let mode = ModeId::new(ModuleId::new("default"), "normal");
         session.with_state_mut_sync(|state| {
-            state.resolver_registry.register(CompletionResolver {
-                mode: mode.clone(),
-            });
+            state
+                .resolver_registry
+                .register(CompletionResolver { mode: mode.clone() });
         });
 
         let client_id = ClientId::new(1);

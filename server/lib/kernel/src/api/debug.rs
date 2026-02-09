@@ -127,6 +127,7 @@ pub fn snapshot_kernel_state(ctx: &KernelContext) -> KernelStateSnapshot {
 
 /// Create a registers snapshot from `RegisterBank`.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn snapshot_registers(bank: &RegisterBank) -> RegistersSnapshot {
     // Get unnamed register
     let unnamed_content = bank.get();
@@ -315,5 +316,21 @@ mod tests {
         assert_eq!(snapshot.current, "editor:normal");
         assert_eq!(snapshot.depth, 1);
         assert_eq!(snapshot.stack.len(), 1);
+    }
+
+    #[test]
+    fn test_snapshot_marks_with_special_marks() {
+        let mut bank = MarkBank::new();
+        let buffer_id = BufferId::new();
+
+        bank.set_special(SpecialMark::LastJump, Mark::new(Position::new(5, 3), buffer_id));
+        bank.set_special(SpecialMark::LastEdit, Mark::new(Position::new(10, 0), buffer_id));
+
+        let snapshot = snapshot_marks(&bank);
+
+        // Special marks should be included
+        assert!(snapshot.special.len() >= 2);
+        assert!(snapshot.special.iter().any(|m| m.name == "'"));
+        assert!(snapshot.special.iter().any(|m| m.name == "."));
     }
 }

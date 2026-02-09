@@ -83,6 +83,7 @@ impl LocalAddr {
     /// - **Windows**: Not applicable (named pipes don't use directories)
     #[cfg(unix)]
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn socket_dir() -> PathBuf {
         use reovim_arch::dirs::runtime_dir;
 
@@ -232,6 +233,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_socket_dir_contains_reovim() {
         let dir = LocalAddr::socket_dir();
         let dir_str = dir.to_string_lossy();

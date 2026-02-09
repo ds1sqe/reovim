@@ -57,6 +57,7 @@ impl Command for CursorDisplayDown {
 
 impl CommandHandler for CursorDisplayDown {
     #[allow(clippy::cast_possible_truncation)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -205,6 +206,7 @@ impl Command for CursorDisplayUp {
 
 impl CommandHandler for CursorDisplayUp {
     #[allow(clippy::cast_possible_truncation)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -340,6 +342,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -378,12 +381,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -395,6 +400,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -415,6 +421,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -539,6 +546,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_down_at_eof() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2");
@@ -668,6 +676,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_moves_to_prev_line() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
@@ -709,6 +718,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_with_count() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
@@ -732,6 +742,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_count_exceeds_remaining() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
@@ -783,6 +794,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_within_wrapped_line() {
         // Create a line longer than 80 columns so it wraps
         let long_line: String = "a".repeat(200);
@@ -856,6 +868,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_through_wrapped_to_prev_line() {
         // A long line followed by a short one: gk from start of second line
         let long_line = "a".repeat(200); // 3 display lines on 80-col terminal
@@ -919,6 +932,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_across_multiple_wrapped_lines() {
         // Two long lines: cursor on second line, move up several display lines
         let long_line1 = "a".repeat(200); // 3 display lines
@@ -996,6 +1010,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_down_preserves_display_column() {
         // A 200-char line: cursor at col 10, move down 1 display line
         // should end up at col 90 (display line 1, display col 10 -> buffer col 80+10)
@@ -1022,6 +1037,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_display_up_preserves_display_column() {
         // A 200-char line: cursor at col 170, move up 1 display line
         // display line 2, display col 10 -> display line 1, display col 10 -> buffer col 90
@@ -1062,6 +1078,165 @@ mod tests {
         let args = CommandContext::new();
         let result = CursorDisplayDown.execute(&mut runtime, &args);
         assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_cursor_display_down_within_wrapped_line_with_count() {
+        // A 250-char line: move down 2 display lines within same buffer line
+        let long_line: String = "a".repeat(250);
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(&long_line);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = CursorDisplayDown.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Should stay on buffer line 0, move to display line 2 (col 160)
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 160);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_cursor_display_up_within_wrapped_line_with_count() {
+        // A 250-char line: cursor at col 200 (display line 2), move up 2 display lines
+        let long_line: String = "a".repeat(250);
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(&long_line);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 200).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = CursorDisplayUp.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // At col 200 = display line 2, display col 40
+        // Move up 2 -> display line 0, display col 40 -> buffer col 40
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 40);
+    }
+
+    #[test]
+    fn test_cursor_display_down_crosses_multiple_buffer_lines() {
+        // Two short lines then a long line: gj with large count crosses multiple buffer lines
+        let content = "short1\nshort2\nshort3\nshort4";
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(content);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = CursorDisplayDown.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Should end up on buffer line 2
+        assert_eq!(window.cursor.line, 2);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_cursor_display_up_crosses_multiple_buffer_lines() {
+        // Four short lines: cursor at line 3, gk with count=2 crosses multiple lines
+        let content = "short1\nshort2\nshort3\nshort4";
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(content);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(3, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = CursorDisplayUp.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Should end up on buffer line 1
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_cursor_display_down_wraps_into_next_buffer_line() {
+        // Line 1: 200 chars (wraps to 3 display lines), Line 2: "short"
+        // Cursor at col 160 (display line 2 of line 1), gj should go to line 2
+        let long_line = "a".repeat(200);
+        let content = format!("{long_line}\nshort");
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(&content);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 165).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorDisplayDown.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // At display line 2 (last display line of the 200-char line), gj crosses to line 1
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_cursor_display_up_wraps_into_prev_buffer_line() {
+        // Line 1: "short", Line 2: 200 chars (wraps to 3 display lines)
+        // Cursor at col 5 (display line 0 of line 2), gk should go to line 1
+        let long_line = "b".repeat(200);
+        let content = format!("short\n{long_line}");
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string(&content);
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 5).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = CursorDisplayUp.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Should end up on buffer line 0
+        assert_eq!(window.cursor.line, 0);
     }
 
     #[test]

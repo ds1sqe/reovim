@@ -301,6 +301,7 @@ mod tests {
         assert!(!b.is_empty());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_bindings_in_visual_modes() {
         for binding in bindings() {

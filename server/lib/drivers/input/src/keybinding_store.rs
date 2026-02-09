@@ -205,6 +205,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug() {
         let store = KeybindingStore::new();
         store.add(test_binding("j"));

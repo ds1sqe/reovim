@@ -107,6 +107,7 @@ impl From<io::Error> for LogError {
 /// // In a real application (can only be called once):
 /// // init_logging(&config).expect("failed to initialize logging");
 /// ```
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn init_logging(config: &LogConfig) -> Result<(), LogError> {
     let filter = build_filter(config)?;
 
@@ -153,6 +154,7 @@ pub fn init_logging(config: &LogConfig) -> Result<(), LogError> {
 }
 
 /// Build the `EnvFilter` from config, respecting `REOVIM_LOG` env var.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn build_filter(config: &LogConfig) -> Result<EnvFilter, LogError> {
     // REOVIM_LOG env var takes precedence
     if let Ok(filter) = EnvFilter::try_from_env("REOVIM_LOG") {
@@ -177,6 +179,7 @@ const fn level_to_filter_str(level: Level) -> &'static str {
 }
 
 /// Initialize stdout subscriber.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn init_stdout(filter: EnvFilter, format: &LogFormat) -> Result<(), LogError> {
     match format {
         LogFormat::Plain => {
@@ -212,6 +215,7 @@ fn init_stdout(filter: EnvFilter, format: &LogFormat) -> Result<(), LogError> {
 }
 
 /// Initialize file subscriber with rotation.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn init_file(
     filter: EnvFilter,
     path: &Path,
@@ -323,6 +327,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_log_error_source_all_variants() {
         // MissingFilePath has no source
         let err = LogError::MissingFilePath;
@@ -343,6 +348,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_log_error_from_io_preserves_error_kind() {
         let io_err = io::Error::new(io::ErrorKind::BrokenPipe, "pipe broken");
         let log_err = LogError::from(io_err);

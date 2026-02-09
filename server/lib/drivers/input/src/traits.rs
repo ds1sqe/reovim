@@ -290,23 +290,36 @@ mod tests {
         assert!(!handler.is_active());
     }
 
+    #[test]
+    fn test_inactive_handler_all_methods() {
+        let mut handler = InactiveHandler;
+        assert_eq!(handler.id(), "inactive");
+        assert_eq!(handler.priority(), priority::NORMAL);
+        let key = KeyEvent::new(crate::KeyCode::Char('a'));
+        assert_eq!(handler.handle(&key), KeyHandlerResult::Consumed);
+        assert!(!handler.is_active());
+    }
+
     // ========================================================================
     // Trait object safety tests
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_driver_is_object_safe() {
         fn _accepts_ref(_: &dyn InputDriver) {}
         fn _accepts_box(_: Box<dyn InputDriver>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_handler_is_object_safe() {
         fn _accepts_ref(_: &dyn KeyHandler) {}
         fn _accepts_box(_: Box<dyn KeyHandler>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_clipboard_provider_is_object_safe() {
         fn _accepts_ref(_: &dyn ClipboardProvider) {}
         fn _accepts_box(_: Box<dyn ClipboardProvider>) {}
@@ -317,6 +330,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_handler_result_debug() {
         let consumed = format!("{:?}", KeyHandlerResult::Consumed);
         assert_eq!(consumed, "Consumed");
@@ -338,6 +352,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_keymap_registry_is_object_safe() {
         fn _accepts_ref(_: &dyn KeymapRegistry<String>) {}
         fn _accepts_box(_: Box<dyn KeymapRegistry<String>>) {}
@@ -537,6 +552,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapRegistry<String> for MockKeymapRegistry {
         fn bind(
             &mut self,
@@ -624,6 +640,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_handler_consumed_result() {
         struct ConsumingHandler;
 
@@ -646,6 +663,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_handler_pending_result() {
         struct PendingHandler;
 

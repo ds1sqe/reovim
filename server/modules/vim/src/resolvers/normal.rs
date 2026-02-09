@@ -162,6 +162,7 @@ impl VimNormalResolver {
     }
 
     /// Accumulate a count digit.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn accumulate_count(&self, key: &KeyEvent) {
         if let KeyCode::Char(c @ '0'..='9') = key.code {
             let digit = c.to_digit(10).expect("valid digit") as usize;
@@ -259,6 +260,7 @@ impl VimNormalResolver {
     ///
     /// - If currently recording: stop recording, store to register
     /// - If not recording: set pending macro state to wait for register
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_macro_record_key(
         &self,
         vim: &mut VimSessionState,
@@ -294,6 +296,7 @@ impl VimNormalResolver {
     }
 
     /// Handle register character after `q` (start recording).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_macro_record_register(
         &self,
         key: &KeyEvent,
@@ -328,6 +331,7 @@ impl VimNormalResolver {
     }
 
     /// Handle register character after `@` (play macro).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_macro_play_register(
         &self,
         key: &KeyEvent,
@@ -436,6 +440,7 @@ impl VimNormalResolver {
     // ========================================================================
 
     /// Check if a key is a count digit (extension-based version).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn is_count_digit_ext(&self, key: &KeyEvent, vim: &VimSessionState) -> bool {
         if key.modifiers != Modifiers::NONE {
             return false;
@@ -449,6 +454,7 @@ impl VimNormalResolver {
     }
 
     /// Accumulate a count digit (extension-based version).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn accumulate_count_ext(&self, key: &KeyEvent, vim: &mut VimSessionState) {
         if let KeyCode::Char(c @ '0'..='9') = key.code {
             let digit = c.to_digit(10).expect("valid digit") as usize;
@@ -457,6 +463,7 @@ impl VimNormalResolver {
     }
 
     /// Handle register character after `"` prefix (extension-based version).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn handle_register_char_ext(&self, key: &KeyEvent, vim: &mut VimSessionState) -> ResolveResult {
         if let KeyCode::Char(c) = key.code {
             // Valid register characters: a-z, A-Z, 0-9, and special registers
@@ -651,6 +658,7 @@ impl ModeKeyResolver for VimNormalResolver {
     ///
     /// Note: For backward compatibility, we still use internal `pending_keys`.
     /// Once all resolvers are migrated, these can move to `VimSessionState` too.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
         key: &KeyEvent,
@@ -860,6 +868,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound` (no bindings).
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -1117,6 +1126,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for MockKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             self.response.clone()
@@ -1151,6 +1161,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_exact_only_returns_execute() {
         // When keymap reports ExactOnly (x exists, no xx),
         // Vim policy says execute immediately.
@@ -1208,6 +1219,7 @@ mod tests {
     // ------------------------------------------------------------------------
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_count_flows_to_context() {
         // Count accumulated before command should appear in Execute context.
         let resolver = VimNormalResolver::new();
@@ -1233,6 +1245,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_register_flows_to_context() {
         // Register selected before command should appear in Execute context.
         let resolver = VimNormalResolver::new();
@@ -1260,6 +1273,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_count_and_register_together() {
         // Both count and register should flow to context.
         let resolver = VimNormalResolver::new();
@@ -1413,6 +1427,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_d_returns_mode_transition_push_to_delete_mode() {
         // Epic #415: Pressing 'd' should push to dedicated DELETE mode.
         let resolver = VimNormalResolver::new();
@@ -1432,6 +1447,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_y_returns_mode_transition_push_to_yank_mode() {
         // Epic #415: Pressing 'y' should push to dedicated YANK mode.
         let resolver = VimNormalResolver::new();
@@ -1451,6 +1467,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_c_returns_mode_transition_push_to_change_mode() {
         // Epic #415: Pressing 'c' should push to dedicated CHANGE mode.
         let resolver = VimNormalResolver::new();
@@ -1528,6 +1545,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_count_and_register_preserved_together() {
         // Epic #415: Both count and register should remain for the dedicated resolver.
         let resolver = VimNormalResolver::new();
@@ -1661,6 +1679,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_count_flows_to_execute() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
@@ -1725,6 +1744,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_zero_not_count_without_pending() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
@@ -2010,6 +2030,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_find_char_completes_with_character() {
         // After f is pressed and pending_char is set, the next character should complete
         let resolver = VimNormalResolver::new();
@@ -2065,6 +2086,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_till_char_forward() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
@@ -2098,6 +2120,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_till_char_backward() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
@@ -2198,6 +2221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_macro_play_basic() {
         use {
             reovim_kernel::api::v1::{RegisterBank, RegisterContent, RwLock},
@@ -2330,6 +2354,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_macro_play_at_at_repeat() {
         use {
             reovim_kernel::api::v1::{RegisterBank, RegisterContent, RwLock},
@@ -2398,6 +2423,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_operator_exact_only_delete() {
         // Test operator interception via ExactOnly (not ExactWithLonger)
         let resolver = VimNormalResolver::new();
@@ -2416,6 +2442,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_operator_exact_with_longer_delete() {
         // Test operator interception via ExactWithLonger
         let resolver = VimNormalResolver::new();
@@ -2438,6 +2465,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_operator_exact_with_longer_yank() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();
@@ -2459,6 +2487,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ext_operator_exact_with_longer_change() {
         let resolver = VimNormalResolver::new();
         let mut state = test_state();

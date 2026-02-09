@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Undo module for reovim.
 //!
 //! Provides per-buffer undo/redo with integrated persistence to disk.
@@ -109,8 +110,11 @@ mod tests {
 
     #[test]
     fn test_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: UndoModule = create_default();
         let from_new = UndoModule::new();
-        let from_default = UndoModule;
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }

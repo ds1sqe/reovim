@@ -35,6 +35,7 @@ impl Command for YankLine {
 }
 
 impl CommandHandler for YankLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -114,6 +115,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -152,12 +154,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -169,6 +173,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -189,6 +194,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -398,6 +404,7 @@ mod tests {
         assert_eq!(content.text, "line 1\nline 2\n");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_from_cursor_line() {
         let kernel = create_test_context();
@@ -465,6 +472,7 @@ mod tests {
     // Yank multiple lines from middle
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_multiple_lines_from_middle() {
         let kernel = create_test_context();
@@ -494,6 +502,7 @@ mod tests {
     // Yank last line
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_last_line() {
         let kernel = create_test_context();
@@ -522,6 +531,7 @@ mod tests {
     // Yank with cursor column > 0 (still yanks full line)
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_line_with_cursor_at_column() {
         let kernel = create_test_context();

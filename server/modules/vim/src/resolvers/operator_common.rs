@@ -754,6 +754,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_build_operator_execute_delete() {
         let start = Position::new(0, 0);
         let end = Position::new(0, 5);
@@ -778,6 +779,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_build_operator_execute_with_count_and_register() {
         let start = Position::new(1, 0);
         let end = Position::new(3, 0);
@@ -811,6 +813,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_build_operator_execute_change() {
         let start = Position::new(0, 5);
         let end = Position::new(0, 10);
@@ -830,6 +833,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_build_cancelled() {
         let transition = build_cancelled();
         match transition {

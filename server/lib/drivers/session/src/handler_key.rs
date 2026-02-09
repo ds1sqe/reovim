@@ -58,6 +58,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug() {
         assert_eq!(format!("{:?}", SessionHandlerKey::Empty), "Empty");
     }

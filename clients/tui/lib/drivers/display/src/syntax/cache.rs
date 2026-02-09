@@ -812,5 +812,4 @@ mod tests {
         let manager = TokenCacheManager::with_max_buffers(5);
         assert!(manager.get(0).is_none());
     }
-
 }

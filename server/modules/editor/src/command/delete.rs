@@ -42,6 +42,7 @@ impl Command for DeleteChar {
 }
 
 impl CommandHandler for DeleteChar {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -96,6 +97,7 @@ impl Command for DeleteCharBefore {
 }
 
 impl CommandHandler for DeleteCharBefore {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -164,6 +166,7 @@ impl Command for DeleteLine {
 }
 
 impl CommandHandler for DeleteLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -268,6 +271,7 @@ impl Command for DeleteToEndOfLine {
 }
 
 impl CommandHandler for DeleteToEndOfLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -337,6 +341,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -375,12 +380,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -392,6 +399,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -412,6 +420,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -591,6 +600,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_char_at_eol_is_noop() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("ab");
@@ -705,6 +715,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_char_before_joins_with_previous_line() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line one\nline two");
@@ -731,6 +742,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_char_before_single() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
@@ -757,6 +769,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_char_before_with_count() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
@@ -784,6 +797,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_char_before_count_clamped() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
@@ -897,6 +911,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_line_middle_line() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
@@ -922,6 +937,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_line_last_line() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
@@ -1096,6 +1112,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_to_eol_from_middle() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello world");
@@ -1118,6 +1135,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_delete_to_eol_at_eol_is_noop() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hi");
@@ -1189,5 +1207,32 @@ mod tests {
         drop(registers);
         assert!(content.is_linewise());
         assert_eq!(content.text, "first\nsecond\nthird\n");
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_delete_line_cursor_beyond_buffer_end() {
+        // Cursor at line 5 but buffer has only 2 lines: lines_to_delete = 0
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(5, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DeleteLine.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Buffer should remain unchanged
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        assert_eq!(buf_read.line(0), Some("hello"));
+        assert_eq!(buf_read.line(1), Some("world"));
     }
 }

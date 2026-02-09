@@ -43,25 +43,16 @@ use crate::session::{ClientId, Session, SessionId, SessionRegistry, TokenRegistr
 /// Called when a `CleanupStream` is dropped (client disconnect, crash, or
 /// network failure). Only runs as part of gRPC stream lifecycle.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn on_notification_stream_dropped(
-    client_id: ClientId,
-    session: &Session,
-    tokens: &TokenRegistry,
-) {
-    tracing::info!(
-        client_id = client_id.as_usize(),
-        "Notification stream dropped — auto-cleanup"
-    );
+fn on_notification_stream_dropped(client_id: ClientId, session: &Session, tokens: &TokenRegistry) {
+    tracing::info!(client_id = client_id.as_usize(), "Notification stream dropped — auto-cleanup");
 
     // 1. Revoke session token
     tokens.revoke_by_client(client_id);
 
     // 2. Remove from presence map and emit notification
     if let Some(presence) = session.presence().leave(client_id) {
-        session.emit_notification(build_presence_left_notification(
-            client_id,
-            &presence.display_name,
-        ));
+        session
+            .emit_notification(build_presence_left_notification(client_id, &presence.display_name));
     }
 
     // 3. Remove from client map (dumps ring buffer for diagnostics)

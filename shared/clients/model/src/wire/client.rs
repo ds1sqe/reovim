@@ -308,6 +308,26 @@ mod tests {
     }
 
     #[test]
+    fn test_client_metadata_default() {
+        let metadata = ClientMetadata::default();
+        assert_eq!(metadata.client_type, "unknown");
+        assert_eq!(metadata.display_name, "unknown");
+    }
+
+    #[test]
+    fn test_client_metadata_with_joined_at() {
+        let metadata = ClientMetadata::new("tui", "laptop").with_joined_at(1234567890);
+        assert_eq!(metadata.joined_at_ms, 1234567890);
+    }
+
+    #[test]
+    fn test_client_view_state_new() {
+        let view = ClientViewState::new("INSERT");
+        assert_eq!(view.mode, "INSERT");
+        assert_eq!(view.cursor, (0, 0));
+    }
+
+    #[test]
     fn test_client_info_sharing() {
         let mut info = ClientInfo::new(1, ClientMetadata::new("tui", "laptop"));
         info.relation = Some(ClientRelation::Sharing { with: 2 });

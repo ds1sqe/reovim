@@ -575,6 +575,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display() {
         let seq = KeySequence::from_keys(&[
             KeyEvent::new(KeyCode::Char('g')),
@@ -664,6 +665,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_keybinding_target_display() {
         let module = ModuleId::new("test");
         let cmd = CommandId::new(module.clone(), "delete");
@@ -876,6 +878,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_special_keys() {
         let test_cases = [
             (KeyCode::Escape, "<Esc>"),
@@ -900,12 +903,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_function_key() {
         let seq = KeySequence::from_keys(&[KeyEvent::new(KeyCode::F(5))]);
         assert_eq!(format!("{seq}"), "<F5>");
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_alt_modifier() {
         let seq =
             KeySequence::from_keys(&[KeyEvent::with_modifiers(KeyCode::Char('x'), Modifiers::ALT)]);
@@ -913,6 +918,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_shift_modifier() {
         let seq = KeySequence::from_keys(&[KeyEvent::with_modifiers(
             KeyCode::Char('a'),
@@ -922,6 +928,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_combined_modifiers() {
         let seq = KeySequence::from_keys(&[KeyEvent::with_modifiers(
             KeyCode::Char('x'),
@@ -933,6 +940,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_unknown_key() {
         // Test fallback display for keys not in the match
         let seq = KeySequence::from_keys(&[KeyEvent::new(KeyCode::Insert)]);
@@ -940,6 +948,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_mixed() {
         let seq = KeySequence::from_keys(&[
             KeyEvent::with_modifiers(KeyCode::Char('w'), Modifiers::CTRL),
@@ -949,6 +958,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_display_empty() {
         let seq = KeySequence::new();
         assert_eq!(format!("{seq}"), "");

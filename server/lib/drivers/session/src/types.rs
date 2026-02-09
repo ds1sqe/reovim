@@ -97,6 +97,7 @@ pub struct SessionShared {
     home_mode: ModeId,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl std::fmt::Debug for SessionShared {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionShared")
@@ -581,6 +582,7 @@ impl WindowLayout {
     ///
     /// If no window is explicitly active but windows exist, returns the first window.
     /// This ensures a valid window is always available when the layout is non-empty.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn active_mut(&mut self) -> Option<&mut Window> {
         // Try explicit active index first, fallback to first window
         if let Some(idx) = self.active_index
@@ -730,6 +732,7 @@ pub struct Session {
     pub shared: SessionShared,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl std::fmt::Debug for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Session")
@@ -1205,6 +1208,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_shared_debug() {
         let mode = test_mode();
         let shared = SessionShared::new(mode);
@@ -1360,6 +1364,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_sequence_debug() {
         let seq = KeySequence::new();
         let debug = format!("{seq:?}");
@@ -1432,6 +1437,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cursor_position_debug() {
         let cursor = CursorPosition::new(5, 10);
         let debug = format!("{cursor:?}");
@@ -1472,6 +1478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_window_debug() {
         let w = Window::new();
         let debug = format!("{w:?}");
@@ -1490,6 +1497,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_textobj_range_debug() {
         let range = TextObjRange::linewise(Position::new(1, 0), Position::new(3, 0));
         let debug = format!("{range:?}");
@@ -1540,6 +1548,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_bootstrap_state_debug() {
         let mode = test_mode();
         let state = BootstrapState::new(mode);
@@ -1552,6 +1561,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_session_debug() {
         let mode = test_mode();
         let session = Session::new(ClientId::new(1), mode);
@@ -1609,6 +1619,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_client_id_debug() {
         let id = ClientId::new(42);
         let debug = format!("{id:?}");

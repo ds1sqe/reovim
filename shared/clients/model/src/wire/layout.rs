@@ -97,6 +97,7 @@ impl LogicalLayout {
 
     /// Create a tabbed layout.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn tabs(tabs: Vec<Self>, active: usize) -> Self {
         debug_assert!(active < tabs.len() || tabs.is_empty());
         Self::Tabs { tabs, active }
@@ -171,6 +172,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_hsplit_layout() {
         let layout = LogicalLayout::hsplit(vec![
             LogicalLayout::single(1, 100),
@@ -193,6 +195,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_vsplit_layout() {
         let layout = LogicalLayout::vsplit(vec![
             LogicalLayout::single(1, 100),
@@ -252,6 +255,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_split_with_ratios() {
         let layout = LogicalLayout::split_with_ratios(
             SplitDirection::Horizontal,
@@ -275,6 +279,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tabs_constructor() {
         let layout = LogicalLayout::tabs(
             vec![

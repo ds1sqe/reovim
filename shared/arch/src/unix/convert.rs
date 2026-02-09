@@ -371,6 +371,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_media_keys() {
         use ct_event::MediaKeyCode as Ct;
         let mappings = [
@@ -399,6 +400,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_modifier_keys() {
         use ct_event::ModifierKeyCode as Ct;
         let mappings = [
@@ -529,6 +531,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_mouse_event_all_buttons() {
         for (ct_btn, our_btn) in [
             (ct_event::MouseButton::Left, MouseButton::Left),
@@ -569,6 +572,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_mouse_event_scroll() {
         for (ct_kind, expected_kind) in [
             (ct_event::MouseEventKind::ScrollUp, MouseEventKind::ScrollUp),
@@ -606,6 +610,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_event_key() {
         let ct = CtEvent::Key(ct_event::KeyEvent::new(
             ct_event::KeyCode::Char('z'),
@@ -634,6 +639,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_event_resize() {
         let ct = CtEvent::Resize(120, 40);
         let our = convert_event(ct);
@@ -656,6 +662,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_event_paste() {
         let ct = CtEvent::Paste("pasted text".to_string());
         let our = convert_event(ct);
@@ -771,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_color_roundtrip_crossterm() {
         // All named colors should roundtrip through crossterm conversion
         let colors = [

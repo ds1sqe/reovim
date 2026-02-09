@@ -149,6 +149,7 @@ pub trait Operator: Send + Sync {
     /// Whether this operator works on whole lines (dd, yy).
     ///
     /// Linewise operators extend the range to include full lines.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn is_linewise(&self) -> bool {
         false
     }
@@ -156,6 +157,7 @@ pub trait Operator: Send + Sync {
     /// Whether this operator modifies text.
     ///
     /// Used for undo grouping - modifying operators create checkpoints.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn is_text_modifying(&self) -> bool {
         true
     }

@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Logging driver for reovim.
 //!
 //! This driver implements the kernel's `Logger` trait using the tracing ecosystem.

@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Ex-commands module - POLICY.
 //!
 //! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)

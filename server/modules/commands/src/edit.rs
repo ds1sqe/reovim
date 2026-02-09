@@ -243,6 +243,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn register(&self, buffer: reovim_kernel::api::v1::Buffer) -> BufferId {
             let id = BufferId::new();
             let buffer = std::sync::Arc::new(reovim_arch::sync::RwLock::new(buffer));
@@ -250,6 +251,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn unregister(
             &self,
             id: BufferId,
@@ -263,10 +265,12 @@ mod tests {
             )
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn list(&self) -> Vec<BufferId> {
             self.buffers.read().keys().copied().collect()
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn count(&self) -> usize {
             self.buffers.read().len()
         }

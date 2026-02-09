@@ -215,6 +215,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_level_display() {
         assert_eq!(format!("{}", Level::Error), "ERROR");
         assert_eq!(format!("{}", Level::Info), "INFO");

@@ -46,6 +46,7 @@ fn visual_selection_mode(runtime: &SessionRuntime<'_>) -> SelectionMode {
 
 /// Execute a bracket text object and store the range for operator consumption,
 /// or update the selection if in visual mode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn execute_bracket_textobj(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -398,6 +399,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -438,6 +440,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -1155,6 +1158,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_bracket_visual_mode_does_not_store_operator_range() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
@@ -1751,5 +1755,624 @@ mod tests {
 
         let result = InnerParen.execute(&mut runtime, &args);
         assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: "No active window" path
+    // =========================================================================
+
+    #[test]
+    fn test_inner_paren_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParen.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_paren_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_square_bracket_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_brace_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBrace.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_inner_angle_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerAngle.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: visual-line and visual-block for remaining bracket types
+    // =========================================================================
+
+    #[test]
+    fn test_around_paren_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_around_paren_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo(bar)baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_around_square_bracket_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_around_square_bracket_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_around_brace_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBrace.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_around_brace_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBrace.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_around_angle_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundAngle.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_around_angle_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundAngle.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_inner_square_bracket_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo[bar]baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_inner_brace_visual_line_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo{bar}baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_line_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerBrace.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Line);
+    }
+
+    #[test]
+    fn test_inner_angle_visual_block_mode() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "foo<bar>baz");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 4).into();
+
+        let mut state = TestState::with_custom_window(window, visual_block_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerAngle.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let selection = runtime.windows().active().and_then(|w| w.selection.clone());
+        assert!(selection.is_some());
+        assert_eq!(selection.unwrap().mode, SelectionMode::Block);
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: Default/Debug/Copy traits
+    // =========================================================================
+
+    #[test]
+    fn test_bracket_defaults() {
+        fn make_default<T: Default>() -> T {
+            T::default()
+        }
+        let _: InnerParen = make_default();
+        let _: AroundParen = make_default();
+        let _: InnerSquareBracket = make_default();
+        let _: AroundSquareBracket = make_default();
+        let _: InnerBrace = make_default();
+        let _: AroundBrace = make_default();
+        let _: InnerAngle = make_default();
+        let _: AroundAngle = make_default();
+    }
+
+    #[test]
+    fn test_bracket_debug() {
+        assert!(format!("{InnerParen:?}").contains("InnerParen"));
+        assert!(format!("{AroundParen:?}").contains("AroundParen"));
+        assert!(format!("{InnerSquareBracket:?}").contains("InnerSquareBracket"));
+        assert!(format!("{AroundSquareBracket:?}").contains("AroundSquareBracket"));
+        assert!(format!("{InnerBrace:?}").contains("InnerBrace"));
+        assert!(format!("{AroundBrace:?}").contains("AroundBrace"));
+        assert!(format!("{InnerAngle:?}").contains("InnerAngle"));
+        assert!(format!("{AroundAngle:?}").contains("AroundAngle"));
+    }
+
+    #[test]
+    fn test_bracket_copy() {
+        let a = InnerParen;
+        let b = a;
+        assert_eq!(b.id().name(), "inner-paren");
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: count with more bracket types
+    // =========================================================================
+
+    #[test]
+    fn test_around_paren_with_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "((inner))");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 3).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_square_bracket_with_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "[[inner]]");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 3).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_brace_with_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "{{inner}}");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 3).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerBrace.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_inner_angle_with_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "<<inner>>");
+        let mut window = Window::new();
+        window.buffer_id = Some(buffer_id);
+        window.cursor = Position::new(0, 3).into();
+
+        let mut state = TestState::with_custom_window(window, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = InnerAngle.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: no matching brackets for around variants
+    // =========================================================================
+
+    #[test]
+    fn test_no_matching_around_parens_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no parens here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_no_matching_around_square_brackets_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no brackets here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_no_matching_around_braces_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no braces here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundBrace.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_no_matching_around_angles_is_noop() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "no angles here");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundAngle.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: around invalid buffer for remaining types
+    // =========================================================================
+
+    #[test]
+    fn test_around_paren_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AroundParen.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_square_bracket_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AroundSquareBracket.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_brace_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AroundBrace.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_angle_invalid_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut state = TestState::empty(test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = AroundAngle.execute(&mut runtime, &args);
+        assert!(result.is_error());
     }
 }

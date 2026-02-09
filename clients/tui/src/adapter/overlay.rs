@@ -62,7 +62,10 @@ impl TuiOverlayManager {
     }
 
     /// Create an overlay manager with an underlying TUI layer.
+    ///
+    /// Only used in interactive mode with real terminal layer.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_layer(layer: Arc<Mutex<dyn OverlayLayer>>) -> Self {
         Self {
             renderers: Vec::new(),
@@ -111,6 +114,7 @@ impl TuiOverlayManager {
     }
 
     /// Convert wire anchor to TUI constraints.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_constraints(&self, overlay: &LogicalOverlay, size: Size) -> OverlayConstraints {
         let anchor_ctx = self
             .anchor_context
@@ -172,6 +176,7 @@ impl Default for TuiOverlayManager {
 }
 
 #[allow(clippy::significant_drop_tightening, clippy::if_let_mutex)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl OverlayManager for TuiOverlayManager {
     fn register_renderer(&mut self, renderer: Box<dyn OverlayRenderer>) {
         self.renderers.push(renderer);
@@ -316,6 +321,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl OverlayRenderer for TestRenderer {
         fn handles(&self, kind: &str) -> bool {
             self.kind == kind
@@ -546,6 +552,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_manager_interact_topmost() {
         let mut manager = TuiOverlayManager::new();
         manager.register_renderer(Box::new(TestRenderer::new("completion")));
@@ -663,6 +670,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_manager_interact_select_next() {
         let mut manager = TuiOverlayManager::new();
         manager.register_renderer(Box::new(TestRenderer::new("completion")));

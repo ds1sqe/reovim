@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim CLI Client - gRPC v2 command-line interface.
 //!
 //! This crate provides a CLI client for interacting with reovim servers
@@ -196,6 +197,7 @@ impl CliArgs {
     /// # Errors
     ///
     /// Returns an error if the gRPC connection fails or the command fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn execute(&self) -> Result<String, GrpcClientError> {
         let mut client = GrpcClient::connect(&self.grpc).await?;
 
@@ -268,6 +270,7 @@ mod tests {
 
     // Phase 15: Presence command tests
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_args_presence_join() {
         let args = CliArgs::parse_from(["reovim-cli", "presence", "join", "laptop"]);
         match &args.command {
@@ -283,6 +286,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_args_presence_join_with_type() {
         let args = CliArgs::parse_from([
             "reovim-cli",
@@ -305,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_args_presence_leave() {
         let args = CliArgs::parse_from(["reovim-cli", "presence", "leave"]);
         match &args.command {
@@ -316,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_args_presence_list() {
         let args = CliArgs::parse_from(["reovim-cli", "presence", "list"]);
         match &args.command {
@@ -327,6 +333,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_args_presence_follow() {
         let args = CliArgs::parse_from(["reovim-cli", "presence", "follow", "2"]);
         match &args.command {

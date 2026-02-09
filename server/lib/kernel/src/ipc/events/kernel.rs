@@ -529,6 +529,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_buffer_modified_insert() {
         let event = BufferModified {
             buffer_id: 1,
@@ -616,6 +617,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_layout_change_kind_split() {
         let kind = LayoutChangeKind::Split {
             new_window: 1,
@@ -634,6 +636,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_layout_change_kind_close() {
         let kind = LayoutChangeKind::Close {
             closed_window: 2,
@@ -652,6 +655,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_layout_change_kind_focus() {
         let kind = LayoutChangeKind::Focus {
             from: Some(0),
@@ -666,6 +670,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_layout_change_kind_resize() {
         let kind = LayoutChangeKind::Resize { window: 0 };
         if let LayoutChangeKind::Resize { window } = kind {

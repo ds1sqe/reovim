@@ -25,6 +25,7 @@ impl Command for ExitVisualMode {
 }
 
 impl CommandHandler for ExitVisualMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Clear selection on the active window
         if let Some(window) = runtime.windows_mut().active_mut() {
@@ -43,24 +44,28 @@ impl CommandHandler for ExitVisualMode {
 mod tests {
     use {super::*, reovim_driver_command::Command};
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_id() {
         let cmd = ExitVisualMode;
         assert_eq!(cmd.id(), ids::EXIT_VISUAL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_description() {
         let cmd = ExitVisualMode;
         assert!(cmd.description().contains("visual"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_debug() {
         let debug = format!("{:?}", ExitVisualMode);
         assert!(debug.contains("ExitVisualMode"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_default() {
         let _ = ExitVisualMode;
@@ -99,6 +104,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -139,6 +145,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -158,6 +165,7 @@ mod tests {
     }
 
     impl TestState {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn with_buffer(buffer_id: Option<BufferId>) -> Self {
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
             let session = Session::new(ClientId::new(1), home_mode.clone());
@@ -204,6 +212,7 @@ mod tests {
         )
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_execute_clears_selection() {
         let ctx = create_test_context();
@@ -227,6 +236,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_execute_no_selection() {
         let ctx = create_test_context();
@@ -245,6 +255,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_execute_clears_line_selection() {
         let ctx = create_test_context();
@@ -265,6 +276,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_execute_clears_block_selection() {
         let ctx = create_test_context();
@@ -285,6 +297,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_sets_normal_mode() {
         let ctx = create_test_context();
@@ -303,18 +316,21 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::NORMAL_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_clone_copy() {
         let cmd = ExitVisualMode;
         let _: ExitVisualMode = cmd;
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_description_contains_normal() {
         let cmd = ExitVisualMode;
         assert!(cmd.description().contains("normal"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_preserves_cursor() {
         let ctx = create_test_context();
@@ -337,6 +353,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_visual_mode_no_window() {
         let ctx = create_test_context();

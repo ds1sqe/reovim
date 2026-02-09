@@ -26,6 +26,7 @@ pub struct Terminal {
     alternate_screen: bool,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Terminal {
     /// Enter terminal session.
     ///
@@ -121,6 +122,7 @@ impl Terminal {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for Terminal {
     fn drop(&mut self) {
         // Best-effort restoration
@@ -128,6 +130,7 @@ impl Drop for Terminal {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl std::fmt::Debug for Terminal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Terminal")

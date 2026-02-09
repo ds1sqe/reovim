@@ -128,6 +128,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -166,12 +167,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -183,6 +186,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -203,6 +207,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -532,6 +537,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_write_vfs_error_message_propagated() {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
@@ -547,11 +553,9 @@ mod tests {
         args.set("file", reovim_driver_command::ArgValue::String("/tmp/fail.txt".to_string()));
 
         let result = WriteBufferCommand.execute(&mut runtime, &args);
-        match result {
-            CommandResult::Error(msg) => {
-                assert!(msg.starts_with("Write failed:"));
-            }
-            _ => panic!("Expected error result"),
+        assert!(result.is_error());
+        if let CommandResult::Error(msg) = result {
+            assert!(msg.starts_with("Write failed:"));
         }
     }
 

@@ -617,6 +617,7 @@ mod tests {
         assert!(downcasted.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dyn_event_downcast_mut() {
         let mut event = DynEvent::new(TestEvent { value: 42 });
@@ -667,6 +668,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dyn_event_debug() {
         let event = DynEvent::new(TestEvent { value: 42 });
         let debug_str = format!("{event:?}");
@@ -693,6 +695,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cache_updated_clone_debug() {
         let event = CacheUpdated {
             buffer_id: crate::mm::BufferId::new(),

@@ -395,6 +395,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_all_command_ids_belong_to_window_ops_module() {
         let all_ids = [
             &FOCUS_LEFT,

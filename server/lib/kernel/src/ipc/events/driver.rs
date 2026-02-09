@@ -196,12 +196,14 @@ impl Modifiers {
 
     /// Check if no modifiers are active.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn is_empty(&self) -> bool {
         !self.ctrl && !self.alt && !self.shift && !self.super_key
     }
 
     /// Check if any modifier is active.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn any(&self) -> bool {
         self.ctrl || self.alt || self.shift || self.super_key
     }

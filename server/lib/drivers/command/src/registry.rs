@@ -177,6 +177,7 @@ mod tests {
     }
 
     impl CommandHandler for TestCommand {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn execute(
             &self,
             _runtime: &mut SessionRuntime<'_>,
@@ -283,6 +284,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug() {
         let store = CommandHandlerStore::new();
         store.add(Box::new(TestCommand::new("test1")));
@@ -294,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_store_debug_empty() {
         let store = CommandHandlerStore::new();
         let debug_str = format!("{store:?}");
@@ -318,5 +321,6 @@ mod tests {
         assert_eq!(handlers.len(), 1);
         assert_eq!(handlers[0].id().name(), "my-command");
         assert_eq!(handlers[0].description(), "Test command");
+        assert!(handlers[0].args().is_empty());
     }
 }

@@ -181,36 +181,35 @@ impl BufferSnapshot {
 
         if start_line == end_line {
             // Single line extraction
-            if let Some(line) = self.line(start_line) {
-                let chars: Vec<char> = line.chars().collect();
-                let start_col = start.column.min(chars.len());
-                let end_col = end.column.min(chars.len());
-                return chars[start_col..end_col].iter().collect();
-            }
-            return String::new();
+            // start_line is always valid: clamped to self.lines.len() - 1
+            let line = &self.lines[start_line];
+            let chars: Vec<char> = line.chars().collect();
+            let start_col = start.column.min(chars.len());
+            let end_col = end.column.min(chars.len());
+            return chars[start_col..end_col].iter().collect();
         }
 
         // Multi-line extraction
         let mut result = String::new();
 
         for line_idx in start_line..=end_line {
-            if let Some(line) = self.line(line_idx) {
-                let chars: Vec<char> = line.chars().collect();
+            // line_idx is always valid: iterates within clamped [start_line, end_line]
+            let line = &self.lines[line_idx];
+            let chars: Vec<char> = line.chars().collect();
 
-                if line_idx == start_line {
-                    // First line: from start column to end
-                    let start_col = start.column.min(chars.len());
-                    result.extend(&chars[start_col..]);
-                    result.push('\n');
-                } else if line_idx == end_line {
-                    // Last line: from start to end column
-                    let end_col = end.column.min(chars.len());
-                    result.extend(&chars[..end_col]);
-                } else {
-                    // Middle line: entire line
-                    result.push_str(line);
-                    result.push('\n');
-                }
+            if line_idx == start_line {
+                // First line: from start column to end
+                let start_col = start.column.min(chars.len());
+                result.extend(&chars[start_col..]);
+                result.push('\n');
+            } else if line_idx == end_line {
+                // Last line: from start to end column
+                let end_col = end.column.min(chars.len());
+                result.extend(&chars[..end_col]);
+            } else {
+                // Middle line: entire line
+                result.push_str(line);
+                result.push('\n');
             }
         }
 

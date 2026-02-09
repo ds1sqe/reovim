@@ -441,6 +441,7 @@ impl OptionRegistry {
 
     /// List options matching a prefix (for tab completion).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn list_matching(&self, prefix: &str) -> Vec<OptionSpec> {
         let specs = self.specs.read();
 

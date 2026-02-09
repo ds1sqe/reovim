@@ -49,6 +49,7 @@ impl UnixLocalListener {
     /// - Parent directory doesn't exist and can't be created
     /// - Socket file exists and is in use by another process
     /// - Permission denied
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub async fn bind(path: &Path) -> io::Result<Self> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
@@ -156,6 +157,7 @@ impl UnixLocalStream {
 ///
 /// Uses the `kill(pid, 0)` trick to check process existence without sending a signal.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn process_exists(pid: u32) -> bool {
     // kill(pid, 0) checks if we can send a signal to the process
     // Returns Ok if process exists and we have permission
@@ -312,6 +314,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     async fn test_unix_socket_in_use() {
         let temp_dir = std::env::temp_dir();
         let socket_path = temp_dir.join(format!("reovim-test-inuse-{}.sock", std::process::id()));

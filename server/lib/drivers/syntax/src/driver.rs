@@ -236,6 +236,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_syntax_driver_is_object_safe() {
         fn _accepts_ref(_: &dyn SyntaxDriver) {}
         fn _accepts_box(_: Box<dyn SyntaxDriver>) {}

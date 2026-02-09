@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Command driver for reovim - command execution framework.
 //!
 //! Linux equivalent: `drivers/block/` (block command interface)
@@ -126,6 +127,7 @@ mod tests {
     }
 
     impl CommandHandler for TestCommand {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn execute(
             &self,
             _runtime: &mut SessionRuntime<'_>,
@@ -248,6 +250,7 @@ mod tests {
 
     // Integration: ExCommandHandlerStore
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_handler_store_integration() {
         struct TestExCmd;
 
@@ -278,6 +281,7 @@ mod tests {
 
     // Integration: ExCommandRegistry with dispatch
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_ex_registry_dispatch_integration() {
         use reovim_kernel::api::v1::KernelContext;
 

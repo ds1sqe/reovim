@@ -258,8 +258,11 @@ mod tests {
 
     #[test]
     fn test_defaults_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: DefaultsModule = create_default();
         let from_new = DefaultsModule::new();
-        let from_default = DefaultsModule;
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }

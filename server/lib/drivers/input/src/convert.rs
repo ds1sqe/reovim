@@ -359,6 +359,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_modifiers_individual_flags_to_arch() {
         // Test each individual flag converts correctly
         let pairs = [
@@ -380,6 +381,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_modifiers_individual_flags_from_arch() {
         // Test each individual flag converts correctly from arch
         let pairs = [

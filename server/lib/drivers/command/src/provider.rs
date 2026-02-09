@@ -98,7 +98,9 @@ mod tests {
     };
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_command_provider_object_safety() {
+        // Inner fns verify compilation only, never called
         fn _accepts_ref(_: &dyn CommandProvider) {}
         fn _accepts_box(_: Box<dyn CommandProvider>) {}
     }
@@ -115,6 +117,7 @@ mod tests {
     }
 
     impl CommandHandler for TestCmd {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn execute(
             &self,
             _runtime: &mut SessionRuntime<'_>,

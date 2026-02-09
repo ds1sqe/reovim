@@ -60,6 +60,7 @@ impl Cell {
 
     /// Check if this cell differs from another.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn differs_from(&self, other: &Self) -> bool {
         self.char != other.char
             || self.style != other.style
@@ -68,6 +69,7 @@ impl Cell {
 
     /// Check if this cell is effectively empty.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn is_empty(&self) -> bool {
         self.char == ' ' && self.style == Style::default() && !self.is_continuation
     }

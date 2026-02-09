@@ -100,6 +100,7 @@ pub const fn color_for_client(client_id: u64) -> Color {
 /// assert!(matches!(dimmed_color_for_client(0), Color::Rgb { r: 57, g: 39, b: 0 }));
 /// ```
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub const fn dimmed_color_for_client(client_id: u64) -> Color {
     match color_for_client(client_id) {
         Color::Rgb { r, g, b } => Color::Rgb {
@@ -116,6 +117,7 @@ pub const fn dimmed_color_for_client(client_id: u64) -> Color {
 /// Returns RGB with each component divided by 3 for a visible but not
 /// overwhelming background behind cursor characters.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub const fn dark_color_for_client(client_id: u64) -> Color {
     match color_for_client(client_id) {
         Color::Rgb { r, g, b } => Color::Rgb {
@@ -161,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dimmed_color() {
         // Dimmed should be 1/4 intensity
         match (color_for_client(0), dimmed_color_for_client(0)) {
@@ -181,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dark_color() {
         // Dark should be 1/3 intensity
         match (color_for_client(0), dark_color_for_client(0)) {
@@ -206,6 +210,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_all_palette_colors_are_rgb() {
         for (i, color) in REMOTE_CLIENT_COLORS.iter().enumerate() {
             assert!(
@@ -223,6 +228,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dimmed_color_all_clients() {
         for id in 0..8 {
             match (color_for_client(id), dimmed_color_for_client(id)) {
@@ -244,6 +250,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dark_color_all_clients() {
         for id in 0..8 {
             match (color_for_client(id), dark_color_for_client(id)) {
@@ -277,6 +284,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_dimmed_is_darker_than_original() {
         for id in 0..8 {
             match (color_for_client(id), dimmed_color_for_client(id)) {

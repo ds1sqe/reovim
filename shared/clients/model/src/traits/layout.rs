@@ -80,6 +80,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn close(&mut self, viewport_id: u64) -> bool {
             if let Some(pos) = self.windows.iter().position(|&id| id == viewport_id) {
                 self.windows.remove(pos);

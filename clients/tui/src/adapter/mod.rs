@@ -144,6 +144,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl RootCompositor for MockCompositor {
         fn composite(&self, screen: Rect) -> CompositeResult {
             CompositeResult::empty(screen)

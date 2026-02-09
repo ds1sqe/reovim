@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Core Editor Module for Reovim
 //!
 //! This module provides basic editor commands (cursor movement, text operations)
@@ -121,13 +122,13 @@ mod tests {
 
     #[test]
     fn test_editor_module_default() {
-        let module = EditorModule;
+        let module: EditorModule = Default::default();
         assert_eq!(module.name(), "Editor");
     }
 
     #[test]
     fn test_editor_module_default_trait() {
-        let module = EditorModule;
+        let module = <EditorModule as Default>::default();
         assert_eq!(module.name(), "Editor");
         assert_eq!(module.id().as_str(), "editor");
     }

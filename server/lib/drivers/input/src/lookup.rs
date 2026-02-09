@@ -432,6 +432,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_binding_layer_debug() {
         let debug = format!("{:?}", BindingLayer::Base);
         assert_eq!(debug, "Base");
@@ -466,6 +467,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_lookup_state_debug() {
         let state = KeyLookupState::NotFound;
         let _ = format!("{state:?}");
@@ -479,6 +481,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_lookup_state_exact_with_longer() {
         let cmd = test_command("delete");
         let state = KeyLookupState::ExactWithLonger { exact: cmd.clone() };
@@ -717,6 +720,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_key_lookup_policy_is_object_safe() {
         fn _accepts_ref(_: &dyn KeyLookupPolicy) {}
         fn _accepts_box(_: Box<dyn KeyLookupPolicy>) {}
@@ -727,6 +731,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_keymap_query_is_object_safe() {
         fn _accepts_ref(_: &dyn KeymapQuery) {}
         fn _accepts_box(_: Box<dyn KeymapQuery>) {}

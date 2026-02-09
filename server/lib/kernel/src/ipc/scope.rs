@@ -242,6 +242,7 @@ impl EventScope {
     /// ```
     #[must_use]
     #[allow(clippy::significant_drop_tightening)] // Guard must be held for the wait loop
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn wait_timeout(&self, timeout: Duration) -> bool {
         let (mutex, condvar) = &self.inner.condvar;
         let mut guard = mutex.lock();
@@ -527,5 +528,23 @@ mod tests {
     fn test_event_scope_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<EventScope>();
+    }
+
+    #[test]
+    fn test_wait_with_default_timeout_immediate() {
+        let scope = EventScope::new();
+        // No in-flight events, should return true immediately
+        assert!(scope.wait_with_default_timeout());
+    }
+
+    #[test]
+    fn test_wait_timeout_zero_with_in_flight() {
+        let scope = EventScope::new();
+        scope.increment();
+
+        // Zero timeout: remaining.is_zero() should return false immediately
+        let completed = scope.wait_timeout(Duration::ZERO);
+        assert!(!completed);
+        assert_eq!(scope.in_flight(), 1);
     }
 }

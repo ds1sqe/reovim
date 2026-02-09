@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Search module for reovim.
 //!
 //! Provides regex-based pattern matching for Vim-style / and ? commands.
@@ -99,8 +100,11 @@ mod tests {
 
     #[test]
     fn test_module_default() {
+        fn create_default<T: Default>() -> T {
+            T::default()
+        }
+        let from_default: SearchModule = create_default();
         let from_new = SearchModule::new();
-        let from_default = SearchModule;
         assert_eq!(from_new.id(), from_default.id());
         assert_eq!(from_new.version(), from_default.version());
     }

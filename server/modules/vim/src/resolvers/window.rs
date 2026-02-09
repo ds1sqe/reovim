@@ -159,6 +159,7 @@ mod tests {
     /// Mock keymap that returns `NotFound` for all queries.
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -229,6 +230,7 @@ mod tests {
         cmd: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for ExactOnlyKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::ExactOnly(reovim_kernel::api::v1::CommandId::new(
@@ -241,6 +243,7 @@ mod tests {
     /// Mock keymap returning PrefixOnly.
     struct PrefixOnlyKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for PrefixOnlyKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::PrefixOnly
@@ -252,6 +255,7 @@ mod tests {
         cmd: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for ExactWithLongerKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::ExactWithLonger {
@@ -270,6 +274,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_exact_only_command_pops_with_execute() {
         let resolver = VimWindowResolver::new();
         let mut state = test_state();
@@ -288,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_exact_with_longer_pops_with_execute() {
         let resolver = VimWindowResolver::new();
         let mut state = test_state();
@@ -319,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_binding_pops_cancelled() {
         // When keymap returns the CANCEL_TO_NORMAL command for Escape,
         // the resolver should Pop with Cancelled (not ExecuteCommand).
@@ -382,6 +389,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cancel_with_exact_with_longer() {
         // Test that CANCEL_TO_NORMAL also works via ExactWithLonger
         struct CancelWithLongerKeymap;
@@ -409,6 +417,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_execute_command_args_empty() {
         // Verify that the ExecuteCommand pop result has empty args
         let resolver = VimWindowResolver::new();
@@ -430,6 +439,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_exact_with_longer_command_name() {
         let resolver = VimWindowResolver::new();
         let mut state = test_state();

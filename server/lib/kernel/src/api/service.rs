@@ -405,6 +405,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "FATAL: No provider for TestService")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_service_registry_get_required_panics() {
         let registry = ServiceRegistry::new();
         let _: Arc<TestService> = registry.get_required("TestService");
@@ -502,6 +503,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "FATAL: No Test provider for Primary")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_multi_registry_get_required_panics() {
         let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
         let _: Arc<dyn TestProvider> = registry.get_required(&TestKey::Primary);
@@ -515,6 +517,7 @@ mod tests {
     // ========== ServiceRegistry Debug ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_service_registry_debug() {
         let registry = ServiceRegistry::new();
         registry.register(Arc::new(TestService { value: 1 }));
@@ -527,6 +530,7 @@ mod tests {
     // ========== ServiceRegistry Default ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_service_registry_default() {
         let registry = ServiceRegistry::default();
         let debug_str = format!("{registry:?}");
@@ -536,6 +540,7 @@ mod tests {
     // ========== get_or_create ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_service_registry_get_or_create() {
         #[derive(Default)]
         struct DefaultableService {
@@ -557,6 +562,7 @@ mod tests {
     // ========== MultiServiceRegistry Debug ==========
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_multi_service_registry_debug() {
         let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
         registry.register(TestKey::Primary, Arc::new(PrimaryProvider));

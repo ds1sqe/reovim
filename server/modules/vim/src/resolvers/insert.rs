@@ -182,6 +182,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound` (no bindings).
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -388,6 +389,7 @@ mod tests {
         assert!(matches!(result, ResolveResult::InsertChar { char: '~', .. }));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_insert_digits() {
         let resolver = VimInsertResolver::new();
@@ -446,6 +448,7 @@ mod tests {
     /// Mock keymap returning ExactOnly for testing keymap interaction.
     struct ExactKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for ExactKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::ExactOnly(reovim_kernel::api::v1::CommandId::new(
@@ -456,6 +459,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_executes_with_keymap_binding() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
@@ -474,6 +478,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_backspace_executes_with_keymap_binding() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
@@ -494,6 +499,7 @@ mod tests {
     /// Mock keymap returning PrefixOnly for testing.
     struct PrefixKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for PrefixKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::PrefixOnly
@@ -612,6 +618,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_extensions_non_insertable_delegates_to_keymap() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();
@@ -682,6 +689,7 @@ mod tests {
     /// Mock keymap returning ExactWithLonger for testing.
     struct ExactWithLongerKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for ExactWithLongerKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::ExactWithLonger {
@@ -694,6 +702,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_exact_with_longer_executes_exact() {
         let resolver = VimInsertResolver::new();
         let mut state = test_state();

@@ -98,33 +98,36 @@ pub fn install_panic_handler() {
 
     let default_hook = panic::take_hook();
 
-    panic::set_hook(Box::new(move |info| {
-        // 1. Generate crash report
-        let mut report = super::report::generate_crash_report(info);
+    panic::set_hook(Box::new(
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        move |info| {
+            // 1. Generate crash report
+            let mut report = super::report::generate_crash_report(info);
 
-        // 2. Collect debug context (server logs, client dumps)
-        if let Some(callback) = DEBUG_CONTEXT_CALLBACK.get() {
-            let ctx = callback();
-            report.server_logs = ctx.server_logs;
-            report.client_dump_paths = ctx.client_dump_paths;
-        }
+            // 2. Collect debug context (server logs, client dumps)
+            if let Some(callback) = DEBUG_CONTEXT_CALLBACK.get() {
+                let ctx = callback();
+                report.server_logs = ctx.server_logs;
+                report.client_dump_paths = ctx.client_dump_paths;
+            }
 
-        // 3. Attempt recovery (save buffers)
-        if let Some(callback) = RECOVERY_CALLBACK.get() {
-            callback(info);
-        }
+            // 3. Attempt recovery (save buffers)
+            if let Some(callback) = RECOVERY_CALLBACK.get() {
+                callback(info);
+            }
 
-        // 4. Log crash report
-        crate::pr_err!("PANIC: {}", report.summary());
+            // 4. Log crash report
+            crate::pr_err!("PANIC: {}", report.summary());
 
-        // 5. Write crash report to file
-        if let Err(e) = report.write_to_file() {
-            eprintln!("Failed to write crash report: {e}");
-        }
+            // 5. Write crash report to file
+            if let Err(e) = report.write_to_file() {
+                eprintln!("Failed to write crash report: {e}");
+            }
 
-        // 6. Call original handler
-        default_hook(info);
-    }));
+            // 6. Call original handler
+            default_hook(info);
+        },
+    ));
 }
 
 /// Set the recovery callback.

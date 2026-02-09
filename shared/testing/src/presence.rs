@@ -42,6 +42,7 @@ pub struct PresenceTestClient {
     display_name: String,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl PresenceTestClient {
     /// Create a new presence test client (not yet joined).
     ///
@@ -281,6 +282,7 @@ pub struct MultiClientPresenceTest {
     client_count: usize,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl MultiClientPresenceTest {
     /// Create test with N presence-aware clients.
     ///

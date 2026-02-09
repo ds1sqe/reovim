@@ -181,6 +181,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -221,6 +222,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -793,5 +795,154 @@ mod tests {
         let ext_state = runtime.ext::<OperatorPendingState>();
         assert!(ext_state.is_some());
         assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: "No active window" path
+    // =========================================================================
+
+    #[test]
+    fn test_inner_paragraph_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "some text");
+        // Create state with truly empty window layout (no windows added)
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty(); // no windows
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_around_paragraph_no_active_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "some text");
+        let session = Session::new(ClientId::new(1), test_mode());
+        let mode_stack = ModeStack::new(test_mode());
+        let windows = WindowLayout::empty();
+        let extensions = ExtensionMap::new();
+        let mut state = TestState {
+            session,
+            mode_stack,
+            windows,
+            extensions,
+        };
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: count path with count provided
+    // =========================================================================
+
+    #[test]
+    fn test_around_paragraph_with_count_stores_linewise_range() {
+        let kernel = create_test_context();
+        let buffer_id =
+            setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = AroundParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    #[test]
+    fn test_inner_paragraph_with_count_stores_linewise_range() {
+        let kernel = create_test_context();
+        let buffer_id =
+            setup_buffer(&kernel, "para one\nstill one\n\npara two\nstill two\n\npara three");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = InnerParagraph.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let ext_state = runtime.ext::<OperatorPendingState>();
+        assert!(ext_state.is_some());
+        assert!(ext_state.unwrap().has_textobj_range());
+    }
+
+    // =========================================================================
+    // MC/DC Coverage: Default trait for paragraph commands
+    // =========================================================================
+
+    #[test]
+    fn test_inner_paragraph_default() {
+        fn make_default<T: Default>() -> T {
+            T::default()
+        }
+        let cmd: InnerParagraph = make_default();
+        assert_eq!(cmd.id().name(), "inner-paragraph");
+    }
+
+    #[test]
+    fn test_around_paragraph_default() {
+        fn make_default<T: Default>() -> T {
+            T::default()
+        }
+        let cmd: AroundParagraph = make_default();
+        assert_eq!(cmd.id().name(), "around-paragraph");
+    }
+
+    #[test]
+    fn test_inner_paragraph_debug() {
+        let cmd = InnerParagraph;
+        let debug_str = format!("{cmd:?}");
+        assert!(debug_str.contains("InnerParagraph"));
+    }
+
+    #[test]
+    fn test_around_paragraph_debug() {
+        let cmd = AroundParagraph;
+        let debug_str = format!("{cmd:?}");
+        assert!(debug_str.contains("AroundParagraph"));
+    }
+
+    #[test]
+    fn test_inner_paragraph_clone() {
+        let cmd = InnerParagraph;
+        let cloned = cmd;
+        assert_eq!(cloned.id().name(), "inner-paragraph");
+    }
+
+    #[test]
+    fn test_around_paragraph_clone() {
+        let cmd = AroundParagraph;
+        let cloned = cmd;
+        assert_eq!(cloned.id().name(), "around-paragraph");
     }
 }

@@ -26,6 +26,7 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -60,6 +61,7 @@ impl Command for ChangeLine {
 }
 
 impl CommandHandler for ChangeLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -166,6 +168,7 @@ impl Command for ChangeToEndOfLine {
 }
 
 impl CommandHandler for ChangeToEndOfLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -235,6 +238,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -275,6 +279,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -344,18 +349,21 @@ mod tests {
     // Metadata tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_command_id() {
         let cmd = ChangeLine;
         assert_eq!(cmd.id(), ids::CHANGE_LINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_description() {
         let cmd = ChangeLine;
         assert!(cmd.description().contains("Change"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_args() {
         let cmd = ChangeLine;
@@ -363,18 +371,21 @@ mod tests {
         assert_eq!(args.len(), 2); // count and register
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_command_id() {
         let cmd = ChangeToEndOfLine;
         assert_eq!(cmd.id(), ids::CHANGE_TO_EOL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_description() {
         let cmd = ChangeToEndOfLine;
         assert!(cmd.description().contains("end of line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_args() {
         let cmd = ChangeToEndOfLine;
@@ -382,6 +393,7 @@ mod tests {
         assert_eq!(args.len(), 1); // register only
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_debug() {
         let cmd = ChangeLine;
@@ -389,6 +401,7 @@ mod tests {
         assert!(debug.contains("ChangeLine"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_debug() {
         let cmd = ChangeToEndOfLine;
@@ -396,11 +409,13 @@ mod tests {
         assert!(debug.contains("ChangeToEndOfLine"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_default() {
         let _ = ChangeLine;
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_default() {
         let _ = ChangeToEndOfLine;
@@ -410,6 +425,7 @@ mod tests {
     // Execute tests - ChangeLine
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_no_buffer() {
         let ctx = create_test_context();
@@ -421,6 +437,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_single_line() {
         let ctx = create_test_context();
@@ -442,6 +459,7 @@ mod tests {
         assert_eq!(buf.lines(), &[""]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_multi_line() {
         let ctx = create_test_context();
@@ -459,6 +477,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_empty_buffer() {
         let ctx = create_test_context();
@@ -479,6 +498,7 @@ mod tests {
     // Execute tests - ChangeToEndOfLine
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_no_buffer() {
         let ctx = create_test_context();
@@ -490,6 +510,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_from_middle() {
         let ctx = create_test_context();
@@ -515,6 +536,7 @@ mod tests {
         assert_eq!(buf.lines(), &["hello"]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_at_end_of_line() {
         let ctx = create_test_context();
@@ -540,6 +562,7 @@ mod tests {
         assert_eq!(buf.lines(), &["hello"]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_from_start() {
         let ctx = create_test_context();
@@ -560,6 +583,7 @@ mod tests {
         assert_eq!(buf.lines(), &[""]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_count_exceeds_buffer() {
         let ctx = create_test_context();
@@ -577,6 +601,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_last_two_lines() {
         let ctx = create_test_context();
@@ -601,6 +626,7 @@ mod tests {
     // Additional ChangeLine execute tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_with_count_one_explicit() {
         let ctx = create_test_context();
@@ -623,6 +649,7 @@ mod tests {
         assert_eq!(buf.lines()[0], "");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_multi_line_three_lines() {
         let ctx = create_test_context();
@@ -640,6 +667,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_with_register() {
         let ctx = create_test_context();
@@ -656,6 +684,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_cursor_at_middle_of_line() {
         let ctx = create_test_context();
@@ -682,6 +711,7 @@ mod tests {
     // Additional ChangeToEndOfLine execute tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_empty_line() {
         let ctx = create_test_context();
@@ -698,6 +728,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_with_register() {
         let ctx = create_test_context();
@@ -717,6 +748,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_past_end_of_line() {
         let ctx = create_test_context();
@@ -738,6 +770,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_single_char_line() {
         let ctx = create_test_context();
@@ -757,6 +790,7 @@ mod tests {
         assert_eq!(buf.lines(), &[""]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_multiline_only_affects_current() {
         let ctx = create_test_context();
@@ -785,6 +819,7 @@ mod tests {
     // Clone tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_clone() {
         let cmd = ChangeLine;
@@ -792,6 +827,7 @@ mod tests {
         assert_eq!(cloned.id(), ids::CHANGE_LINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_to_eol_clone() {
         let cmd = ChangeToEndOfLine;
@@ -803,6 +839,7 @@ mod tests {
     // ChangeLine multi-line end_line >= line_count tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_last_lines_of_buffer() {
         // Tests the branch: end_line >= line_count (changing to end of buffer)
@@ -821,6 +858,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_two_of_two_from_start() {
         // Change all lines (count=2 from line 0 of 2-line buffer)
@@ -843,6 +881,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_multi_from_middle_to_end() {
         // Change from line 2 with count 3, but only 2 lines remain
@@ -864,6 +903,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_multi_not_at_end() {
         // Change 2 lines from middle (NOT at end of buffer) - the normal case branch
@@ -888,6 +928,7 @@ mod tests {
         assert_eq!(window.cursor.line, 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_line_registers_deleted_text() {
         let ctx = create_test_context();

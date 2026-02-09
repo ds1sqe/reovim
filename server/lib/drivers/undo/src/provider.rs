@@ -342,6 +342,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoProvider for MockUndo {
         fn undo(&self, buffer_id: BufferId) -> Option<UndoResult> {
             self.undo_calls.lock().unwrap().push(buffer_id);
@@ -525,6 +526,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn provider_is_object_safe() {
         fn _accepts_ref(_: &dyn UndoProvider) {}
         fn _accepts_box(_: Box<dyn UndoProvider>) {}
@@ -541,6 +543,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn load_graceful_returns_false_on_error() {
         struct FailingUndo;
 
@@ -603,6 +606,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn load_graceful_returns_true_on_success() {
         struct SuccessUndo;
 
@@ -723,6 +727,7 @@ mod tests {
     /// Extracted to module level so multiple tests can reuse it.
     struct FailingUndo;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoProvider for FailingUndo {
         fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
             None
@@ -777,6 +782,7 @@ mod tests {
     /// Success undo provider (returns Ok(true) from load).
     struct SuccessUndo;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoProvider for SuccessUndo {
         fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
             None

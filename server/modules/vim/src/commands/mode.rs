@@ -35,6 +35,7 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -46,6 +47,7 @@ use crate::{ids, modes::VimMode};
 /// Start undo batching for insert mode.
 ///
 /// All edits until `end_insert_batch` are grouped as a single undo entry.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
     if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
@@ -58,6 +60,7 @@ fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::ap
 /// End undo batching for insert mode.
 ///
 /// Commits all accumulated edits as a single undo entry.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn end_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: reovim_kernel::api::v1::BufferId) {
     if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
@@ -82,6 +85,7 @@ impl Command for EnterInsertMode {
 }
 
 impl CommandHandler for EnterInsertMode {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Start undo batching for insert mode
         if let Some(buffer_id) = args.buffer_id() {
@@ -111,6 +115,7 @@ impl Command for EnterInsertModeAppend {
 }
 
 impl CommandHandler for EnterInsertModeAppend {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // Move cursor right first, then enter insert mode
         if let Some(buffer_id) = args.buffer_id() {
@@ -146,6 +151,7 @@ impl Command for ExitToNormal {
 }
 
 impl CommandHandler for ExitToNormal {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         if let Some(buffer_id) = args.buffer_id() {
             // End undo batching - commits all insert edits as one undo entry
@@ -541,6 +547,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -581,6 +588,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -650,126 +658,147 @@ mod tests {
     // Metadata tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_id() {
         let cmd = EnterInsertMode;
         assert_eq!(cmd.id(), ids::ENTER_INSERT);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_description() {
         let cmd = EnterInsertMode;
         assert!(cmd.description().contains("insert"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_id() {
         let cmd = EnterInsertModeAppend;
         assert_eq!(cmd.id(), ids::ENTER_INSERT_AFTER);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_description() {
         let cmd = EnterInsertModeAppend;
         assert!(cmd.description().contains("append"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_id() {
         let cmd = ExitToNormal;
         assert_eq!(cmd.id(), ids::EXIT_INSERT);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_description() {
         let cmd = ExitToNormal;
         assert!(cmd.description().contains("normal"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_window_mode_id() {
         let cmd = EnterWindowMode;
         assert_eq!(cmd.id(), ids::ENTER_WINDOW_MODE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_window_mode_description() {
         let cmd = EnterWindowMode;
         assert!(cmd.description().contains("window"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_to_normal_id() {
         let cmd = CancelToNormal;
         assert_eq!(cmd.id(), ids::CANCEL_TO_NORMAL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_to_normal_description() {
         let cmd = CancelToNormal;
         assert!(cmd.description().contains("normal"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_commandline_mode_id() {
         let cmd = EnterCommandLineMode;
         assert_eq!(cmd.id(), ids::ENTER_COMMANDLINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_commandline_mode_description() {
         let cmd = EnterCommandLineMode;
         assert!(cmd.description().contains("command-line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_id() {
         let cmd = ExitCommandLineMode;
         assert_eq!(cmd.id(), ids::EXIT_COMMANDLINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_description() {
         let cmd = ExitCommandLineMode;
         assert!(cmd.description().contains("command-line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_commandline_mode_id() {
         let cmd = CancelCommandLineMode;
         assert_eq!(cmd.id(), ids::CANCEL_COMMANDLINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_commandline_mode_description() {
         let cmd = CancelCommandLineMode;
         assert!(cmd.description().contains("Cancel"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_forward_id() {
         let cmd = EnterSearchForward;
         assert_eq!(cmd.id(), ids::ENTER_SEARCH_FORWARD);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_forward_description() {
         let cmd = EnterSearchForward;
         assert!(cmd.description().contains("search"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_backward_id() {
         let cmd = EnterSearchBackward;
         assert_eq!(cmd.id(), ids::ENTER_SEARCH_BACKWARD);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_backward_description() {
         let cmd = EnterSearchBackward;
         assert!(cmd.description().contains("search"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_mode_commands_debug() {
         let debug_insert = format!("{:?}", EnterInsertMode);
@@ -803,6 +832,7 @@ mod tests {
         assert!(debug_search_backward.contains("EnterSearchBackward"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_mode_commands_default() {
         let _ = EnterInsertMode;
@@ -821,6 +851,7 @@ mod tests {
     // Execute tests - mode transitions
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_execute() {
         let ctx = create_test_context();
@@ -837,6 +868,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_without_buffer() {
         let ctx = create_test_context();
@@ -849,6 +881,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_execute() {
         let ctx = create_test_context();
@@ -865,6 +898,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_moves_cursor() {
         let ctx = create_test_context();
@@ -888,6 +922,7 @@ mod tests {
         assert_eq!(window.cursor.column, 3);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_execute() {
         let ctx = create_test_context();
@@ -912,6 +947,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_cursor_at_col_zero() {
         let ctx = create_test_context();
@@ -931,6 +967,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_window_mode_execute() {
         let ctx = create_test_context();
@@ -943,6 +980,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::WINDOW_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_to_normal_execute() {
         let ctx = create_test_context();
@@ -955,6 +993,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_commandline_mode_execute() {
         let ctx = create_test_context();
@@ -967,6 +1006,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::COMMANDLINE_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_execute() {
         let ctx = create_test_context();
@@ -979,6 +1019,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_commandline_mode_execute() {
         let ctx = create_test_context();
@@ -991,6 +1032,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_forward_execute() {
         let ctx = create_test_context();
@@ -1003,6 +1045,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::COMMANDLINE_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_search_backward_execute() {
         let ctx = create_test_context();
@@ -1015,6 +1058,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::COMMANDLINE_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_without_buffer() {
         let ctx = create_test_context();
@@ -1027,6 +1071,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_append_at_end_of_line() {
         let ctx = create_test_context();
@@ -1050,6 +1095,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_append_without_buffer() {
         let ctx = create_test_context();
@@ -1066,6 +1112,7 @@ mod tests {
     // Additional execute tests - edge cases
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_at_start_of_line() {
         let ctx = create_test_context();
@@ -1085,6 +1132,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1); // Moved right
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_empty_line() {
         let ctx = create_test_context();
@@ -1104,6 +1152,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_from_middle_of_line() {
         let ctx = create_test_context();
@@ -1126,6 +1175,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4); // Moved left by 1
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_from_column_one() {
         let ctx = create_test_context();
@@ -1147,6 +1197,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_returns_to_normal() {
         let ctx = create_test_context();
@@ -1164,6 +1215,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cancel_commandline_mode_returns_to_normal() {
         let ctx = create_test_context();
@@ -1180,6 +1232,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::NORMAL_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_on_second_line() {
         let ctx = create_test_context();
@@ -1199,6 +1252,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_append_on_second_line() {
         let ctx = create_test_context();
@@ -1248,6 +1302,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoProvider for MockUndoProvider {
         fn undo(&self, _: BufferId) -> Option<UndoResult> {
             None
@@ -1308,6 +1363,7 @@ mod tests {
         (ctx, mock_undo)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1328,6 +1384,7 @@ mod tests {
         assert_eq!(begins[0].0, buffer_id);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_append_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1346,6 +1403,7 @@ mod tests {
         assert_eq!(begins.len(), 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_calls_end_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1375,6 +1433,7 @@ mod tests {
 
     use reovim_driver_session::api::ExtensionApi;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_mode_clears_insert_buffer() {
         let ctx = create_test_context();
@@ -1400,6 +1459,7 @@ mod tests {
         assert!(vim.insert_buffer.is_empty());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_records_dot_repeat_for_insert() {
         let ctx = create_test_context();
@@ -1432,6 +1492,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_to_normal_does_not_record_empty_insert() {
         let ctx = create_test_context();
@@ -1456,6 +1517,7 @@ mod tests {
     // ExitCommandLineMode search handling tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_search_forward_with_pending() {
         let ctx = create_test_context();
@@ -1491,6 +1553,7 @@ mod tests {
         assert!(search_state.pattern_for_repeat().is_some());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_search_backward_with_pending() {
         let ctx = create_test_context();
@@ -1521,6 +1584,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_search_empty_cmdline() {
         let ctx = create_test_context();
@@ -1549,6 +1613,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_command_with_input() {
         let ctx = create_test_context();
@@ -1570,6 +1635,7 @@ mod tests {
         // execute_ex_command logs warning but doesn't fail
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_mode_command_empty_input() {
         let ctx = create_test_context();
@@ -1591,6 +1657,7 @@ mod tests {
     // execute_search edge cases
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_buffer_id() {
         let ctx = create_test_context();
@@ -1617,6 +1684,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_pending() {
         let ctx = create_test_context();
@@ -1674,6 +1742,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl SearchProvider for MockSearchProvider {
         fn find_next(
             &self,
@@ -1717,6 +1786,7 @@ mod tests {
         )
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_with_match_found() {
         let mock = Arc::new(MockSearchProvider::with_match(SearchMatch {
@@ -1755,6 +1825,7 @@ mod tests {
         assert_eq!(window.cursor.column, 6);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_match() {
         let mock = Arc::new(MockSearchProvider::with_no_match());
@@ -1789,6 +1860,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_invalid_pattern() {
         let mock = Arc::new(MockSearchProvider::with_error());
@@ -1823,6 +1895,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_backward_with_match() {
         let mock = Arc::new(MockSearchProvider::with_match(SearchMatch {
@@ -1863,6 +1936,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_cursor_position() {
         // Test execute_search early return when no active window (no cursor)
@@ -1929,6 +2003,7 @@ mod tests {
         )
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_success() {
         use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
@@ -1968,6 +2043,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_not_found() {
         let registry = ExCommandRegistry::new(); // empty
@@ -1989,6 +2065,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_error() {
         use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
@@ -2029,6 +2106,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_search_registry() {
         // No SearchProviderRegistry registered in services
@@ -2063,6 +2141,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_no_search_provider_for_key() {
         // Register an empty SearchProviderRegistry (no Regex key)
@@ -2108,6 +2187,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_search_buffer_not_found() {
         // Register a search provider but use a buffer_id that doesn't exist

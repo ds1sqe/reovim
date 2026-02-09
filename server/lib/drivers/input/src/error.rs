@@ -81,6 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_error_display() {
         assert_eq!(format!("{}", InputError::NotInitialized), "input driver not initialized");
         assert_eq!(format!("{}", InputError::AlreadyRunning), "input driver already running");
@@ -96,6 +97,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_clipboard_error_display() {
         assert_eq!(format!("{}", ClipboardError::NotAvailable), "clipboard not available");
         assert_eq!(format!("{}", ClipboardError::NotText), "clipboard content is not text");
@@ -132,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_error_debug() {
         let err = InputError::NotInitialized;
         let debug = format!("{err:?}");
@@ -144,6 +147,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_clipboard_error_debug() {
         let err = ClipboardError::NotAvailable;
         let debug = format!("{err:?}");

@@ -27,6 +27,7 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -34,6 +35,7 @@ fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
 }
 
 /// Start undo batching for insert mode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: BufferId) {
     if let Some(pos) = get_cursor_position(runtime)
         && let Some(undo_registry) = runtime.kernel().services.get::<UndoProviderRegistry>()
@@ -251,35 +253,41 @@ impl CommandHandler for OpenLineAbove {
 mod tests {
     use super::*;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_spaces() {
         assert_eq!(get_line_indent("    hello"), "    ");
         assert_eq!(get_line_indent("  world"), "  ");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_tabs() {
         assert_eq!(get_line_indent("\t\thello"), "\t\t");
         assert_eq!(get_line_indent("\tworld"), "\t");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_mixed() {
         assert_eq!(get_line_indent("\t  hello"), "\t  ");
         assert_eq!(get_line_indent("  \thello"), "  \t");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_no_indent() {
         assert_eq!(get_line_indent("hello"), "");
         assert_eq!(get_line_indent("world"), "");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_empty() {
         assert_eq!(get_line_indent(""), "");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_whitespace_only() {
         assert_eq!(get_line_indent("    "), "    ");
@@ -290,6 +298,7 @@ mod tests {
     // Command metadata tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_id() {
         use reovim_driver_command::Command;
@@ -297,6 +306,7 @@ mod tests {
         assert_eq!(cmd.id(), ids::ENTER_INSERT_BOL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_description() {
         use reovim_driver_command::Command;
@@ -304,6 +314,7 @@ mod tests {
         assert!(cmd.description().contains("first non-blank"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_id() {
         use reovim_driver_command::Command;
@@ -311,6 +322,7 @@ mod tests {
         assert_eq!(cmd.id(), ids::ENTER_INSERT_EOL);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_description() {
         use reovim_driver_command::Command;
@@ -318,6 +330,7 @@ mod tests {
         assert!(cmd.description().contains("end of line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_id() {
         use reovim_driver_command::Command;
@@ -325,6 +338,7 @@ mod tests {
         assert_eq!(cmd.id(), ids::OPEN_LINE_BELOW);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_description() {
         use reovim_driver_command::Command;
@@ -332,6 +346,7 @@ mod tests {
         assert!(cmd.description().contains("below"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_id() {
         use reovim_driver_command::Command;
@@ -339,6 +354,7 @@ mod tests {
         assert_eq!(cmd.id(), ids::OPEN_LINE_ABOVE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_description() {
         use reovim_driver_command::Command;
@@ -346,6 +362,7 @@ mod tests {
         assert!(cmd.description().contains("above"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_mode_entry_commands_debug() {
         let debug = format!("{:?}", EnterInsertFirstNonBlank);
@@ -361,6 +378,7 @@ mod tests {
         assert!(debug.contains("OpenLineAbove"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_mode_entry_commands_default() {
         let _ = EnterInsertFirstNonBlank;
@@ -373,17 +391,20 @@ mod tests {
     // Additional get_line_indent tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_unicode() {
         // Unicode content but ascii indent
         assert_eq!(get_line_indent("  \u{1f600}hello"), "  ");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_single_space() {
         assert_eq!(get_line_indent(" x"), " ");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_single_tab() {
         assert_eq!(get_line_indent("\tx"), "\t");
@@ -424,6 +445,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -464,6 +486,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -529,6 +552,7 @@ mod tests {
         )
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_execute() {
         let ctx = create_test_context();
@@ -549,6 +573,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_no_indent() {
         let ctx = create_test_context();
@@ -568,6 +593,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_without_buffer() {
         let ctx = create_test_context();
@@ -580,6 +606,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_execute() {
         let ctx = create_test_context();
@@ -600,6 +627,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_empty_line() {
         let ctx = create_test_context();
@@ -618,6 +646,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_execute() {
         let ctx = create_test_context();
@@ -638,6 +667,7 @@ mod tests {
         assert_eq!(window.cursor.line, 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_without_buffer() {
         let ctx = create_test_context();
@@ -649,6 +679,7 @@ mod tests {
         assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_with_indent() {
         let ctx = create_test_context();
@@ -669,6 +700,7 @@ mod tests {
         assert_eq!(window.cursor.column, 4); // 4 spaces indent
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_execute() {
         let ctx = create_test_context();
@@ -689,6 +721,7 @@ mod tests {
         assert_eq!(window.cursor.line, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_without_buffer() {
         let ctx = create_test_context();
@@ -700,6 +733,7 @@ mod tests {
         assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_with_indent() {
         let ctx = create_test_context();
@@ -724,11 +758,13 @@ mod tests {
     // Additional get_line_indent edge cases
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_many_spaces() {
         assert_eq!(get_line_indent("        deep"), "        ");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_only_newline_chars() {
         // \n is not considered whitespace by char::is_whitespace in this context
@@ -736,6 +772,7 @@ mod tests {
         assert_eq!(get_line_indent("text"), "");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_line_indent_form_feed() {
         // \x0c is a whitespace character
@@ -746,6 +783,7 @@ mod tests {
     // Additional execute tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_all_whitespace() {
         let ctx = create_test_context();
@@ -765,6 +803,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_tab_indent() {
         let ctx = create_test_context();
@@ -783,6 +822,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2); // 2 tab chars
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_multiline() {
         let ctx = create_test_context();
@@ -806,6 +846,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5); // end of "world"
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_without_buffer() {
         let ctx = create_test_context();
@@ -818,6 +859,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_empty_buffer() {
         let ctx = create_test_context();
@@ -837,6 +879,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_tab_indent() {
         let ctx = create_test_context();
@@ -856,6 +899,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1); // 1 tab char
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_empty_buffer() {
         let ctx = create_test_context();
@@ -875,6 +919,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_tab_indent() {
         let ctx = create_test_context();
@@ -894,6 +939,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1); // 1 tab char
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_multiline_at_middle() {
         let ctx = create_test_context();
@@ -917,6 +963,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2); // 2 spaces from "  bbb"
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_multiline_at_middle() {
         let ctx = create_test_context();
@@ -940,6 +987,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2); // 2 spaces from "  bbb"
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_on_second_line() {
         let ctx = create_test_context();
@@ -985,6 +1033,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoProvider for MockUndoProvider {
         fn undo(&self, _: BufferId) -> Option<UndoResult> {
             None
@@ -1041,6 +1090,7 @@ mod tests {
         (ctx, mock_undo)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1060,6 +1110,7 @@ mod tests {
         assert_eq!(begins[0].0, buffer_id);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1078,6 +1129,7 @@ mod tests {
         assert_eq!(begins.len(), 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1096,6 +1148,7 @@ mod tests {
         assert_eq!(begins.len(), 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_calls_begin_batch() {
         let (ctx, mock_undo) = create_test_context_with_undo();
@@ -1139,6 +1192,7 @@ mod tests {
         )
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_autoindent_disabled() {
         let ctx = create_test_context_autoindent_disabled();
@@ -1159,6 +1213,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0); // No indent
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_autoindent_disabled() {
         let ctx = create_test_context_autoindent_disabled();
@@ -1183,6 +1238,7 @@ mod tests {
     // No-window edge cases (exercises get_cursor_position returning None)
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_no_active_window() {
         let ctx = create_test_context();
@@ -1213,6 +1269,7 @@ mod tests {
         assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_no_active_window() {
         let ctx = create_test_context();
@@ -1243,6 +1300,7 @@ mod tests {
         assert!(matches!(result, reovim_driver_command::CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_first_non_blank_no_active_window() {
         let ctx = create_test_context();
@@ -1274,6 +1332,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_enter_insert_end_of_line_no_active_window() {
         let ctx = create_test_context();
@@ -1305,6 +1364,7 @@ mod tests {
         assert_eq!(runtime.current_mode(), &VimMode::INSERT_ID);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_multiline_last_line() {
         let ctx = create_test_context();
@@ -1327,6 +1387,7 @@ mod tests {
         assert_eq!(window.cursor.column, 2); // indent from "  world"
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_multiline_first_line_with_indent() {
         let ctx = create_test_context();

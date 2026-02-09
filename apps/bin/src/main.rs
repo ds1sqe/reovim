@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim - the main entry point binary.
 //!
 //! # Usage
@@ -233,6 +234,7 @@ enum PresenceAction {
     Independent,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
@@ -268,6 +270,7 @@ fn main() -> std::io::Result<()> {
 /// 2. Composite logger (writes to ring buffer + tracing)
 /// 3. Debug context callback for panic handler
 /// 4. Custom panic handler
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn init_debug_infrastructure() {
     use {
         reovim_kernel::api::v1::{DebugContext, install_panic_handler, set_debug_context_callback},
@@ -301,6 +304,7 @@ fn init_debug_infrastructure() {
     tracing::debug!("Debug infrastructure initialized");
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn run(cli: Cli) -> std::io::Result<()> {
     match cli.command {
         Some(Commands::Server {
@@ -357,6 +361,7 @@ async fn run(cli: Cli) -> std::io::Result<()> {
 }
 
 /// Run CLI command.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn run_cli(
     addr: &str,
     format: CliOutputFormat,
@@ -426,6 +431,7 @@ async fn run_cli(
 }
 
 /// Run headless TUI.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Result<()> {
     tracing::info!("Connecting headless TUI to {addr} ({width}x{height})");
 
@@ -448,6 +454,7 @@ async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Resul
 }
 
 /// Run interactive TUI.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
     tracing::info!("Connecting interactive TUI to {addr}");
 
@@ -469,6 +476,7 @@ async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
 /// The server binds to an OS-assigned port, then the TUI connects to it.
 /// When the TUI exits (Ctrl-Q or `:q`), the server shuts down gracefully.
 /// Ctrl-C also stops the TUI, which then triggers server shutdown.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn run_integrated() -> std::io::Result<()> {
     tracing::info!("Starting reovim in integrated mode (server + TUI)");
 

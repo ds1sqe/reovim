@@ -191,6 +191,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -229,12 +230,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -247,6 +250,7 @@ mod tests {
     }
 
     /// Create a `KernelContext` with a real buffer manager for testing.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -273,6 +277,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn new() -> Self {
             let home_mode = test_mode();
@@ -314,6 +319,7 @@ mod tests {
     /// Creates temporary per-client state (`mode_stack`, windows, extensions)
     /// for backward compatibility. Use `TestState::runtime()` for tests that
     /// need persistent per-client state across multiple runtime operations.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn with_test_runtime<F, R>(session: &mut Session, kernel: &KernelContext, f: F) -> R
     where
         F: FnOnce(&mut SessionRuntime<'_>) -> R,
@@ -474,6 +480,7 @@ mod tests {
     // Cursor Movement Tests (With Valid Buffer)
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn setup_buffer_context() -> (KernelContext, BufferId) {
         let ctx = create_test_context();
         let buffer = Buffer::from_string("line one\nline two\nline three");
@@ -504,6 +511,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_up_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -546,6 +554,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_left_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -634,6 +643,7 @@ mod tests {
         assert_eq!(window.cursor.line, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_down_at_eof_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -676,6 +686,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_right_at_eol_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -905,6 +916,7 @@ mod tests {
         assert_eq!(content.text, "line one\nline two\n");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_line_at_eof() {
         let (kernel, buffer_id) = setup_buffer_context();

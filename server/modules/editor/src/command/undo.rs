@@ -147,12 +147,13 @@ mod tests {
             ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
             api::CommandExecutor,
         },
+        reovim_driver_undo::{UndoKey, UndoProviderRegistry},
         reovim_kernel::api::{
             ServiceRegistry,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, Edit,
                 EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine, UndoResult,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -170,6 +171,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -208,12 +210,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -225,6 +229,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -245,6 +250,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn with_window(buffer_id: BufferId) -> Self {
             let home_mode = test_mode();
@@ -578,5 +584,155 @@ mod tests {
         let cmd = RedoCommand;
         let cloned = cmd;
         assert_eq!(cloned.id().name(), "redo");
+    }
+
+    // =========================================================================
+    // Mock UndoProvider for success-path testing
+    // =========================================================================
+
+    struct MockUndoProvider;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_undo::UndoProvider for MockUndoProvider {
+        fn undo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn redo(&self, _buffer_id: BufferId) -> Option<UndoResult> {
+            Some(UndoResult {
+                edits: vec![],
+                cursor: Position::new(0, 0),
+            })
+        }
+
+        fn redo_branch(&self, _buffer_id: BufferId, _branch_idx: usize) -> Option<UndoResult> {
+            None
+        }
+
+        fn record(
+            &self,
+            _buffer_id: BufferId,
+            _edits: Vec<Edit>,
+            _cursor_before: Position,
+            _cursor_after: Position,
+        ) {
+        }
+
+        fn has_history(&self, _buffer_id: BufferId) -> bool {
+            true
+        }
+
+        fn remove(&self, _buffer_id: BufferId) {}
+
+        fn buffer_count(&self) -> usize {
+            1
+        }
+
+        fn get_tree(&self, _buffer_id: BufferId) -> Option<reovim_kernel::api::v1::UndoTree> {
+            None
+        }
+
+        fn begin_batch(&self, _buffer_id: BufferId, _cursor_before: Position) {}
+        fn end_batch(&self, _buffer_id: BufferId, _cursor_after: Position) {}
+        fn is_batching(&self, _buffer_id: BufferId) -> bool {
+            false
+        }
+
+        fn persist(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<(), reovim_driver_undo::UndoPersistError> {
+            Ok(())
+        }
+
+        fn load(
+            &self,
+            _buffer_id: BufferId,
+            _buffer_path: &str,
+            _vfs: &dyn reovim_driver_vfs::VfsDriver,
+        ) -> Result<bool, reovim_driver_undo::UndoPersistError> {
+            Ok(false)
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn create_test_context_with_undo() -> KernelContext {
+        let services = Arc::new(ServiceRegistry::new());
+        let undo_registry = UndoProviderRegistry::new();
+        undo_registry.register(UndoKey::Buffer, Arc::new(MockUndoProvider));
+        services.register(Arc::new(undo_registry));
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            services,
+        )
+    }
+
+    // =========================================================================
+    // Undo/Redo success path tests
+    // =========================================================================
+
+    #[test]
+    fn test_undo_success_with_provider() {
+        let kernel = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = UndoCommand.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_redo_success_with_provider() {
+        let kernel = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = RedoCommand.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_undo_with_count_success() {
+        let kernel = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+        let result = UndoCommand.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_redo_with_count_success() {
+        let kernel = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+        let result = RedoCommand.execute(&mut runtime, &args);
+        assert!(result.is_success());
     }
 }

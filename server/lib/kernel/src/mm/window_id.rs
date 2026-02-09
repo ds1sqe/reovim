@@ -86,6 +86,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_window_id_display() {
         let id = WindowId(42);
         assert_eq!(format!("{id}"), "window:42");

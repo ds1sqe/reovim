@@ -33,6 +33,7 @@ impl StandardVfs {
 }
 
 /// Convert `std::fs::Metadata` to `FileMetadata`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn metadata_from_std(meta: &std::fs::Metadata) -> FileMetadata {
     let base = if meta.is_dir() {
         FileMetadata::directory()
@@ -310,9 +311,7 @@ mod tests {
         let file1 = dir.join("file1.txt");
         let file2 = dir.join("file2.txt");
 
-        if vfs.exists(&dir) {
-            vfs.remove_dir_all(&dir).unwrap();
-        }
+        let _ = vfs.remove_dir_all(&dir); // clean up any leftover from previous runs
         vfs.create_dir(&dir).unwrap();
         assert!(vfs.exists(&dir));
 
@@ -405,6 +404,7 @@ mod tests {
         vfs.delete(&path).unwrap();
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_standard_vfs_metadata_directory() {
         let vfs = StandardVfs::new();

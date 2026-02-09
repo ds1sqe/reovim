@@ -134,6 +134,7 @@ pub struct InputReader {
     stream: crossterm::event::EventStream,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl InputReader {
     /// Create a new input reader.
     #[must_use]
@@ -203,12 +204,14 @@ impl InputReader {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for InputReader {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl std::fmt::Debug for InputReader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InputReader").finish()
@@ -217,6 +220,7 @@ impl std::fmt::Debug for InputReader {
 
 /// Translate crossterm key event to vim notation.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn translate_to_vim_notation(code: KeyCode, modifiers: KeyModifiers) -> String {
     let mut parts = Vec::new();
 
@@ -542,6 +546,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_event_paste() {
         let event = InputEvent::Paste("hello".to_string());
         if let InputEvent::Paste(text) = event {
@@ -688,6 +693,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_event_resize() {
         let event = InputEvent::Resize(ResizeEvent {
             width: 100,
@@ -702,6 +708,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_event_mouse() {
         let event = InputEvent::Mouse(MouseEvent {
             column: 42,

@@ -426,6 +426,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn edit_debug_format() {
         let edit = Edit::insert(Position::origin(), "hi");
         let debug = format!("{edit:?}");
@@ -491,6 +492,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn text_dimensions_debug() {
         let dims = text_dimensions("test");
         let debug = format!("{dims:?}");

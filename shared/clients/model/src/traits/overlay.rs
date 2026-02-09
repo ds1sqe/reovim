@@ -171,6 +171,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_confirm() {
         let renderer = TestRenderer::new("completion");
         let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
@@ -195,6 +196,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_select_next() {
         let renderer = TestRenderer::new("completion");
         let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor)
@@ -251,6 +253,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_default_is_modal() {
         // Test with a renderer that does not override is_modal
         struct MinimalRenderer;
@@ -302,6 +305,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_select_next_from_none() {
         let renderer = TestRenderer::new("completion");
         // Overlay with no initial selection (selected_index is None)
@@ -317,6 +321,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_custom_priority() {
         struct PriorityRenderer;
         impl OverlayRenderer for PriorityRenderer {
@@ -351,6 +356,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_with_state_update() {
         let renderer = TestRenderer::new("completion");
         let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor)

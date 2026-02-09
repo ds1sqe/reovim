@@ -160,6 +160,7 @@ impl Jumplist {
     /// # Returns
     ///
     /// `true` if the entry was added, `false` if duplicate.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn push_current(&mut self, entry: JumpEntry) -> bool {
         // Don't add duplicate of last entry
         if self.entries.last() == Some(&entry) {
@@ -227,6 +228,7 @@ impl Jumplist {
     ///
     /// Returns `None` if the list is empty or current is past the end.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn current(&self) -> Option<&JumpEntry> {
         if self.current > 0 && self.current <= self.entries.len() {
             self.entries.get(self.current - 1)

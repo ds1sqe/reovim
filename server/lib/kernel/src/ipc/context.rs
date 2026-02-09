@@ -396,6 +396,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_context_debug() {
         let ctx = HandlerContext::new();
         let debug_str = format!("{ctx:?}");

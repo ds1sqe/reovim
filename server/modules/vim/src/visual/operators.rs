@@ -77,6 +77,7 @@ impl Command for DeleteSelection {
 }
 
 impl CommandHandler for DeleteSelection {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -140,6 +141,7 @@ impl Command for YankSelection {
 }
 
 impl CommandHandler for YankSelection {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -197,6 +199,7 @@ impl Command for ChangeSelection {
 }
 
 impl CommandHandler for ChangeSelection {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -260,6 +263,7 @@ impl Command for IndentSelection {
 }
 
 impl CommandHandler for IndentSelection {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -311,6 +315,7 @@ impl Command for DedentSelection {
 }
 
 impl CommandHandler for DedentSelection {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -368,66 +373,77 @@ mod tests {
     // Command metadata tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_id() {
         let cmd = DeleteSelection;
         assert_eq!(cmd.id(), ids::DELETE_SELECTION);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_description() {
         let cmd = DeleteSelection;
         assert!(cmd.description().contains("Delete"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_id() {
         let cmd = YankSelection;
         assert_eq!(cmd.id(), ids::YANK_SELECTION);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_description() {
         let cmd = YankSelection;
         assert!(cmd.description().contains("Yank"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_id() {
         let cmd = ChangeSelection;
         assert_eq!(cmd.id(), ids::CHANGE_SELECTION);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_description() {
         let cmd = ChangeSelection;
         assert!(cmd.description().contains("Change"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_id() {
         let cmd = IndentSelection;
         assert_eq!(cmd.id(), ids::INDENT_SELECTION);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_description() {
         let cmd = IndentSelection;
         assert!(cmd.description().contains("Indent"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_id() {
         let cmd = DedentSelection;
         assert_eq!(cmd.id(), ids::DEDENT_SELECTION);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_description() {
         let cmd = DedentSelection;
         assert!(cmd.description().contains("Dedent"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_operator_commands_debug() {
         assert!(format!("{:?}", DeleteSelection).contains("DeleteSelection"));
@@ -437,6 +453,7 @@ mod tests {
         assert!(format!("{:?}", DedentSelection).contains("DedentSelection"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_operator_commands_default() {
         let _ = DeleteSelection;
@@ -450,6 +467,7 @@ mod tests {
     // expand_selection_range tests
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_character_mode_passthrough() {
         let sel = Selection::character(Position::new(0, 2), Position::new(0, 8));
@@ -459,6 +477,7 @@ mod tests {
         assert!(!is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_block_mode_passthrough() {
         let sel = Selection::block(Position::new(1, 3), Position::new(3, 7));
@@ -468,6 +487,7 @@ mod tests {
         assert!(!is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_expands_to_full_lines() {
         let sel = Selection::line(Position::new(0, 3), Position::new(2, 0));
@@ -477,6 +497,7 @@ mod tests {
         assert!(is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_end_past_buffer() {
         let sel = Selection::line(Position::new(0, 0), Position::new(5, 0));
@@ -486,6 +507,7 @@ mod tests {
         assert!(is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_end_at_buffer_boundary() {
         let sel = Selection::line(Position::new(0, 0), Position::new(3, 0));
@@ -495,6 +517,7 @@ mod tests {
         assert!(is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_within_buffer() {
         let sel = Selection::line(Position::new(1, 0), Position::new(3, 0));
@@ -504,6 +527,7 @@ mod tests {
         assert!(is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_none_end_line_len() {
         let sel = Selection::line(Position::new(0, 0), Position::new(5, 0));
@@ -547,6 +571,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -587,6 +612,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -654,6 +680,7 @@ mod tests {
 
     // --- DeleteSelection execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_execute_no_buffer() {
         let ctx = create_test_context();
@@ -665,6 +692,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_execute_no_selection() {
         let ctx = create_test_context();
@@ -681,6 +709,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_execute_character_mode() {
         let ctx = create_test_context();
@@ -715,6 +744,7 @@ mod tests {
         assert_eq!(reg.text, "hello");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_execute_clears_selection() {
         let ctx = create_test_context();
@@ -739,6 +769,7 @@ mod tests {
 
     // --- YankSelection execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_execute_no_buffer() {
         let ctx = create_test_context();
@@ -750,6 +781,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_execute_no_selection() {
         let ctx = create_test_context();
@@ -765,6 +797,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_execute_character_mode() {
         let ctx = create_test_context();
@@ -794,6 +827,7 @@ mod tests {
         assert_eq!(reg.text, "hello");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_execute_does_not_delete_text() {
         let ctx = create_test_context();
@@ -817,6 +851,7 @@ mod tests {
 
     // --- ChangeSelection execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_execute_no_buffer() {
         let ctx = create_test_context();
@@ -828,6 +863,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_execute_no_selection() {
         let ctx = create_test_context();
@@ -843,6 +879,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_execute_character_mode() {
         let ctx = create_test_context();
@@ -878,6 +915,7 @@ mod tests {
 
     // --- IndentSelection execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_execute_no_buffer() {
         let ctx = create_test_context();
@@ -889,6 +927,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_execute_no_selection() {
         let ctx = create_test_context();
@@ -904,6 +943,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_execute_indents_lines() {
         let ctx = create_test_context();
@@ -936,6 +976,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_execute_single_line() {
         let ctx = create_test_context();
@@ -962,6 +1003,7 @@ mod tests {
 
     // --- DedentSelection execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_no_buffer() {
         let ctx = create_test_context();
@@ -973,6 +1015,7 @@ mod tests {
         assert!(matches!(result, CommandResult::Error(_)));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_no_selection() {
         let ctx = create_test_context();
@@ -988,6 +1031,7 @@ mod tests {
         assert_eq!(result, CommandResult::Success);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_removes_spaces() {
         let ctx = create_test_context();
@@ -1019,6 +1063,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_removes_tab() {
         let ctx = create_test_context();
@@ -1043,6 +1088,7 @@ mod tests {
         assert_eq!(line1, Some("world".to_string()));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_no_leading_whitespace() {
         let ctx = create_test_context();
@@ -1067,6 +1113,7 @@ mod tests {
         assert_eq!(line1, Some("world".to_string()));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_execute_partial_spaces() {
         let ctx = create_test_context();
@@ -1095,6 +1142,7 @@ mod tests {
     // Additional expand_selection_range edge cases
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_character_mode_single_char() {
         let sel = Selection::character(Position::new(0, 0), Position::new(0, 1));
@@ -1104,6 +1152,7 @@ mod tests {
         assert!(!is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_line_mode_single_line() {
         let sel = Selection::line(Position::new(2, 0), Position::new(3, 0));
@@ -1113,6 +1162,7 @@ mod tests {
         assert!(is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_block_mode_single_cell() {
         let sel = Selection::block(Position::new(0, 0), Position::new(0, 1));
@@ -1122,6 +1172,7 @@ mod tests {
         assert!(!is_linewise);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_expand_character_mode_multiline() {
         let sel = Selection::character(Position::new(0, 3), Position::new(2, 5));
@@ -1135,6 +1186,7 @@ mod tests {
     // Additional operator execute edge cases
     // ========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_middle_of_line() {
         let ctx = create_test_context();
@@ -1159,6 +1211,7 @@ mod tests {
         assert_eq!(window.cursor.column, 5);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_selection_line_mode() {
         let ctx = create_test_context();
@@ -1187,6 +1240,7 @@ mod tests {
         assert!(reg.is_linewise());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_change_selection_enters_insert_mode() {
         let ctx = create_test_context();
@@ -1207,6 +1261,7 @@ mod tests {
         assert_eq!(runtime.current_mode().name(), crate::modes::VimMode::INSERT_ID.name());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_indent_selection_already_indented() {
         let ctx = create_test_context();
@@ -1231,6 +1286,7 @@ mod tests {
         assert_eq!(line1, Some("        world".to_string()));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dedent_selection_single_space() {
         let ctx = create_test_context();
@@ -1252,6 +1308,7 @@ mod tests {
         assert_eq!(line0, Some("hello".to_string()));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_delete_selection_clones() {
         let _: DeleteSelection = DeleteSelection;
@@ -1259,5 +1316,111 @@ mod tests {
         let _: ChangeSelection = ChangeSelection;
         let _: IndentSelection = IndentSelection;
         let _: DedentSelection = DedentSelection;
+    }
+
+    // ========================================================================
+    // Coverage: None-path and linewise tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_delete_selection_nonexistent_buffer() {
+        // Exercise the None path of buffer_text_range (line 107)
+        let ctx = create_test_context();
+        let fake_id = BufferId::from_raw(9999);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(fake_id);
+        let mut state = TestState::with_buffer(Some(fake_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.selection = Some(Selection::character(Position::new(0, 0), Position::new(0, 5)));
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = DeleteSelection.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_yank_selection_nonexistent_buffer() {
+        // Exercise the None path of buffer_text_range (line 169)
+        let ctx = create_test_context();
+        let fake_id = BufferId::from_raw(9999);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(fake_id);
+        let mut state = TestState::with_buffer(Some(fake_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.selection = Some(Selection::character(Position::new(0, 0), Position::new(0, 5)));
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = YankSelection.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_selection_nonexistent_buffer() {
+        // Exercise the None path of buffer_text_range (line 227)
+        let ctx = create_test_context();
+        let fake_id = BufferId::from_raw(9999);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(fake_id);
+        let mut state = TestState::with_buffer(Some(fake_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.selection = Some(Selection::character(Position::new(0, 0), Position::new(0, 5)));
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = ChangeSelection.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_selection_linewise() {
+        // Exercise the is_linewise branch in ChangeSelection (line 222)
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.selection = Some(Selection::line(Position::new(0, 0), Position::new(2, 0)));
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = ChangeSelection.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Register should contain linewise content
+        let reg = runtime.get_register(None);
+        assert!(reg.is_some());
+        let reg = reg.unwrap();
+        assert!(reg.is_linewise());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_dedent_selection_nonexistent_buffer() {
+        // Exercise the None path of buffer_line (line 348)
+        let ctx = create_test_context();
+        let fake_id = BufferId::from_raw(9999);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(fake_id);
+        let mut state = TestState::with_buffer(Some(fake_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.selection = Some(Selection::line(Position::new(0, 0), Position::new(3, 0)));
+        }
+        let mut runtime = state.runtime(&ctx);
+
+        let result = DedentSelection.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
     }
 }

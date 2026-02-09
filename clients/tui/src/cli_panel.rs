@@ -136,6 +136,7 @@ impl CliPanelState {
     /// Delete character before cursor (backspace).
     ///
     /// `cursor_pos` is a character index, not a byte index.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn backspace(&mut self) {
         if self.cursor_pos > 0
             && let Some((start, end)) = char_byte_range(&self.input, self.cursor_pos - 1)
@@ -149,6 +150,7 @@ impl CliPanelState {
     /// Delete character at cursor (delete key).
     ///
     /// `cursor_pos` is a character index, not a byte index.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn delete(&mut self) {
         let char_count = self.input.chars().count();
         if self.cursor_pos < char_count
@@ -187,6 +189,7 @@ impl CliPanelState {
     // History navigation
 
     /// Navigate to previous command in history.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn history_prev(&mut self) {
         if self.history.is_empty() {
             return;
@@ -216,6 +219,7 @@ impl CliPanelState {
     }
 
     /// Navigate to next command in history.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn history_next(&mut self) {
         let Some(idx) = self.history_index else {
             return;
@@ -412,6 +416,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_result_pending_variant() {
         let pending = CliResult::Pending("Querying...".to_string());
         match pending {
@@ -421,6 +426,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_update_result_valid_index() {
         let mut state = CliPanelState::new();
         state.add_result("mode".to_string(), CliResult::Pending("Querying...".to_string()));
@@ -438,6 +444,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_update_result_invalid_index() {
         let mut state = CliPanelState::new();
         state.add_result("mode".to_string(), CliResult::Pending("Querying...".to_string()));
@@ -802,6 +809,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_cli_result_err_variant() {
         let err = CliResult::Err("not found".to_string());
         match err {

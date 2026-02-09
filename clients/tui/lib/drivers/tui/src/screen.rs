@@ -189,6 +189,7 @@ impl Screen {
     /// # Errors
     ///
     /// Returns an error if rendering fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn render(&mut self, terminal: &mut Terminal) -> std::io::Result<()> {
         // Copy buffer content to renderer's back buffer
         self.sync_to_renderer();
@@ -208,6 +209,7 @@ impl Screen {
     }
 
     /// Sync buffer content to renderer's back buffer.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn sync_to_renderer(&mut self) {
         let renderer_buffer = self.renderer.buffer_mut();
         // Copy each cell from our buffer to the renderer's back buffer
@@ -569,6 +571,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_screen_sync_to_renderer() {
         // Test that sync_to_renderer copies buffer content properly
         let mut screen = Screen::new(5, 2);

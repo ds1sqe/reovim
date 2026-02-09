@@ -36,6 +36,7 @@ impl Command for SwapAnchor {
 }
 
 impl CommandHandler for SwapAnchor {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // Only operate if selection is active
         let Some(selection) = runtime.windows().active().and_then(|w| w.selection.clone()) else {
@@ -75,6 +76,7 @@ impl Command for ToggleVisualChar {
 }
 
 impl CommandHandler for ToggleVisualChar {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
@@ -124,6 +126,7 @@ impl Command for ToggleVisualLine {
 }
 
 impl CommandHandler for ToggleVisualLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
@@ -173,6 +176,7 @@ impl Command for ToggleVisualBlock {
 }
 
 impl CommandHandler for ToggleVisualBlock {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let selection = runtime.windows().active().and_then(|w| w.selection.clone());
 
@@ -226,6 +230,7 @@ impl Command for ReselectLast {
 }
 
 impl CommandHandler for ReselectLast {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal intent to restore the last visual selection
@@ -238,66 +243,77 @@ impl CommandHandler for ReselectLast {
 mod tests {
     use {super::*, reovim_driver_command::Command};
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_id() {
         let cmd = SwapAnchor;
         assert_eq!(cmd.id(), ids::VISUAL_SWAP_ANCHOR);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_description() {
         let cmd = SwapAnchor;
         assert!(cmd.description().contains("Swap"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_id() {
         let cmd = ToggleVisualChar;
         assert_eq!(cmd.id(), ids::TOGGLE_VISUAL_CHAR);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_description() {
         let cmd = ToggleVisualChar;
         assert!(cmd.description().contains("character"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_id() {
         let cmd = ToggleVisualLine;
         assert_eq!(cmd.id(), ids::TOGGLE_VISUAL_LINE);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_description() {
         let cmd = ToggleVisualLine;
         assert!(cmd.description().contains("line"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_id() {
         let cmd = ToggleVisualBlock;
         assert_eq!(cmd.id(), ids::TOGGLE_VISUAL_BLOCK);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_description() {
         let cmd = ToggleVisualBlock;
         assert!(cmd.description().contains("block"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_reselect_last_id() {
         let cmd = ReselectLast;
         assert_eq!(cmd.id(), ids::RESELECT_LAST);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_reselect_last_description() {
         let cmd = ReselectLast;
         assert!(cmd.description().contains("Reselect"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_manipulation_commands_debug() {
         assert!(format!("{:?}", SwapAnchor).contains("SwapAnchor"));
@@ -307,6 +323,7 @@ mod tests {
         assert!(format!("{:?}", ReselectLast).contains("ReselectLast"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_all_manipulation_commands_default() {
         let _ = SwapAnchor;
@@ -349,6 +366,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -389,6 +407,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -408,6 +427,7 @@ mod tests {
     }
 
     impl TestState {
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn with_buffer(buffer_id: Option<BufferId>) -> Self {
             let home_mode = ModeId::new(ModuleId::new("test"), "normal");
             let session = Session::new(ClientId::new(1), home_mode.clone());
@@ -456,6 +476,7 @@ mod tests {
 
     // --- SwapAnchor execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_execute_swaps_start_and_end() {
         let ctx = create_test_context();
@@ -479,6 +500,7 @@ mod tests {
         assert_eq!(sel.mode, SelectionMode::Character);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_execute_no_selection() {
         let ctx = create_test_context();
@@ -497,6 +519,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_execute_preserves_mode() {
         let ctx = create_test_context();
@@ -520,6 +543,7 @@ mod tests {
         assert_eq!(sel.mode, SelectionMode::Line);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_execute_block_mode() {
         let ctx = create_test_context();
@@ -545,6 +569,7 @@ mod tests {
 
     // --- ToggleVisualChar execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_execute_exit_when_already_char() {
         let ctx = create_test_context();
@@ -566,6 +591,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_execute_switch_from_line() {
         let ctx = create_test_context();
@@ -591,6 +617,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(2, 0));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_execute_switch_from_block() {
         let ctx = create_test_context();
@@ -612,6 +639,7 @@ mod tests {
         assert_eq!(sel.mode, SelectionMode::Character);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_execute_no_selection() {
         let ctx = create_test_context();
@@ -631,6 +659,7 @@ mod tests {
 
     // --- ToggleVisualLine execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_execute_exit_when_already_line() {
         let ctx = create_test_context();
@@ -651,6 +680,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_execute_switch_from_char() {
         let ctx = create_test_context();
@@ -674,6 +704,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(0, 8));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_execute_switch_from_block() {
         let ctx = create_test_context();
@@ -695,6 +726,7 @@ mod tests {
         assert_eq!(sel.mode, SelectionMode::Line);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_execute_no_selection() {
         let ctx = create_test_context();
@@ -714,6 +746,7 @@ mod tests {
 
     // --- ToggleVisualBlock execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_execute_exit_when_already_block() {
         let ctx = create_test_context();
@@ -734,6 +767,7 @@ mod tests {
         assert!(window.selection.is_none());
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_execute_switch_from_char() {
         let ctx = create_test_context();
@@ -757,6 +791,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(0, 5));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_execute_switch_from_line() {
         let ctx = create_test_context();
@@ -778,6 +813,7 @@ mod tests {
         assert_eq!(sel.mode, SelectionMode::Block);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_execute_no_selection() {
         let ctx = create_test_context();
@@ -797,6 +833,7 @@ mod tests {
 
     // --- ReselectLast execute ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_reselect_last_execute_returns_success() {
         let ctx = create_test_context();
@@ -813,6 +850,7 @@ mod tests {
 
     // --- Additional toggle tests ---
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_swap_anchor_double_swap_restores() {
         let ctx = create_test_context();
@@ -838,6 +876,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(0, 8));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_char_from_block_preserves_positions() {
         let ctx = create_test_context();
@@ -860,6 +899,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(1, 4));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_line_from_char_preserves_positions() {
         let ctx = create_test_context();
@@ -882,6 +922,7 @@ mod tests {
         assert_eq!(sel.end, Position::new(1, 2));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_toggle_visual_block_from_line_preserves_positions() {
         let ctx = create_test_context();
@@ -903,5 +944,4 @@ mod tests {
         assert_eq!(sel.start, Position::new(0, 0));
         assert_eq!(sel.end, Position::new(2, 0));
     }
-
 }

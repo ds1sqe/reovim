@@ -2362,4 +2362,85 @@ mod history_extended_tests {
         assert_eq!(cloned.seq_num(), entry.seq_num());
         assert_eq!(cloned.timestamp(), entry.timestamp());
     }
+
+    // === Coverage: remove_node root protection (L554-555) ===
+
+    #[test]
+    fn test_remove_node_root_protection() {
+        // Create a tree with max_nodes=2. Push 2 edits on a linear path.
+        // Tree: root(0) -> A(1) -> B(2). Current = 2.
+        // When B is pushed, node_count=3 > max_nodes=2.
+        // prune_if_needed tries to remove nodes not on the protected path.
+        // Protected path: root(0) -> A(1) -> B(2). All are protected.
+        // No leaf nodes to prune, so nothing removed. Root survives.
+        let mut tree = UndoTree::with_max_nodes(2);
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Root must still exist
+        assert!(tree.node_count() >= 2);
+        assert!(tree.can_undo());
+    }
+
+    // === Coverage: prune_adjusts_parent_indices (L565-568) ===
+
+    #[test]
+    fn test_prune_adjusts_parent_indices() {
+        // Build a tree with branches, then trigger pruning that removes
+        // a node with index lower than other nodes' parent indices,
+        // forcing the index adjustment code at L565-568.
+        //
+        // Tree structure with max_nodes=4:
+        //   root(0) -> A(1) -> B(2)   (branch 1, leaf)
+        //                  \-> C(3)    (branch 2)
+        //                       \-> D(4)  (current, protected)
+        //
+        // Protected path: root(0) -> A(1) -> C(3) -> D(4)
+        // B(2) is a leaf, not protected -> gets pruned.
+        // After removing B(2), indices shift: C was 3 -> becomes 2, D was 4 -> becomes 3.
+        // Parent index of C (was pointing to A=1) stays 1.
+        // Parent index of D (was pointing to C=3) must be adjusted to 2.
+        let mut tree = UndoTree::with_max_nodes(4);
+
+        // Push A
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        // Push B (branch from A)
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Undo back to A
+        tree.undo();
+        // Push C (new branch from A)
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Push D (child of C) - this puts us over max_nodes, triggers prune
+        tree.push(
+            vec![Edit::insert(Position::new(0, 2), "D")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+        );
+
+        // After pruning, B should be removed and indices adjusted
+        assert!(tree.node_count() <= 4);
+        // The path root -> A -> C -> D should still be navigable
+        assert!(tree.can_undo());
+        let result = tree.undo().unwrap();
+        assert_eq!(result.edits[0].text(), "D");
+    }
 }

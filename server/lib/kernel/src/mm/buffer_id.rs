@@ -85,6 +85,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn display_zero() {
         let id = BufferId::from_raw(0);
         assert_eq!(format!("{id}"), "Buffer(0)");
@@ -147,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn debug_format() {
         let id = BufferId::from_raw(7);
         let debug = format!("{id:?}");

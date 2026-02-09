@@ -150,6 +150,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_operator_commands_all_vim_module() {
         let cmds = operator_commands();
         for cmd in &cmds {

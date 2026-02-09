@@ -55,9 +55,7 @@ async fn forward_token_updates(
     // Forward updates from syntax state
     while let Some(update) = syntax_rx.recv().await {
         // Only forward updates for the requested buffer
-        if update.buffer_id == buffer_id.as_usize() as u64
-            && tx.send(Ok(update)).await.is_err()
-        {
+        if update.buffer_id == buffer_id.as_usize() as u64 && tx.send(Ok(update)).await.is_err() {
             break; // Client disconnected
         }
     }

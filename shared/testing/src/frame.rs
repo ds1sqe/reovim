@@ -19,6 +19,7 @@
 /// # Panics
 ///
 /// Panics if `expected` text is not found in the frame.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_frame_contains(frame: &str, expected: &str) {
     assert!(frame.contains(expected), "Frame should contain '{expected}'\n\nFrame:\n{frame}");
 }
@@ -28,6 +29,7 @@ pub fn assert_frame_contains(frame: &str, expected: &str) {
 /// # Panics
 ///
 /// Panics if `unexpected` text IS found in the frame.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_frame_not_contains(frame: &str, unexpected: &str) {
     assert!(
         !frame.contains(unexpected),
@@ -40,6 +42,7 @@ pub fn assert_frame_not_contains(frame: &str, unexpected: &str) {
 /// # Panics
 ///
 /// Panics if the line doesn't exist or doesn't contain the expected text.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_frame_line_contains(frame: &str, line: usize, expected: &str) {
     let lines: Vec<&str> = frame.lines().collect();
     let len = lines.len();
@@ -58,6 +61,7 @@ pub fn assert_frame_line_contains(frame: &str, line: usize, expected: &str) {
 /// # Panics
 ///
 /// Panics if the last line doesn't contain the mode string.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_statusline_mode(frame: &str, mode: &str) {
     let last = frame.lines().last().unwrap_or("");
     assert!(
@@ -71,6 +75,7 @@ pub fn assert_statusline_mode(frame: &str, mode: &str) {
 /// # Panics
 ///
 /// Panics if line count doesn't match.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_frame_line_count(frame: &str, expected: usize) {
     let actual = frame.lines().count();
     assert_eq!(
@@ -86,6 +91,7 @@ pub fn assert_frame_line_count(frame: &str, expected: usize) {
 /// # Panics
 ///
 /// Panics if no line meets the minimum width.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn assert_frame_min_width(frame: &str, min_width: usize) {
     let max_width = frame.lines().map(str::len).max().unwrap_or(0);
     assert!(
@@ -96,12 +102,14 @@ pub fn assert_frame_min_width(frame: &str, min_width: usize) {
 
 /// Check if frame contains text (non-panicking version).
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn frame_contains(frame: &str, expected: &str) -> bool {
     frame.contains(expected)
 }
 
 /// Check if frame line contains text (non-panicking version).
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn frame_line_contains(frame: &str, line: usize, expected: &str) -> bool {
     frame
         .lines()
@@ -111,12 +119,14 @@ pub fn frame_line_contains(frame: &str, line: usize, expected: &str) -> bool {
 
 /// Extract the statusline (last line) from a frame.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn get_statusline(frame: &str) -> Option<&str> {
     frame.lines().last()
 }
 
 /// Extract a specific line from a frame.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn get_line(frame: &str, line: usize) -> Option<&str> {
     frame.lines().nth(line)
 }

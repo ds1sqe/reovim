@@ -904,6 +904,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_change_type_insert() {
         let ct = ChangeType::Insert {
             text: "hello".to_string(),
@@ -936,6 +937,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::redundant_clone)]
     fn test_last_change_clone() {
         let lc = LastChange {
@@ -1210,6 +1212,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_vim_session_state_start_recording_boundary_chars() {
         let mut state = VimSessionState::default();
 
@@ -1287,6 +1290,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[allow(clippy::redundant_clone)]
     fn test_change_type_insert_clone() {
         let ct = ChangeType::Insert {

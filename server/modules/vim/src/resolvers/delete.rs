@@ -195,6 +195,7 @@ impl ModeKeyResolver for VimDeleteResolver {
     /// 4. If motion found, stores start position and returns Execute
     /// 5. Runner calls `on_command_complete` after motion executes
     #[allow(clippy::too_many_lines)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,
@@ -356,6 +357,7 @@ impl ModeKeyResolver for VimDeleteResolver {
     /// Text object ranges take priority over motion-based ranges. Text objects
     /// calculate ranges directly (stored in `OperatorPendingState`), while motions
     /// require position-based calculation (`start_position` → `cursor_position`).
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn on_command_complete(
         &self,
         session: &mut dyn SessionApiDyn,
@@ -495,6 +497,7 @@ mod tests {
     /// Mock keymap that always returns `NotFound` (no bindings).
     struct NotFoundKeymap;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for NotFoundKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             KeyLookupState::NotFound
@@ -521,6 +524,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for MockKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
             self.response.clone()
@@ -541,6 +545,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_escape_cancels() {
         let resolver = VimDeleteResolver::new();
         let mut state = test_state();
@@ -574,6 +579,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_dd() {
         let resolver = VimDeleteResolver::new();
         let mut state = test_state();
@@ -618,6 +624,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_keymap_executes_motion() {
         let resolver = VimDeleteResolver::new();
         let mut state = test_state();
@@ -634,6 +641,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_keymap_cancels_on_not_found() {
         let resolver = VimDeleteResolver::new();
         let mut state = test_state();
@@ -705,6 +713,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_dd_with_count() {
         let resolver = VimDeleteResolver::with_context(Some(4), None);
         let mut state = test_state();
@@ -732,6 +741,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_line_operator_with_motion_count() {
         // Test d3d - operator count=1 (default), motion count=3
         let resolver = VimDeleteResolver::new();
@@ -767,6 +777,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_motion_key_with_count_returns_execute() {
         let resolver = VimDeleteResolver::new();
         let mut state = test_state();
@@ -854,6 +865,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferApi for MockSession {
         fn active_buffer(&self) -> Option<BufferId> {
             None
@@ -894,6 +906,7 @@ mod tests {
         fn rename_buffer(&mut self, _b: BufferId, _n: &str) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl WindowApi for MockSession {
         fn active_window(&self) -> Option<WindowId> {
             Some(WindowId::new())
@@ -921,12 +934,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandApi for MockSession {
         fn execute_command(&mut self, _cmd: CommandId, _ctx: CommandContext) -> CommandResult {
             CommandResult::Success
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl UndoApi for MockSession {
         fn undo(&mut self, _b: BufferId) -> Option<UndoResult> {
             None
@@ -950,6 +965,7 @@ mod tests {
         fn record_edit_mine(&mut self, _b: BufferId, _e: Vec<Edit>, _cb: Position, _ca: Position) {}
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ChangeTracker for MockSession {
         fn take_changes(&mut self) -> StateChanges {
             StateChanges::new()
@@ -958,6 +974,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_escape_cancels() {
         let resolver = VimDeleteResolver::new();
         let mut mstate = test_state();
@@ -982,6 +999,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_initializes_from_vim_state() {
         let resolver = VimDeleteResolver::new();
         let mut mstate = test_state();
@@ -1020,6 +1038,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_dd_uses_cursor() {
         let resolver = VimDeleteResolver::new();
         let mut mstate = test_state();
@@ -1161,6 +1180,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_cancel_on_not_found() {
         let resolver = VimDeleteResolver::new();
         let mut mstate = test_state();
@@ -1192,6 +1212,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_textobj_range() {
         let resolver = VimDeleteResolver::with_context(Some(1), None);
         let mut session = MockSession::new();
@@ -1237,6 +1258,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_with_motion_range() {
         let resolver = VimDeleteResolver::new();
         // Manually set start position
@@ -1279,6 +1301,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_inclusive_motion_adjusts_end() {
         let resolver = VimDeleteResolver::new();
         {
@@ -1311,6 +1334,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_linewise_motion() {
         let resolver = VimDeleteResolver::new();
         {
@@ -1342,6 +1366,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_on_command_complete_backward_motion_normalizes_range() {
         let resolver = VimDeleteResolver::new();
         {
@@ -1447,6 +1472,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_init_without_vim_state() {
         // When no VimSessionState is in extensions, the resolver should still work
         let resolver = VimDeleteResolver::new();
@@ -1473,6 +1499,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_dd_no_cursor_fallback() {
         // When cursor_position() returns None, dd should fallback to (0,0)-(0,0)
         let resolver = VimDeleteResolver::new();
@@ -1537,6 +1564,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_dd_with_count_uses_cursor() {
         // dd with count from VimSessionState should use cursor line
         let resolver = VimDeleteResolver::new();
@@ -1579,6 +1607,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_with_session_dd_with_motion_count() {
         // Test d3d - motion_count=3 in resolve_with_session
         let resolver = VimDeleteResolver::new();

@@ -138,6 +138,7 @@ impl FromStr for Color {
     /// assert_eq!("#ff0000".parse::<Color>().unwrap(), Color::Rgb { r: 255, g: 0, b: 0 });
     /// assert_eq!("ansi:196".parse::<Color>().unwrap(), Color::AnsiValue(196));
     /// ```
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let lower = s.to_lowercase();
         let err = |kind| ParseColorError {
@@ -948,6 +949,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_color_roundtrip() {
         // All named colors should roundtrip
         let named_colors = [
@@ -1792,6 +1794,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mouse_event_kind_variants() {
         let kinds = [
             MouseEventKind::Down(MouseButton::Left),
@@ -1935,6 +1938,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_event_paste() {
         let event = InputEvent::Paste("hello world".to_string());
         if let InputEvent::Paste(text) = event {
@@ -1945,6 +1949,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_event_clone() {
         let event = InputEvent::Key(KeyEvent::new(KeyCode::Enter));
         let cloned = event;
@@ -1993,6 +1998,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_clear_type_all_variants() {
         let variants = [
             ClearType::All,
@@ -2028,6 +2034,7 @@ mod tests {
     // =========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_raw_mode_guard_new_calls_restore_on_drop() {
         use std::sync::{
             Arc,
@@ -2048,6 +2055,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_raw_mode_guard_take_prevents_restore() {
         use std::sync::{
             Arc,
@@ -2114,6 +2122,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl Terminal for MockTerminal {
         fn size(&self) -> io::Result<TerminalSize> {
             Ok(TerminalSize::new(80, 24))
@@ -2201,6 +2210,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl InputSource for MockInputSource {
         fn poll(&mut self, _timeout: Duration) -> io::Result<bool> {
             Ok(!self.events.lock().unwrap().is_empty())
@@ -2218,6 +2228,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_input_source_drain_default_with_events() {
         let mut source = MockInputSource::with_events(vec![
             InputEvent::Key(KeyEvent::new(KeyCode::Char('a'))),
@@ -2245,6 +2256,7 @@ mod tests {
     /// Mock input source that returns an error on poll.
     struct ErrorPollInputSource;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl InputSource for ErrorPollInputSource {
         fn poll(&mut self, _timeout: Duration) -> io::Result<bool> {
             Err(io::Error::new(io::ErrorKind::BrokenPipe, "poll error"))
@@ -2263,7 +2275,7 @@ mod tests {
         assert!(events.is_empty());
     }
 
-    /// Mock input source that returns error on read_event.
+    /// Mock input source that returns error on `read_event`.
     struct ErrorReadInputSource {
         poll_count: std::cell::Cell<u32>,
     }
@@ -2276,6 +2288,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl InputSource for ErrorReadInputSource {
         fn poll(&mut self, _timeout: Duration) -> io::Result<bool> {
             let count = self.poll_count.get();
@@ -2285,7 +2298,7 @@ mod tests {
         }
 
         fn read_event(&mut self) -> io::Result<InputEvent> {
-            Err(io::Error::new(io::ErrorKind::Other, "read error"))
+            Err(io::Error::other("read error"))
         }
     }
 

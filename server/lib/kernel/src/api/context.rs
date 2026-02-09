@@ -400,6 +400,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_kernel_context_debug() {
         let ctx = KernelContext::default();
         let debug_str = format!("{ctx:?}");
@@ -566,6 +567,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_context_debug() {
         let ctx = ModuleContext::default();
         let debug_str = format!("{ctx:?}");

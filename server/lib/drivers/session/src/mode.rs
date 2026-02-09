@@ -155,6 +155,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl SessionMode for TestMode {
         fn id(&self) -> ModeId {
             self.id.clone()
@@ -231,6 +232,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_error_debug() {
         let err = ModeError::new("debug test");
         let debug = format!("{err:?}");
@@ -260,6 +262,7 @@ mod tests {
     fn test_session_mode_default_on_exit() {
         // Default on_exit should not panic
         struct MinimalMode;
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl SessionMode for MinimalMode {
             fn id(&self) -> ModeId {
                 ModeId::new(ModuleId::new("test"), "minimal")

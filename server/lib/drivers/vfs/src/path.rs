@@ -296,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_canonicalize_nonexistent() {
         let normalizer = StandardPathNormalizer;
         let result = normalizer.canonicalize(Path::new("/nonexistent_path_xyz_abc_123"));
@@ -307,6 +308,16 @@ mod tests {
             }
             other => panic!("Expected VfsError::NotFound, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_canonicalize_io_error_non_not_found() {
+        let normalizer = StandardPathNormalizer;
+        // Path with component longer than NAME_MAX (255 on Linux) triggers ENAMETOOLONG
+        let long_name = "a".repeat(300);
+        let result = normalizer.canonicalize(Path::new(&format!("/tmp/{long_name}")));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), VfsError::Io(_)));
     }
 
     #[test]

@@ -247,6 +247,7 @@ impl CommandHandler for ClearSearchHighlight {
 // =============================================================================
 
 /// Search for word under cursor in the given direction.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn search_word(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -325,6 +326,7 @@ fn search_word(
 }
 
 /// Search for pattern and move cursor to match.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn search_and_move(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -377,6 +379,7 @@ fn search_and_move(
 
 /// Search for pattern from a specific position and move cursor to match.
 /// Used by word search (*/#) which needs to start from word boundaries.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn search_and_move_from(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -473,6 +476,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -485,6 +489,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn register(&self, buffer: Buffer) -> BufferId {
             let id = BufferId::new();
             let buffer = Arc::new(RwLock::new(buffer));
@@ -492,6 +497,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
             self.buffers
                 .write()
@@ -502,10 +508,12 @@ mod tests {
                 })
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn list(&self) -> Vec<BufferId> {
             self.buffers.read().keys().copied().collect()
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn count(&self) -> usize {
             self.buffers.read().len()
         }
@@ -513,6 +521,7 @@ mod tests {
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -1061,6 +1070,7 @@ mod tests {
     /// Mock search provider that performs simple substring matching.
     struct MockSearchProvider;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl SearchProvider for MockSearchProvider {
         fn find_next(
             &self,

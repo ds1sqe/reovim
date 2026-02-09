@@ -112,6 +112,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_default_port_allocator() {
         struct DummyAllocator;
         impl PortAllocator for DummyAllocator {
@@ -138,6 +139,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_allocate_success() {
         struct SuccessAllocator;
         impl PortAllocator for SuccessAllocator {
@@ -154,6 +156,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_allocate_exhausted() {
         struct ExhaustedAllocator;
         impl PortAllocator for ExhaustedAllocator {
@@ -172,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_is_port_available() {
         struct SelectiveAllocator;
         impl PortAllocator for SelectiveAllocator {
@@ -190,6 +194,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_custom_port_range() {
         struct CustomAllocator;
         impl PortAllocator for CustomAllocator {
@@ -213,6 +218,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_default_implementations() {
         // Verify default trait methods return the correct constants
         struct MinimalAllocator;
@@ -250,6 +256,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl NetDriver for MockNetDriver {
         fn init(&mut self) -> Result<(), NetError> {
             self.initialized = true;
@@ -329,6 +336,7 @@ mod tests {
 
     struct DummyHandler;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl crate::RpcHandler for DummyHandler {
         fn method(&self) -> &'static str {
             "test"
@@ -367,6 +375,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TransportConnection for MockConnection {
         fn read_line(&mut self) -> Result<Option<String>, NetError> {
             if self.lines.is_empty() {
@@ -414,6 +423,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TransportListener for MockListener {
         fn bind(&mut self, config: TransportConfig) -> Result<(), NetError> {
             if let TransportConfig::Tcp { host, port } = config {
@@ -547,6 +557,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_port_allocator_uses_default_port_in_allocate() {
         struct DefaultPortAllocator;
         impl PortAllocator for DefaultPortAllocator {

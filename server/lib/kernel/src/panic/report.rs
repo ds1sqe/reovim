@@ -47,6 +47,7 @@ fn format_timestamp(timestamp: SystemTime) -> (String, String) {
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss
 )]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn days_to_ymd(days: u64) -> (u64, u64, u64) {
     // Shift to March 1, 2000 as epoch (simplifies leap year calc)
     let days = days as i64 + 719_468; // days from year 0 to 1970-01-01
@@ -239,6 +240,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_crash_report_write_to_file() {
         let report = CrashReport {
             timestamp: std::time::SystemTime::now(),
@@ -275,6 +277,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_crash_report_with_server_logs() {
         let report = CrashReport {
             timestamp: std::time::SystemTime::now(),
@@ -311,6 +314,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_crash_report_thread_info() {
         let report = CrashReport {
             timestamp: std::time::SystemTime::now(),

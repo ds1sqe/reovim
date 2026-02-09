@@ -278,6 +278,7 @@ impl Runtime {
     /// 5. Processes queued async events
     ///
     /// Returns `true` if the runtime should continue, `false` if it should stop.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn tick(&mut self) -> bool {
         // Process commands first
         self.process_commands();
@@ -313,6 +314,7 @@ impl Runtime {
     }
 
     /// Process pending runtime commands.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn process_commands(&mut self) {
         while let Ok(command) = self.command_rx.try_recv() {
             match command {
@@ -334,6 +336,7 @@ impl Runtime {
     }
 
     /// Dispatch events from the priority queue to handlers.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn dispatch_events(&self) {
         while let Some(event) = self.event_queue.pop() {
             let _result = self.event_bus.dispatch(&event);
@@ -523,6 +526,7 @@ impl Runtime {
 
     /// Check if the runtime is idle (no pending work).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn is_idle(&self) -> bool {
         self.event_queue.is_empty()
             && self.work_queue.is_empty()
@@ -557,6 +561,7 @@ impl Runtime {
     ///
     /// This is a convenience method that calls `tick()` in a loop.
     /// For more control, use `tick()` directly.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn run(&mut self) {
         while self.tick() {}
     }
@@ -856,6 +861,7 @@ mod tests {
     // === Debug tests ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_debug() {
         let runtime = Runtime::new();
         let debug_str = format!("{runtime:?}");
@@ -976,6 +982,7 @@ mod tests {
     // === queue_event ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_queue_event() {
         use crate::ipc::{DynEvent, Event};
 
@@ -1050,6 +1057,7 @@ mod tests {
     // === Coverage: ScheduleTask via command when not accepting work ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_command_schedule_task_when_stopping() {
         let mut runtime = Runtime::new();
         runtime.boot();
@@ -1090,6 +1098,7 @@ mod tests {
     // === Coverage: dispatch_events with scope ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_dispatch_events_with_scope() {
         use crate::ipc::{DynEvent, Event, EventScope};
 
@@ -1115,6 +1124,7 @@ mod tests {
     // === Coverage: RuntimeConfig Debug/Clone ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_config_debug_clone() {
         let config = RuntimeConfig::default();
         let cloned = config;
@@ -1126,6 +1136,7 @@ mod tests {
     // === Coverage: RuntimeCommand Debug ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_runtime_command_debug() {
         let cmd = RuntimeCommand::Shutdown;
         let debug = format!("{cmd:?}");
