@@ -1,8 +1,9 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Syntax highlighting driver for reovim.
 //!
 //! **IMPORTANT:** This crate defines ONLY the trait interface for syntax
 //! highlighting. It does NOT depend on tree-sitter or any parsing library.
-//! Those are implementation details of language modules (`plugins/languages/*`).
+//! Those are implementation details of language modules (`server/modules/treesitter-*/`).
 //!
 //! # Design Philosophy
 //!
@@ -16,11 +17,11 @@
 //! # Architecture
 //!
 //! ```text
-//! lib/drivers/syntax/           <-- SyntaxHighlight trait, HighlightGroup, SyntaxDriver
+//! server/lib/drivers/syntax/             <-- SyntaxHighlight trait, HighlightGroup, SyntaxDriver
 //!        ^
 //!        |  implements
 //!        |
-//! plugins/features/treesitter/  <-- Tree-sitter based implementations
+//! server/lib/drivers/syntax-treesitter/  <-- Tree-sitter based implementations
 //! ```
 //!
 //! # Components

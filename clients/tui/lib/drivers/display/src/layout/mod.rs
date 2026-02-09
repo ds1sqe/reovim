@@ -23,7 +23,7 @@
 //! # Mechanism vs Policy
 //!
 //! - **This module (Mechanism)**: Defines WHAT can be done via traits
-//! - **modules/layout/ (Policy)**: Implements HOW things behave
+//! - **server/modules/layout/ (Policy)**: Implements HOW things behave
 //!
 //! # Modules
 //!

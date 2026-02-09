@@ -101,7 +101,14 @@ impl ExCommandHandler for WriteQuitCommand {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        reovim_kernel::api::v1::{BufferId, KernelContext},
+    };
+
+    // ========================================================================
+    // WriteCommand tests
+    // ========================================================================
 
     #[test]
     fn test_write_command_id() {
@@ -113,9 +120,96 @@ mod tests {
     fn test_write_command_names() {
         let cmd = WriteCommand;
         let names = cmd.names();
+        assert_eq!(names.len(), 2);
         assert!(names.contains(&"w"));
         assert!(names.contains(&"write"));
     }
+
+    #[test]
+    fn test_write_command_help() {
+        let cmd = WriteCommand;
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("Write"));
+    }
+
+    #[test]
+    fn test_write_command_complete_returns_empty() {
+        let cmd = WriteCommand;
+        let completions = cmd.complete("some_partial");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_write_command_complete_empty_input() {
+        let cmd = WriteCommand;
+        let completions = cmd.complete("");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_write_command_execute_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+        // buffer_id is None by default
+
+        let cmd = WriteCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), "no buffer");
+    }
+
+    #[test]
+    fn test_write_command_execute_with_buffer_no_args() {
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+
+        let cmd = WriteCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_command_execute_with_buffer_and_filename() {
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+
+        let cmd = WriteCommand;
+        let result = cmd.execute(&mut ctx, &["output.txt"]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_command_execute_with_multiple_args() {
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+
+        let cmd = WriteCommand;
+        // Only the first arg is used as filename
+        let result = cmd.execute(&mut ctx, &["file.txt", "extra"]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_command_debug() {
+        let cmd = WriteCommand;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("WriteCommand"));
+    }
+
+    #[test]
+    fn test_write_command_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<WriteCommand>();
+    }
+
+    // ========================================================================
+    // WriteQuitCommand tests
+    // ========================================================================
 
     #[test]
     fn test_write_quit_command_id() {
@@ -127,6 +221,71 @@ mod tests {
     fn test_write_quit_command_names() {
         let cmd = WriteQuitCommand;
         let names = cmd.names();
+        assert_eq!(names.len(), 1);
         assert!(names.contains(&"wq"));
+    }
+
+    #[test]
+    fn test_write_quit_command_help() {
+        let cmd = WriteQuitCommand;
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("Write"));
+        assert!(help.contains("quit"));
+    }
+
+    #[test]
+    fn test_write_quit_command_complete_returns_empty() {
+        let cmd = WriteQuitCommand;
+        let completions = cmd.complete("anything");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_write_quit_command_execute_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = WriteQuitCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_err());
+        // WriteQuitCommand delegates to WriteCommand first, which fails on NoBuffer
+        let err = result.unwrap_err();
+        assert_eq!(err.to_string(), "no buffer");
+    }
+
+    #[test]
+    fn test_write_quit_command_execute_with_buffer() {
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+
+        let cmd = WriteQuitCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_quit_command_execute_with_filename() {
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+
+        let cmd = WriteQuitCommand;
+        let result = cmd.execute(&mut ctx, &["output.txt"]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_write_quit_command_debug() {
+        let cmd = WriteQuitCommand;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("WriteQuitCommand"));
+    }
+
+    #[test]
+    fn test_write_quit_command_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<WriteQuitCommand>();
     }
 }

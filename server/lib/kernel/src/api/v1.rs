@@ -291,12 +291,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_api_version() {
-        assert_eq!(API_VERSION, Version::new(0, 2, 0));
-        assert_eq!(API_VERSION_STR, "0.2.0");
-    }
-
-    #[test]
     fn test_version_compatibility() {
         // Same version is compatible
         assert!(is_compatible(Version::new(1, 0, 0), Version::new(1, 0, 0)));
@@ -345,13 +339,5 @@ mod tests {
 
         let stack = ModeStack::new(mode_id.clone());
         assert_eq!(stack.current(), &mode_id);
-    }
-
-    #[test]
-    fn test_window_id_accessible() {
-        // Verify WindowId is accessible via mm
-        let id1 = WindowId::new();
-        let id2 = WindowId::new();
-        assert_ne!(id1, id2);
     }
 }

@@ -5,19 +5,19 @@
 //! # Architecture
 //!
 //! This crate defines traits for RPC server infrastructure and re-exports
-//! shared RPC types from `lib/protocol/`. The runner uses this driver for
+//! shared RPC types from `shared/protocol/`. The server uses this driver for
 //! server mode.
 //!
 //! ```text
-//! lib/protocol/             <-- Shared RPC types (messages, params, results)
+//! shared/protocol/       <-- Shared RPC types (messages, params, results)
 //!        ^
 //!        |  re-exports from
 //!        |
-//! lib/drivers/net/          <-- Traits + re-exports (this crate)
+//! shared/net/            <-- Traits + re-exports (this crate)
 //!        ^
 //!        |  imports from
 //!        |
-//! runner/                   <-- Server implementation
+//! server/lib/server/     <-- Server implementation
 //! ```
 //!
 //! # Components
@@ -59,6 +59,8 @@
 //! // Create error response
 //! let error = RpcError::method_not_found("unknown");
 //! ```
+
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 // ============================================================================
 // Modules

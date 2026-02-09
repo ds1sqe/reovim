@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim text objects module - POLICY.
 //!
 //! This module implements text object commands for operator-pending mode:
@@ -103,6 +104,47 @@ mod tests {
     }
 
     #[test]
+    fn test_module_version() {
+        let module = TextObjectsModule;
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 9);
+        assert_eq!(version.patch, 0);
+    }
+
+    #[test]
+    fn test_module_init() {
+        use reovim_kernel::api::v1::ModuleContext;
+        let mut module = TextObjectsModule::new();
+        let ctx = ModuleContext::default();
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+    }
+
+    #[test]
+    fn test_module_exit() {
+        let mut module = TextObjectsModule::new();
+        let result = module.exit();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_module_default() {
+        let module = TextObjectsModule;
+        assert_eq!(module.name(), "Vim Text Objects");
+    }
+
+    #[test]
+    fn test_module_new() {
+        let _module = TextObjectsModule::new();
+    }
+
+    #[test]
+    fn test_textobjects_module_id_constant() {
+        assert_eq!(TEXTOBJECTS_MODULE.as_str(), "textobjects");
+    }
+
+    #[test]
     fn test_word_commands_count() {
         let cmds = word::all_commands();
         assert_eq!(cmds.len(), 4); // iw, aw, iW, aW
@@ -130,5 +172,40 @@ mod tests {
     fn test_all_commands_count() {
         let cmds = all_commands();
         assert_eq!(cmds.len(), 20); // 4 + 6 + 8 + 2
+    }
+
+    #[test]
+    fn test_module_default_impl() {
+        fn make_default<T: Default>() -> T {
+            T::default()
+        }
+        let module: TextObjectsModule = make_default();
+        assert_eq!(module.id().as_str(), "textobjects");
+    }
+
+    #[test]
+    fn test_all_commands_have_valid_ids() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            assert_eq!(cmd.id().module().as_str(), "textobjects");
+            assert!(!cmd.id().name().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_all_commands_have_descriptions() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            assert!(!cmd.description().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_all_commands_have_args() {
+        let cmds = all_commands();
+        for cmd in &cmds {
+            let args = cmd.args();
+            assert!(!args.is_empty(), "Command {} should have args", cmd.id());
+        }
     }
 }

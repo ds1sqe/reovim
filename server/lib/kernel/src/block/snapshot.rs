@@ -14,7 +14,7 @@
 //!
 //! Following the kernel purity principle, this module provides pure Rust
 //! data structures and accessors. File serialization (JSON, etc.) is
-//! handled by the driver layer (`lib/drivers/vfs/`).
+//! handled by the driver layer (`server/lib/drivers/vfs/`).
 
 use {
     crate::mm::{Buffer, BufferId, Position},

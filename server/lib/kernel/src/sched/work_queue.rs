@@ -362,6 +362,7 @@ mod tests {
     // === Debug tests ===
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_debug() {
         let queue = WorkQueue::with_capacity(100);
         queue.push(Task::new(|| {}));
@@ -403,5 +404,96 @@ mod tests {
     fn test_work_queue_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<WorkQueue>();
+    }
+
+    // === Default impl ===
+
+    #[test]
+    fn test_work_queue_default() {
+        let queue = WorkQueue::default();
+        assert_eq!(queue.capacity(), DEFAULT_CAPACITY);
+        assert!(queue.is_empty());
+    }
+
+    // === Clear returns count ===
+
+    #[test]
+    fn test_clear_returns_count() {
+        let queue = WorkQueue::new();
+        queue.push(Task::new(|| {}));
+        queue.push(Task::new(|| {}));
+        queue.push(Task::new(|| {}));
+
+        let cleared = queue.clear();
+        assert_eq!(cleared, 3);
+        assert!(queue.is_empty());
+
+        // Clear empty queue
+        let cleared_empty = queue.clear();
+        assert_eq!(cleared_empty, 0);
+    }
+
+    // === process_pending with limit larger than queue ===
+
+    #[test]
+    fn test_process_pending_limit_exceeds_queue() {
+        let queue = WorkQueue::new();
+        let counter = Arc::new(AtomicUsize::new(0));
+
+        for _ in 0..3 {
+            let counter_clone = Arc::clone(&counter);
+            queue.push(Task::new(move || {
+                counter_clone.fetch_add(1, Ordering::SeqCst);
+            }));
+        }
+
+        // Limit is 100 but only 3 tasks
+        let processed = queue.process_pending(100);
+        assert_eq!(processed, 3);
+        assert_eq!(counter.load(Ordering::SeqCst), 3);
+        assert!(queue.is_empty());
+    }
+
+    // === Coverage: Debug impl shows dropped count ===
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_debug_with_dropped() {
+        let queue = WorkQueue::with_capacity(1);
+        queue.push(Task::new(|| {}));
+        queue.push(Task::new(|| {})); // Dropped
+        let debug_str = format!("{queue:?}");
+        assert!(debug_str.contains("dropped"));
+        assert!(debug_str.contains("1")); // dropped count
+    }
+
+    // === Coverage: try_pop on empty returns None ===
+
+    #[test]
+    fn test_try_pop_empty_returns_none() {
+        let queue = WorkQueue::new();
+        assert!(queue.try_pop().is_none());
+    }
+
+    // === Coverage: process_pending with limit zero ===
+
+    #[test]
+    fn test_process_pending_zero_limit() {
+        let queue = WorkQueue::new();
+        queue.push(Task::new(|| {}));
+        let processed = queue.process_pending(0);
+        assert_eq!(processed, 0);
+        assert_eq!(queue.len(), 1);
+    }
+
+    // === Coverage: with_capacity zero ===
+
+    #[test]
+    fn test_with_capacity_zero() {
+        let queue = WorkQueue::with_capacity(0);
+        assert_eq!(queue.capacity(), 0);
+        // Cannot push anything
+        assert!(!queue.push(Task::new(|| {})));
+        assert_eq!(queue.dropped_count(), 1);
     }
 }

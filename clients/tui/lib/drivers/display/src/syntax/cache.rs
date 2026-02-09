@@ -579,4 +579,237 @@ mod tests {
         assert_eq!(line_tokens[1].start_col, 3);
         assert_eq!(line_tokens[1].end_col, 7);
     }
+
+    // =========================================================================
+    // TokenCache extended tests
+    // =========================================================================
+
+    #[test]
+    fn test_token_cache_clear() {
+        let mut cache = TokenCache::new();
+        let content = "fn main() {}";
+        let tokens = vec![TokenSpan {
+            start_byte: 0,
+            end_byte: 2,
+            category: "keyword".to_string(),
+        }];
+        cache.apply_update(&tokens, 0, 0, true, content);
+        assert_eq!(cache.len(), 1);
+
+        cache.clear();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+    }
+
+    #[test]
+    fn test_token_cache_tokens_accessor() {
+        let mut cache = TokenCache::new();
+        let content = "fn main() {}";
+        let tokens = vec![
+            TokenSpan {
+                start_byte: 0,
+                end_byte: 2,
+                category: "keyword".to_string(),
+            },
+            TokenSpan {
+                start_byte: 3,
+                end_byte: 7,
+                category: "function".to_string(),
+            },
+        ];
+        cache.apply_update(&tokens, 0, 0, true, content);
+
+        let all = cache.tokens();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].category, "keyword");
+        assert_eq!(all[1].category, "function");
+    }
+
+    #[test]
+    fn test_byte_to_position_past_end() {
+        let mut cache = TokenCache::new();
+        let content = "hello";
+        cache.rebuild_line_offsets(content);
+
+        // Past end of content
+        assert!(cache.byte_to_position(100, content).is_none());
+    }
+
+    #[test]
+    fn test_byte_to_position_at_boundary() {
+        let mut cache = TokenCache::new();
+        let content = "hello";
+        cache.rebuild_line_offsets(content);
+
+        // Exactly at end
+        let pos = cache.byte_to_position(5, content);
+        assert!(pos.is_some());
+        let (line, col) = pos.unwrap();
+        assert_eq!(line, 0);
+        assert_eq!(col, 5);
+    }
+
+    #[test]
+    fn test_multi_line_token_span() {
+        let mut cache = TokenCache::new();
+        let content = "let x =\n    42;";
+
+        // Token spanning lines 0-1
+        let tokens = vec![TokenSpan {
+            start_byte: 0,
+            end_byte: 14,
+            category: "expression".to_string(),
+        }];
+
+        cache.apply_update(&tokens, 0, 1, true, content);
+
+        // Multi-line tokens get truncated to first line
+        let line0: Vec<_> = cache.tokens_for_line(0).collect();
+        assert_eq!(line0.len(), 1);
+        assert_eq!(line0[0].line, 0);
+    }
+
+    #[test]
+    fn test_apply_update_incremental_replaces_range() {
+        let mut cache = TokenCache::new();
+        let content = "line0\nline1\nline2";
+
+        // Full refresh with tokens on all lines
+        let tokens = vec![
+            TokenSpan {
+                start_byte: 0,
+                end_byte: 5,
+                category: "a".to_string(),
+            },
+            TokenSpan {
+                start_byte: 6,
+                end_byte: 11,
+                category: "b".to_string(),
+            },
+            TokenSpan {
+                start_byte: 12,
+                end_byte: 17,
+                category: "c".to_string(),
+            },
+        ];
+        cache.apply_update(&tokens, 0, 2, true, content);
+        assert_eq!(cache.len(), 3);
+
+        // Incremental update: replace tokens on line 1 only
+        let new_tokens = vec![TokenSpan {
+            start_byte: 6,
+            end_byte: 11,
+            category: "replaced".to_string(),
+        }];
+        cache.apply_update(&new_tokens, 1, 1, false, content);
+
+        // Line 0 should still have original
+        let line0: Vec<_> = cache.tokens_for_line(0).collect();
+        assert_eq!(line0.len(), 1);
+        assert_eq!(line0[0].category, "a");
+
+        // Line 1 should have replaced token
+        let line1: Vec<_> = cache.tokens_for_line(1).collect();
+        assert_eq!(line1.len(), 1);
+        assert_eq!(line1[0].category, "replaced");
+
+        // Line 2 should still have original
+        let line2: Vec<_> = cache.tokens_for_line(2).collect();
+        assert_eq!(line2.len(), 1);
+        assert_eq!(line2[0].category, "c");
+    }
+
+    #[test]
+    fn test_rebuild_line_offsets_empty() {
+        let mut cache = TokenCache::new();
+        cache.rebuild_line_offsets("");
+        assert_eq!(cache.line_offsets, vec![0]);
+    }
+
+    #[test]
+    fn test_rebuild_line_offsets_single_line() {
+        let mut cache = TokenCache::new();
+        cache.rebuild_line_offsets("hello world");
+        assert_eq!(cache.line_offsets, vec![0]);
+    }
+
+    #[test]
+    fn test_line_end_col() {
+        let mut cache = TokenCache::new();
+        let content = "hello\nworld\n";
+        cache.rebuild_line_offsets(content);
+
+        // Line 0: "hello\n" -> end col should be 5 (excluding newline)
+        assert_eq!(cache.line_end_col(0, content), 5);
+
+        // Line 1: "world\n" -> end col should be 5
+        assert_eq!(cache.line_end_col(1, content), 5);
+    }
+
+    #[test]
+    fn test_line_end_col_no_trailing_newline() {
+        let mut cache = TokenCache::new();
+        let content = "hello\nworld";
+        cache.rebuild_line_offsets(content);
+
+        // Line 1: "world" (no newline) -> end col should be 5
+        assert_eq!(cache.line_end_col(1, content), 5);
+    }
+
+    // =========================================================================
+    // TokenCacheManager extended tests
+    // =========================================================================
+
+    #[test]
+    fn test_cache_manager_remove() {
+        let mut manager = TokenCacheManager::new();
+        manager.get_or_create(1);
+        assert!(manager.get(1).is_some());
+
+        manager.remove(1);
+        assert!(manager.get(1).is_none());
+    }
+
+    #[test]
+    fn test_cache_manager_clear() {
+        let mut manager = TokenCacheManager::new();
+        manager.get_or_create(1);
+        manager.get_or_create(2);
+        manager.get_or_create(3);
+
+        manager.clear();
+        assert!(manager.get(1).is_none());
+        assert!(manager.get(2).is_none());
+        assert!(manager.get(3).is_none());
+    }
+
+    #[test]
+    fn test_cache_manager_apply_token_update() {
+        let mut manager = TokenCacheManager::new();
+        let content = "fn main() {}";
+        let tokens = vec![TokenSpan {
+            start_byte: 0,
+            end_byte: 2,
+            category: "keyword".to_string(),
+        }];
+
+        manager.apply_token_update(1, &tokens, 0, 0, true, content);
+
+        let line_tokens: Vec<_> = manager.tokens_for_line(1, 0).collect();
+        assert_eq!(line_tokens.len(), 1);
+        assert_eq!(line_tokens[0].category, "keyword");
+    }
+
+    #[test]
+    fn test_cache_manager_default() {
+        let manager = TokenCacheManager::default();
+        // Default should have max 10 buffers
+        assert!(manager.get(999).is_none());
+    }
+
+    #[test]
+    fn test_cache_manager_with_max_buffers() {
+        let manager = TokenCacheManager::with_max_buffers(5);
+        assert!(manager.get(0).is_none());
+    }
 }

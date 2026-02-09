@@ -6,7 +6,7 @@ use {super::RegistrationFlags, crate::core::CommandId};
 ///
 /// Linux equivalent: Like `struct file_operations` - declares command capabilities.
 ///
-/// Fields align with `CommandTrait` in lib/core/src/command/traits.rs.
+/// Fields align with `CommandTrait` from the original design (see `archive/pre_kernel/lib/core/src/command/traits.rs`).
 #[derive(Debug, Clone)]
 #[allow(clippy::struct_excessive_bools)] // Command capabilities use multiple bool flags
 pub struct CommandRegistration {

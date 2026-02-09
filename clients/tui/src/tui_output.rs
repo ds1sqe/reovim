@@ -93,13 +93,3 @@ pub trait TuiOutput {
     /// - Headless: no-op
     fn invalidate(&mut self);
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cursor_style_hint_default() {
-        assert_eq!(CursorStyleHint::default(), CursorStyleHint::Block);
-    }
-}

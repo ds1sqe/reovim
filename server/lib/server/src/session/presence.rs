@@ -314,6 +314,7 @@ mod tests {
         assert_eq!(stored.cursor, (10, 5));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_update_returns_none_for_unknown() {
         let map = PresenceMap::new();
@@ -480,5 +481,26 @@ mod tests {
 
         // All clients should have left
         assert!(map.is_empty());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_sync_mode_follow() {
+        let presenter_id = ClientId::new(1);
+        let mode = SyncMode::Follow {
+            target: presenter_id,
+        };
+
+        if let SyncMode::Follow { target } = mode {
+            assert_eq!(target, presenter_id);
+        } else {
+            panic!("Expected Follow mode");
+        }
+    }
+
+    #[test]
+    fn test_sync_mode_present() {
+        let mode = SyncMode::Present;
+        assert_eq!(mode, SyncMode::Present);
     }
 }

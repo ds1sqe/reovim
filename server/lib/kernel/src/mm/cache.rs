@@ -432,4 +432,11 @@ mod tests {
         lines.sort_unstable();
         assert_eq!(lines, vec![1, 5, 10]);
     }
+
+    #[test]
+    fn test_line_cache_default() {
+        let cache: LineCache<i32> = LineCache::default();
+        assert!(cache.is_empty());
+        assert_eq!(cache.len(), 0);
+    }
 }

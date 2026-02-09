@@ -33,6 +33,7 @@ impl Command for EnterDeleteOperator {
 }
 
 impl CommandHandler for EnterDeleteOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "delete" and enter operator-pending mode
@@ -59,6 +60,7 @@ impl Command for EnterYankOperator {
 }
 
 impl CommandHandler for EnterYankOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "yank" and enter operator-pending mode
@@ -86,6 +88,7 @@ impl Command for EnterChangeOperator {
 }
 
 impl CommandHandler for EnterChangeOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "change" and enter operator-pending mode
@@ -112,6 +115,7 @@ impl Command for EnterIndentOperator {
 }
 
 impl CommandHandler for EnterIndentOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "indent" and enter operator-pending mode
@@ -137,6 +141,7 @@ impl Command for EnterDedentOperator {
 }
 
 impl CommandHandler for EnterDedentOperator {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will set pending operator to "dedent" and enter operator-pending mode
@@ -157,12 +162,14 @@ mod tests {
         },
     };
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -175,33 +182,38 @@ mod tests {
     }
 
     #[test]
-    fn test_enter_delete_operator_id() {
+    fn test_enter_delete_operator_id_and_desc() {
         let cmd = EnterDeleteOperator;
         assert_eq!(cmd.id().name(), "enter-delete-operator");
+        assert_eq!(cmd.description(), "Enter delete operator-pending mode");
     }
 
     #[test]
-    fn test_enter_yank_operator_id() {
+    fn test_enter_yank_operator_id_and_desc() {
         let cmd = EnterYankOperator;
         assert_eq!(cmd.id().name(), "enter-yank-operator");
+        assert_eq!(cmd.description(), "Enter yank operator-pending mode");
     }
 
     #[test]
-    fn test_enter_change_operator_id() {
+    fn test_enter_change_operator_id_and_desc() {
         let cmd = EnterChangeOperator;
         assert_eq!(cmd.id().name(), "enter-change-operator");
+        assert_eq!(cmd.description(), "Enter change operator-pending mode");
     }
 
     #[test]
-    fn test_enter_indent_operator_id() {
+    fn test_enter_indent_operator_id_and_desc() {
         let cmd = EnterIndentOperator;
         assert_eq!(cmd.id().name(), "enter-indent-operator");
+        assert_eq!(cmd.description(), "Enter indent operator-pending mode");
     }
 
     #[test]
-    fn test_enter_dedent_operator_id() {
+    fn test_enter_dedent_operator_id_and_desc() {
         let cmd = EnterDedentOperator;
         assert_eq!(cmd.id().name(), "enter-dedent-operator");
+        assert_eq!(cmd.description(), "Enter dedent operator-pending mode");
     }
 
     #[test]

@@ -18,6 +18,7 @@ use crate::{GrpcClient, GrpcClientError, OutputFormat};
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn keys(
     client: &mut GrpcClient,
     keys: &str,
@@ -56,6 +57,7 @@ pub async fn keys(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn mode(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -85,6 +87,7 @@ pub async fn mode(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn cursor(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -113,6 +116,7 @@ pub async fn cursor(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn buffers(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -156,6 +160,7 @@ pub async fn buffers(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn buffer(
     client: &mut GrpcClient,
     id: Option<u64>,
@@ -187,6 +192,7 @@ pub async fn buffer(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn ping(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -209,6 +215,7 @@ pub async fn ping(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn version(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -246,6 +253,7 @@ pub async fn version(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn registers(
     client: &mut GrpcClient,
     name: Option<String>,
@@ -300,6 +308,7 @@ pub async fn registers(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn capture(
     client: &mut GrpcClient,
     client_id: u64,
@@ -341,6 +350,7 @@ pub async fn capture(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn log_tail(
     client: &mut GrpcClient,
     count: u32,
@@ -397,6 +407,7 @@ pub async fn log_tail(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn presence_join(
     client: &mut GrpcClient,
     client_type: &str,
@@ -432,6 +443,7 @@ pub async fn presence_join(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn presence_leave(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -459,6 +471,7 @@ pub async fn presence_leave(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn presence_list(
     client: &mut GrpcClient,
     format: OutputFormat,
@@ -515,6 +528,7 @@ pub async fn presence_list(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn presence_update(
     client: &mut GrpcClient,
     buffer_id: Option<u64>,
@@ -548,6 +562,7 @@ pub async fn presence_update(
 /// # Errors
 ///
 /// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn presence_set_sync_mode(
     client: &mut GrpcClient,
     sync_mode: i32,

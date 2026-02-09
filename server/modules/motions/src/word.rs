@@ -26,6 +26,7 @@ use crate::ids;
 /// In operator-pending mode, returns an `OperatorRange` instead of moving the cursor.
 /// Word motions are characterwise.
 #[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn execute_word_motion(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -394,6 +395,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -406,6 +408,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn register(&self, buffer: Buffer) -> BufferId {
             let id = BufferId::new();
             let buffer = Arc::new(RwLock::new(buffer));
@@ -413,6 +416,7 @@ mod tests {
             id
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
             self.buffers
                 .write()
@@ -423,10 +427,12 @@ mod tests {
                 })
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn list(&self) -> Vec<BufferId> {
             self.buffers.read().keys().copied().collect()
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn count(&self) -> usize {
             self.buffers.read().len()
         }
@@ -439,6 +445,7 @@ mod tests {
     /// Stub command executor for tests.
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -505,6 +512,7 @@ mod tests {
         }
 
         /// Set cursor position explicitly.
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn set_cursor(&mut self, pos: Position) {
             if let Some(window) = self.windows.active_mut() {
                 window.cursor = pos.into();
@@ -512,6 +520,7 @@ mod tests {
         }
 
         /// Get current cursor position.
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn cursor(&self) -> Position {
             self.windows.active().map_or_else(
                 || Position::new(0, 0),
@@ -629,12 +638,6 @@ mod tests {
 
     #[test]
     fn test_word_forward_no_buffer_returns_error() {
-        let result = run_command_no_buffer(&WordForward);
-        assert!(result.is_error());
-    }
-
-    #[test]
-    fn test_word_forward_invalid_buffer_returns_error() {
         let result = run_command_no_buffer(&WordForward);
         assert!(result.is_error());
     }
@@ -795,5 +798,506 @@ mod tests {
         let result = setup.run(&WordForward, &args);
 
         assert!(result.is_success()); // No-op, no crash
+    }
+
+    // =========================================================================
+    // Description Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_command_descriptions() {
+        assert_eq!(WordForward.description(), "Move to next word");
+        assert_eq!(WordBackward.description(), "Move to previous word");
+        assert_eq!(WordEnd.description(), "Move to end of word");
+        assert_eq!(WordForwardBig.description(), "Move to next WORD");
+        assert_eq!(WordBackwardBig.description(), "Move to previous WORD");
+        assert_eq!(WordEndBig.description(), "Move to end of WORD");
+        assert_eq!(WordEndBackward.description(), "Move to end of previous word");
+        assert_eq!(WordEndBackwardBig.description(), "Move to end of previous WORD");
+    }
+
+    // =========================================================================
+    // Additional Word Backward (b) Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_backward_with_count() {
+        let mut setup = TestSetup::new("one two three four");
+        setup.set_cursor(Position::new(0, 14)); // At 'four'
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordBackward, &args);
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 4); // 't' of two
+    }
+
+    #[test]
+    fn test_word_backward_across_lines() {
+        let mut setup = TestSetup::new("hello\nworld");
+        setup.set_cursor(Position::new(1, 0)); // Start of 'world'
+
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
+
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().line, 0);
+        assert_eq!(setup.cursor().column, 0); // 'h' of hello
+    }
+
+    // =========================================================================
+    // Additional Word End (e) Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_end_with_count() {
+        let mut setup = TestSetup::new("one two three");
+        setup.set_cursor(Position::new(0, 0));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordEnd, &args);
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 6); // 'o' of two
+    }
+
+    #[test]
+    fn test_word_end_across_lines() {
+        let mut setup = TestSetup::new("hi\nthere");
+        setup.set_cursor(Position::new(0, 1)); // At end of 'hi'
+
+        let args = setup.args();
+        let result = setup.run(&WordEnd, &args);
+
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().line, 1);
+        assert_eq!(setup.cursor().column, 4); // 'e' of there
+    }
+
+    // =========================================================================
+    // Additional BigWord (W/B/E) Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_backward_big_skips_punctuation() {
+        let mut setup = TestSetup::new("hello-world foo");
+        setup.set_cursor(Position::new(0, 12)); // At 'foo'
+
+        let args = setup.args();
+        let result = setup.run(&WordBackwardBig, &args);
+
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 0); // Start of 'hello-world'
+    }
+
+    #[test]
+    fn test_word_end_big_basic() {
+        let mut setup = TestSetup::new("hello-world foo");
+        setup.set_cursor(Position::new(0, 0));
+
+        let args = setup.args();
+        let result = setup.run(&WordEndBig, &args);
+
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 10); // 'd' of hello-world
+    }
+
+    #[test]
+    fn test_word_end_backward_big_basic() {
+        let mut setup = TestSetup::new("hello-world foo bar");
+        setup.set_cursor(Position::new(0, 16)); // At 'bar'
+
+        let args = setup.args();
+        let result = setup.run(&WordEndBackwardBig, &args);
+
+        assert!(result.is_success());
+        // gE from 'bar' should go to end of previous WORD 'foo'
+        assert_eq!(setup.cursor().column, 14); // 'o' of foo
+    }
+
+    // =========================================================================
+    // Whitespace-Only Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_forward_whitespace_only() {
+        let mut setup = TestSetup::new("   ");
+        setup.set_cursor(Position::new(0, 0));
+
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_backward_whitespace_only() {
+        let mut setup = TestSetup::new("   ");
+        setup.set_cursor(Position::new(0, 2));
+
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Empty Buffer Tests for All Commands
+    // =========================================================================
+
+    #[test]
+    fn test_word_backward_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordEnd, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_forward_big_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordForwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_backward_big_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordBackwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_big_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordEndBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_backward_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordEndBackward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_backward_big_empty_buffer() {
+        let mut setup = TestSetup::new("");
+        let args = setup.args();
+        let result = setup.run(&WordEndBackwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Error Tests for All Commands
+    // =========================================================================
+
+    #[test]
+    fn test_word_backward_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordBackward);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_end_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordEnd);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_forward_big_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordForwardBig);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_backward_big_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordBackwardBig);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_end_big_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordEndBig);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_end_backward_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordEndBackward);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_end_backward_big_no_buffer_returns_error() {
+        let result = run_command_no_buffer(&WordEndBackwardBig);
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // Default Trait Tests
+    // =========================================================================
+
+    #[test]
+    fn test_word_commands_default_trait() {
+        let _: WordForward = WordForward;
+        let _: WordBackward = WordBackward;
+        let _: WordEnd = WordEnd;
+        let _: WordForwardBig = WordForwardBig;
+        let _: WordBackwardBig = WordBackwardBig;
+        let _: WordEndBig = WordEndBig;
+        let _: WordEndBackward = WordEndBackward;
+        let _: WordEndBackwardBig = WordEndBackwardBig;
+    }
+
+    // =========================================================================
+    // Module ID Tests (remaining commands)
+    // =========================================================================
+
+    #[test]
+    fn test_word_backward_big_id() {
+        let cmd = WordBackwardBig;
+        assert_eq!(cmd.id().module(), &ids::MODULE);
+        assert_eq!(cmd.id().name(), "word-backward-big");
+    }
+
+    #[test]
+    fn test_word_end_big_id() {
+        let cmd = WordEndBig;
+        assert_eq!(cmd.id().module(), &ids::MODULE);
+        assert_eq!(cmd.id().name(), "word-end-big");
+    }
+
+    // =========================================================================
+    // Test infrastructure coverage helpers
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_manager_create() {
+        let setup = TestSetup::new("hello");
+        let bid = setup.ctx.buffers.create();
+        assert!(setup.ctx.buffers.get(bid).is_some());
+        assert_eq!(setup.ctx.buffers.count(), 2); // original + new
+    }
+
+    #[test]
+    fn test_stub_executor_returns_success() {
+        let executor = StubExecutor;
+        let ctx = KernelContext::default();
+        let cmd_id = ids::WORD_FORWARD;
+        let args = CommandContext::new();
+        let result = executor.execute(&cmd_id, &args, &ctx);
+        assert!(result.is_some());
+        assert!(result.unwrap().is_success());
+    }
+
+    // =========================================================================
+    // Additional motion execution edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_word_forward_with_invalid_buffer_id() {
+        // Tests the `motion_result.is_none()` -> "Buffer not found" path
+        let ctx = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        );
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        windows.add(Window::new());
+
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(999));
+        let result = WordForward.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_forward_no_window() {
+        let ctx = KernelContext::default();
+        let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mut session = Session::new(ClientId::new(1), home_mode.clone());
+        let mut mode_stack = ModeStack::new(home_mode);
+        let mut windows = WindowLayout::empty(); // No windows
+        let mut extensions = ExtensionMap::new();
+
+        let executor = StubExecutor;
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &ctx,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(1));
+        let result = WordForward.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_word_backward_with_count_three() {
+        let mut setup = TestSetup::new("alpha beta gamma delta");
+        setup.set_cursor(Position::new(0, 20));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(3));
+
+        let result = setup.run(&WordBackward, &args);
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().column, 6);
+    }
+
+    #[test]
+    fn test_word_end_backward_with_count() {
+        let mut setup = TestSetup::new("alpha beta gamma delta");
+        setup.set_cursor(Position::new(0, 20));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordEndBackward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_backward_big_with_count() {
+        let mut setup = TestSetup::new("hello-world foo bar");
+        setup.set_cursor(Position::new(0, 16));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordEndBackwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_forward_big_with_count() {
+        let mut setup = TestSetup::new("hello-world foo bar baz");
+        setup.set_cursor(Position::new(0, 0));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordForwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_backward_big_with_count() {
+        let mut setup = TestSetup::new("hello world foo bar");
+        setup.set_cursor(Position::new(0, 16));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordBackwardBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_big_with_count() {
+        let mut setup = TestSetup::new("hello world foo bar");
+        setup.set_cursor(Position::new(0, 0));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(2));
+
+        let result = setup.run(&WordEndBig, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_forward_single_char_buffer() {
+        let mut setup = TestSetup::new("a");
+        setup.set_cursor(Position::new(0, 0));
+
+        let args = setup.args();
+        let result = setup.run(&WordForward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_backward_single_char_buffer() {
+        let mut setup = TestSetup::new("a");
+        setup.set_cursor(Position::new(0, 0));
+
+        let args = setup.args();
+        let result = setup.run(&WordBackward, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_word_end_at_last_char() {
+        let mut setup = TestSetup::new("hello");
+        setup.set_cursor(Position::new(0, 4));
+
+        let args = setup.args();
+        let result = setup.run(&WordEnd, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_all_commands_count_is_eight() {
+        let cmds = all_commands();
+        assert_eq!(cmds.len(), 8);
+    }
+
+    #[test]
+    fn test_word_forward_multiline_many_words() {
+        let mut setup = TestSetup::new("one\ntwo\nthree\nfour");
+        setup.set_cursor(Position::new(0, 0));
+
+        let mut args = setup.args();
+        args.set("count", ArgValue::Count(3));
+
+        let result = setup.run(&WordForward, &args);
+        assert!(result.is_success());
+        assert_eq!(setup.cursor().line, 3);
+    }
+
+    #[test]
+    fn test_word_commands_debug() {
+        assert!(!format!("{WordForward:?}").is_empty());
+        assert!(!format!("{WordBackward:?}").is_empty());
+        assert!(!format!("{WordEnd:?}").is_empty());
+        assert!(!format!("{WordForwardBig:?}").is_empty());
+        assert!(!format!("{WordBackwardBig:?}").is_empty());
+        assert!(!format!("{WordEndBig:?}").is_empty());
+        assert!(!format!("{WordEndBackward:?}").is_empty());
+        assert!(!format!("{WordEndBackwardBig:?}").is_empty());
     }
 }

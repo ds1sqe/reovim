@@ -344,4 +344,191 @@ mod tests {
         assert_eq!(serde_json::to_string(&KeyEventKind::Release).unwrap(), "\"release\"");
         assert_eq!(serde_json::to_string(&KeyEventKind::Repeat).unwrap(), "\"repeat\"");
     }
+
+    #[test]
+    fn test_modifiers_is_empty() {
+        assert!(Modifiers::NONE.is_empty());
+        assert!(Modifiers::default().is_empty());
+
+        let with_ctrl = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
+        };
+        assert!(!with_ctrl.is_empty());
+
+        let with_alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        assert!(!with_alt.is_empty());
+
+        let with_super = Modifiers {
+            super_key: true,
+            ..Modifiers::NONE
+        };
+        assert!(!with_super.is_empty());
+
+        let with_hyper = Modifiers {
+            hyper: true,
+            ..Modifiers::NONE
+        };
+        assert!(!with_hyper.is_empty());
+
+        let with_meta = Modifiers {
+            meta: true,
+            ..Modifiers::NONE
+        };
+        assert!(!with_meta.is_empty());
+    }
+
+    #[test]
+    fn test_key_event_is_press() {
+        let press = KeyEvent::new(KeyCode::Char('a'));
+        assert!(press.is_press());
+        assert!(!press.is_release());
+        assert!(!press.is_repeat());
+    }
+
+    #[test]
+    fn test_key_event_is_release() {
+        let release = KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: Modifiers::NONE,
+            kind: KeyEventKind::Release,
+        };
+        assert!(release.is_release());
+        assert!(!release.is_press());
+    }
+
+    #[test]
+    fn test_key_event_is_repeat() {
+        let repeat = KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: Modifiers::NONE,
+            kind: KeyEventKind::Repeat,
+        };
+        assert!(repeat.is_repeat());
+        assert!(!repeat.is_press());
+    }
+
+    #[test]
+    fn test_key_event_kind_default() {
+        let kind = KeyEventKind::default();
+        assert!(matches!(kind, KeyEventKind::Press));
+    }
+
+    #[test]
+    fn test_key_code_all_special_keys_serialization() {
+        // Test a variety of special keys round-trip correctly
+        let keys = [
+            KeyCode::Up,
+            KeyCode::Down,
+            KeyCode::Left,
+            KeyCode::Right,
+            KeyCode::Home,
+            KeyCode::End,
+            KeyCode::PageUp,
+            KeyCode::PageDown,
+            KeyCode::Backspace,
+            KeyCode::Delete,
+            KeyCode::Insert,
+            KeyCode::Tab,
+            KeyCode::BackTab,
+            KeyCode::Enter,
+            KeyCode::Escape,
+            KeyCode::Null,
+            KeyCode::CapsLock,
+            KeyCode::ScrollLock,
+            KeyCode::NumLock,
+            KeyCode::PrintScreen,
+            KeyCode::Pause,
+            KeyCode::Menu,
+            KeyCode::KeypadBegin,
+        ];
+        for key in keys {
+            let json = serde_json::to_string(&key).unwrap();
+            let decoded: KeyCode = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, key);
+        }
+    }
+
+    #[test]
+    fn test_key_code_media_keys_serialization() {
+        let keys = [
+            KeyCode::MediaPlay,
+            KeyCode::MediaPause,
+            KeyCode::MediaPlayPause,
+            KeyCode::MediaStop,
+            KeyCode::MediaReverse,
+            KeyCode::MediaFastForward,
+            KeyCode::MediaRewind,
+            KeyCode::MediaNext,
+            KeyCode::MediaPrevious,
+            KeyCode::MediaRecord,
+            KeyCode::MediaLowerVolume,
+            KeyCode::MediaRaiseVolume,
+            KeyCode::MediaMuteVolume,
+        ];
+        for key in keys {
+            let json = serde_json::to_string(&key).unwrap();
+            let decoded: KeyCode = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, key);
+        }
+    }
+
+    #[test]
+    fn test_key_code_modifier_keys_serialization() {
+        let keys = [
+            KeyCode::LeftShift,
+            KeyCode::RightShift,
+            KeyCode::LeftCtrl,
+            KeyCode::RightCtrl,
+            KeyCode::LeftAlt,
+            KeyCode::RightAlt,
+            KeyCode::LeftSuper,
+            KeyCode::RightSuper,
+            KeyCode::LeftHyper,
+            KeyCode::RightHyper,
+            KeyCode::LeftMeta,
+            KeyCode::RightMeta,
+            KeyCode::IsoLevel3Shift,
+            KeyCode::IsoLevel5Shift,
+        ];
+        for key in keys {
+            let json = serde_json::to_string(&key).unwrap();
+            let decoded: KeyCode = serde_json::from_str(&json).unwrap();
+            assert_eq!(decoded, key);
+        }
+    }
+
+    #[test]
+    fn test_modifiers_all_flags() {
+        let mods = Modifiers {
+            shift: true,
+            ctrl: true,
+            alt: true,
+            super_key: true,
+            hyper: true,
+            meta: true,
+        };
+        assert!(!mods.is_empty());
+        let json = serde_json::to_string(&mods).unwrap();
+        assert!(json.contains("\"shift\":true"));
+        assert!(json.contains("\"ctrl\":true"));
+        assert!(json.contains("\"alt\":true"));
+        assert!(json.contains("\"super_key\":true"));
+        assert!(json.contains("\"hyper\":true"));
+        assert!(json.contains("\"meta\":true"));
+    }
+
+    #[test]
+    fn test_key_event_with_repeat_kind_serialization() {
+        let event = KeyEvent {
+            code: KeyCode::Char('x'),
+            modifiers: Modifiers::NONE,
+            kind: KeyEventKind::Repeat,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"kind\":\"repeat\""));
+    }
 }

@@ -395,4 +395,215 @@ mod tests {
     fn test_line_number_mode_default() {
         assert_eq!(LineNumberMode::default(), LineNumberMode::None);
     }
+
+    #[test]
+    fn test_update_remote_cursor() {
+        let mut state = TuiCoreState::new(1);
+
+        let remote = RemoteClient {
+            client_id: 2,
+            display_name: "Peer".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(1),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+        state.add_remote_client(remote);
+
+        state.update_remote_cursor(2, 10, 5);
+
+        let remote = state.other_clients.get(&2).unwrap();
+        assert_eq!(remote.cursor_line, 10);
+        assert_eq!(remote.cursor_col, 5);
+    }
+
+    #[test]
+    fn test_update_remote_cursor_unknown_client() {
+        let mut state = TuiCoreState::new(1);
+        // Update for a non-existent client should be a no-op (no panic)
+        state.update_remote_cursor(999, 10, 5);
+    }
+
+    #[test]
+    fn test_update_local_selection() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+
+        let sel = SelectionState {
+            start: CursorPosition { line: 1, column: 0 },
+            end: CursorPosition { line: 3, column: 5 },
+            mode: "char".to_string(),
+        };
+
+        state.update_local_selection(10, Some(sel));
+        assert!(state.window_selections.contains_key(&10));
+
+        // Clear selection
+        state.update_local_selection(10, None);
+        assert!(!state.window_selections.contains_key(&10));
+    }
+
+    #[test]
+    fn test_update_remote_selection() {
+        let mut state = TuiCoreState::new(1);
+
+        let remote = RemoteClient {
+            client_id: 2,
+            display_name: "Peer".to_string(),
+            cursor_line: 0,
+            cursor_col: 0,
+            buffer_id: Some(1),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+        state.add_remote_client(remote);
+
+        let sel = SelectionState {
+            start: CursorPosition { line: 0, column: 0 },
+            end: CursorPosition {
+                line: 2,
+                column: 10,
+            },
+            mode: "line".to_string(),
+        };
+        state.update_remote_selection(2, Some(sel));
+
+        assert!(state.other_clients.get(&2).unwrap().selection.is_some());
+
+        // Clear remote selection
+        state.update_remote_selection(2, None);
+        assert!(state.other_clients.get(&2).unwrap().selection.is_none());
+    }
+
+    #[test]
+    fn test_update_remote_selection_unknown_client() {
+        let mut state = TuiCoreState::new(1);
+        // Should be a no-op for unknown client
+        state.update_remote_selection(999, Some(SelectionState::default()));
+    }
+
+    #[test]
+    fn test_cleanup_stale_cursors() {
+        let mut state = TuiCoreState::new(1);
+
+        // Set up cursors for windows 10 and 20
+        state.update_local_cursor(10, 5, 3);
+        state.update_local_cursor(20, 8, 1);
+        state.update_local_selection(
+            10,
+            Some(SelectionState {
+                start: CursorPosition { line: 0, column: 0 },
+                end: CursorPosition { line: 1, column: 5 },
+                mode: "char".to_string(),
+            }),
+        );
+        state.update_local_selection(
+            20,
+            Some(SelectionState {
+                start: CursorPosition { line: 2, column: 0 },
+                end: CursorPosition { line: 3, column: 5 },
+                mode: "line".to_string(),
+            }),
+        );
+
+        // Only window 10 survives the layout change
+        state.windows = vec![WindowInfo {
+            window_id: 10,
+            buffer_id: Some(1),
+            rect: None,
+            focused: true,
+        }];
+
+        state.cleanup_stale_cursors();
+
+        assert!(state.window_cursors.contains_key(&10));
+        assert!(!state.window_cursors.contains_key(&20));
+        assert!(state.window_selections.contains_key(&10));
+        assert!(!state.window_selections.contains_key(&20));
+    }
+
+    #[test]
+    fn test_get_focused_cursor_none() {
+        let state = TuiCoreState::new(1);
+        assert!(state.get_focused_cursor().is_none());
+    }
+
+    #[test]
+    fn test_get_focused_cursor_wrong_window() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(20, 5, 3); // Different window
+
+        assert!(state.get_focused_cursor().is_none());
+    }
+
+    #[test]
+    fn test_cursor_position_default() {
+        let pos = CursorPosition::default();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_selection_state_default() {
+        let sel = SelectionState::default();
+        assert_eq!(sel.start.line, 0);
+        assert_eq!(sel.end.line, 0);
+        assert!(sel.mode.is_empty());
+    }
+
+    #[test]
+    fn test_client_role_default() {
+        assert_eq!(ClientRole::default(), ClientRole::Owner);
+    }
+
+    #[test]
+    fn test_remote_client_debug() {
+        let remote = RemoteClient {
+            client_id: 2,
+            display_name: "Test".to_string(),
+            cursor_line: 5,
+            cursor_col: 10,
+            buffer_id: Some(1),
+            mode: "NORMAL".to_string(),
+            selection: None,
+        };
+        let debug = format!("{remote:?}");
+        assert!(debug.contains("RemoteClient"));
+    }
+
+    #[test]
+    fn test_line_number_mode_variants() {
+        // Test all variants for equality
+        assert_ne!(LineNumberMode::None, LineNumberMode::Absolute);
+        assert_ne!(LineNumberMode::Absolute, LineNumberMode::Relative);
+        assert_ne!(LineNumberMode::Relative, LineNumberMode::Hybrid);
+    }
+
+    #[test]
+    fn test_core_state_needs_redraw() {
+        let mut state = TuiCoreState::new(1);
+        assert!(!state.needs_redraw);
+        state.needs_redraw = true;
+        assert!(state.needs_redraw);
+    }
+
+    #[test]
+    fn test_core_state_last_error() {
+        let mut state = TuiCoreState::new(1);
+        assert!(state.last_error.is_none());
+        state.last_error = Some("test error".to_string());
+        assert_eq!(state.last_error.as_deref(), Some("test error"));
+    }
+
+    #[test]
+    fn test_core_state_buffer_cache() {
+        let mut state = TuiCoreState::new(1);
+        state
+            .buffer_cache
+            .insert(100, vec!["line 1".to_string(), "line 2".to_string()]);
+        assert_eq!(state.buffer_cache.get(&100).unwrap().len(), 2);
+        assert!(state.buffer_cache.get(&999).is_none());
+    }
 }

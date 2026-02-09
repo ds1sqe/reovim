@@ -112,6 +112,7 @@ impl DotRepeat {
 }
 
 #[cfg(test)]
+#[allow(clippy::uninlined_format_args)]
 mod tests {
     use {
         super::*,
@@ -144,6 +145,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -185,6 +187,7 @@ mod tests {
     /// Stub command executor for tests.
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -452,6 +455,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_last_change_stores_insert() {
         let last_change = LastChange {
             change_type: ChangeType::Insert {
@@ -508,6 +512,245 @@ mod tests {
         let result = DotRepeat.execute(&mut runtime, &args);
 
         // Should return error since no buffer is available
+        assert!(result.is_error());
+    }
+
+    // =========================================================================
+    // Additional tests
+    // =========================================================================
+
+    #[test]
+    fn test_dot_repeat_command_debug() {
+        let debug = format!("{:?}", DotRepeat);
+        assert!(debug.contains("DotRepeat"));
+    }
+
+    #[test]
+    fn test_dot_repeat_command_default() {
+        let _ = DotRepeat;
+    }
+
+    #[test]
+    fn test_dot_repeat_command_clone() {
+        let cmd = DotRepeat;
+        let _ = cmd;
+    }
+
+    #[test]
+    fn test_dot_repeat_insert_empty_text() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change: insert empty string
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::Insert {
+                    text: String::new(),
+                },
+                count: None,
+                register: None,
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Buffer should be unchanged
+        let content = runtime.buffer_content(buffer_id);
+        assert_eq!(content.unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_dot_repeat_insert_with_no_count() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change: insert "abc" with no count
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::Insert {
+                    text: "abc".to_string(),
+                },
+                count: None,
+                register: None,
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Default count = 1, so just "abc"
+        let content = runtime.buffer_content(buffer_id);
+        assert_eq!(content.unwrap(), "abc");
+    }
+
+    #[test]
+    fn test_dot_repeat_operator_motion_stub() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change as operator motion
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::OperatorMotion {
+                    operator: OperatorType::Delete,
+                    linewise: false,
+                },
+                count: Some(1),
+                register: None,
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        // Stub should return success
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_dot_repeat_operator_textobj_stub() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change as operator text object
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::OperatorTextObject {
+                    operator: OperatorType::Change,
+                    linewise: true,
+                },
+                count: None,
+                register: Some('a'),
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_dot_repeat_insert_with_newline() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change: insert text with newline
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::Insert {
+                    text: "line1\nline2".to_string(),
+                },
+                count: None,
+                register: None,
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_dot_repeat_count_overrides_none() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "");
+        let mut state = TestState::with_window(buffer_id, test_mode());
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Set up last change: insert "x" with no count
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::Insert {
+                    text: "x".to_string(),
+                },
+                count: None,
+                register: None,
+            });
+        }
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Should insert "xxx" (3 times)
+        let content = runtime.buffer_content(buffer_id);
+        assert_eq!(content.unwrap(), "xxx");
+    }
+
+    #[test]
+    fn test_dot_repeat_insert_no_active_window() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello");
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty(); // No windows
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+
+        // Set up last change as insert
+        {
+            let vim = runtime.ext_mut::<VimSessionState>();
+            vim.last_change = Some(LastChange {
+                change_type: ChangeType::Insert {
+                    text: "abc".to_string(),
+                },
+                count: None,
+                register: None,
+            });
+        }
+
+        // buffer_id is set in args but there is no active window
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = DotRepeat.execute(&mut runtime, &args);
+        // Should return error "No active window"
         assert!(result.is_error());
     }
 }

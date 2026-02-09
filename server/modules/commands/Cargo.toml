@@ -22,5 +22,8 @@ reovim-kernel = { workspace = true }
 reovim-module-macros = { workspace = true }
 tracing = { workspace = true }
 
+[dev-dependencies]
+reovim-driver-vfs = { workspace = true }
+
 [lints]
 workspace = true

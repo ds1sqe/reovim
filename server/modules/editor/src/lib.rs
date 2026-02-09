@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Core Editor Module for Reovim
 //!
 //! This module provides basic editor commands (cursor movement, text operations)
@@ -104,3 +105,83 @@ impl CommandProvider for EditorModule {
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
 #[cfg(feature = "dynamic")]
 reovim_module_macros::declare_module!(EditorModule);
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_kernel::api::v1::{KernelContext, Module},
+        std::sync::Arc,
+    };
+
+    #[test]
+    fn test_editor_module_new() {
+        let module = EditorModule::new();
+        assert_eq!(module.name(), "Editor");
+    }
+
+    #[test]
+    fn test_editor_module_default() {
+        let module: EditorModule = Default::default();
+        assert_eq!(module.name(), "Editor");
+    }
+
+    #[test]
+    fn test_editor_module_default_trait() {
+        let module = <EditorModule as Default>::default();
+        assert_eq!(module.name(), "Editor");
+        assert_eq!(module.id().as_str(), "editor");
+    }
+
+    #[test]
+    fn test_editor_module_id() {
+        let module = EditorModule::new();
+        assert_eq!(module.id().as_str(), "editor");
+    }
+
+    #[test]
+    fn test_editor_module_version() {
+        let module = EditorModule::new();
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 9);
+        assert_eq!(version.patch, 0);
+    }
+
+    #[test]
+    fn test_editor_module_exit() {
+        let mut module = EditorModule::new();
+        assert!(module.exit().is_ok());
+    }
+
+    #[test]
+    fn test_editor_module_constant() {
+        assert_eq!(EDITOR_MODULE.as_str(), "editor");
+    }
+
+    #[test]
+    fn test_editor_module_command_provider() {
+        let module = EditorModule::new();
+        let handlers = module.command_handlers();
+        assert!(!handlers.is_empty());
+        // Should match all_commands() count
+        assert_eq!(handlers.len(), command::all_commands().len());
+    }
+
+    #[test]
+    fn test_editor_module_init() {
+        use reovim_kernel::api::ServiceRegistry;
+
+        let mut module = EditorModule::new();
+        let kernel = KernelContext::default();
+        let services = Arc::new(ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            kernel,
+            services,
+            std::path::PathBuf::from("/tmp/test-data"),
+            std::path::PathBuf::from("/tmp/test-cache"),
+        );
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+    }
+}

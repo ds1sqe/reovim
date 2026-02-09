@@ -239,4 +239,54 @@ mod tests {
         let result = provider.decorations_for_range(10, 20);
         assert_eq!(result.len(), 2);
     }
+
+    #[test]
+    fn test_provider_refresh() {
+        let mut provider = TestProvider {
+            decorations: vec![],
+            valid: false,
+        };
+
+        assert!(!provider.is_valid());
+        provider.refresh("some content");
+        assert!(provider.is_valid());
+    }
+
+    #[test]
+    fn test_provider_default_is_valid() {
+        // The default implementation of is_valid returns true
+        struct MinimalProvider;
+        impl DecorationProvider for MinimalProvider {
+            fn name(&self) -> &'static str {
+                "minimal"
+            }
+            fn group(&self) -> DecorationGroup {
+                DecorationGroup::Language
+            }
+            fn decorations_for_range(&self, _start_line: u32, _end_line: u32) -> Vec<Decoration> {
+                vec![]
+            }
+            fn refresh(&mut self, _content: &str) {}
+        }
+
+        let provider = MinimalProvider;
+        assert!(provider.is_valid());
+    }
+
+    #[test]
+    fn test_factory_default_supported_languages() {
+        struct MinimalFactory;
+        impl DecorationProviderFactory for MinimalFactory {
+            #[allow(clippy::unnecessary_literal_bound)]
+            fn name(&self) -> &str {
+                "minimal"
+            }
+            fn create(&self, _language_id: &str) -> Option<Box<dyn DecorationProvider>> {
+                None
+            }
+        }
+
+        let factory = MinimalFactory;
+        assert!(factory.supported_languages().is_empty());
+    }
 }

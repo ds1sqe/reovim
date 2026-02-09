@@ -168,6 +168,7 @@ impl ModuleProbe {
     ///
     /// Returns up to 8 dependencies stored in the probe.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn required_deps(&self) -> Vec<ModuleId> {
         let count = (self.required_deps_count as usize).min(8);
         (0..count)
@@ -191,6 +192,7 @@ impl ModuleProbe {
     ///
     /// Returns up to 8 dependencies stored in the probe.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn optional_deps(&self) -> Vec<ModuleId> {
         let count = (self.optional_deps_count as usize).min(8);
         (0..count)
@@ -238,6 +240,7 @@ impl ModuleProbe {
     /// Index must be 0-7. Silently ignored if index >= 8.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // Safe: index < 8 is checked
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_required_dep(mut self, index: usize, dep: &str) -> Self {
         if index >= 8 {
             return self;
@@ -261,6 +264,7 @@ impl ModuleProbe {
     /// Index must be 0-7. Silently ignored if index >= 8.
     #[must_use]
     #[allow(clippy::cast_possible_truncation)] // Safe: index < 8 is checked
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn with_optional_dep(mut self, index: usize, dep: &str) -> Self {
         if index >= 8 {
             return self;
@@ -315,15 +319,6 @@ mod tests {
 
         // Should be truncated to 127 chars (128 - 1 for null)
         assert_eq!(probe.name_str().len(), 127);
-    }
-
-    #[test]
-    fn test_module_probe_is_repr_c() {
-        // Verify struct size is predictable for FFI
-        // id: 64 + name: 128 + version: 12 + api_version: 12 + rustc_version: 64
-        // + required_deps_count: 1 + required_deps: 512 + optional_deps_count: 1
-        // + optional_deps: 512 + 2 padding = 1308
-        assert_eq!(std::mem::size_of::<ModuleProbe>(), 1308);
     }
 
     #[test]

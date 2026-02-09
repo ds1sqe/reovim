@@ -181,4 +181,38 @@ mod tests {
         panel.ensure_cursor_visible();
         assert!(panel.is_cursor_visible());
     }
+
+    #[test]
+    fn test_panel_ensure_cursor_visible_already_visible() {
+        let mut panel = mock_panel();
+        // Cursor at line 10 is already visible (range 0..=23)
+        assert!(panel.is_cursor_visible());
+        let old_start = panel.visible_start;
+        let old_end = panel.visible_end;
+        panel.ensure_cursor_visible();
+        // Should not change viewport since cursor is already visible
+        assert_eq!(panel.visible_start, old_start);
+        assert_eq!(panel.visible_end, old_end);
+    }
+
+    #[test]
+    fn test_panel_set_cursor() {
+        let mut panel = mock_panel();
+        panel.set_cursor(42, 7);
+        assert_eq!(panel.cursor_position(), (42, 7));
+    }
+
+    #[test]
+    fn test_panel_total_lines() {
+        let panel = mock_panel();
+        assert_eq!(panel.total_lines(), 100);
+    }
+
+    #[test]
+    fn test_panel_visible_line_count_after_scroll() {
+        let mut panel = mock_panel();
+        panel.scroll_to(50);
+        // Visible line count should remain the same (24 lines)
+        assert_eq!(panel.visible_line_count(), 24);
+    }
 }

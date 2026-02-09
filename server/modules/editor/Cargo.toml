@@ -25,5 +25,8 @@ reovim-driver-vfs = { workspace = true }
 # Note: operators merged into vim (Epic #385)
 unicode-width = "0.2"
 
+[dev-dependencies]
+reovim-driver-undo = { workspace = true }
+
 [lints]
 workspace = true

@@ -181,36 +181,35 @@ impl BufferSnapshot {
 
         if start_line == end_line {
             // Single line extraction
-            if let Some(line) = self.line(start_line) {
-                let chars: Vec<char> = line.chars().collect();
-                let start_col = start.column.min(chars.len());
-                let end_col = end.column.min(chars.len());
-                return chars[start_col..end_col].iter().collect();
-            }
-            return String::new();
+            // start_line is always valid: clamped to self.lines.len() - 1
+            let line = &self.lines[start_line];
+            let chars: Vec<char> = line.chars().collect();
+            let start_col = start.column.min(chars.len());
+            let end_col = end.column.min(chars.len());
+            return chars[start_col..end_col].iter().collect();
         }
 
         // Multi-line extraction
         let mut result = String::new();
 
         for line_idx in start_line..=end_line {
-            if let Some(line) = self.line(line_idx) {
-                let chars: Vec<char> = line.chars().collect();
+            // line_idx is always valid: iterates within clamped [start_line, end_line]
+            let line = &self.lines[line_idx];
+            let chars: Vec<char> = line.chars().collect();
 
-                if line_idx == start_line {
-                    // First line: from start column to end
-                    let start_col = start.column.min(chars.len());
-                    result.extend(&chars[start_col..]);
-                    result.push('\n');
-                } else if line_idx == end_line {
-                    // Last line: from start to end column
-                    let end_col = end.column.min(chars.len());
-                    result.extend(&chars[..end_col]);
-                } else {
-                    // Middle line: entire line
-                    result.push_str(line);
-                    result.push('\n');
-                }
+            if line_idx == start_line {
+                // First line: from start column to end
+                let start_col = start.column.min(chars.len());
+                result.extend(&chars[start_col..]);
+                result.push('\n');
+            } else if line_idx == end_line {
+                // Last line: from start to end column
+                let end_col = end.column.min(chars.len());
+                result.extend(&chars[..end_col]);
+            } else {
+                // Middle line: entire line
+                result.push_str(line);
+                result.push('\n');
             }
         }
 
@@ -380,5 +379,74 @@ mod tests {
         assert_eq!(snapshot.line_len(0), Some(5));
         assert_eq!(snapshot.line_len(1), Some(6));
         assert_eq!(snapshot.line_len(99), None);
+    }
+
+    // === Coverage: lines() accessor ===
+
+    #[test]
+    fn test_snapshot_lines() {
+        let buffer = super::super::Buffer::from_string("Hello\nWorld");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let lines = snapshot.lines();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "Hello");
+        assert_eq!(lines[1], "World");
+    }
+
+    // === Coverage: content() ===
+
+    #[test]
+    fn test_snapshot_content_two_lines() {
+        let buffer = super::super::Buffer::from_string("Hello\nWorld");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        assert_eq!(snapshot.content(), "Hello\nWorld");
+    }
+
+    // === Coverage: text_in_range reversed positions ===
+
+    #[test]
+    fn test_snapshot_text_in_range_reversed() {
+        let buffer = super::super::Buffer::from_string("Hello World");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        // Reversed: end before start should still work
+        let text = snapshot.text_in_range(Position::new(0, 5), Position::new(0, 0));
+        assert_eq!(text, "Hello");
+    }
+
+    // === Coverage: text_in_range empty buffer ===
+
+    #[test]
+    fn test_snapshot_text_in_range_empty() {
+        let buffer = super::super::Buffer::new();
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 0), Position::new(0, 5));
+        assert_eq!(text, "");
+    }
+
+    // === Coverage: text_in_range multiline with middle lines ===
+
+    #[test]
+    fn test_snapshot_text_in_range_multiline_three() {
+        let buffer = super::super::Buffer::from_string("aaa\nbbb\nccc");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 1), Position::new(2, 2));
+        // First line: "aa", middle line: "bbb", last line: "cc"
+        assert_eq!(text, "aa\nbbb\ncc");
+    }
+
+    // === Coverage: single line extraction with empty result ===
+
+    #[test]
+    fn test_snapshot_text_in_range_same_pos() {
+        let buffer = super::super::Buffer::from_string("Hello");
+        let snapshot = BufferSnapshot::from_buffer(&buffer, Cursor::origin());
+
+        let text = snapshot.text_in_range(Position::new(0, 2), Position::new(0, 2));
+        assert_eq!(text, "");
     }
 }

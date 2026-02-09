@@ -9,9 +9,11 @@
 //! # Architecture
 //!
 //! ```text
-//! lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
-//! modules/undo/         → UndoRegistry implementation (POLICY)
+//! server/lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
+//! server/modules/undo/         → UndoRegistry implementation (POLICY)
 //! ```
+
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 mod error;
 mod key;

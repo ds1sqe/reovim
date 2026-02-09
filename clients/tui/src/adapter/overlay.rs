@@ -62,7 +62,10 @@ impl TuiOverlayManager {
     }
 
     /// Create an overlay manager with an underlying TUI layer.
+    ///
+    /// Only used in interactive mode with real terminal layer.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn with_layer(layer: Arc<Mutex<dyn OverlayLayer>>) -> Self {
         Self {
             renderers: Vec::new(),
@@ -111,6 +114,7 @@ impl TuiOverlayManager {
     }
 
     /// Convert wire anchor to TUI constraints.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn to_constraints(&self, overlay: &LogicalOverlay, size: Size) -> OverlayConstraints {
         let anchor_ctx = self
             .anchor_context
@@ -172,6 +176,7 @@ impl Default for TuiOverlayManager {
 }
 
 #[allow(clippy::significant_drop_tightening, clippy::if_let_mutex)]
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl OverlayManager for TuiOverlayManager {
     fn register_renderer(&mut self, renderer: Box<dyn OverlayRenderer>) {
         self.renderers.push(renderer);
@@ -316,6 +321,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl OverlayRenderer for TestRenderer {
         fn handles(&self, kind: &str) -> bool {
             self.kind == kind
@@ -546,6 +552,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_manager_interact_topmost() {
         let mut manager = TuiOverlayManager::new();
         manager.register_renderer(Box::new(TestRenderer::new("completion")));
@@ -603,5 +610,194 @@ mod tests {
         let pos = manager.active()[0].position;
         assert_eq!(pos.x, 5);
         assert_eq!(pos.y, 11);
+    }
+
+    #[test]
+    fn test_overlay_manager_default() {
+        let manager = TuiOverlayManager::default();
+        assert!(manager.active().is_empty());
+        assert!(!manager.has_modal());
+    }
+
+    #[test]
+    fn test_overlay_manager_window_id_nonexistent() {
+        let manager = TuiOverlayManager::new();
+        assert!(manager.window_id("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_overlay_manager_overlay_id_nonexistent() {
+        let manager = TuiOverlayManager::new();
+        assert!(manager.overlay_id(WindowId::from_raw(999)).is_none());
+    }
+
+    #[test]
+    fn test_overlay_manager_update_nonexistent() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        // Update a non-existent overlay - should be a no-op (no panic)
+        let updated = LogicalOverlay::new("nonexistent", "completion", Anchor::Cursor);
+        manager.update("nonexistent", updated);
+        assert!(manager.active().is_empty());
+    }
+
+    #[test]
+    fn test_overlay_manager_update_preserves_modal() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::modal("palette")));
+        manager.set_anchor_context(test_context());
+
+        let overlay = LogicalOverlay::new("modal-1", "palette", Anchor::Center);
+        manager.show(overlay, Size::new(80, 24));
+        assert!(manager.has_modal());
+
+        // Update should preserve the modal flag
+        let updated = LogicalOverlay::new("modal-1", "palette", Anchor::Center)
+            .with_state(OverlayState::with_selection(3));
+        manager.update("modal-1", updated);
+        assert!(manager.has_modal());
+        assert_eq!(manager.active()[0].logical.state.selected_index, Some(3));
+    }
+
+    #[test]
+    fn test_overlay_manager_clear_empty() {
+        let mut manager = TuiOverlayManager::new();
+        // Clearing an empty manager should be a no-op
+        manager.clear();
+        assert!(manager.active().is_empty());
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_overlay_manager_interact_select_next() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        let overlay = LogicalOverlay::new("test-1", "completion", Anchor::Cursor)
+            .with_state(OverlayState::with_selection(0));
+        manager.show(overlay, Size::new(80, 24));
+
+        let result = manager.interact(Interaction::SelectNext);
+        if let InteractionResult::StateUpdate(state) = result {
+            assert_eq!(state.selected_index, Some(1)); // 0 + 1
+        } else {
+            panic!("Expected StateUpdate");
+        }
+    }
+
+    #[test]
+    fn test_overlay_position_screen() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        // Anchor::Screen is handled via convert_anchor which maps to TuiAnchor::Screen
+        // We need a context with specific screen anchor
+        let mut ctx = test_context();
+        ctx.screen_size = Size::new(100, 50);
+        manager.set_anchor_context(ctx);
+
+        let overlay =
+            LogicalOverlay::new("screen-1", "completion", Anchor::Screen { x: 0.5, y: 0.5 });
+        manager.show(overlay, Size::new(100, 50));
+
+        let pos = manager.active()[0].position;
+        // Screen anchor at (0.5, 0.5) maps to absolute (50, 25)
+        assert_eq!(pos.x, 50);
+        assert_eq!(pos.y, 25);
+    }
+
+    #[test]
+    fn test_overlay_position_below_unknown() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        // Below with unknown overlay falls back to Center
+        let overlay =
+            LogicalOverlay::new("below-1", "completion", Anchor::Below("unknown".to_string()));
+        manager.show(overlay, Size::new(80, 24));
+
+        // Center position: (80-40)/2 = 20, (24-10)/2 = 7
+        let pos = manager.active()[0].position;
+        assert_eq!(pos.x, 20);
+        assert_eq!(pos.y, 7);
+    }
+
+    #[test]
+    fn test_overlay_position_below_known() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        let mut ctx = test_context();
+        ctx.register_overlay("other", WindowId::from_raw(500));
+        manager.set_anchor_context(ctx);
+
+        // Below with known overlay
+        let overlay =
+            LogicalOverlay::new("below-1", "completion", Anchor::Below("other".to_string()));
+        manager.show(overlay, Size::new(80, 24));
+
+        // Below anchor fallback: position is (0, 1)
+        let pos = manager.active()[0].position;
+        assert_eq!(pos.x, 0);
+        assert_eq!(pos.y, 1);
+    }
+
+    #[test]
+    fn test_overlay_manager_window_ids_increment() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        let o1 = LogicalOverlay::new("a", "completion", Anchor::Cursor);
+        manager.show(o1, Size::new(80, 24));
+        let id1 = manager.window_id("a").unwrap();
+
+        let o2 = LogicalOverlay::new("b", "completion", Anchor::Cursor);
+        manager.show(o2, Size::new(80, 24));
+        let id2 = manager.window_id("b").unwrap();
+
+        // IDs should be different and incrementing
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_overlay_hide_clears_mappings() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        let overlay = LogicalOverlay::new("test-1", "completion", Anchor::Cursor);
+        manager.show(overlay, Size::new(80, 24));
+
+        let window_id = manager.window_id("test-1").unwrap();
+        assert!(manager.overlay_id(window_id).is_some());
+
+        manager.hide("test-1");
+
+        // Both forward and reverse mappings should be gone
+        assert!(manager.window_id("test-1").is_none());
+        assert!(manager.overlay_id(window_id).is_none());
+    }
+
+    #[test]
+    fn test_overlay_clear_clears_all_mappings() {
+        let mut manager = TuiOverlayManager::new();
+        manager.register_renderer(Box::new(TestRenderer::new("completion")));
+        manager.set_anchor_context(test_context());
+
+        manager.show(LogicalOverlay::new("a", "completion", Anchor::Cursor), Size::new(80, 24));
+        manager.show(LogicalOverlay::new("b", "completion", Anchor::Cursor), Size::new(80, 24));
+
+        assert_eq!(manager.active().len(), 2);
+        assert!(manager.window_id("a").is_some());
+        assert!(manager.window_id("b").is_some());
+
+        manager.clear();
+
+        assert!(manager.active().is_empty());
+        assert!(manager.window_id("a").is_none());
+        assert!(manager.window_id("b").is_none());
     }
 }

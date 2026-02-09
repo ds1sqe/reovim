@@ -357,6 +357,7 @@ mod tests {
         parsed: bool,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestDriver {
         fn new(language: &str) -> Self {
             Self {
@@ -366,6 +367,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl SyntaxDriver for TestDriver {
         fn language(&self) -> &str {
             &self.language
@@ -399,6 +401,7 @@ mod tests {
     /// A minimal test factory.
     struct TestFactory;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl SyntaxDriverFactory for TestFactory {
         fn create(&self, language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
             if language_id == "rust" {
@@ -442,6 +445,7 @@ mod tests {
         assert_eq!(state.get(id).unwrap().language(), "rust");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_get_mut() {
         let mut state = SyntaxSessionState::new();
@@ -623,5 +627,50 @@ mod tests {
         assert_eq!(update.buffer_id, 1);
         assert!(update.full_refresh);
         assert_eq!(update.end_line, 9); // total_lines - 1
+    }
+
+    #[test]
+    fn test_notify_edit_no_subscribers_skips_extraction() {
+        let mut state = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        state.set(id, Box::new(TestDriver::new("rust")));
+
+        // No subscribers: notify_edit should return early at line 263
+        let edit = SyntaxEdit {
+            start_byte: 0,
+            old_end_byte: 0,
+            new_end_byte: 5,
+            start_row: 0,
+            start_col: 0,
+            old_end_row: 0,
+            old_end_col: 0,
+            new_end_row: 0,
+            new_end_col: 5,
+        };
+        state.notify_edit(id, "hello", &edit, 0, 0);
+        // No panic, no subscribers to receive
+    }
+
+    #[test]
+    fn test_send_full_refresh_no_driver_returns_early() {
+        let mut state = SyntaxSessionState::new();
+        let _rx = state.subscribe(); // Has subscriber but no driver
+        let unknown = buffer_id(999);
+
+        // Should return early at line 302 (no driver)
+        state.send_full_refresh(unknown, 10);
+        // No panic
+    }
+
+    #[test]
+    fn test_send_full_refresh_no_subscribers_returns_early() {
+        let mut state = SyntaxSessionState::new();
+        let id = buffer_id(1);
+        state.set(id, Box::new(TestDriver::new("rust")));
+
+        // Has driver but no subscribers: returns early at line 306
+        state.send_full_refresh(id, 10);
+        // No panic
     }
 }

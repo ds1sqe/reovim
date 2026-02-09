@@ -330,16 +330,20 @@ mod tests {
     // Test command implementation
     struct TestCommand {
         id: CommandId,
+        name: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestCommand {
         fn new(name: &'static str) -> Self {
             Self {
                 id: CommandId::new(ModuleId::new("test"), name),
+                name,
             }
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl Command for TestCommand {
         fn id(&self) -> CommandId {
             self.id.clone()
@@ -352,8 +356,13 @@ mod tests {
         fn args(&self) -> Vec<ArgSpec> {
             vec![]
         }
+
+        fn names(&self) -> &[&'static str] {
+            std::slice::from_ref(&self.name)
+        }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandHandler for TestCommand {
         fn execute(
             &self,
@@ -450,6 +459,283 @@ mod tests {
         let removed = registry.unregister_for_module(&owner);
 
         assert_eq!(removed, 2);
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_command_registry_replace_existing() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "same-cmd");
+
+        // Register first command
+        registry.register(Arc::new(TestCommand::new("same-cmd")));
+        assert_eq!(registry.len(), 1);
+
+        // Register again - should replace
+        registry.register(Arc::new(TestCommand::new("same-cmd")));
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains(&id));
+    }
+
+    #[test]
+    fn test_command_registry_ids() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("cmd1")));
+        registry.register(Arc::new(TestCommand::new("cmd2")));
+        registry.register(Arc::new(TestCommand::new("cmd3")));
+
+        assert_eq!(registry.ids().count(), 3);
+    }
+
+    #[test]
+    fn test_command_registry_all_command_infos() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("cmd1")));
+        registry.register(Arc::new(TestCommand::new("cmd2")));
+
+        let infos = registry.all_command_infos();
+        assert_eq!(infos.len(), 2);
+        assert!(infos.iter().all(|info| info.description == "Test command"));
+    }
+
+    #[test]
+    fn test_command_registry_debug() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("test-cmd")));
+
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains("CommandRegistry"));
+        assert!(debug_str.contains("count"));
+    }
+
+    #[test]
+    fn test_command_query_snapshot_from_registry() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("cmd1")));
+        registry.register(Arc::new(TestCommand::new("cmd2")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        assert_eq!(snapshot.count(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("test-cmd1")));
+        registry.register(Arc::new(TestCommand::new("test-cmd2")));
+        registry.register(Arc::new(TestCommand::new("other-cmd")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let results = snapshot.search_by_prefix("test");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_find_by_name() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("find-me")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let result = snapshot.find_by_name("find-me");
+        assert!(result.is_some());
+
+        let not_found = snapshot.find_by_name("not-there");
+        assert!(not_found.is_none());
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_ex_commands() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("ex-cmd1")));
+        registry.register(Arc::new(TestCommand::new("ex-cmd2")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let ex_commands = snapshot.list_ex_commands();
+        assert_eq!(ex_commands.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_all() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("cmd1")));
+        registry.register(Arc::new(TestCommand::new("cmd2")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let all_commands = snapshot.list_all();
+        assert_eq!(all_commands.len(), 2);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_stub_command_executor() {
+        let executor = StubCommandExecutor;
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+        let ctx = CommandContext::new();
+        let kernel = KernelContext::default();
+
+        let result = executor.execute(&id, &ctx, &kernel);
+        assert!(result.is_some());
+        match result.unwrap() {
+            CommandResult::Error(msg) => {
+                assert!(msg.contains("recursive command execution not supported"));
+            }
+            _ => panic!("Expected error result"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_command_registry_executor_trait() {
+        let registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+        let ctx = CommandContext::new();
+        let kernel = KernelContext::default();
+
+        let result = registry.execute(&id, &ctx, &kernel);
+        assert!(result.is_some());
+        match result.unwrap() {
+            CommandResult::Error(msg) => {
+                assert!(msg.contains("not yet implemented"));
+            }
+            _ => panic!("Expected error result"),
+        }
+    }
+
+    #[test]
+    fn test_command_registry_execute_for_client_not_found() {
+        let registry = CommandRegistry::new();
+        let kernel = KernelContext::default();
+        let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
+        let app = AppState::new(kernel);
+        let vfs = test_vfs();
+        let args = CommandContext::new();
+        let id = CommandId::new(ModuleId::new("test"), "nonexistent");
+
+        let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
+        let mut client_windows = reovim_driver_session::WindowLayout::empty();
+        let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+
+        let result = registry.execute_for_client(
+            1,
+            &id,
+            &mut driver_session,
+            &mut client_mode_stack,
+            &mut client_windows,
+            &mut client_extensions,
+            &app,
+            &vfs,
+            &args,
+        );
+        assert!(result.is_none());
+    }
+
+    // Test command with buffer context
+    struct BufferTestCommand {
+        id: CommandId,
+        name: &'static str,
+    }
+
+    impl BufferTestCommand {
+        fn new(name: &'static str) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                name,
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for BufferTestCommand {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+
+        fn description(&self) -> &'static str {
+            "Buffer test command"
+        }
+
+        fn args(&self) -> Vec<ArgSpec> {
+            vec![]
+        }
+
+        fn names(&self) -> &[&'static str] {
+            std::slice::from_ref(&self.name)
+        }
+    }
+
+    impl CommandHandler for BufferTestCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
+    #[test]
+    fn test_command_registry_execute_with_buffer() {
+        use reovim_kernel::api::v1::BufferId;
+
+        let mut registry = CommandRegistry::new();
+        let cmd = BufferTestCommand::new("buffer-cmd");
+        let id = cmd.id.clone();
+
+        registry.register(Arc::new(cmd));
+
+        let kernel = KernelContext::default();
+        let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
+        let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
+
+        // Create a buffer and set it active
+        let buffer_id = BufferId::from_raw(1);
+        driver_session.set_active_buffer(Some(buffer_id));
+
+        let app = AppState::new(kernel);
+        let vfs = test_vfs();
+        let args = CommandContext::new();
+
+        let mut client_mode_stack = reovim_kernel::api::v1::ModeStack::new(mode);
+        let mut client_windows = reovim_driver_session::WindowLayout::empty();
+        let mut client_extensions = reovim_driver_session::ExtensionMap::new();
+
+        let result = registry.execute_for_client(
+            1,
+            &id,
+            &mut driver_session,
+            &mut client_mode_stack,
+            &mut client_windows,
+            &mut client_extensions,
+            &app,
+            &vfs,
+            &args,
+        );
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_command_registry_get_nonexistent() {
+        let registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "nonexistent");
+        assert!(registry.get(&id).is_none());
+    }
+
+    #[test]
+    fn test_command_registry_contains_false() {
+        let registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "missing");
+        assert!(!registry.contains(&id));
+    }
+
+    #[test]
+    fn test_command_registry_unregister_nonexistent_module() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("cmd1")));
+
+        let nonexistent = ModuleId::new("nonexistent");
+        let removed = registry.unregister_for_module(&nonexistent);
+        assert_eq!(removed, 0);
         assert_eq!(registry.len(), 1);
     }
 }

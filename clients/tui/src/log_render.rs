@@ -287,6 +287,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_empty_buffer_renders_blank() {
         let entries: Vec<&TuiLogEntry> = vec![];
         let state = LogPanelState::new();
@@ -296,6 +297,50 @@ mod tests {
         assert!(lines[0].contains("Messages")); // Header still present
         // Rest should be empty
         assert!(lines[1].is_empty() || lines[1].trim().is_empty());
+    }
+
+    #[test]
+    fn test_format_entry_all_levels() {
+        let error_entry = test_entry(LogLevel::Error, "err");
+        let warn_entry = test_entry(LogLevel::Warn, "wrn");
+        let debug_entry = test_entry(LogLevel::Debug, "dbg");
+        let trace_entry = test_entry(LogLevel::Trace, "trc");
+
+        let error_fmt = format_entry(&error_entry, 80);
+        let warn_fmt = format_entry(&warn_entry, 80);
+        let debug_fmt = format_entry(&debug_entry, 80);
+        let trace_fmt = format_entry(&trace_entry, 80);
+
+        assert!(error_fmt.contains("ERROR"));
+        assert!(warn_fmt.contains("WARN"));
+        assert!(debug_fmt.contains("DEBUG"));
+        assert!(trace_fmt.contains("TRACE"));
+    }
+
+    #[test]
+    fn test_sanitize_zero_width() {
+        // sanitize_message with max_length=0 returns empty string
+        let entry = test_entry(LogLevel::Info, "hello");
+        // Use a very narrow width that forces available=0
+        let formatted = format_entry(&entry, 0);
+        // Should not panic
+        assert!(!formatted.is_empty());
+    }
+
+    #[test]
+    fn test_render_header_with_all_filters() {
+        let error_hdr = render_header(80, Some(LogLevel::Error));
+        let warn_hdr = render_header(80, Some(LogLevel::Warn));
+        let info_hdr = render_header(80, Some(LogLevel::Info));
+        let debug_hdr = render_header(80, Some(LogLevel::Debug));
+        let none_hdr = render_header(80, None);
+
+        assert!(error_hdr.contains("[ERROR+]"));
+        assert!(warn_hdr.contains("[WARN+]"));
+        assert!(info_hdr.contains("[INFO+]"));
+        assert!(debug_hdr.contains("[DEBUG+]"));
+        assert!(!none_hdr.contains("[ERROR+]"));
+        assert!(!none_hdr.contains("[WARN+]"));
     }
 
     #[test]

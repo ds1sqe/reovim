@@ -10,9 +10,9 @@
 //! Specific service traits and typed keys are defined in their respective drivers.
 //!
 //! ```text
-//! kernel/api/service/     → Generic ServiceRegistry (this module)
-//! drivers/vfs/            → VfsScheme enum + VfsProviderRegistry
-//! drivers/input/          → ModeProviderKey enum + ModeProviderRegistry
+//! server/lib/kernel/api/service/     → Generic ServiceRegistry (this module)
+//! server/lib/drivers/vfs/            → VfsScheme enum + VfsProviderRegistry
+//! server/lib/drivers/input/          → ModeProviderKey enum + ModeProviderRegistry
 //! ```
 //!
 //! # Example
@@ -405,6 +405,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "FATAL: No provider for TestService")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_service_registry_get_required_panics() {
         let registry = ServiceRegistry::new();
         let _: Arc<TestService> = registry.get_required("TestService");
@@ -502,6 +503,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "FATAL: No Test provider for Primary")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_multi_registry_get_required_panics() {
         let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
         let _: Arc<dyn TestProvider> = registry.get_required(&TestKey::Primary);
@@ -510,5 +512,71 @@ mod tests {
     #[test]
     fn test_service_key_service_name() {
         assert_eq!(TestKey::service_name(), "Test");
+    }
+
+    // ========== ServiceRegistry Debug ==========
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_service_registry_debug() {
+        let registry = ServiceRegistry::new();
+        registry.register(Arc::new(TestService { value: 1 }));
+
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains("ServiceRegistry"));
+        assert!(debug_str.contains("registered_services"));
+    }
+
+    // ========== ServiceRegistry Default ==========
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_service_registry_default() {
+        let registry = ServiceRegistry::default();
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains('0')); // 0 registered services
+    }
+
+    // ========== get_or_create ==========
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_service_registry_get_or_create() {
+        #[derive(Default)]
+        struct DefaultableService {
+            value: i32,
+        }
+        impl Service for DefaultableService {}
+
+        let registry = ServiceRegistry::new();
+
+        // First call creates the service
+        let svc1 = registry.get_or_create::<DefaultableService>();
+        assert_eq!(svc1.value, 0); // Default value
+
+        // Second call returns the cached service
+        let svc2 = registry.get_or_create::<DefaultableService>();
+        assert_eq!(Arc::as_ptr(&svc1), Arc::as_ptr(&svc2));
+    }
+
+    // ========== MultiServiceRegistry Debug ==========
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_multi_service_registry_debug() {
+        let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
+        registry.register(TestKey::Primary, Arc::new(PrimaryProvider));
+
+        let debug_str = format!("{registry:?}");
+        assert!(debug_str.contains("MultiServiceRegistry"));
+        assert!(debug_str.contains("Test")); // service_name()
+    }
+
+    // ========== MultiServiceRegistry Default ==========
+
+    #[test]
+    fn test_multi_service_registry_default() {
+        let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::default();
+        assert!(registry.is_empty());
     }
 }

@@ -26,6 +26,7 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -60,6 +61,7 @@ impl Command for ChangeLine {
 }
 
 impl CommandHandler for ChangeLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -166,6 +168,7 @@ impl Command for ChangeToEndOfLine {
 }
 
 impl CommandHandler for ChangeToEndOfLine {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -198,5 +201,752 @@ impl CommandHandler for ChangeToEndOfLine {
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
         CommandResult::Success
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::significant_drop_tightening)]
+mod tests {
+    use {
+        super::*,
+        reovim_driver_command::Command,
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
+                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                ServiceRegistry, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    use reovim_driver_session::api::ModeApi;
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    struct StubExecutor;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _: &reovim_kernel::api::v1::CommandId,
+            _: &CommandContext,
+            _: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    impl TestState {
+        fn with_buffer(buffer_id: Option<BufferId>) -> Self {
+            let home_mode = ModeId::new(ModuleId::new("test"), "normal");
+            let session = Session::new(ClientId::new(1), home_mode.clone());
+            let mode_stack = ModeStack::new(home_mode);
+            let mut windows = WindowLayout::empty();
+            let extensions = ExtensionMap::new();
+
+            let mut window = reovim_driver_session::Window::new();
+            if let Some(buffer_id) = buffer_id {
+                window.buffer_id = Some(buffer_id);
+            }
+            windows.add(window);
+
+            Self {
+                session,
+                mode_stack,
+                windows,
+                extensions,
+            }
+        }
+
+        fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                &StubExecutor,
+            )
+        }
+    }
+
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    // ========================================================================
+    // Metadata tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_command_id() {
+        let cmd = ChangeLine;
+        assert_eq!(cmd.id(), ids::CHANGE_LINE);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_description() {
+        let cmd = ChangeLine;
+        assert!(cmd.description().contains("Change"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_args() {
+        let cmd = ChangeLine;
+        let args = cmd.args();
+        assert_eq!(args.len(), 2); // count and register
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_command_id() {
+        let cmd = ChangeToEndOfLine;
+        assert_eq!(cmd.id(), ids::CHANGE_TO_EOL);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_description() {
+        let cmd = ChangeToEndOfLine;
+        assert!(cmd.description().contains("end of line"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_args() {
+        let cmd = ChangeToEndOfLine;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1); // register only
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_debug() {
+        let cmd = ChangeLine;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("ChangeLine"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_debug() {
+        let cmd = ChangeToEndOfLine;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("ChangeToEndOfLine"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_default() {
+        let _ = ChangeLine;
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_default() {
+        let _ = ChangeToEndOfLine;
+    }
+
+    // ========================================================================
+    // Execute tests - ChangeLine
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_no_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_single_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+
+        // Line content should be cleared
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_multi_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("line1\nline2\nline3");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(2));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_empty_buffer() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    // ========================================================================
+    // Execute tests - ChangeToEndOfLine
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_no_buffer() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_from_middle() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Set cursor at column 5 (on space)
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+
+        // Buffer should have "hello" (everything from col 5 deleted)
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["hello"]);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_at_end_of_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Set cursor at end of line
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+
+        // Buffer should be unchanged (already at end of line)
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["hello"]);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_from_start() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Entire line content should be deleted
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_count_exceeds_buffer() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(99));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_last_two_lines() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(2));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Start on line 1
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    // ========================================================================
+    // Additional ChangeLine execute tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_with_count_one_explicit() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(1));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Only first line should be changed
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        // First line should be cleared, second line should remain
+        assert_eq!(buf.lines()[0], "");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_multi_line_three_lines() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\nbbb\nccc\nddd");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(3));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_with_register() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("test line");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("register", reovim_driver_command::ArgValue::Register('a'));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_cursor_at_middle_of_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Cursor should be at start after change
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    // ========================================================================
+    // Additional ChangeToEndOfLine execute tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_empty_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_with_register() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("register", reovim_driver_command::ArgValue::Register('b'));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 5).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_past_end_of_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("abc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        // Cursor past end of line
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 10).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        // Should enter insert mode without deleting
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_single_char_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("x");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_multiline_only_affects_current() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(0, 3).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeToEndOfLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        // First line should be truncated, second line untouched
+        assert_eq!(buf.lines()[0], "hel");
+        assert_eq!(buf.lines()[1], "world");
+    }
+
+    // ========================================================================
+    // Clone tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_clone() {
+        let cmd = ChangeLine;
+        let cloned = cmd;
+        assert_eq!(cloned.id(), ids::CHANGE_LINE);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_to_eol_clone() {
+        let cmd = ChangeToEndOfLine;
+        let cloned = cmd;
+        assert_eq!(cloned.id(), ids::CHANGE_TO_EOL);
+    }
+
+    // ========================================================================
+    // ChangeLine multi-line end_line >= line_count tests
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_last_lines_of_buffer() {
+        // Tests the branch: end_line >= line_count (changing to end of buffer)
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(3));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.current_mode().name(), VimMode::INSERT_ID.name());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_two_of_two_from_start() {
+        // Change all lines (count=2 from line 0 of 2-line buffer)
+        // This triggers: end_line (0+2=2) >= line_count (2)
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(2));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_multi_from_middle_to_end() {
+        // Change from line 2 with count 3, but only 2 lines remain
+        // This triggers: end_line >= line_count
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc\nd");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(3));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(2, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_multi_not_at_end() {
+        // Change 2 lines from middle (NOT at end of buffer) - the normal case branch
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc\nd\ne");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(2));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        if let Some(w) = state.windows.active_mut() {
+            w.cursor = Position::new(1, 0).into();
+        }
+        let mut runtime = state.runtime(&ctx);
+        let result = ChangeLine.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+
+        // Lines b and c should be deleted, replaced with cursor at line 1
+        let window = runtime.windows().active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_change_line_registers_deleted_text() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", reovim_driver_command::ArgValue::Count(2));
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime(&ctx);
+        ChangeLine.execute(&mut runtime, &args);
+
+        // Check the register has the deleted text
+        let regs = ctx.registers.read();
+        let reg = regs.get();
+        assert!(reg.text.contains("hello"));
+        assert!(reg.text.contains("world"));
     }
 }

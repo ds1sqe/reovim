@@ -15,7 +15,7 @@ use crate::{VfsDriver, scheme::VfsScheme};
 ///
 /// Following the VFS pattern (mechanism/policy separation):
 /// - **Mechanism (driver)**: This registry type + `VfsDriver` trait
-/// - **Policy (module)**: `LocalFsProvider` in `modules/vfs-local`
+/// - **Policy (module)**: `LocalFsProvider` in `server/modules/vfs-local`
 ///
 /// # Example
 ///

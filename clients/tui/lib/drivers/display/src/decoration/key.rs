@@ -35,9 +35,9 @@ impl ServiceKey for DecorationProviderKey {
 /// zero knowledge of which modules exist or what keys they register.
 ///
 /// ```text
-/// lib/drivers/display/   -> DecorationSourceKey (mechanism)
-/// modules/pair/          -> "pair.rainbow" key (policy)
-/// modules/search/        -> "search.match" key (policy)
+/// clients/tui/lib/drivers/display/   -> DecorationSourceKey (mechanism)
+/// server/modules/pair/               -> "pair.rainbow" key (policy)
+/// server/modules/search/             -> "search.match" key (policy)
 /// ```
 ///
 /// # Example
@@ -132,5 +132,31 @@ mod tests {
     fn test_decoration_source_key_display() {
         let key = DecorationSourceKey::new("pair.rainbow");
         assert_eq!(key.to_string(), "pair.rainbow");
+    }
+
+    #[test]
+    fn test_decoration_provider_key_service_name() {
+        assert_eq!(DecorationProviderKey::service_name(), "DecorationProvider");
+    }
+
+    #[test]
+    fn test_decoration_provider_key_equality() {
+        assert_eq!(DecorationProviderKey::Syntax, DecorationProviderKey::Syntax);
+        assert_ne!(DecorationProviderKey::Syntax, DecorationProviderKey::Diagnostic);
+    }
+
+    #[test]
+    fn test_decoration_source_key_service_name() {
+        assert_eq!(DecorationSourceKey::service_name(), "BufferDecorationSource");
+    }
+
+    #[test]
+    fn test_decoration_source_key_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(DecorationSourceKey::new("a"));
+        set.insert(DecorationSourceKey::new("b"));
+        set.insert(DecorationSourceKey::new("a")); // duplicate
+        assert_eq!(set.len(), 2);
     }
 }

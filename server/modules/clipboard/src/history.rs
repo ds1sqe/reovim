@@ -142,4 +142,96 @@ mod tests {
         ring.clear();
         assert!(ring.is_empty());
     }
+
+    #[test]
+    fn test_default_capacity_is_ten() {
+        let ring = HistoryRing::default();
+        assert_eq!(ring.capacity(), 10);
+        assert!(ring.is_empty());
+    }
+
+    #[test]
+    fn test_capacity_returns_correct_value() {
+        let ring = HistoryRing::new(5);
+        assert_eq!(ring.capacity(), 5);
+    }
+
+    #[test]
+    fn test_all_returns_entries_in_order() {
+        let mut ring = HistoryRing::new(10);
+        ring.push(content("first"));
+        ring.push(content("second"));
+        ring.push(content("third"));
+
+        let all = ring.all();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].text, "third");
+        assert_eq!(all[1].text, "second");
+        assert_eq!(all[2].text, "first");
+    }
+
+    #[test]
+    fn test_all_empty_ring() {
+        let ring = HistoryRing::new(10);
+        assert!(ring.all().is_empty());
+    }
+
+    #[test]
+    fn test_capacity_one() {
+        let mut ring = HistoryRing::new(1);
+        ring.push(content("first"));
+        ring.push(content("second"));
+
+        assert_eq!(ring.len(), 1);
+        assert_eq!(ring.get(0).map(|c| c.text.as_str()), Some("second"));
+        assert!(ring.get(1).is_none());
+    }
+
+    #[test]
+    fn test_push_preserves_yank_type() {
+        let mut ring = HistoryRing::new(10);
+        ring.push(RegisterContent::new("line".to_string(), YankType::Linewise));
+
+        let entry = ring.get(0).unwrap();
+        assert_eq!(entry.yank_type, YankType::Linewise);
+    }
+
+    #[test]
+    fn test_len_after_push_and_clear() {
+        let mut ring = HistoryRing::new(10);
+        assert_eq!(ring.len(), 0);
+
+        ring.push(content("a"));
+        assert_eq!(ring.len(), 1);
+
+        ring.push(content("b"));
+        assert_eq!(ring.len(), 2);
+
+        ring.clear();
+        assert_eq!(ring.len(), 0);
+    }
+
+    #[test]
+    fn test_get_out_of_bounds() {
+        let mut ring = HistoryRing::new(10);
+        ring.push(content("only"));
+
+        assert!(ring.get(0).is_some());
+        assert!(ring.get(1).is_none());
+        assert!(ring.get(100).is_none());
+    }
+
+    #[test]
+    fn test_capacity_exact_fill() {
+        let mut ring = HistoryRing::new(3);
+        ring.push(content("a"));
+        ring.push(content("b"));
+        ring.push(content("c"));
+
+        // Exactly at capacity, nothing should be dropped
+        assert_eq!(ring.len(), 3);
+        assert_eq!(ring.get(0).map(|c| c.text.as_str()), Some("c"));
+        assert_eq!(ring.get(1).map(|c| c.text.as_str()), Some("b"));
+        assert_eq!(ring.get(2).map(|c| c.text.as_str()), Some("a"));
+    }
 }

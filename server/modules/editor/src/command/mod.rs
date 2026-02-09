@@ -191,6 +191,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl BufferManager for TestBufferManager {
         fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
             self.buffers.read().get(&id).cloned()
@@ -229,12 +230,14 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
     }
 
     struct StubExecutor;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
         fn execute(
             &self,
@@ -247,6 +250,7 @@ mod tests {
     }
 
     /// Create a `KernelContext` with a real buffer manager for testing.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -273,6 +277,7 @@ mod tests {
         extensions: ExtensionMap,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl TestState {
         fn new() -> Self {
             let home_mode = test_mode();
@@ -314,6 +319,7 @@ mod tests {
     /// Creates temporary per-client state (`mode_stack`, windows, extensions)
     /// for backward compatibility. Use `TestState::runtime()` for tests that
     /// need persistent per-client state across multiple runtime operations.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn with_test_runtime<F, R>(session: &mut Session, kernel: &KernelContext, f: F) -> R
     where
         F: FnOnce(&mut SessionRuntime<'_>) -> R,
@@ -474,6 +480,7 @@ mod tests {
     // Cursor Movement Tests (With Valid Buffer)
     // =========================================================================
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn setup_buffer_context() -> (KernelContext, BufferId) {
         let ctx = create_test_context();
         let buffer = Buffer::from_string("line one\nline two\nline three");
@@ -504,6 +511,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_up_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -546,6 +554,7 @@ mod tests {
         assert_eq!(window.cursor.column, 1);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_left_moves_cursor() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -634,6 +643,7 @@ mod tests {
         assert_eq!(window.cursor.line, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_down_at_eof_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -676,6 +686,7 @@ mod tests {
         assert_eq!(window.cursor.column, 0);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cursor_right_at_eol_is_noop() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -750,18 +761,6 @@ mod tests {
     // =========================================================================
     // Undo/Redo Command Tests
     // =========================================================================
-
-    #[test]
-    fn test_undo_command_id() {
-        let cmd = UndoCommand;
-        assert_eq!(cmd.id().name(), "undo");
-    }
-
-    #[test]
-    fn test_redo_command_id() {
-        let cmd = RedoCommand;
-        assert_eq!(cmd.id().name(), "redo");
-    }
 
     #[test]
     fn test_undo_command_names() {
@@ -852,39 +851,9 @@ mod tests {
         assert_eq!(args[0].kind, ArgKind::Count);
     }
 
-    #[test]
-    fn test_undo_command_requires_active_buffer() {
-        // Undo commands DO require an active buffer (from session, not from args)
-        let mut session = Session::new(ClientId::new(1), test_mode());
-        let kernel = KernelContext::default();
-        let result = with_test_runtime(&mut session, &kernel, |runtime| {
-            let args = CommandContext::new();
-            UndoCommand.execute(runtime, &args)
-        });
-        assert!(result.is_error()); // No active buffer = error
-    }
-
-    #[test]
-    fn test_redo_command_requires_active_buffer() {
-        // Redo commands DO require an active buffer (from session, not from args)
-        let mut session = Session::new(ClientId::new(1), test_mode());
-        let kernel = KernelContext::default();
-        let result = with_test_runtime(&mut session, &kernel, |runtime| {
-            let args = CommandContext::new();
-            RedoCommand.execute(runtime, &args)
-        });
-        assert!(result.is_error()); // No active buffer = error
-    }
-
     // =========================================================================
     // Yank Command Tests
     // =========================================================================
-
-    #[test]
-    fn test_yank_line_command_id() {
-        let cmd = YankLine;
-        assert_eq!(cmd.id().name(), "yank-line");
-    }
 
     #[test]
     fn test_yank_line_has_count_arg() {
@@ -947,6 +916,7 @@ mod tests {
         assert_eq!(content.text, "line one\nline two\n");
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_yank_line_at_eof() {
         let (kernel, buffer_id) = setup_buffer_context();
@@ -982,18 +952,6 @@ mod tests {
     // =========================================================================
     // Paste Command Tests
     // =========================================================================
-
-    #[test]
-    fn test_paste_after_command_id() {
-        let cmd = PasteAfter;
-        assert_eq!(cmd.id().name(), "paste-after");
-    }
-
-    #[test]
-    fn test_paste_before_command_id() {
-        let cmd = PasteBefore;
-        assert_eq!(cmd.id().name(), "paste-before");
-    }
 
     #[test]
     fn test_paste_after_has_count_arg() {
@@ -1211,12 +1169,6 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_replace_char_start_command_id() {
-        let cmd = ReplaceCharStart;
-        assert_eq!(cmd.id().name(), "replace-char-start");
-    }
-
-    #[test]
     fn test_replace_char_start_has_count_arg() {
         let cmd = ReplaceCharStart;
         let args = cmd.args();
@@ -1254,12 +1206,6 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_repeat_dot_command_id() {
-        let cmd = RepeatDot;
-        assert_eq!(cmd.id().name(), "repeat-dot");
-    }
-
-    #[test]
     fn test_repeat_dot_has_count_arg() {
         let cmd = RepeatDot;
         let args = cmd.args();
@@ -1278,5 +1224,21 @@ mod tests {
             RepeatDot.execute(runtime, &args)
         });
         assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Helper Function Tests
+    // =========================================================================
+
+    #[test]
+    fn test_insert_edit_commands_count() {
+        let cmds = insert_edit_commands();
+        assert_eq!(cmds.len(), 2);
+    }
+
+    #[test]
+    fn test_delete_commands_count() {
+        let cmds = delete_commands();
+        assert_eq!(cmds.len(), 5);
     }
 }

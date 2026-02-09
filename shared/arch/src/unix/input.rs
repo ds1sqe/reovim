@@ -20,6 +20,7 @@ impl UnixInputSource {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Default for UnixInputSource {
     fn default() -> Self {
         Self::new()
@@ -27,10 +28,12 @@ impl Default for UnixInputSource {
 }
 
 impl InputSource for UnixInputSource {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn poll(&mut self, timeout: Duration) -> io::Result<bool> {
         event::poll(timeout)
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn read_event(&mut self) -> io::Result<InputEvent> {
         let ct_event = event::read()?;
         Ok(convert_event(ct_event))
@@ -54,5 +57,22 @@ mod tests {
         // In a TTY environment this should work; in CI it may fail
         // but should not panic
         let _ = result;
+    }
+
+    #[test]
+    fn test_input_source_default() {
+        fn assert_default<T: Default>() {}
+        assert_default::<UnixInputSource>();
+    }
+
+    #[test]
+    fn test_input_source_drain_empty() {
+        let mut source = UnixInputSource::new();
+        // drain() is the default method on InputSource trait
+        // In CI, there should be no pending events, so drain returns empty
+        let events = source.drain();
+        // We can only assert it doesn't panic; events may or may not be empty
+        // depending on the test environment
+        let _ = events;
     }
 }

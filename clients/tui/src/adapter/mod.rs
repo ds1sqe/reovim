@@ -144,6 +144,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl RootCompositor for MockCompositor {
         fn composite(&self, screen: Rect) -> CompositeResult {
             CompositeResult::empty(screen)
@@ -278,5 +279,43 @@ mod tests {
         focus.focus_panel(2);
         assert_eq!(layout.focused_viewport(), 2);
         assert!(focus.is_panel_focused(2));
+    }
+
+    #[test]
+    fn test_factory_compositor_accessor() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let factory = TuiAdapterFactory::new(compositor.clone(), LayerId::new(0));
+
+        // compositor() should return a cloned Arc pointing to the same compositor
+        let comp_ref = factory.compositor();
+        assert_eq!(Arc::strong_count(&compositor), 3); // original + factory + comp_ref
+        drop(comp_ref);
+        assert_eq!(Arc::strong_count(&compositor), 2);
+    }
+
+    #[test]
+    fn test_factory_active_layer() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let factory = TuiAdapterFactory::new(compositor, LayerId::new(5));
+        assert_eq!(factory.active_layer(), LayerId::new(5));
+    }
+
+    #[test]
+    fn test_multiple_adapters_from_factory() {
+        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
+        let factory = TuiAdapterFactory::new(compositor, LayerId::new(0));
+
+        let layout1 = factory.create_layout();
+        let layout2 = factory.create_layout();
+        let focus1 = factory.create_focus_manager(1);
+        let focus2 = factory.create_focus_manager(2);
+        let overlay = factory.create_overlay_manager();
+
+        // All adapters should be independently usable
+        assert_eq!(layout1.focused_viewport(), 1);
+        assert_eq!(layout2.focused_viewport(), 1);
+        assert!(focus1.is_panel_focused(1));
+        assert!(focus2.is_panel_focused(2));
+        assert!(overlay.active().is_empty());
     }
 }

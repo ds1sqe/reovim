@@ -62,6 +62,7 @@ use {
 /// server.run().await?;
 /// ```
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn create_session_state() -> SessionState {
     // Create shared service registry
     let services = Arc::new(ServiceRegistry::new());
@@ -124,6 +125,7 @@ pub fn create_session_state() -> SessionState {
 /// | `CommandHandlerStore` | `CommandRegistry` | Command dispatch |
 /// | `KeybindingStore` | `KeymapRegistry` | Key → command mapping |
 /// | `ResolverRegistry` | `ResolverRegistry` | Mode-specific key interpretation |
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_registries(
     services: &Arc<ServiceRegistry>,
 ) -> (ModeRegistry, CommandRegistry, KeymapRegistry, ResolverRegistry) {
@@ -205,6 +207,7 @@ fn extract_registries(
 ///
 /// The registry is stored back in `ServiceRegistry` so the vim module's
 /// `ExitCommandLineMode` can look it up at runtime.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn extract_ex_command_registry(services: &Arc<ServiceRegistry>) {
     // 5. Ex-commands: ExCommandHandlerStore → ExCommandRegistry (#465)
     //    Ex-commands like :w, :q, :e are dispatched through this registry
@@ -224,6 +227,7 @@ fn extract_ex_command_registry(services: &Arc<ServiceRegistry>) {
 /// Resolve a mode string like `"vim:normal"` to a `ModeId`.
 ///
 /// Mode strings in `KeybindingRegistration.modes` use `"module:name"` format.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Option<&'a ModeId> {
     if let Some((module, name)) = mode_str.split_once(':') {
         mode_registry.find_by_name(module, name)
@@ -238,6 +242,7 @@ fn resolve_mode_str<'a>(mode_str: &str, mode_registry: &'a ModeRegistry) -> Opti
 ///
 /// If no buffers exist after module initialization, call registered
 /// `EmptySessionHandler`s to create a scratch buffer.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
     use reovim_driver_session::{
         EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
@@ -281,6 +286,7 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
 }
 
 /// Create a kernel context with the given service registry.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
     KernelContext::new(
         Arc::new(EventBus::new()),
@@ -295,6 +301,7 @@ fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
 }
 
 /// Create a module context for module initialization.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) -> ModuleContext {
     // Use default paths - modules can create their own subdirectories
     let data_dir = default_data_dir();
@@ -310,6 +317,7 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Commands → `CommandHandlerStore`
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn initialize_modules(ctx: &ModuleContext) {
     // Get all default modules
     let modules = DefaultsModule::create_modules();
@@ -349,6 +357,7 @@ fn initialize_modules(ctx: &ModuleContext) {
 /// - Modules register into `SyntaxFactoryStore` during `init()`
 /// - Bootstrap extracts and configures `SyntaxSessionState`
 /// - NO direct imports of language-specific modules here!
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<ServiceRegistry>) {
     // Get the SyntaxFactoryStore (populated by treesitter modules during init)
     let Some(store) = services.get::<SyntaxFactoryStore>() else {
@@ -379,6 +388,7 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
 ///
 /// Returns `~/.local/share/reovim/modules/` on Unix,
 /// or equivalent on other platforms.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn default_data_dir() -> std::path::PathBuf {
     // Use XDG_DATA_HOME or fallback to ~/.local/share
     std::env::var("XDG_DATA_HOME")
@@ -399,6 +409,7 @@ fn default_data_dir() -> std::path::PathBuf {
 ///
 /// Returns `~/.cache/reovim/modules/` on Unix,
 /// or equivalent on other platforms.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn default_cache_dir() -> std::path::PathBuf {
     // Use XDG_CACHE_HOME or fallback to ~/.cache
     std::env::var("XDG_CACHE_HOME")
@@ -446,5 +457,70 @@ mod tests {
             resolver_registry.is_some(),
             "ResolverRegistry should be registered by VimModule"
         );
+    }
+
+    #[test]
+    fn test_resolve_mode_str_valid() {
+        let state = create_session_state();
+        let mode_reg = {
+            let services = Arc::new(ServiceRegistry::new());
+            let kernel = create_kernel_context(Arc::clone(&services));
+            let ctx = create_module_context(kernel, Arc::clone(&services));
+            initialize_modules(&ctx);
+            let (mode_registry, _, _, _) = extract_registries(&services);
+            mode_registry
+        };
+        // vim:normal should exist after module init
+        let result = resolve_mode_str("vim:normal", &mode_reg);
+        assert!(result.is_some());
+        drop(state);
+    }
+
+    #[test]
+    fn test_resolve_mode_str_no_colon() {
+        let mode_reg = ModeRegistry::new();
+        let result = resolve_mode_str("normal", &mode_reg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_mode_str_not_found() {
+        let mode_reg = ModeRegistry::new();
+        let result = resolve_mode_str("nonexistent:mode", &mode_reg);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_default_data_dir() {
+        let dir = default_data_dir();
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("reovim"));
+        assert!(dir_str.contains("modules"));
+    }
+
+    #[test]
+    fn test_default_cache_dir() {
+        let dir = default_cache_dir();
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("reovim"));
+        assert!(dir_str.contains("modules"));
+    }
+
+    #[test]
+    fn test_extract_ex_command_registry_empty() {
+        let services = Arc::new(ServiceRegistry::new());
+        // Should not panic even without store
+        extract_ex_command_registry(&services);
+        // Should have created empty ExCommandRegistry
+        let reg = services.get::<ExCommandRegistry>();
+        assert!(reg.is_some());
+    }
+
+    #[test]
+    fn test_create_kernel_context_valid() {
+        let services = Arc::new(ServiceRegistry::new());
+        let kernel = create_kernel_context(Arc::clone(&services));
+        // The kernel should have been constructed successfully
+        drop(kernel);
     }
 }

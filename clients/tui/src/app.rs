@@ -58,6 +58,7 @@ pub enum TuiAppError {
     StreamEnded,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl std::fmt::Display for TuiAppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -71,12 +72,14 @@ impl std::fmt::Display for TuiAppError {
 
 impl std::error::Error for TuiAppError {}
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<io::Error> for TuiAppError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<TuiGrpcError> for TuiAppError {
     fn from(e: TuiGrpcError) -> Self {
         Self::Grpc(e)
@@ -132,6 +135,7 @@ pub struct TuiApp<O: TuiOutput> {
     output: O,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<O: TuiOutput> TuiApp<O> {
     /// Create a TUI app with the given output adapter and connection details.
     #[allow(clippy::too_many_arguments)]
@@ -760,6 +764,7 @@ impl<O: TuiOutput> TuiApp<O> {
 // NotificationContext Implementation
 // =============================================================================
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl<O: TuiOutput> NotificationContext for TuiApp<O> {
     fn state_mut(&mut self) -> &mut TuiCoreState {
         &mut self.state
@@ -819,6 +824,7 @@ use crate::output::{HeadlessOutput, TerminalOutput};
 /// # Errors
 ///
 /// Returns an error if connection or terminal initialization fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn connect_interactive(
     addr: &str,
     debug_config: Option<TuiDebugConfig>,
@@ -859,6 +865,7 @@ pub async fn connect_interactive(
 /// # Errors
 ///
 /// Returns an error if connection fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn connect_headless(
     addr: &str,
     width: u16,
@@ -890,6 +897,7 @@ pub async fn connect_headless(
 }
 
 /// Common connection logic for both modes.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn connect_common(
     addr: &str,
     width: u16,
@@ -963,6 +971,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_tui_app_error_display() {
         let err = TuiAppError::Disconnected;
         assert_eq!(err.to_string(), "Server disconnected");

@@ -92,6 +92,7 @@ mod tests {
                 .insert((byte_range.start, byte_range.end), highlights);
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn invalidate_range(&mut self, byte_range: Range<usize>) {
             self.entries.retain(|(start, end), _| {
                 // Keep entries that don't overlap with the invalidated range

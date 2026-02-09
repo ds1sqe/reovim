@@ -15,7 +15,7 @@ use super::{RootCompositor, compositor_key::CompositorKey};
 ///
 /// Following the VFS pattern (mechanism/policy separation):
 /// - **Mechanism (driver)**: This registry type + `RootCompositor` trait
-/// - **Policy (module)**: `HybridCompositor` in `modules/layout`
+/// - **Policy (module)**: `HybridCompositor` in `server/modules/layout`
 ///
 /// # Example
 ///

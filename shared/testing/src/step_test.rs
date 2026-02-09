@@ -69,6 +69,7 @@ pub struct StateSnapshot {
     pub registers: HashMap<String, RegisterInfo>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl StateSnapshot {
     /// Format as compact single line: "key -> mode (line:col)"
     #[must_use]
@@ -147,6 +148,7 @@ pub struct StepTest {
     default_delay: u64,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl StepTest {
     /// Create new step test with automatic log capture (spawns server).
     ///
@@ -486,6 +488,7 @@ pub struct StepTrace {
     temp_path: Option<String>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for StepTrace {
     fn drop(&mut self) {
         if let Some(path) = &self.temp_path {
@@ -494,6 +497,7 @@ impl Drop for StepTrace {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl StepTrace {
     /// Get the path to the server log file for debugging.
     ///

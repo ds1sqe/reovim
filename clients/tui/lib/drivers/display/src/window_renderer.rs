@@ -636,4 +636,140 @@ mod tests {
         // The cursor should be rendered at the 'l' position
         // With gutter width ~3, cursor at col 2 = gutter + 2 = 5
     }
+
+    // =========================================================================
+    // Extended window renderer tests
+    // =========================================================================
+
+    #[test]
+    fn test_render_relative_line_numbers() {
+        let config = WindowRendererConfig {
+            line_numbers: LineNumberMode::Relative,
+            line_number_width: 5,
+            ..Default::default()
+        };
+        let renderer = WindowRenderer::with_config(config);
+        let mut buffer = FrameBuffer::new(40, 10);
+        let lines: Vec<String> = vec![
+            "Line A".to_string(),
+            "Line B".to_string(),
+            "Line C".to_string(),
+        ];
+        let content = make_content(&lines, 1); // cursor on line 1
+
+        renderer.render(&content, Rect::new(0, 0, 40, 10), &mut buffer, &Style::default());
+
+        // Relative line numbers: line 0 should show "1" (distance from cursor)
+        // line 1 (cursor) should show "0"
+        // line 2 should show "1"
+    }
+
+    #[test]
+    fn test_render_hybrid_line_numbers() {
+        let config = WindowRendererConfig {
+            line_numbers: LineNumberMode::Hybrid,
+            line_number_width: 5,
+            ..Default::default()
+        };
+        let renderer = WindowRenderer::with_config(config);
+        let mut buffer = FrameBuffer::new(40, 10);
+        let lines: Vec<String> = vec![
+            "Line A".to_string(),
+            "Line B".to_string(),
+            "Line C".to_string(),
+        ];
+        let content = make_content(&lines, 1); // cursor on line 1
+
+        renderer.render(&content, Rect::new(0, 0, 40, 10), &mut buffer, &Style::default());
+
+        // Hybrid: cursor line shows absolute (2), others show relative
+        let row_str: String = (0..5)
+            .filter_map(|x| buffer.get(x, 1).map(|c| c.char))
+            .collect();
+        assert!(
+            row_str.contains('2'),
+            "Cursor line should show absolute number 2, got: {row_str}"
+        );
+    }
+
+    #[test]
+    fn test_render_unfocused_no_cursor() {
+        let renderer = WindowRenderer::new();
+        let mut buffer = FrameBuffer::new(40, 10);
+        let lines: Vec<String> = vec!["Hello".to_string()];
+        let content = RenderContent {
+            lines: &lines,
+            first_line: 0,
+            total_lines: 1,
+            cursor_line: 0,
+            cursor_column: 0,
+            focused: false, // Not focused
+        };
+
+        renderer.render(&content, Rect::new(0, 0, 40, 10), &mut buffer, &Style::default());
+
+        // Cursor should not be rendered (no reverse style) when unfocused
+        // Just verify no panic
+    }
+
+    #[test]
+    fn test_render_cursor_at_end_of_line() {
+        let renderer = WindowRenderer::new();
+        let mut buffer = FrameBuffer::new(40, 10);
+        let lines: Vec<String> = vec!["Hello".to_string()];
+        let content = RenderContent {
+            lines: &lines,
+            first_line: 0,
+            total_lines: 1,
+            cursor_line: 0,
+            cursor_column: 5, // Past end of "Hello"
+            focused: true,
+        };
+
+        renderer.render(&content, Rect::new(0, 0, 40, 10), &mut buffer, &Style::default());
+
+        // Should render a space at cursor position
+    }
+
+    #[test]
+    fn test_set_config() {
+        let mut renderer = WindowRenderer::new();
+        let config = WindowRendererConfig {
+            line_numbers: LineNumberMode::Relative,
+            ..Default::default()
+        };
+        renderer.set_config(config);
+        assert_eq!(renderer.config().line_numbers, LineNumberMode::Relative);
+    }
+
+    #[test]
+    fn test_calculate_gutter_width_zero_lines() {
+        let renderer = WindowRenderer::new();
+        // 0 lines: 1 digit + 2 = 3
+        assert_eq!(renderer.calculate_gutter_width(0), 3);
+    }
+
+    #[test]
+    fn test_render_with_offset_bounds() {
+        let renderer = WindowRenderer::new();
+        let mut buffer = FrameBuffer::new(80, 24);
+        let lines: Vec<String> = vec!["Content".to_string()];
+        let content = make_content(&lines, 0);
+
+        // Render at an offset position
+        renderer.render(&content, Rect::new(10, 5, 30, 10), &mut buffer, &Style::default());
+
+        // Content should be at offset position
+        let row: String = (10..40)
+            .filter_map(|x| buffer.get(x, 5).map(|c| c.char))
+            .collect();
+        assert!(row.contains("Content"), "Row should contain 'Content' at offset, got: {row}");
+    }
+
+    #[test]
+    fn test_visible_lines_top_beyond_end() {
+        let lines: Vec<String> = vec!["Line 0".to_string()];
+        let visible = WindowRenderer::visible_lines(&lines, 100, 10);
+        assert!(visible.is_empty());
+    }
 }

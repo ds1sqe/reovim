@@ -62,6 +62,7 @@ pub struct IntegrationTest {
     default_delay: u64,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl IntegrationTest {
     /// Create new test with automatic log capture (spawns server).
     ///
@@ -280,6 +281,7 @@ pub struct TestResult {
     temp_path: Option<String>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for TestResult {
     fn drop(&mut self) {
         if let Some(path) = &self.temp_path {
@@ -288,6 +290,7 @@ impl Drop for TestResult {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TestResult {
     /// Get the path to the server log file for debugging.
     ///

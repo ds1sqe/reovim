@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Ex-commands module - POLICY.
 //!
 //! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)
@@ -119,23 +120,46 @@ reovim_module_macros::declare_module!(CommandsModule);
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // commands() function tests
+    // ========================================================================
+
     #[test]
-    fn test_commands_list() {
+    fn test_commands_list_count() {
         let cmds = commands();
         assert_eq!(cmds.len(), 8); // 5 base + 3 session commands
+    }
 
-        // Check commands are present
+    #[test]
+    fn test_commands_list_contains_all_ids() {
+        let cmds = commands();
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
-        assert!(ids.contains(&"edit")); // #465 - needed for vim_commands.rs tests
+        assert!(ids.contains(&"edit"));
         assert!(ids.contains(&"quit"));
         assert!(ids.contains(&"write"));
         assert!(ids.contains(&"write-quit"));
-        assert!(ids.contains(&"colorscheme")); // #439
-        // Session commands from #350
+        assert!(ids.contains(&"colorscheme"));
         assert!(ids.contains(&"detach"));
         assert!(ids.contains(&"servers"));
         assert!(ids.contains(&"kill-server"));
     }
+
+    #[test]
+    fn test_commands_unique_ids() {
+        let cmds = commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        for (i, id) in ids.iter().enumerate() {
+            for (j, other) in ids.iter().enumerate() {
+                if i != j {
+                    assert_ne!(id, other, "duplicate command id: {id}");
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Command type re-export tests
+    // ========================================================================
 
     #[test]
     fn test_quit_command_names() {
@@ -154,9 +178,90 @@ mod tests {
     }
 
     #[test]
-    fn test_module_trait() {
+    fn test_session_commands_re_export() {
+        let detach = DetachCommand;
+        let servers = ServersCommand;
+        let kill = KillServerCommand;
+        assert_eq!(detach.id(), "detach");
+        assert_eq!(servers.id(), "servers");
+        assert_eq!(kill.id(), "kill-server");
+    }
+
+    // ========================================================================
+    // CommandsModule tests
+    // ========================================================================
+
+    #[test]
+    fn test_module_id() {
         let module = CommandsModule;
         assert_eq!(module.id().as_str(), "commands");
+    }
+
+    #[test]
+    fn test_module_name() {
+        let module = CommandsModule;
         assert_eq!(module.name(), "Ex-Commands");
+    }
+
+    #[test]
+    fn test_module_version() {
+        let module = CommandsModule;
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 9);
+        assert_eq!(version.patch, 0);
+    }
+
+    #[test]
+    fn test_module_new() {
+        let module = CommandsModule::new();
+        assert_eq!(module.id().as_str(), "commands");
+    }
+
+    #[test]
+    fn test_module_default() {
+        fn accepts_default<T: Default>(val: T) -> T {
+            drop(val);
+            T::default()
+        }
+        let module = accepts_default(CommandsModule);
+        assert_eq!(module.id().as_str(), "commands");
+    }
+
+    #[test]
+    fn test_module_exit() {
+        let mut module = CommandsModule::new();
+        let result = module.exit();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_module_init_registers_commands() {
+        use reovim_kernel::api::v1::ModuleContext;
+
+        let mut module = CommandsModule::new();
+        let ctx = ModuleContext::default();
+
+        let result = module.init(&ctx);
+        assert_eq!(result, ProbeResult::Success);
+
+        // Verify commands were registered in the ExCommandHandlerStore
+        let store = ctx.services.get::<ExCommandHandlerStore>().unwrap();
+        assert_eq!(store.len(), 8);
+    }
+
+    #[test]
+    fn test_module_init_idempotent_stores_accumulate() {
+        use reovim_kernel::api::v1::ModuleContext;
+
+        let mut module = CommandsModule::new();
+        let ctx = ModuleContext::default();
+
+        // Init twice - handlers accumulate in the store
+        module.init(&ctx);
+        module.init(&ctx);
+
+        let store = ctx.services.get::<ExCommandHandlerStore>().unwrap();
+        assert_eq!(store.len(), 16); // 8 + 8
     }
 }

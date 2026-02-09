@@ -196,6 +196,7 @@ mod tests {
             self.messages.lock().unwrap().push(msg);
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn flush(&self) {}
 
         fn enabled(&self, level: Level) -> bool {
@@ -207,6 +208,7 @@ mod tests {
     // it's global and can only be set once. Instead, we test the
     // underlying __log function.
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_log_internal() {
         // Test __log directly
@@ -232,6 +234,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_level_filtering() {
         // Test that log is not called when level is disabled
         let logger = CapturingLogger::new(Level::Warn);
@@ -256,6 +259,7 @@ mod tests {
         assert!(messages[0].contains("should appear"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_format_args() {
         // Test that format_args works correctly

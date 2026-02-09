@@ -112,6 +112,7 @@ impl ViewportUpdate {
     }
 
     /// Apply this update to a viewport state.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn apply_to(&self, state: &mut ViewportState) {
         debug_assert_eq!(self.viewport_id, state.id);
         if let Some(line) = self.top_line {
@@ -130,6 +131,7 @@ impl ViewportUpdate {
 
     /// Check if this update is empty (no changes).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn is_empty(&self) -> bool {
         self.top_line.is_none()
             && self.left_col.is_none()

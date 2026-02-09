@@ -30,9 +30,9 @@ use {
 /// # Design Note
 ///
 /// This lives in the driver layer (mechanism) so that:
-/// - Tests in runner can use it without depending on modules
+/// - Tests in server can use it without depending on modules
 /// - It follows mechanism/policy separation
-/// - Module implementations remain in modules/
+/// - Module implementations remain in server/modules/
 pub struct TestBufferManager {
     /// Buffer storage with outer `RwLock` protecting the `HashMap`.
     buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
@@ -133,5 +133,35 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert!(list.contains(&id1));
         assert!(list.contains(&id2));
+    }
+
+    #[test]
+    fn test_default() {
+        let mgr = TestBufferManager::default();
+        assert_eq!(mgr.count(), 0);
+    }
+
+    #[test]
+    fn test_unregister_not_found() {
+        let mgr = TestBufferManager::new();
+        let fake_id = BufferId::from_raw(9999);
+        assert!(mgr.unregister(fake_id).is_err());
+    }
+
+    #[test]
+    fn test_get_nonexistent() {
+        let mgr = TestBufferManager::new();
+        let fake_id = BufferId::from_raw(9999);
+        assert!(mgr.get(fake_id).is_none());
+    }
+
+    #[test]
+    fn test_unregister_with_shared_reference() {
+        let mgr = TestBufferManager::new();
+        let id = mgr.create();
+        // Hold an extra reference to trigger the Err(arc) => clone path
+        let _extra = mgr.get(id).unwrap();
+        let result = mgr.unregister(id);
+        assert!(result.is_ok());
     }
 }

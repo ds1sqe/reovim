@@ -14,8 +14,8 @@
 //!
 //! # Location
 //!
-//! - **Trait definition**: `lib/drivers/display/src/layout/view.rs` (mechanism)
-//! - **Implementation**: `modules/editor/src/view_manager.rs` (policy)
+//! - **Trait definition**: `clients/tui/lib/drivers/display/src/layout/view.rs` (mechanism)
+//! - **Implementation**: `server/modules/editor/src/view_manager.rs` (policy)
 //!
 //! # Strong Typing
 //!

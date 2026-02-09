@@ -60,3 +60,59 @@ impl Default for DisplayCapabilities {
         Self::detect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_detect_returns_valid_capabilities() {
+        let caps = DisplayCapabilities::detect();
+        // color_mode is always set (it has a detection logic)
+        let _ = caps.color_mode;
+        // These are booleans, just verify they don't panic
+        let _ = caps.supports_underline_color;
+        let _ = caps.supports_extended_underlines;
+        let _ = caps.supports_mouse;
+        let _ = caps.supports_kitty_graphics;
+        let _ = caps.supports_sixel;
+    }
+
+    #[test]
+    fn test_default_matches_detect() {
+        let detected = DisplayCapabilities::detect();
+        let default = DisplayCapabilities::default();
+        // Both should produce the same result
+        assert_eq!(detected.color_mode, default.color_mode);
+        assert_eq!(detected.supports_mouse, default.supports_mouse);
+        assert_eq!(detected.supports_sixel, default.supports_sixel);
+    }
+
+    #[test]
+    fn test_mouse_always_supported() {
+        let caps = DisplayCapabilities::detect();
+        assert!(caps.supports_mouse);
+    }
+
+    #[test]
+    fn test_sixel_not_supported_by_default() {
+        let caps = DisplayCapabilities::detect();
+        // Sixel requires terminal query, always false in detect()
+        assert!(!caps.supports_sixel);
+    }
+
+    #[test]
+    fn test_capabilities_is_clone() {
+        let caps = DisplayCapabilities::detect();
+        let cloned = caps.clone();
+        assert_eq!(caps.color_mode, cloned.color_mode);
+        assert_eq!(caps.supports_mouse, cloned.supports_mouse);
+    }
+
+    #[test]
+    fn test_capabilities_is_debug() {
+        let caps = DisplayCapabilities::detect();
+        let debug = format!("{caps:?}");
+        assert!(debug.contains("DisplayCapabilities"));
+    }
+}

@@ -1066,6 +1066,573 @@ mod tests {
         assert!(tokens.is_empty());
     }
 
+    #[test]
+    fn test_to_proto_client_info_independent() {
+        use {
+            crate::session::ClientMetadata,
+            reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
+        };
+
+        let mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mode_stack = ModeStack::new(mode);
+        let metadata = ClientMetadata::default();
+        let client = Client::with_mode_stack(ClientId::new(42), metadata, mode_stack);
+
+        let info = to_proto_client_info(&client);
+        assert_eq!(info.id, 42);
+        assert!(info.relation.is_none()); // Independent
+        assert!(info.view.is_some());
+        assert_eq!(info.view.as_ref().unwrap().mode, "normal");
+        assert!(info.metadata.is_some());
+    }
+
+    #[test]
+    fn test_to_proto_client_info_following() {
+        use {
+            crate::session::{ClientMetadata, ClientRelation},
+            reovim_driver_session::Window,
+            reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
+        };
+
+        let mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mode_stack = ModeStack::new(mode);
+        let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(10);
+        let window = Window::with_buffer(buffer_id);
+        let metadata = ClientMetadata::default();
+        let mut client =
+            Client::with_mode_stack_and_window(ClientId::new(5), metadata, mode_stack, window);
+        client.set_relation_unchecked(Some(ClientRelation::Following {
+            target: ClientId::new(1),
+        }));
+
+        let info = to_proto_client_info(&client);
+        assert_eq!(info.id, 5);
+        let rel = info.relation.unwrap();
+        assert_eq!(rel.r#type, ProtoRelationType::RelationTypeFollowing as i32);
+        assert_eq!(rel.target_id, 1);
+        // Client has a window with buffer
+        assert!(info.view.as_ref().unwrap().buffer_id.is_some());
+    }
+
+    #[test]
+    fn test_to_proto_client_info_sharing() {
+        use {
+            crate::session::{ClientMetadata, ClientRelation},
+            reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
+        };
+
+        let mode = ModeId::new(ModuleId::new("test"), "normal");
+        let mode_stack = ModeStack::new(mode);
+        let metadata = ClientMetadata::default();
+        let mut client = Client::with_mode_stack(ClientId::new(3), metadata, mode_stack);
+        client.set_relation_unchecked(Some(ClientRelation::Sharing {
+            with: ClientId::new(2),
+        }));
+
+        let info = to_proto_client_info(&client);
+        let rel = info.relation.unwrap();
+        assert_eq!(rel.r#type, ProtoRelationType::RelationTypeSharing as i32);
+        assert_eq!(rel.target_id, 2);
+    }
+
+    #[test]
+    fn test_to_proto_presence_independent() {
+        let presence = ClientPresence::new(ClientId::new(1), "tui", "laptop");
+        let proto = to_proto_presence(&presence);
+
+        assert_eq!(proto.client_id, 1);
+        assert_eq!(proto.client_type, "tui");
+        assert_eq!(proto.display_name, "laptop");
+        assert_eq!(proto.sync_mode, ProtoSyncMode::Independent as i32);
+        assert!(proto.follow_target.is_none());
+    }
+
+    #[test]
+    fn test_to_proto_presence_follow() {
+        let mut presence = ClientPresence::new(ClientId::new(2), "cli", "terminal");
+        presence.sync_mode = SyncMode::Follow {
+            target: ClientId::new(1),
+        };
+
+        let proto = to_proto_presence(&presence);
+        assert_eq!(proto.sync_mode, ProtoSyncMode::Follow as i32);
+        assert_eq!(proto.follow_target, Some(1));
+    }
+
+    #[test]
+    fn test_to_proto_presence_present() {
+        let mut presence = ClientPresence::new(ClientId::new(3), "web", "browser");
+        presence.sync_mode = SyncMode::Present;
+
+        let proto = to_proto_presence(&presence);
+        assert_eq!(proto.sync_mode, ProtoSyncMode::Present as i32);
+        assert!(proto.follow_target.is_none());
+    }
+
+    #[test]
+    fn test_notification_to_presence_update_joined() {
+        let presence = ClientPresence::new(ClientId::new(1), "tui", "laptop");
+        let notification = build_presence_joined_notification(&presence);
+
+        let update = notification_to_presence_update(&notification);
+        assert!(update.is_some());
+        let u = update.unwrap();
+        assert!(matches!(u.update, Some(Update::Joined(_))));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_notification_to_presence_update_left() {
+        let notification = build_presence_left_notification(ClientId::new(5), "laptop");
+        let update = notification_to_presence_update(&notification);
+        assert!(update.is_some());
+        let u = update.unwrap();
+        if let Some(Update::Left(id)) = u.update {
+            assert_eq!(id, 5);
+        } else {
+            panic!("Expected Left update");
+        }
+    }
+
+    #[test]
+    fn test_notification_to_presence_update_updated() {
+        let presence = ClientPresence::new(ClientId::new(3), "cli", "term");
+        let notification = build_presence_updated_notification(&presence);
+        let update = notification_to_presence_update(&notification);
+        assert!(update.is_some());
+        assert!(matches!(update.unwrap().update, Some(Update::Updated(_))));
+    }
+
+    #[test]
+    fn test_notification_to_presence_update_non_presence() {
+        let notification = Notification {
+            event_type: "mode_changed".to_string(),
+            timestamp_ms: 0,
+            payload: None,
+        };
+        let update = notification_to_presence_update(&notification);
+        assert!(update.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_role_owner() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "laptop".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Owner as i32,
+                target_id: None,
+            },
+            cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_role_follow() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "owner".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "follower".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let follower_cid = ClientId::new(r2.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Follow as i32,
+                target_id: Some(r1.client_id),
+            },
+            follower_cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_role_share() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "owner".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "sharer".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let sharer_cid = ClientId::new(r2.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Share as i32,
+                target_id: Some(r1.client_id),
+            },
+            sharer_cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_role_follow_missing_target_id() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Follow as i32,
+                target_id: None, // Missing target!
+            },
+            cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_set_role_client_not_found() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Owner as i32,
+                target_id: None,
+            },
+            ClientId::new(999),
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(!resp.ok);
+        assert!(resp.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_set_role_follow_target_not_found() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Follow as i32,
+                target_id: Some(9999), // Non-existent target
+            },
+            cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::FailedPrecondition);
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_following() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "target".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "follower".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let follower_cid = ClientId::new(r2.client_id as usize);
+
+        let request = authed_request(
+            SetRelationRequest {
+                relation: Some(ProtoClientRelation {
+                    r#type: ProtoRelationType::RelationTypeFollowing as i32,
+                    target_id: r1.client_id,
+                }),
+            },
+            follower_cid,
+        );
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_sharing() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "owner".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "sharer".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let sharer_cid = ClientId::new(r2.client_id as usize);
+
+        let request = authed_request(
+            SetRelationRequest {
+                relation: Some(ProtoClientRelation {
+                    r#type: ProtoRelationType::RelationTypeSharing as i32,
+                    target_id: r1.client_id,
+                }),
+            },
+            sharer_cid,
+        );
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_independent() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(r1.client_id as usize);
+
+        // Set to independent (None relation)
+        let request = authed_request(SetRelationRequest { relation: None }, cid);
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_target_not_found() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(r1.client_id as usize);
+
+        let request = authed_request(
+            SetRelationRequest {
+                relation: Some(ProtoClientRelation {
+                    r#type: ProtoRelationType::RelationTypeFollowing as i32,
+                    target_id: 99999,
+                }),
+            },
+            cid,
+        );
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(!resp.ok);
+        assert!(resp.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_self_target() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(r1.client_id as usize);
+
+        // Try to follow self
+        let request = authed_request(
+            SetRelationRequest {
+                relation: Some(ProtoClientRelation {
+                    r#type: ProtoRelationType::RelationTypeFollowing as i32,
+                    target_id: r1.client_id,
+                }),
+            },
+            cid,
+        );
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(!resp.ok);
+        // Should have CannotTargetSelf error
+        assert!(resp.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_set_sync_mode_client_not_in_presence_map() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        // Client 42 never joined - not in presence map
+        let request = authed_request(
+            SetSyncModeRequest {
+                mode: ProtoSyncMode::Independent as i32,
+                follow_target: None,
+            },
+            ClientId::new(42),
+        );
+        let response = service.set_sync_mode(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_set_role_share_missing_target_id() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let join_resp = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "test".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let cid = ClientId::new(join_resp.client_id as usize);
+
+        let request = authed_request(
+            SetRoleRequest {
+                role: ProtoRole::Share as i32,
+                target_id: None, // Missing target!
+            },
+            cid,
+        );
+        let response = service.set_role(request).await;
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::InvalidArgument);
+    }
+
+    #[tokio::test]
+    async fn test_set_relation_invalid_type_defaults_to_following() {
+        let registry = test_registry();
+        let service = PresenceServiceImpl::new(registry, SessionId::new("test"), test_tokens());
+
+        let r1 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "target".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+
+        let r2 = service
+            .join(Request::new(JoinRequest {
+                client_type: "tui".to_string(),
+                display_name: "follower".to_string(),
+            }))
+            .await
+            .unwrap()
+            .into_inner();
+        let follower_cid = ClientId::new(r2.client_id as usize);
+
+        // Use invalid relation type (999) - should default to Following
+        let request = authed_request(
+            SetRelationRequest {
+                relation: Some(ProtoClientRelation {
+                    r#type: 999,
+                    target_id: r1.client_id,
+                }),
+            },
+            follower_cid,
+        );
+        let response = service.set_relation(request).await;
+        assert!(response.is_ok());
+        assert!(response.unwrap().into_inner().ok);
+    }
+
     #[tokio::test]
     async fn test_each_client_gets_unique_token() {
         let tokens = test_tokens();

@@ -64,6 +64,7 @@ reovim-driver-buffer = { workspace = true }
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+tracing-subscriber = { workspace = true }
 
 [lints]
 workspace = true

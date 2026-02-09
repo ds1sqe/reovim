@@ -153,6 +153,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_interaction_select_index() {
         let interaction = Interaction::SelectIndex(5);
         assert!(interaction.is_navigation());
@@ -162,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_interaction_filter() {
         let interaction = Interaction::filter("hello");
         assert!(!interaction.is_navigation());
@@ -187,6 +189,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_interaction_custom() {
         let interaction = Interaction::custom("my-action");
         assert!(!interaction.is_navigation());
@@ -198,6 +201,7 @@ mod tests {
 
     // InteractionResult tests
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_result_state_update() {
         let state = OverlayState::with_selection(3);
         let result = InteractionResult::state_update(state.clone());
@@ -209,6 +213,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_result_confirm() {
         let result = InteractionResult::confirm(serde_json::json!({"item": "foo"}));
         assert!(result.closes_overlay());
@@ -230,6 +235,27 @@ mod tests {
         let result = InteractionResult::PassThrough;
         assert!(!result.closes_overlay());
         assert!(!result.was_handled());
+    }
+
+    #[test]
+    fn test_interaction_not_terminal() {
+        assert!(!Interaction::SelectNext.is_terminal());
+        assert!(!Interaction::SelectPrev.is_terminal());
+        assert!(!Interaction::ScrollDown(1).is_terminal());
+        assert!(!Interaction::ScrollUp(1).is_terminal());
+        assert!(!Interaction::PageDown.is_terminal());
+        assert!(!Interaction::PageUp.is_terminal());
+        assert!(!Interaction::SelectIndex(0).is_terminal());
+        assert!(!Interaction::filter("x").is_terminal());
+        assert!(!Interaction::custom("x").is_terminal());
+    }
+
+    #[test]
+    fn test_interaction_not_navigation() {
+        assert!(!Interaction::Confirm.is_navigation());
+        assert!(!Interaction::Cancel.is_navigation());
+        assert!(!Interaction::filter("x").is_navigation());
+        assert!(!Interaction::custom("x").is_navigation());
     }
 
     #[test]

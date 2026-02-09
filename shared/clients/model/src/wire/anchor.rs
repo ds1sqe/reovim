@@ -98,6 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_anchor_buffer() {
         let anchor = Anchor::buffer(1, 10, 5);
         match anchor {
@@ -122,6 +123,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_anchor_screen() {
         let anchor = Anchor::screen(0.5, 0.5);
         assert!(anchor.is_screen_fixed());
@@ -143,6 +145,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_anchor_below() {
         let anchor = Anchor::below("completion");
         match anchor {

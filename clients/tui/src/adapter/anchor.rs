@@ -139,6 +139,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_cursor_anchor() {
         let ctx = test_context();
         let wire = WireAnchor::Cursor;
@@ -155,6 +156,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_buffer_anchor() {
         let ctx = test_context();
         let wire = WireAnchor::Buffer {
@@ -175,6 +177,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_screen_anchor_center() {
         let ctx = test_context();
         let wire = WireAnchor::Screen { x: 0.5, y: 0.5 };
@@ -190,6 +193,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_screen_anchor_origin() {
         let ctx = test_context();
         let wire = WireAnchor::Screen { x: 0.0, y: 0.0 };
@@ -205,6 +209,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_screen_anchor_bottom_right() {
         let ctx = test_context();
         let wire = WireAnchor::Screen { x: 1.0, y: 1.0 };
@@ -220,6 +225,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_screen_anchor_clamped_negative() {
         let ctx = test_context();
         let wire = WireAnchor::Screen { x: -0.5, y: -0.5 };
@@ -235,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_screen_anchor_clamped_overflow() {
         let ctx = test_context();
         let wire = WireAnchor::Screen { x: 1.5, y: 2.0 };
@@ -259,6 +266,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_convert_below_anchor_known() {
         let mut ctx = test_context();
         ctx.register_overlay("completion", WindowId::from_raw(42));

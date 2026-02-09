@@ -9,7 +9,7 @@
 //!
 //! - **Mechanism** (this module): Defines `DisplayRegistry`, `DisplayInfo`,
 //!   and `DisplayInfoBuilder` types that provide the WHAT.
-//! - **Policy** (runner/modules): The runner owns the registry and modules
+//! - **Policy** (server/modules): The server owns the registry and modules
 //!   decide HOW to register their display information.
 //!
 //! # Example

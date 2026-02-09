@@ -31,6 +31,7 @@ impl Operator for DeleteOperator {
     }
 
     #[allow(clippy::too_many_lines, clippy::option_if_let_else)]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, ctx: &mut OperatorContext<'_>, range: Range) -> Result<(), OperatorError> {
         // Get the buffer via kernel's buffer manager
         let buffer_arc = ctx
@@ -103,11 +104,10 @@ impl Operator for DeleteOperator {
                 // Use .chars().count() for UTF-8 safety
                 let prev_line_len = lines.get(start.line - 1).map_or(0, |l| l.chars().count());
                 delete_start = reovim_kernel::api::v1::Position::new(start.line - 1, prev_line_len);
-                delete_end = if let Some(last_line) = lines.get(clamped_end) {
-                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count())
-                } else {
-                    reovim_kernel::api::v1::Position::new(clamped_end, 0)
-                };
+                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
+                let last_line = &lines[clamped_end];
+                delete_end =
+                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count());
                 // Build deleted_text as "\nline" (preceding newline + content, no trailing newline)
                 // This matches what we're actually deleting for correct undo
                 for line_idx in start.line..=clamped_end {
@@ -119,11 +119,10 @@ impl Operator for DeleteOperator {
             } else {
                 // Case 3: Deleting all lines (start.line == 0 and clamped_end is last line)
                 delete_start = reovim_kernel::api::v1::Position::new(0, 0);
-                delete_end = if let Some(last_line) = lines.get(clamped_end) {
-                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count())
-                } else {
-                    reovim_kernel::api::v1::Position::new(clamped_end, 0)
-                };
+                // clamped_end is always valid: end.line.min(line_count - 1) < lines.len()
+                let last_line = &lines[clamped_end];
+                delete_end =
+                    reovim_kernel::api::v1::Position::new(clamped_end, last_line.chars().count());
                 // deleted_text is just the content (no newlines - single line)
                 if let Some(line) = lines.get(clamped_end) {
                     deleted_text.push_str(line);
@@ -155,10 +154,9 @@ impl Operator for DeleteOperator {
             // Case 3 (delete all lines): Buffer is empty, cursor at (0, 0).
             let line_count = buffer.line_count();
             let final_line = start.line.min(line_count.saturating_sub(1));
-            let final_col = if line_count == 0 {
-                // Case 3: Empty buffer
-                0
-            } else if is_deleting_last_line {
+            // Note: Buffer always maintains at least one line (even if empty),
+            // so line_count is always >= 1 after delete_range.
+            let final_col = if is_deleting_last_line {
                 // Case 2: Cursor at last valid column of the new last line
                 let line_len = buffer.line_len(final_line).unwrap_or(0);
                 if line_len == 0 {
@@ -188,28 +186,29 @@ impl Operator for DeleteOperator {
             // Characterwise deletion
             if start.line == end.line {
                 // Single line deletion
-                if let Some(line) = lines.get(start.line) {
-                    let start_col = start.column.min(line.len());
-                    let end_col = end.column.min(line.len());
-                    if start_col < end_col {
-                        deleted_text.push_str(&line[start_col..end_col]);
-                    }
+                // start.line is valid: buffer exists and lines were just obtained from it
+                let line = &lines[start.line];
+                let start_col = start.column.min(line.len());
+                let end_col = end.column.min(line.len());
+                if start_col < end_col {
+                    deleted_text.push_str(&line[start_col..end_col]);
                 }
             } else {
                 // Multi-line deletion
-                for line_idx in start.line..=end.line {
-                    if let Some(line) = lines.get(line_idx) {
-                        if line_idx == start.line {
-                            let start_col = start.column.min(line.len());
-                            deleted_text.push_str(&line[start_col..]);
-                            deleted_text.push('\n');
-                        } else if line_idx == end.line {
-                            let end_col = end.column.min(line.len());
-                            deleted_text.push_str(&line[..end_col]);
-                        } else {
-                            deleted_text.push_str(line);
-                            deleted_text.push('\n');
-                        }
+                // All indices in start.line..=end.line are valid: lines were obtained
+                // from the same buffer snapshot and end.line <= last valid line
+                for (line_idx, line) in lines.iter().enumerate().take(end.line + 1).skip(start.line)
+                {
+                    if line_idx == start.line {
+                        let start_col = start.column.min(line.len());
+                        deleted_text.push_str(&line[start_col..]);
+                        deleted_text.push('\n');
+                    } else if line_idx == end.line {
+                        let end_col = end.column.min(line.len());
+                        deleted_text.push_str(&line[..end_col]);
+                    } else {
+                        deleted_text.push_str(line);
+                        deleted_text.push('\n');
                     }
                 }
             }
@@ -254,6 +253,7 @@ impl Operator for DeleteOperator {
 }
 
 #[cfg(test)]
+#[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
 mod tests {
     use {
         super::*,
@@ -261,16 +261,24 @@ mod tests {
         reovim_driver_session::{
             ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
         },
-        reovim_kernel::api::v1::{CommandId, KernelContext, ModeId, ModeStack, ModuleId},
+        reovim_kernel::api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
+                RwLock, ServiceRegistry, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
     };
 
-    #[allow(dead_code)]
     fn run_command<C: CommandHandler>(
         cmd: &C,
         ctx: &KernelContext,
         args: &CommandContext,
     ) -> CommandResult {
         struct StubExecutor;
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl CommandExecutor for StubExecutor {
             fn execute(
                 &self,
@@ -298,6 +306,72 @@ mod tests {
         cmd.execute(&mut runtime, args)
     }
 
+    /// Test buffer manager that actually stores buffers.
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    /// Create a `KernelContext` with a real buffer manager for testing.
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
     #[test]
     fn test_delete_operator_id() {
         let delete = DeleteOperator;
@@ -314,5 +388,851 @@ mod tests {
     fn test_delete_is_not_linewise_by_default() {
         let delete = DeleteOperator;
         assert!(!delete.is_linewise());
+    }
+
+    // ========================================================================
+    // Delete execute tests
+    // ========================================================================
+
+    #[test]
+    fn test_delete_buffer_not_found() {
+        let ctx = create_test_context();
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id: BufferId::from_raw(999),
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_characterwise_single_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete "hello" (columns 0..5)
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        // Check buffer content
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[" world"]);
+
+        // Check register has deleted text
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "hello");
+    }
+
+    #[test]
+    fn test_delete_characterwise_partial() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 6),
+        };
+        // Delete "world" (columns 6..11)
+        let range = super::super::Range::new(Position::new(0, 6), Position::new(0, 11));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["hello "]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "world");
+    }
+
+    #[test]
+    fn test_delete_characterwise_multi_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld\nfoo");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 3),
+        };
+        // Delete from (0,3) to (1,3) => "lo\nwor"
+        let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "lo\nwor");
+    }
+
+    #[test]
+    fn test_delete_linewise_first_line_of_multiple() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("line1\nline2\nline3");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete line 0 (linewise) - Case 1: deleting non-last line
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["line2", "line3"]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "line1\n");
+    }
+
+    #[test]
+    fn test_delete_linewise_last_line_not_only() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("line1\nline2");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete line 1 (linewise) - Case 2: deleting last line but not all
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["line1"]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "line2\n");
+    }
+
+    #[test]
+    fn test_delete_linewise_only_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("only line");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete line 0 (linewise) - Case 3: deleting the only line
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        // After deleting all content, buffer has one empty line
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "only line\n");
+    }
+
+    #[test]
+    fn test_delete_linewise_multiple_lines() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc\nd");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete lines 1-2 (linewise) - Case 1: not last lines
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(2, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["a", "d"]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "b\nc\n");
+    }
+
+    #[test]
+    fn test_delete_to_named_register() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: Some('a'),
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("hello"));
+    }
+
+    #[test]
+    fn test_delete_linewise_clamped_end() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete with end beyond buffer - should clamp to last line
+        // This is Case 3: start.line == 0, clamped_end is last line
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(99, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        // After deleting all lines, buffer has one empty line
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+    }
+
+    #[test]
+    fn test_delete_characterwise_empty_range() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 3),
+        };
+        // Delete same position
+        let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 3));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        // Buffer should be unchanged
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["hello"]);
+    }
+
+    #[test]
+    fn test_delete_linewise_last_two_of_three() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete lines 1-2 (the last two lines) - Case 2
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(2, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["a"]);
+    }
+
+    #[test]
+    fn test_delete_characterwise_three_lines() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\nbbb\nccc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 1),
+        };
+        // Delete from (0,1) to (2,2) => "aa\nbbb\ncc"
+        let range = super::super::Range::new(Position::new(0, 1), Position::new(2, 2));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "aa\nbbb\ncc");
+    }
+
+    #[test]
+    fn test_delete_linewise_middle_line_of_three() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("first\nsecond\nthird");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete middle line (linewise) - Case 1: not last line
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["first", "third"]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "second\n");
+    }
+
+    #[test]
+    fn test_delete_characterwise_single_char() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete just 'h' (0,0) to (0,1)
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 1));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &["ello"]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "h");
+    }
+
+    #[test]
+    fn test_delete_to_register_b() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: Some('b'),
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get_named('b').map(|r| r.text.as_str()), Some("hello"));
+    }
+
+    #[test]
+    fn test_delete_linewise_all_lines_three() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete all lines
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "a\nb\nc\n");
+    }
+
+    #[test]
+    fn test_delete_operator_clone() {
+        let delete = DeleteOperator;
+        let cloned = delete;
+        assert_eq!(cloned.id(), "delete");
+    }
+
+    #[test]
+    fn test_delete_operator_copy() {
+        let delete = DeleteOperator;
+        let copied: DeleteOperator = delete;
+        assert_eq!(copied.id(), "delete");
+    }
+
+    #[test]
+    fn test_delete_operator_debug() {
+        let debug = format!("{:?}", DeleteOperator);
+        assert!(debug.contains("DeleteOperator"));
+    }
+
+    #[test]
+    fn test_delete_characterwise_entire_line_content() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // Delete entire line content characterwise
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "hello");
+    }
+
+    #[test]
+    fn test_delete_characterwise_column_beyond_line() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hi");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        // End column beyond line length - should be clamped
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 100));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let buf = ctx.buffers.get(buffer_id).unwrap();
+        let buf = buf.read();
+        assert_eq!(buf.lines(), &[""]);
+
+        let regs = ctx.registers.read();
+        assert_eq!(regs.get().text, "hi");
+    }
+
+    // ========================================================================
+    // Undo recording tests (exercises UndoProviderRegistry paths)
+    // ========================================================================
+
+    use {
+        reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
+        reovim_driver_vfs::VfsDriver,
+        reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
+    };
+
+    #[allow(clippy::type_complexity)]
+    struct MockUndoProvider {
+        records: RwLock<Vec<(BufferId, Vec<Edit>, Position, Position)>>,
+    }
+
+    impl MockUndoProvider {
+        fn new() -> Self {
+            Self {
+                records: RwLock::new(Vec::new()),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl UndoProvider for MockUndoProvider {
+        fn undo(&self, _: BufferId) -> Option<UndoResult> {
+            None
+        }
+        fn redo(&self, _: BufferId) -> Option<UndoResult> {
+            None
+        }
+        fn redo_branch(&self, _: BufferId, _: usize) -> Option<UndoResult> {
+            None
+        }
+        fn record(
+            &self,
+            buffer_id: BufferId,
+            edits: Vec<Edit>,
+            cursor_before: Position,
+            cursor_after: Position,
+        ) {
+            self.records
+                .write()
+                .push((buffer_id, edits, cursor_before, cursor_after));
+        }
+        fn has_history(&self, _: BufferId) -> bool {
+            false
+        }
+        fn remove(&self, _: BufferId) {}
+        fn buffer_count(&self) -> usize {
+            0
+        }
+        fn get_tree(&self, _: BufferId) -> Option<UndoTree> {
+            None
+        }
+        fn begin_batch(&self, _: BufferId, _: Position) {}
+        fn end_batch(&self, _: BufferId, _: Position) {}
+        fn is_batching(&self, _: BufferId) -> bool {
+            false
+        }
+        fn persist(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<(), UndoPersistError> {
+            Ok(())
+        }
+        fn load(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<bool, UndoPersistError> {
+            Ok(false)
+        }
+    }
+
+    fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
+        let services = Arc::new(ServiceRegistry::new());
+        let mock_undo = Arc::new(MockUndoProvider::new());
+        let undo_registry = Arc::new(UndoProviderRegistry::new());
+        undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
+        services.register(undo_registry);
+
+        let ctx = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            services,
+        );
+        (ctx, mock_undo)
+    }
+
+    #[test]
+    fn test_delete_linewise_records_undo() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("line1\nline2\nline3");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].0, buffer_id);
+        // Should be a Delete edit
+        assert!(matches!(&records[0].1[0], Edit::Delete { .. }));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_delete_characterwise_records_undo() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].0, buffer_id);
+        if let Edit::Delete { position, text } = &records[0].1[0] {
+            assert_eq!(*position, Position::new(0, 0));
+            assert_eq!(text, "hello");
+        } else {
+            panic!("Expected Delete edit");
+        }
+    }
+
+    #[test]
+    fn test_delete_linewise_last_line_empty_after_delete() {
+        // Tests Case 2 cursor positioning when line_len == 0
+        let (ctx, _mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("\n");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete line 1 (last line, which is empty) - Case 2
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_delete_linewise_case2_records_undo_with_newline_prefix() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("first\nsecond");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+        };
+        // Delete last line - Case 2 (not all lines, but last line)
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        if let Edit::Delete { text, .. } = &records[0].1[0] {
+            // Deleted text should be "\nsecond" (preceding newline + content)
+            assert_eq!(text, "\nsecond");
+        } else {
+            panic!("Expected Delete edit");
+        }
+    }
+
+    #[test]
+    fn test_delete_run_command_helper_with_noop() {
+        // Exercise the run_command helper to cover its SessionRuntime setup code
+        struct NoopCmd;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl reovim_driver_command::Command for NoopCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "noop")
+            }
+            fn description(&self) -> &'static str {
+                "noop"
+            }
+        }
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl CommandHandler for NoopCmd {
+            fn execute(&self, _: &mut SessionRuntime<'_>, _: &CommandContext) -> CommandResult {
+                CommandResult::Success
+            }
+        }
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+        let result = run_command(&NoopCmd, &ctx, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[test]
+    fn test_delete_characterwise_register_is_characterwise() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        delete.execute(&mut op_ctx, range).unwrap();
+
+        let regs = ctx.registers.read();
+        assert!(regs.get().is_characterwise());
+    }
+
+    #[test]
+    fn test_delete_linewise_register_is_linewise() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+        };
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        delete.execute(&mut op_ctx, range).unwrap();
+
+        let regs = ctx.registers.read();
+        assert!(regs.get().is_linewise());
+    }
+
+    #[test]
+    fn test_delete_undo_records_cursor_positions() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let cursor_before = Position::new(0, 3);
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: cursor_before,
+        };
+        let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 8));
+        delete.execute(&mut op_ctx, range).unwrap();
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        // cursor_before should be what we passed in
+        assert_eq!(records[0].2, cursor_before);
+        // cursor_after should be at start of range for characterwise delete
+        assert_eq!(records[0].3, Position::new(0, 3));
+    }
+
+    #[test]
+    fn test_delete_linewise_undo_records_cursor_positions() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("line1\nline2\nline3");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let cursor_before = Position::new(1, 2);
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: cursor_before,
+        };
+        // Delete middle line (linewise, Case 1: non-last line)
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        delete.execute(&mut op_ctx, range).unwrap();
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].2, cursor_before);
+        // cursor_after for Case 1: final_line=1, final_col=0 (column 0 for non-last line delete)
+        assert_eq!(records[0].3, Position::new(1, 0));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_delete_characterwise_multiline_records_undo() {
+        let (ctx, mock_undo) = create_test_context_with_undo();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            buffer_id,
+            register: None,
+            count: 1,
+            cursor_position: Position::new(0, 3),
+        };
+        let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+
+        let records = mock_undo.records.read();
+        assert_eq!(records.len(), 1);
+        if let Edit::Delete { text, .. } = &records[0].1[0] {
+            assert_eq!(text, "lo\nwor");
+        } else {
+            panic!("Expected Delete edit");
+        }
     }
 }

@@ -665,4 +665,72 @@ mod tests {
         assert_eq!(original_entries.len(), cloned_entries.len());
         assert_eq!(original_entries[0].details, cloned_entries[0].details);
     }
+
+    #[test]
+    fn test_log_event_try_write_behavior() {
+        // Test that log_event uses try_write and handles lock failure gracefully
+        let buffer = ClientRingBuffer::new();
+
+        // Normal logging should work
+        buffer.log_event(ClientEventType::Info, "test1");
+        buffer.log_event(ClientEventType::Info, "test2");
+
+        let entries = buffer.entries();
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_clear_try_write_behavior() {
+        // Test that clear uses try_write and handles lock failure gracefully
+        let buffer = ClientRingBuffer::new();
+        buffer.log_event(ClientEventType::Info, "test");
+        assert_eq!(buffer.stats().entry_count, 1);
+
+        // Clear should work normally
+        buffer.clear();
+        assert_eq!(buffer.stats().entry_count, 0);
+    }
+
+    #[test]
+    fn test_entry_size_bytes() {
+        let entry = ClientLogEntry {
+            seq: 0,
+            timestamp_us: 0,
+            event_type: ClientEventType::Info,
+            details: String::with_capacity(100),
+        };
+
+        // Fixed: 8 + 8 + 1 = 17, plus capacity of details
+        assert_eq!(entry.size_bytes(), 17 + 100);
+    }
+
+    #[test]
+    fn test_buffer_stats_fields() {
+        let buffer = ClientRingBuffer::with_capacity(2048);
+        buffer.log_event(ClientEventType::Info, "test1");
+        buffer.log_event(ClientEventType::Info, "test2");
+
+        let stats = buffer.stats();
+        assert_eq!(stats.capacity_bytes, 2048);
+        assert_eq!(stats.entry_count, 2);
+        assert_eq!(stats.total_logged, 2);
+        assert_eq!(stats.dropped, 0);
+        assert!(stats.bytes_used > 0);
+    }
+
+    #[test]
+    fn test_warning_event_type_as_str() {
+        assert_eq!(ClientEventType::Warning.as_str(), "WARN");
+    }
+
+    #[test]
+    fn test_event_type_display_all_variants() {
+        assert_eq!(format!("{}", ClientEventType::KeyPress), "KEY");
+        assert_eq!(format!("{}", ClientEventType::CommandExecuted), "CMD");
+        assert_eq!(format!("{}", ClientEventType::ModeChanged), "MODE");
+        assert_eq!(format!("{}", ClientEventType::StateChanged), "STATE");
+        assert_eq!(format!("{}", ClientEventType::Error), "ERROR");
+        assert_eq!(format!("{}", ClientEventType::Warning), "WARN");
+        assert_eq!(format!("{}", ClientEventType::Info), "INFO");
+    }
 }

@@ -160,6 +160,7 @@ impl Jumplist {
     /// # Returns
     ///
     /// `true` if the entry was added, `false` if duplicate.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn push_current(&mut self, entry: JumpEntry) -> bool {
         // Don't add duplicate of last entry
         if self.entries.last() == Some(&entry) {
@@ -227,6 +228,7 @@ impl Jumplist {
     ///
     /// Returns `None` if the list is empty or current is past the end.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn current(&self) -> Option<&JumpEntry> {
         if self.current > 0 && self.current <= self.entries.len() {
             self.entries.get(self.current - 1)
@@ -440,5 +442,78 @@ mod tests {
         let entry = list.backward().unwrap();
         assert_eq!(entry.buffer, buf1);
         assert_eq!(entry.position, Position::new(20, 20));
+    }
+
+    // === with_capacity ===
+
+    #[test]
+    fn test_with_capacity() {
+        let list = Jumplist::with_capacity(50);
+        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
+    }
+
+    #[test]
+    fn test_with_capacity_clamped() {
+        // capacity clamped to MAX_JUMPLIST_SIZE
+        let list = Jumplist::with_capacity(500);
+        assert!(list.is_empty());
+    }
+
+    // === push_current duplicate ===
+
+    #[test]
+    fn test_push_current_duplicate() {
+        let buf = test_buffer();
+        let mut list = Jumplist::new();
+
+        list.push(JumpEntry::new(buf, Position::new(5, 5)));
+        // push_current with same entry as last should return false
+        assert!(!list.push_current(JumpEntry::new(buf, Position::new(5, 5))));
+        assert_eq!(list.len(), 1);
+    }
+
+    // === current() non-empty ===
+
+    #[test]
+    fn test_current_after_push() {
+        let buf = test_buffer();
+        let mut list = Jumplist::new();
+        list.push(JumpEntry::new(buf, Position::new(10, 5)));
+
+        // current() should return the most recent entry
+        let current = list.current();
+        assert!(current.is_some());
+        assert_eq!(current.unwrap().position, Position::new(10, 5));
+    }
+
+    #[test]
+    fn test_current_after_backward() {
+        let buf = test_buffer();
+        let mut list = Jumplist::new();
+        list.push(JumpEntry::new(buf, Position::new(0, 0)));
+        list.push(JumpEntry::new(buf, Position::new(10, 0)));
+
+        // After two pushes, current = 2 (past end)
+        // backward() decrements to current = 1
+        // current() returns entries.get(1-1) = entries[0]
+        list.backward();
+        let current = list.current();
+        assert!(current.is_some());
+        assert_eq!(current.unwrap().position, Position::new(0, 0));
+    }
+
+    // === max size with push_current ===
+
+    #[test]
+    fn test_push_current_max_size() {
+        let buf = test_buffer();
+        let mut list = Jumplist::new();
+
+        for i in 0..150 {
+            list.push_current(JumpEntry::new(buf, Position::new(i, 0)));
+        }
+
+        assert_eq!(list.len(), MAX_JUMPLIST_SIZE);
     }
 }

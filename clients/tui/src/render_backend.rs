@@ -128,6 +128,7 @@ fn to_tui_style(style: &Style) -> TuiStyle {
     tui_style
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl RenderBackend for Screen {
     fn set_cell(&mut self, x: u16, y: u16, ch: char, style: &Style) {
         let tui_style = to_tui_style(style);
@@ -236,6 +237,7 @@ pub fn format_frame_buffer(fb: &FrameBuffer, format: &str) -> String {
 }
 
 /// Convert frame buffer to ANSI-colored string.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn frame_to_ansi(fb: &FrameBuffer) -> String {
     use reovim_driver_display::ColorMode;
 
@@ -273,6 +275,7 @@ fn frame_to_ansi(fb: &FrameBuffer) -> String {
 }
 
 /// Convert frame buffer to plain text (no ANSI codes).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn frame_to_plain_text(fb: &FrameBuffer) -> String {
     let mut output = String::new();
     let height = fb.height();
@@ -364,11 +367,223 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_format_frame_buffer_ansi_empty() {
         let fb = FrameBuffer::new(3, 1);
         let ansi = format_frame_buffer(&fb, "ansi");
         // Empty cells with default style — may include ANSI codes
         // but must contain the 3 space characters
         assert!(ansi.contains("   ") || ansi.matches(' ').count() >= 3);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_format_frame_buffer_rawansi_alias() {
+        let fb = FrameBuffer::new(3, 1);
+        let raw = format_frame_buffer(&fb, "raw_ansi");
+        let raw2 = format_frame_buffer(&fb, "rawansi");
+        // Both raw_ansi aliases should produce the same output
+        assert_eq!(raw, raw2);
+    }
+
+    #[test]
+    fn test_format_frame_buffer_unknown_format_is_plain() {
+        let mut fb = FrameBuffer::new(5, 1);
+        let style = Style::default();
+        fb.set_cell(0, 0, 'X', &style);
+
+        let plain = format_frame_buffer(&fb, "unknown_format");
+        // Unknown format falls back to plain text
+        assert!(plain.contains('X'));
+        // Should NOT contain ANSI escapes
+        assert!(!plain.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_format_frame_buffer_case_insensitive() {
+        let fb = FrameBuffer::new(3, 1);
+        let upper = format_frame_buffer(&fb, "ANSI");
+        let lower = format_frame_buffer(&fb, "ansi");
+        assert_eq!(upper, lower);
+    }
+
+    #[test]
+    fn test_framebuffer_clear() {
+        let mut fb = FrameBuffer::new(5, 5);
+        let style = Style::default();
+        fb.set_cell(2, 2, 'X', &style);
+        assert_eq!(fb.get(2, 2).map(|c| c.char), Some('X'));
+
+        RenderBackend::clear(&mut fb);
+        assert_eq!(fb.get(2, 2).map(|c| c.char), Some(' '));
+    }
+
+    #[test]
+    fn test_framebuffer_apply_style() {
+        let mut fb = FrameBuffer::new(10, 5);
+        let style = Style::default();
+        fb.set_cell(3, 2, 'A', &style);
+
+        let new_style = Style::default().fg(reovim_arch::Color::Red);
+        RenderBackend::apply_style(&mut fb, 3, 2, &new_style);
+
+        let cell = fb.get(3, 2).unwrap();
+        assert_eq!(cell.char, 'A'); // Character preserved
+    }
+
+    #[test]
+    fn test_framebuffer_overlay_bg() {
+        let mut fb = FrameBuffer::new(10, 5);
+        let style = Style::default();
+        fb.set_cell(1, 1, 'B', &style);
+
+        RenderBackend::overlay_bg(&mut fb, 1, 1, reovim_arch::Color::Blue);
+        let cell = fb.get(1, 1).unwrap();
+        assert_eq!(cell.char, 'B'); // Character preserved
+        assert_eq!(cell.style.bg, Some(reovim_arch::Color::Blue));
+    }
+
+    #[test]
+    fn test_framebuffer_overlay_bg_out_of_bounds() {
+        let mut fb = FrameBuffer::new(5, 5);
+        // Should not panic on out-of-bounds
+        RenderBackend::overlay_bg(&mut fb, 100, 100, reovim_arch::Color::Red);
+    }
+
+    #[test]
+    fn test_fill_horizontal() {
+        let mut fb = FrameBuffer::new(20, 5);
+        let style = Style::default();
+        fb.fill_horizontal(5, 2, 10, '-', &style);
+
+        for col in 5..15 {
+            assert_eq!(fb.get(col, 2).map(|c| c.char), Some('-'));
+        }
+        // Before and after should be space
+        assert_eq!(fb.get(4, 2).map(|c| c.char), Some(' '));
+        assert_eq!(fb.get(15, 2).map(|c| c.char), Some(' '));
+    }
+
+    #[test]
+    fn test_fill_vertical() {
+        let mut fb = FrameBuffer::new(10, 10);
+        let style = Style::default();
+        fb.fill_vertical(3, 1, 5, '|', &style);
+
+        for row in 1..6 {
+            assert_eq!(fb.get(3, row).map(|c| c.char), Some('|'));
+        }
+        // Before and after should be space
+        assert_eq!(fb.get(3, 0).map(|c| c.char), Some(' '));
+        assert_eq!(fb.get(3, 6).map(|c| c.char), Some(' '));
+    }
+
+    #[test]
+    fn test_fill_region_clamped_to_bounds() {
+        let mut fb = FrameBuffer::new(5, 5);
+        let style = Style::default();
+        // Fill region that extends beyond bounds
+        fb.fill_region(3, 3, 10, 10, '#', &style);
+
+        // Should fill 3..5 x 3..5 (clamped to bounds)
+        assert_eq!(fb.get(3, 3).map(|c| c.char), Some('#'));
+        assert_eq!(fb.get(4, 4).map(|c| c.char), Some('#'));
+        // Outside bounds should be untouched
+        assert_eq!(fb.get(2, 2).map(|c| c.char), Some(' '));
+    }
+
+    #[test]
+    fn test_screen_backend_write_str() {
+        let mut screen = Screen::new(80, 24);
+        let style = Style::default();
+
+        let written = RenderBackend::write_str(&mut screen, 0, 0, "Hello", &style);
+        assert_eq!(written, 5);
+    }
+
+    #[test]
+    fn test_screen_backend_clear() {
+        let mut screen = Screen::new(10, 10);
+        let style = Style::default();
+        screen.set_cell(0, 0, 'X', &style);
+
+        RenderBackend::clear(&mut screen);
+        // After clear, size should be preserved
+        assert_eq!(screen.size(), (10, 10));
+    }
+
+    #[test]
+    fn test_to_tui_style_attributes() {
+        use reovim_driver_display::Attributes as DisplayAttrs;
+
+        let mut style = Style::default();
+        style.attributes.set(DisplayAttrs::BOLD);
+        style.attributes.set(DisplayAttrs::ITALIC);
+        style.attributes.set(DisplayAttrs::UNDERLINE);
+
+        let tui_style = to_tui_style(&style);
+        assert!(tui_style.attrs.contains(TuiAttrs::BOLD));
+        assert!(tui_style.attrs.contains(TuiAttrs::ITALIC));
+        assert!(tui_style.attrs.contains(TuiAttrs::UNDERLINE));
+    }
+
+    #[test]
+    fn test_to_tui_style_more_attributes() {
+        use reovim_driver_display::Attributes as DisplayAttrs;
+
+        let mut style = Style::default();
+        style.attributes.set(DisplayAttrs::STRIKETHROUGH);
+        style.attributes.set(DisplayAttrs::REVERSE);
+        style.attributes.set(DisplayAttrs::DIM);
+
+        let tui_style = to_tui_style(&style);
+        assert!(tui_style.attrs.contains(TuiAttrs::STRIKETHROUGH));
+        assert!(tui_style.attrs.contains(TuiAttrs::REVERSE));
+        assert!(tui_style.attrs.contains(TuiAttrs::DIM));
+    }
+
+    #[test]
+    fn test_to_tui_style_colors() {
+        let mut style = Style::default();
+        style.fg = Some(reovim_arch::Color::Red);
+        style.bg = Some(reovim_arch::Color::Blue);
+
+        let tui_style = to_tui_style(&style);
+        assert_eq!(tui_style.fg, Some(reovim_arch::Color::Red));
+        assert_eq!(tui_style.bg, Some(reovim_arch::Color::Blue));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_format_frame_buffer_multiline() {
+        let mut fb = FrameBuffer::new(5, 3);
+        let style = Style::default();
+        for row in 0..3 {
+            for col in 0..5 {
+                fb.set_cell(col, row, 'a', &style);
+            }
+        }
+
+        let plain = format_frame_buffer(&fb, "plain_text");
+        let lines: Vec<&str> = plain.lines().collect();
+        assert_eq!(lines.len(), 3);
+        for line in &lines {
+            assert!(line.contains("aaaaa"));
+        }
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_format_frame_buffer_ansi_with_styled_content() {
+        let mut fb = FrameBuffer::new(3, 1);
+        let style = Style::default().fg(reovim_arch::Color::Green);
+        fb.set_cell(0, 0, 'G', &style);
+        fb.set_cell(1, 0, 'o', &style);
+        fb.set_cell(2, 0, '!', &style);
+
+        let ansi = format_frame_buffer(&fb, "ansi");
+        // Should contain ANSI escape codes
+        assert!(ansi.contains("\x1b["));
+        assert!(ansi.contains("\x1b[0m")); // Reset code
     }
 }

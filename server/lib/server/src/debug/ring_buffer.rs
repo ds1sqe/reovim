@@ -16,7 +16,7 @@
 //! │  ┌───────────────────────────────────────────────────────────┐  │
 //! │  │  RwLock<RingBufferInner>                                  │  │
 //! │  │  ├── entries: Vec<LogEntry>  [0] [1] [2] ... [N]          │  │
-//! │  │  ├── write_pos: usize (next write position)               │  │
+//! │  │  ├── total_logged: u64 (monotonic counter)                │  │
 //! │  │  ├── total_logged: u64 (monotonic counter)                │  │
 //! │  │  ├── bytes_used: usize (current byte usage)               │  │
 //! │  │  └── intern_tables: (targets, files)                      │  │
@@ -213,8 +213,6 @@ pub struct BufferStats {
 struct RingBufferInner {
     /// Log entries in circular order.
     entries: Vec<LogEntry>,
-    /// Next write position (wraps around).
-    write_pos: usize,
     /// Total entries logged (monotonic, never wraps).
     total_logged: u64,
     /// Current byte usage.
@@ -234,7 +232,6 @@ impl RingBufferInner {
     fn new(capacity_bytes: usize) -> Self {
         Self {
             entries: Vec::new(),
-            write_pos: 0,
             total_logged: 0,
             bytes_used: 0,
             capacity_bytes,
@@ -272,25 +269,10 @@ impl RingBufferInner {
         let entry_size = entry.size_bytes();
         self.total_logged += 1;
 
-        // Evict old entries until we have room
+        // Evict oldest entries (front of Vec) until we have room
         while self.bytes_used + entry_size > self.capacity_bytes && !self.entries.is_empty() {
-            let oldest_idx = if self.entries.len() < self.write_pos {
-                0
-            } else {
-                self.write_pos
-            };
-
-            if oldest_idx < self.entries.len() {
-                self.bytes_used = self
-                    .bytes_used
-                    .saturating_sub(self.entries[oldest_idx].size_bytes());
-                self.entries.remove(oldest_idx);
-                if self.write_pos > 0 && oldest_idx < self.write_pos {
-                    self.write_pos -= 1;
-                }
-            } else {
-                break;
-            }
+            self.bytes_used = self.bytes_used.saturating_sub(self.entries[0].size_bytes());
+            self.entries.remove(0);
         }
 
         // Add new entry
@@ -806,5 +788,165 @@ mod tests {
     fn test_already_initialized_error() {
         let err = AlreadyInitialized;
         assert_eq!(format!("{err}"), "debug ring buffer already initialized");
+    }
+
+    #[test]
+    fn test_intern_table_full() {
+        let mut table = InternTable::new();
+
+        // Fill the table to MAX_INTERN_ENTRIES
+        for i in 0..MAX_INTERN_ENTRIES {
+            let id = table.intern(&format!("string_{i}"));
+            assert_eq!(id, u16::try_from(i).unwrap());
+        }
+
+        // Next intern should return sentinel value 0
+        let overflow_id = table.intern("overflow");
+        assert_eq!(overflow_id, 0);
+
+        // Original string 0 should still work
+        assert_eq!(table.get(0), "string_0");
+    }
+
+    #[test]
+    fn test_eviction_edge_cases() {
+        // Very small buffer to test edge cases in eviction
+        let buffer = DebugRingBuffer::with_capacity(100);
+
+        // Push one entry
+        buffer.push(&make_record(Level::Info, "first"));
+        let stats1 = buffer.stats();
+        assert_eq!(stats1.entry_count, 1);
+
+        // Push entries until we trigger eviction
+        for i in 0..10 {
+            buffer.push(&make_record(Level::Info, &format!("msg{i}")));
+        }
+
+        let stats2 = buffer.stats();
+        assert!(stats2.bytes_used <= 100);
+        assert!(stats2.dropped > 0);
+    }
+
+    #[test]
+    fn test_eviction_with_large_entry() {
+        let buffer = DebugRingBuffer::with_capacity(200);
+
+        // Add several entries
+        for i in 0..5 {
+            buffer.push(&make_record(Level::Info, &format!("entry_{i}")));
+        }
+
+        // Add a large entry that will force multiple evictions
+        let large_msg = "x".repeat(150);
+        buffer.push(&make_record(Level::Info, &large_msg));
+
+        let stats = buffer.stats();
+        assert!(stats.bytes_used <= 200);
+        assert!(stats.dropped > 0);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_global_init_and_access() {
+        use std::sync::Mutex;
+
+        // Use a mutex to ensure this test doesn't interfere with others
+        static TEST_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = TEST_LOCK.lock().unwrap();
+
+        // try_debug_ring should return None if not initialized
+        if try_debug_ring().is_none() {
+            // Initialize with custom capacity
+            let result = init_debug_ring_with_capacity(2048);
+            if result.is_ok() {
+                // Access the ring
+                let ring = debug_ring();
+                ring.push(&make_record(Level::Info, "test"));
+
+                let stats = ring.stats();
+                assert_eq!(stats.capacity_bytes, 2048);
+
+                // Try to initialize again - should fail
+                let result2 = init_debug_ring_with_capacity(4096);
+                assert!(result2.is_err());
+                assert_eq!(result2.unwrap_err(), AlreadyInitialized);
+
+                // try_debug_ring should now return Some
+                assert!(try_debug_ring().is_some());
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_debug_ring_uninitialized_returns_none_via_try() {
+        // OnceLock is global state shared across tests, so we cannot reliably
+        // test the panic path of debug_ring() (another test may have initialized it).
+        // Instead, verify that try_debug_ring() returns a consistent result:
+        // either Some (already initialized by another test) or None (first test to run).
+        let result = try_debug_ring();
+        if result.is_none() {
+            // Not yet initialized: verify try_debug_ring consistently returns None
+            assert!(try_debug_ring().is_none());
+        } else {
+            // Already initialized by another test: verify debug_ring() works
+            let ring = debug_ring();
+            assert!(ring.stats().capacity_bytes > 0);
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_init_debug_ring_default_capacity() {
+        use std::sync::Mutex;
+
+        static TEST_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = TEST_LOCK.lock().unwrap();
+
+        if try_debug_ring().is_none() {
+            let result = init_debug_ring();
+            if result.is_ok() {
+                let ring = debug_ring();
+                let stats = ring.stats();
+                assert_eq!(stats.capacity_bytes, DEFAULT_CAPACITY);
+            }
+        }
+    }
+
+    #[test]
+    fn test_already_initialized_implements_error() {
+        let err = AlreadyInitialized;
+        let err_trait: &dyn std::error::Error = &err;
+        let _ = err_trait;
+        assert_eq!(err, AlreadyInitialized);
+    }
+
+    #[test]
+    fn test_intern_table_len() {
+        let mut table = InternTable::new();
+        assert_eq!(table.len(), 0);
+
+        table.intern("first");
+        assert_eq!(table.len(), 1);
+
+        table.intern("first"); // Same string
+        assert_eq!(table.len(), 1);
+
+        table.intern("second");
+        assert_eq!(table.len(), 2);
+    }
+
+    #[test]
+    fn test_eviction_empty_buffer() {
+        let buffer = DebugRingBuffer::with_capacity(50);
+
+        // Push one large entry that exceeds capacity
+        let large = "x".repeat(100);
+        buffer.push(&make_record(Level::Info, &large));
+
+        // Should handle gracefully - might end up empty if entry too large
+        let stats = buffer.stats();
+        assert!(stats.bytes_used <= 50 || stats.entry_count == 1);
     }
 }

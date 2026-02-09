@@ -381,4 +381,69 @@ mod tests {
         let snapshot = registry.snapshot();
         assert!(snapshot.counters.contains_key("global_test"));
     }
+
+    // ========== Default impls ==========
+
+    #[test]
+    fn test_counter_default() {
+        let counter = Counter::default();
+        assert_eq!(counter.get(), 0);
+    }
+
+    #[test]
+    fn test_histogram_default() {
+        let hist = Histogram::default();
+        assert_eq!(hist.count(), 0);
+        assert_eq!(hist.sum(), 0);
+    }
+
+    #[test]
+    fn test_metrics_registry_default() {
+        let registry = MetricsRegistry::default();
+        let snapshot = registry.snapshot();
+        assert!(snapshot.counters.is_empty());
+        assert!(snapshot.histograms.is_empty());
+    }
+
+    // ========== Histogram reset ==========
+
+    #[test]
+    fn test_histogram_reset() {
+        let hist = Histogram::new();
+        hist.record(10);
+        hist.record(20);
+        assert_eq!(hist.count(), 2);
+        assert_eq!(hist.sum(), 30);
+
+        hist.reset();
+        assert_eq!(hist.count(), 0);
+        assert_eq!(hist.sum(), 0);
+        let buckets = hist.buckets();
+        assert!(buckets.iter().all(|&b| b == 0));
+    }
+
+    // ========== Registry cache hit (second call returns same) ==========
+
+    #[test]
+    fn test_registry_counter_cache_hit() {
+        let registry = MetricsRegistry::new();
+        let counter1 = registry.counter("cached");
+        counter1.increment();
+
+        // Second call should return the same counter (cache hit in read path)
+        let counter2 = registry.counter("cached");
+        assert_eq!(counter2.get(), 1);
+    }
+
+    #[test]
+    fn test_registry_histogram_cache_hit() {
+        let registry = MetricsRegistry::new();
+        let hist1 = registry.histogram("cached_hist");
+        hist1.record(42);
+
+        // Second call should return the same histogram (cache hit in read path)
+        let hist2 = registry.histogram("cached_hist");
+        assert_eq!(hist2.count(), 1);
+        assert_eq!(hist2.sum(), 42);
+    }
 }

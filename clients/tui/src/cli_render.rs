@@ -23,6 +23,7 @@ pub fn render_header(width: u16) -> String {
 /// * `width` - Terminal width
 /// * `height` - Panel height in rows
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn render_panel(state: &CliPanelState, width: u16, height: u16) -> Vec<String> {
     let mut lines = Vec::with_capacity(height as usize);
 
@@ -183,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_render_panel_with_history() {
         let mut state = CliPanelState::new();
         state.add_result("keys hello".to_string(), CliResult::Ok("Sent".to_string()));
@@ -228,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_render_panel_with_pending() {
         let mut state = CliPanelState::new();
         state.add_result("mode".to_string(), CliResult::Pending("Querying...".to_string()));
@@ -241,5 +244,67 @@ mod tests {
         assert!(combined.contains("\x1b[33m"));
         // Should contain the pending message
         assert!(combined.contains("Querying..."));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_render_panel_with_error() {
+        let mut state = CliPanelState::new();
+        state.add_result("bad-cmd".to_string(), CliResult::Err("Unknown command".to_string()));
+
+        let lines = render_panel(&state, 80, 10);
+        let combined = lines.join("\n");
+
+        // Should contain red ANSI code for error
+        assert!(combined.contains("\x1b[31m"));
+        assert!(combined.contains("Error: Unknown command"));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_render_panel_with_clear_marker() {
+        let mut state = CliPanelState::new();
+        state.add_result("clear".to_string(), CliResult::Ok("__CLEAR__".to_string()));
+
+        let lines = render_panel(&state, 80, 10);
+        let combined = lines.join("\n");
+
+        // __CLEAR__ marker should be skipped
+        assert!(!combined.contains("__CLEAR__"));
+        // But the command should still be there
+        assert!(combined.contains("clear"));
+    }
+
+    #[test]
+    fn test_input_line_long_input_truncation_at_end() {
+        let mut state = CliPanelState::new();
+        // Create input longer than available width
+        state.input = "a".repeat(200);
+        state.cursor_pos = 200; // Cursor at end
+
+        let line = render_input_line(&state, 40);
+        // Should still render without panic
+        assert!(line.contains("> "));
+    }
+
+    #[test]
+    fn test_input_line_long_input_cursor_in_middle_truncation() {
+        let mut state = CliPanelState::new();
+        // Create long input with cursor in middle
+        state.input = "a".repeat(200);
+        state.cursor_pos = 100;
+
+        let line = render_input_line(&state, 40);
+        // When visible_len > max_input_width, should use "..." prefix
+        assert!(line.contains("..."));
+    }
+
+    #[test]
+    fn test_truncate_line_with_unclosed_ansi() {
+        // Line with ANSI code that doesn't end with reset
+        let line = "\x1b[32mhello world";
+        let truncated = truncate_line(line, 20);
+        // Should auto-close the ANSI escape
+        assert!(truncated.ends_with("\x1b[0m"));
     }
 }

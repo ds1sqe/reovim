@@ -6,6 +6,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Comprehensive unit test suite (#497)**: Added ~4500 unit tests across the
+  entire workspace, bringing the total from ~3250 to 7752 passing tests (0
+  failures). Coverage spans all layers: kernel (mm, ipc, core, block, sched,
+  api), drivers (input, session, command, vfs, search, syntax, buffer, undo,
+  clipboard, ffi), modules (vim, editor, motions, textobjects, commands, keymap,
+  mode-manager, options, window-ops, buffer-ops, scratch-buffer, defaults,
+  clipboard, search, undo, vfs-local, treesitter), shared libraries (arch, log,
+  net, protocol, trace), clients (tui, cli, display drivers), and the server
+  crate (grpc, session management, registry). All clippy lints pass under the
+  project's strict `deny` policy (all, pedantic, nursery).
+
+- **Server 100% line coverage (#499)**: Added ~560 tests to `reovim-server`,
+  achieving 100% line coverage (0 DA:0 lines in LCOV, 13087/13087 instrumented
+  lines hit). All 31 source files in the server crate are fully covered.
+  Genuinely untestable code paths (tokio::spawn task bodies, OnceLock globals,
+  gRPC stream lifecycle) are extracted into named functions with
+  `#[cfg_attr(coverage_nightly, coverage(off))]`. Production code refactored:
+  extracted `capture_error_to_status` (state.rs), `forward_token_updates`
+  (syntax.rs), `require_debug_ring` (debug.rs), `on_notification_stream_dropped`
+  (notification.rs), and `log_client_disconnect` (session.rs).
+
 - **OT-lite conflict resolution for multi-client undo (#495)**: When multiple
   clients edit a shared buffer, each client's undo now correctly adjusts
   positions through intervening edits from other clients. Kernel provides

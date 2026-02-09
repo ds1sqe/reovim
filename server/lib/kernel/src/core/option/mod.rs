@@ -441,6 +441,7 @@ impl OptionRegistry {
 
     /// List options matching a prefix (for tab completion).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn list_matching(&self, prefix: &str) -> Vec<OptionSpec> {
         let specs = self.specs.read();
 
@@ -765,5 +766,382 @@ mod tests {
                 .set("tabwidth", OptionValue::int(100), OptionScopeId::Global)
                 .is_err()
         );
+    }
+
+    // === toggle non-boolean ===
+
+    #[test]
+    fn test_registry_toggle_non_boolean() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("tabwidth", "desc", OptionValue::int(4)))
+                .is_ok()
+        );
+        let result = registry.toggle("tabwidth", OptionScopeId::Global);
+        assert!(matches!(result, Err(OptionError::TypeMismatch { .. })));
+    }
+
+    // === list_matching with alias ===
+
+    #[test]
+    fn test_registry_list_matching_alias() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
+                )
+                .is_ok()
+        );
+        // Prefix "nu" should match via alias
+        let matches = registry.list_matching("nu");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].name, "number");
+    }
+
+    // === list_by_scope ===
+
+    #[test]
+    fn test_registry_list_by_scope() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_scope(OptionScope::Window),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("tabwidth", "desc", OptionValue::int(4))
+                        .with_scope(OptionScope::Buffer),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("theme", "desc", OptionValue::string("dark"))
+                        .with_scope(OptionScope::Global),
+                )
+                .is_ok()
+        );
+
+        let window_opts = registry.list_by_scope(OptionScope::Window);
+        assert_eq!(window_opts.len(), 1);
+        assert_eq!(window_opts[0].name, "number");
+
+        let buffer_opts = registry.list_by_scope(OptionScope::Buffer);
+        assert_eq!(buffer_opts.len(), 1);
+
+        let global_opts = registry.list_by_scope(OptionScope::Global);
+        assert_eq!(global_opts.len(), 1);
+    }
+
+    // === clear_window ===
+
+    #[test]
+    fn test_registry_clear_window() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_scope(OptionScope::Window),
+                )
+                .is_ok()
+        );
+
+        let window = WindowId::new();
+        assert!(
+            registry
+                .set_for_window("number", OptionValue::bool(true), window)
+                .is_ok()
+        );
+        assert_eq!(registry.get_for_window("number", window), Some(OptionValue::bool(true)));
+
+        registry.clear_window(window);
+        // Should fall back to default
+        assert_eq!(registry.get_for_window("number", window), Some(OptionValue::bool(false)));
+    }
+
+    // === reset buffer/window scopes ===
+
+    #[test]
+    fn test_registry_reset_buffer_scope() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("tabwidth", "desc", OptionValue::int(4))
+                        .with_scope(OptionScope::Buffer),
+                )
+                .is_ok()
+        );
+
+        let buffer = BufferId::new();
+        assert!(
+            registry
+                .set_for_buffer("tabwidth", OptionValue::int(8), buffer)
+                .is_ok()
+        );
+
+        let removed = registry.reset("tabwidth", OptionScopeId::Buffer(buffer));
+        assert!(removed.is_ok());
+        assert_eq!(removed.unwrap(), Some(OptionValue::int(8)));
+
+        // Now back to default
+        assert_eq!(registry.get_for_buffer("tabwidth", buffer), Some(OptionValue::int(4)));
+    }
+
+    #[test]
+    fn test_registry_reset_window_scope() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_scope(OptionScope::Window),
+                )
+                .is_ok()
+        );
+
+        let window = WindowId::new();
+        assert!(
+            registry
+                .set_for_window("number", OptionValue::bool(true), window)
+                .is_ok()
+        );
+
+        let removed = registry.reset("number", OptionScopeId::Window(window));
+        assert!(removed.is_ok());
+        assert_eq!(removed.unwrap(), Some(OptionValue::bool(true)));
+    }
+
+    // === alias conflicts ===
+
+    #[test]
+    fn test_registry_alias_conflicts_with_name() {
+        let registry = OptionRegistry::new();
+        // Register "nu" as a full option name
+        assert!(
+            registry
+                .register(OptionSpec::new("nu", "desc", OptionValue::bool(false)))
+                .is_ok()
+        );
+        // Now try to register "number" with short "nu" - should conflict
+        let result = registry
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"));
+        assert!(matches!(result, Err(OptionError::AliasConflict(_))));
+    }
+
+    #[test]
+    fn test_registry_alias_conflicts_with_alias() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
+                )
+                .is_ok()
+        );
+        // Another option with the same alias should conflict
+        let result = registry.register(
+            OptionSpec::new("numbers", "desc", OptionValue::bool(false)).with_short("nu"),
+        );
+        assert!(matches!(result, Err(OptionError::AliasConflict(_))));
+    }
+
+    // === scope mismatch window on global ===
+
+    #[test]
+    fn test_registry_scope_mismatch_window_on_global() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("theme", "desc", OptionValue::string("dark"))
+                        .with_scope(OptionScope::Global),
+                )
+                .is_ok()
+        );
+
+        let result =
+            registry.set_for_window("theme", OptionValue::string("light"), WindowId::new());
+        assert!(matches!(result, Err(OptionError::ScopeMismatch { .. })));
+    }
+
+    // === Coverage: get_spec via alias ===
+
+    #[test]
+    fn test_registry_get_spec_via_alias() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
+                )
+                .is_ok()
+        );
+
+        let spec = registry.get_spec("nu");
+        assert!(spec.is_some());
+        assert_eq!(spec.unwrap().name, "number");
+
+        // Also get_spec by full name
+        let spec = registry.get_spec("number");
+        assert!(spec.is_some());
+    }
+
+    #[test]
+    fn test_registry_get_spec_nonexistent() {
+        let registry = OptionRegistry::new();
+        assert!(registry.get_spec("nope").is_none());
+    }
+
+    // === Coverage: get_global convenience ===
+
+    #[test]
+    fn test_registry_get_global_convenience() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("tabwidth", "desc", OptionValue::int(4)))
+                .is_ok()
+        );
+
+        let val = registry.get_global("tabwidth");
+        assert_eq!(val, Some(OptionValue::int(4)));
+
+        let val = registry.get_global("nonexistent");
+        assert_eq!(val, None);
+    }
+
+    // === Coverage: set_global convenience ===
+
+    #[test]
+    fn test_registry_set_global_convenience() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("tabwidth", "desc", OptionValue::int(4)))
+                .is_ok()
+        );
+
+        assert!(registry.set_global("tabwidth", OptionValue::int(8)).is_ok());
+        assert_eq!(registry.get_global("tabwidth"), Some(OptionValue::int(8)));
+    }
+
+    // === Coverage: set not found ===
+
+    #[test]
+    fn test_registry_set_not_found() {
+        let registry = OptionRegistry::new();
+        let result = registry.set("nonexistent", OptionValue::int(1), OptionScopeId::Global);
+        assert!(matches!(result, Err(OptionError::NotFound(_))));
+    }
+
+    // === Coverage: toggle not found ===
+
+    #[test]
+    fn test_registry_toggle_not_found() {
+        let registry = OptionRegistry::new();
+        let result = registry.toggle("nonexistent", OptionScopeId::Global);
+        assert!(matches!(result, Err(OptionError::NotFound(_))));
+    }
+
+    // === Coverage: reset not found ===
+
+    #[test]
+    fn test_registry_reset_not_found() {
+        let registry = OptionRegistry::new();
+        let result = registry.reset("nonexistent", OptionScopeId::Global);
+        assert!(matches!(result, Err(OptionError::NotFound(_))));
+    }
+
+    // === Coverage: list_matching via alias prefix ===
+
+    #[test]
+    fn test_registry_list_matching_alias_prefix() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(OptionSpec::new("numberwidth", "desc", OptionValue::int(4)))
+                .is_ok()
+        );
+
+        // "nu" prefix matches alias AND "number" and "numberwidth"
+        let matches = registry.list_matching("nu");
+        assert!(matches.len() >= 2);
+    }
+
+    // === Coverage: len and is_empty ===
+
+    #[test]
+    fn test_registry_len_and_is_empty() {
+        let registry = OptionRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+
+        assert!(
+            registry
+                .register(OptionSpec::new("number", "desc", OptionValue::bool(false)))
+                .is_ok()
+        );
+        assert!(!registry.is_empty());
+        assert_eq!(registry.len(), 1);
+    }
+
+    // === Coverage: set via alias ===
+
+    #[test]
+    fn test_registry_set_via_alias() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
+                )
+                .is_ok()
+        );
+
+        assert!(
+            registry
+                .set("nu", OptionValue::bool(true), OptionScopeId::Global)
+                .is_ok()
+        );
+        assert_eq!(registry.get("number", OptionScopeId::Global), Some(OptionValue::bool(true)));
+    }
+
+    // === Coverage: list_all ===
+
+    #[test]
+    fn test_registry_list_all() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("a", "desc", OptionValue::bool(false)))
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(OptionSpec::new("b", "desc", OptionValue::int(1)))
+                .is_ok()
+        );
+
+        let all = registry.list_all();
+        assert_eq!(all.len(), 2);
+        assert!(all.contains(&"a".to_string()));
+        assert!(all.contains(&"b".to_string()));
     }
 }

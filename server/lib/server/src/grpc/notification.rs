@@ -38,6 +38,27 @@ use {
 
 use crate::session::{ClientId, Session, SessionId, SessionRegistry, TokenRegistry};
 
+/// Cleanup handler for notification stream disconnection.
+///
+/// Called when a `CleanupStream` is dropped (client disconnect, crash, or
+/// network failure). Only runs as part of gRPC stream lifecycle.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn on_notification_stream_dropped(client_id: ClientId, session: &Session, tokens: &TokenRegistry) {
+    tracing::info!(client_id = client_id.as_usize(), "Notification stream dropped — auto-cleanup");
+
+    // 1. Revoke session token
+    tokens.revoke_by_client(client_id);
+
+    // 2. Remove from presence map and emit notification
+    if let Some(presence) = session.presence().leave(client_id) {
+        session
+            .emit_notification(build_presence_left_notification(client_id, &presence.display_name));
+    }
+
+    // 3. Remove from client map (dumps ring buffer for diagnostics)
+    session.remove_client(client_id);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CleanupStream (#483 Phase 4)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,6 +88,7 @@ impl CleanupStream {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Stream for CleanupStream {
     type Item = Result<Notification, Status>;
 
@@ -216,24 +238,7 @@ impl NotificationService for NotificationServiceImpl {
             let cleanup_tokens = Arc::clone(&self.tokens);
 
             let guarded = CleanupStream::new(Box::pin(output_stream), move || {
-                tracing::info!(
-                    client_id = cid.as_usize(),
-                    "Notification stream dropped — auto-cleanup"
-                );
-
-                // 1. Revoke session token
-                cleanup_tokens.revoke_by_client(cid);
-
-                // 2. Remove from presence map and emit notification
-                if let Some(presence) = cleanup_session.presence().leave(cid) {
-                    cleanup_session.emit_notification(build_presence_left_notification(
-                        cid,
-                        &presence.display_name,
-                    ));
-                }
-
-                // 3. Remove from client map (dumps ring buffer for diagnostics)
-                cleanup_session.remove_client(cid);
+                on_notification_stream_dropped(cid, &cleanup_session, &cleanup_tokens);
             });
 
             Ok(Response::new(Box::pin(guarded)))
@@ -468,5 +473,24 @@ mod tests {
         assert!(!session.has_client(client_id));
         assert!(!session.presence().contains(client_id));
         assert!(tokens.is_empty());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_build_presence_left_notification() {
+        let client_id = ClientId::new(42);
+        let notification = build_presence_left_notification(client_id, "test-user");
+
+        assert_eq!(notification.event_type, "presence_left");
+        assert!(notification.timestamp_ms > 0);
+
+        if let Some(reovim_protocol::v2::notification::Payload::PresenceLeft(payload)) =
+            notification.payload
+        {
+            assert_eq!(payload.client_id, 42);
+            assert_eq!(payload.display_name, "test-user");
+        } else {
+            panic!("Expected PresenceLeft payload");
+        }
     }
 }

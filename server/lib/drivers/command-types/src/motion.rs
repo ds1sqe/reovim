@@ -122,4 +122,24 @@ mod tests {
         assert!(set.contains(&MotionType::Characterwise));
         assert!(set.contains(&MotionType::Linewise));
     }
+
+    #[test]
+    fn test_motion_type_hash_duplicate_insert() {
+        use std::collections::HashSet;
+
+        let mut set = HashSet::new();
+        set.insert(MotionType::Characterwise);
+        set.insert(MotionType::Characterwise);
+
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn test_motion_type_debug() {
+        let debug_char = format!("{:?}", MotionType::Characterwise);
+        assert_eq!(debug_char, "Characterwise");
+
+        let debug_line = format!("{:?}", MotionType::Linewise);
+        assert_eq!(debug_line, "Linewise");
+    }
 }

@@ -655,6 +655,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_edit_kernel_conversion() {
         let insert = Edit::insert(Position::new(5, 10), "test");
         let serializable = SerializableEdit::from(&insert);
@@ -710,6 +711,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_timestamp_ordering_preserved() {
         // Create a tree with nodes that have increasing relative times
         let serializable = SerializableUndoTree {
@@ -841,5 +843,143 @@ mod tests {
         let original_root = tree.node(0).unwrap();
         let restored_root = restored_tree.node(0).unwrap();
         assert_eq!(original_root.children().len(), restored_root.children().len());
+    }
+
+    #[test]
+    fn test_undo_file_error_display() {
+        assert_eq!(UndoFileError::TooShort.to_string(), "File too short to be valid undo file");
+        assert_eq!(UndoFileError::InvalidMagic.to_string(), "Invalid undo file magic bytes");
+    }
+
+    #[test]
+    fn test_undo_file_error_display_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = UndoFileError::Io(io_err);
+        let display = err.to_string();
+        assert!(display.contains("I/O error"));
+        assert!(display.contains("file not found"));
+    }
+
+    #[test]
+    fn test_undo_file_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let err: UndoFileError = io_err.into();
+        assert!(matches!(err, UndoFileError::Io(_)));
+    }
+
+    #[test]
+    fn test_undo_file_error_is_error_trait() {
+        fn assert_error<E: std::error::Error>() {}
+        assert_error::<UndoFileError>();
+    }
+
+    #[test]
+    fn test_undo_file_error_deserialize_display() {
+        // Create an invalid msgpack payload with valid magic
+        let mut bytes = UNDO_FILE_MAGIC.to_vec();
+        bytes.extend(b"invalid msgpack data");
+        let err = UndoFileFormat::from_bytes(&bytes).unwrap_err();
+        assert!(matches!(err, UndoFileError::Deserialize(_)));
+        let display = err.to_string();
+        assert!(display.contains("Failed to deserialize"));
+    }
+
+    #[test]
+    fn test_serializable_position_default() {
+        let pos = SerializablePosition::default();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_serializable_edit_origin_default() {
+        let origin = SerializableEditOrigin::default();
+        assert_eq!(origin, SerializableEditOrigin::System);
+    }
+
+    #[test]
+    fn test_undo_file_magic_bytes() {
+        assert_eq!(&UNDO_FILE_MAGIC, b"RUND");
+    }
+
+    #[test]
+    fn test_undo_file_version() {
+        assert_eq!(UNDO_FILE_VERSION, 1);
+    }
+
+    #[test]
+    fn test_undo_file_format_metadata() {
+        let tree = create_test_tree();
+        let format = UndoFileFormat::new("/test/meta.rs".to_string(), tree);
+        assert_eq!(format.version, UNDO_FILE_VERSION);
+        assert_eq!(format.original_path, "/test/meta.rs");
+        assert!(format.created_at > 0);
+        assert!(!format.reovim_version.is_empty());
+    }
+
+    #[test]
+    fn test_delete_edit_kernel_conversion() {
+        // Test the Delete branch of SerializableEdit -> Edit conversion
+        let delete = SerializableEdit::Delete {
+            position: SerializablePosition::new(3, 7),
+            text: "deleted text".to_string(),
+        };
+        let edit: Edit = delete.into();
+        assert!(edit.is_delete());
+        assert_eq!(edit.position(), Position::new(3, 7));
+        assert_eq!(edit.text(), "deleted text");
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_delete_edit_from_kernel() {
+        // Test the Delete branch of &Edit -> SerializableEdit conversion
+        let kernel_delete = Edit::delete(Position::new(2, 5), "removed");
+        let serializable = SerializableEdit::from(&kernel_delete);
+        match &serializable {
+            SerializableEdit::Delete { position, text } => {
+                assert_eq!(position.line, 2);
+                assert_eq!(position.column, 5);
+                assert_eq!(text, "removed");
+            }
+            SerializableEdit::Insert { .. } => panic!("Expected Delete variant"),
+        }
+    }
+
+    #[test]
+    fn test_tree_with_delete_edits_roundtrip() {
+        // Full roundtrip with delete edits to cover all conversion branches
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::delete(Position::new(0, 0), "removed")],
+            Position::new(0, 7),
+            Position::new(0, 0),
+        );
+
+        let serializable = from_undo_tree(&tree);
+        assert_eq!(serializable.nodes.len(), 2);
+
+        // Verify the delete edit was serialized
+        assert!(matches!(&serializable.nodes[1].edits[0], SerializableEdit::Delete { .. }));
+
+        // Convert back and verify
+        let restored = to_undo_tree(&serializable);
+        assert_eq!(restored.node_count(), 2);
+
+        let node = restored.node(1).unwrap();
+        let edit = &node.edits()[0];
+        assert!(edit.is_delete());
+        assert_eq!(edit.text(), "removed");
+    }
+
+    #[test]
+    fn test_undo_file_error_debug() {
+        let err = UndoFileError::TooShort;
+        let debug = format!("{err:?}");
+        assert!(debug.contains("TooShort"));
+
+        let err = UndoFileError::InvalidMagic;
+        let debug = format!("{err:?}");
+        assert!(debug.contains("InvalidMagic"));
     }
 }

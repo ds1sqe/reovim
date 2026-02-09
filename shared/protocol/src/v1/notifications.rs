@@ -920,4 +920,211 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("\"value\":\"gruvbox\""));
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_log_entry_constant() {
+        assert!(LOG_ENTRY.starts_with("notification/"));
+        assert_eq!(LOG_ENTRY, "notification/log_entry");
+    }
+
+    #[test]
+    fn test_log_source_default() {
+        let source = LogSource::default();
+        assert_eq!(source, LogSource::Server);
+    }
+
+    #[test]
+    fn test_log_level_default() {
+        let level = LogLevel::default();
+        assert_eq!(level, LogLevel::Info);
+    }
+
+    #[test]
+    fn test_log_level_serialization() {
+        assert_eq!(serde_json::to_string(&LogLevel::Trace).unwrap(), "\"trace\"");
+        assert_eq!(serde_json::to_string(&LogLevel::Debug).unwrap(), "\"debug\"");
+        assert_eq!(serde_json::to_string(&LogLevel::Info).unwrap(), "\"info\"");
+        assert_eq!(serde_json::to_string(&LogLevel::Warn).unwrap(), "\"warn\"");
+        assert_eq!(serde_json::to_string(&LogLevel::Error).unwrap(), "\"error\"");
+    }
+
+    #[test]
+    fn test_log_level_deserialization() {
+        let level: LogLevel = serde_json::from_str("\"trace\"").unwrap();
+        assert_eq!(level, LogLevel::Trace);
+        let level: LogLevel = serde_json::from_str("\"error\"").unwrap();
+        assert_eq!(level, LogLevel::Error);
+    }
+
+    #[test]
+    fn test_log_level_from_str_lossy_empty() {
+        // Empty string defaults to Info
+        assert_eq!(LogLevel::from_str_lossy(""), LogLevel::Info);
+    }
+
+    #[test]
+    fn test_log_level_from_str_lossy_info_explicit() {
+        assert_eq!(LogLevel::from_str_lossy("info"), LogLevel::Info);
+        assert_eq!(LogLevel::from_str_lossy("INFO"), LogLevel::Info);
+    }
+
+    #[test]
+    fn test_log_source_deserialization() {
+        let source: LogSource = serde_json::from_str("\"server\"").unwrap();
+        assert_eq!(source, LogSource::Server);
+        let source: LogSource = serde_json::from_str("\"client\"").unwrap();
+        assert_eq!(source, LogSource::Client);
+    }
+
+    #[test]
+    fn test_log_entry_payload_roundtrip() {
+        let payload = LogEntryPayload {
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            level: LogLevel::Error,
+            target: "reovim::server".to_string(),
+            message: "something failed".to_string(),
+            source: LogSource::Client,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: LogEntryPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.level, LogLevel::Error);
+        assert_eq!(decoded.source, LogSource::Client);
+        assert_eq!(decoded.target, "reovim::server");
+    }
+
+    #[test]
+    fn test_render_complete_payload_default() {
+        let payload = RenderCompletePayload::default();
+        let json = serde_json::to_string(&payload).unwrap();
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_detach_payload_default() {
+        let payload = DetachPayload::default();
+        assert!(payload.reason.is_none());
+    }
+
+    #[test]
+    fn test_wire_cmdline_prompt_char() {
+        assert_eq!(WireCmdlinePrompt::Command.char(), ':');
+        assert_eq!(WireCmdlinePrompt::SearchForward.char(), '/');
+        assert_eq!(WireCmdlinePrompt::SearchBackward.char(), '?');
+    }
+
+    #[test]
+    fn test_wire_cmdline_prompt_default() {
+        let prompt = WireCmdlinePrompt::default();
+        assert_eq!(prompt, WireCmdlinePrompt::Command);
+    }
+
+    #[test]
+    fn test_wire_cmdline_prompt_serialization() {
+        assert_eq!(serde_json::to_string(&WireCmdlinePrompt::Command).unwrap(), "\"command\"");
+        assert_eq!(
+            serde_json::to_string(&WireCmdlinePrompt::SearchForward).unwrap(),
+            "\"search_forward\""
+        );
+        assert_eq!(
+            serde_json::to_string(&WireCmdlinePrompt::SearchBackward).unwrap(),
+            "\"search_backward\""
+        );
+    }
+
+    #[test]
+    fn test_cmdline_changed_payload_show() {
+        let payload =
+            CmdlineChangedPayload::show(WireCmdlinePrompt::SearchForward, "pattern".to_string(), 7);
+        assert!(payload.visible);
+        assert_eq!(payload.prompt, WireCmdlinePrompt::SearchForward);
+        assert_eq!(payload.input, "pattern");
+        assert_eq!(payload.cursor, 7);
+    }
+
+    #[test]
+    fn test_cmdline_changed_payload_hide() {
+        let payload = CmdlineChangedPayload::hide();
+        assert!(!payload.visible);
+        assert_eq!(payload.prompt, WireCmdlinePrompt::Command);
+        assert!(payload.input.is_empty());
+        assert_eq!(payload.cursor, 0);
+    }
+
+    #[test]
+    fn test_cmdline_changed_payload_serialization() {
+        let payload = CmdlineChangedPayload::show(WireCmdlinePrompt::Command, "w".to_string(), 1);
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"visible\":true"));
+        assert!(json.contains("\"prompt\":\"command\""));
+        assert!(json.contains("\"input\":\"w\""));
+        assert!(json.contains("\"cursor\":1"));
+    }
+
+    #[test]
+    fn test_cmdline_changed_payload_roundtrip() {
+        let payload = CmdlineChangedPayload::show(
+            WireCmdlinePrompt::SearchBackward,
+            "search term".to_string(),
+            11,
+        );
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: CmdlineChangedPayload = serde_json::from_str(&json).unwrap();
+        assert!(decoded.visible);
+        assert_eq!(decoded.prompt, WireCmdlinePrompt::SearchBackward);
+        assert_eq!(decoded.input, "search term");
+        assert_eq!(decoded.cursor, 11);
+    }
+
+    #[test]
+    fn test_cmdline_changed_payload_into_notification() {
+        let payload =
+            CmdlineChangedPayload::show(WireCmdlinePrompt::Command, "quit".to_string(), 4);
+        let notification = payload.into_notification();
+        assert_eq!(notification.jsonrpc, "2.0");
+        assert_eq!(notification.method, CMDLINE_CHANGED);
+    }
+
+    #[test]
+    fn test_cmdline_changed_constant() {
+        assert_eq!(CMDLINE_CHANGED, "notification/cmdline_changed");
+    }
+
+    #[test]
+    fn test_capture_request_constant_format() {
+        assert!(CAPTURE_REQUEST.starts_with("tui/"));
+        assert!(CAPTURE_RESPONSE.starts_with("tui/"));
+    }
+
+    #[test]
+    fn test_log_level_equality() {
+        assert_eq!(LogLevel::Trace, LogLevel::Trace);
+        assert_ne!(LogLevel::Trace, LogLevel::Error);
+    }
+
+    #[test]
+    fn test_mode_changed_payload_roundtrip() {
+        let payload = ModeChangedPayload {
+            mode: super::super::types::ModeInfo {
+                focus: "Editor".to_string(),
+                edit_mode: "Insert".to_string(),
+                sub_mode: "None".to_string(),
+                display: "INSERT".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        let decoded: ModeChangedPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.mode.edit_mode, "Insert");
+    }
+
+    #[test]
+    fn test_buffer_modified_payload_false() {
+        let payload = BufferModifiedPayload {
+            buffer_id: BufferId::from(0),
+            modified: false,
+        };
+        let json = serde_json::to_string(&payload).unwrap();
+        assert!(json.contains("\"modified\":false"));
+    }
 }

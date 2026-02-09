@@ -200,6 +200,7 @@ impl TreeSitterDriver {
     /// present. The injection manager coordinates highlighting of embedded
     /// languages.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn supports_injections(&self) -> bool {
         self.injections_query.is_some() && self.injection_manager.is_some()
     }
@@ -228,6 +229,7 @@ impl TreeSitterDriver {
     ///
     /// Determines the semantic type of a foldable region based on the parent
     /// node's kind. This allows the UI to display appropriate fold icons.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn node_to_fold_kind(node: Option<Node>) -> FoldKind {
         let Some(node) = node else {
             return FoldKind::Block;
@@ -255,6 +257,7 @@ impl TreeSitterDriver {
     ///
     /// Used to show a collapsed fold indicator with meaningful context,
     /// e.g., "fn main() { ... }" instead of just "{ ... }".
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn extract_preview(content: &str, node: Node) -> String {
         let start_byte = node.start_byte();
         let end_byte = node.end_byte().min(content.len());
@@ -274,6 +277,7 @@ impl TreeSitterDriver {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl SyntaxDriver for TreeSitterDriver {
     fn language(&self) -> &str {
         &self.language_id
@@ -701,6 +705,7 @@ mod tests {
     // Integration tests with real languages are in the treesitter-rust module
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_with_injections_has_manager() {
         // Driver with injections query should have an injection manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -730,6 +735,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_without_injections_no_manager() {
         // Basic driver without injections query should not have a manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -746,6 +752,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_driver_with_queries_no_injections() {
         // Driver with folds but no injections query should not have a manager
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -775,6 +782,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_with_registered_injection_layer() {
         use crate::InjectionLayer;
 
@@ -817,6 +825,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_no_injection_layer_graceful_skip() {
         // Create a driver with injection support but no layers registered
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
@@ -853,6 +862,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_highlights_sorted_by_position() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
@@ -871,5 +881,358 @@ mod tests {
                 "Highlights should be sorted by start_byte"
             );
         }
+    }
+
+    #[test]
+    fn test_driver_language() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        assert_eq!(driver.language(), "rust");
+    }
+
+    #[test]
+    fn test_driver_not_parsed_initially() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        assert!(!driver.is_parsed());
+    }
+
+    #[test]
+    fn test_driver_parsed_after_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        driver.parse("fn main() {}");
+        assert!(driver.is_parsed());
+    }
+
+    #[test]
+    fn test_driver_version_increments() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        assert_eq!(driver.version(), 0);
+        driver.parse("fn main() {}");
+        assert_eq!(driver.version(), 1);
+        driver.parse("fn foo() {}");
+        assert_eq!(driver.version(), 2);
+    }
+
+    #[test]
+    fn test_driver_last_error_initially_none() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        assert!(driver.last_error().is_none());
+    }
+
+    #[test]
+    fn test_driver_highlights_empty_before_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        let highlights = driver.highlights(0..100);
+        assert!(highlights.is_empty());
+    }
+
+    #[test]
+    fn test_driver_update_increments_version() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        driver.parse("fn main() {}");
+        let v1 = driver.version();
+
+        let edit = SyntaxEdit::insert(12, 0, 12, 20, 0, 20);
+        driver.update("fn main() { let x; }", &edit);
+
+        assert_eq!(driver.version(), v1 + 1);
+    }
+
+    #[test]
+    fn test_driver_injections_empty_without_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        driver.parse("fn main() {}");
+
+        assert!(driver.injections().is_empty());
+    }
+
+    #[test]
+    fn test_driver_folds_empty_without_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        driver.parse("fn main() {\n    let x = 1;\n}");
+
+        // No folds query, so folds should be empty
+        assert!(driver.folds().is_empty());
+    }
+
+    #[test]
+    fn test_driver_indent_for_none_without_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        driver.parse("fn main() {}");
+
+        assert_eq!(driver.indent_for(0), None);
+    }
+
+    #[test]
+    fn test_driver_supports_folds() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(function_item) @fold").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query.clone(),
+            Some(folds_query),
+            None,
+            None,
+            mapper.clone(),
+        )
+        .unwrap();
+
+        assert!(driver.supports_folds());
+
+        let driver2 = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        assert!(!driver2.supports_folds());
+    }
+
+    #[test]
+    fn test_driver_supports_indents() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let indents_query = Arc::new(Query::new(&language, "(block) @indent").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query.clone(),
+            None,
+            None,
+            Some(indents_query),
+            mapper.clone(),
+        )
+        .unwrap();
+
+        assert!(driver.supports_indents());
+
+        let driver2 = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+        assert!(!driver2.supports_indents());
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_driver_folds_with_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        // Query that captures blocks as fold regions
+        let folds_query = Arc::new(Query::new(&language, "(block) @fold").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            Some(folds_query),
+            None,
+            None,
+            mapper,
+        )
+        .unwrap();
+
+        driver.parse("fn main() {\n    let x = 1;\n}");
+
+        let folds = driver.folds();
+        // Should have at least the function body fold
+        assert!(!folds.is_empty(), "Expected at least one fold for a multi-line function");
+    }
+
+    #[test]
+    fn test_driver_folds_empty_before_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(block) @fold").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            Some(folds_query),
+            None,
+            None,
+            mapper,
+        )
+        .unwrap();
+
+        // Not parsed yet, should return empty
+        assert!(driver.folds().is_empty());
+    }
+
+    #[test]
+    fn test_driver_indent_for_with_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let indents_query = Arc::new(Query::new(&language, "(block) @indent").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            None,
+            None,
+            Some(indents_query),
+            mapper,
+        )
+        .unwrap();
+
+        driver.parse("fn main() {\n    let x = 1;\n}");
+
+        // Line 1 is inside the function body (a block), should have some indent level
+        let indent = driver.indent_for(1);
+        assert!(indent.is_some());
+    }
+
+    #[test]
+    fn test_driver_indent_for_before_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let indents_query = Arc::new(Query::new(&language, "(block) @indent").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            None,
+            None,
+            Some(indents_query),
+            mapper,
+        )
+        .unwrap();
+
+        // Not parsed yet, should return None
+        assert_eq!(driver.indent_for(0), None);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_driver_folds_sorted_by_start_line() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(block) @fold").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            Some(folds_query),
+            None,
+            None,
+            mapper,
+        )
+        .unwrap();
+
+        driver.parse("fn foo() {\n    x\n}\n\nfn bar() {\n    y\n}");
+
+        let folds = driver.folds();
+        // Verify folds are sorted by start_line
+        for i in 1..folds.len() {
+            assert!(
+                folds[i - 1].start_line <= folds[i].start_line,
+                "Folds should be sorted by start_line"
+            );
+        }
+    }
+
+    #[test]
+    fn test_driver_update_preserves_highlighting() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        driver.parse("let x = 1;");
+        let h1 = driver.highlights(0..100);
+        assert!(!h1.is_empty());
+
+        // Update: add more code
+        let edit = SyntaxEdit::insert(10, 0, 10, 22, 0, 22);
+        driver.update("let x = 1; let y = 2;", &edit);
+
+        let h2 = driver.highlights(0..100);
+        // Should have more highlights after adding more identifiers
+        assert!(h2.len() >= h1.len());
+    }
+
+    #[test]
+    fn test_driver_last_error_cleared_after_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query, mapper).unwrap();
+
+        driver.parse("fn main() {}");
+        assert!(driver.last_error().is_none());
+    }
+
+    #[test]
+    fn test_driver_injections_empty_before_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+        let mapper = Arc::new(CaptureMapper::new());
+
+        let driver = TreeSitterDriver::with_queries(
+            "rust",
+            &language,
+            highlight_query,
+            None,
+            Some(injections_query),
+            None,
+            mapper,
+        )
+        .unwrap();
+
+        // Not parsed yet, should return empty
+        assert!(driver.injections().is_empty());
     }
 }

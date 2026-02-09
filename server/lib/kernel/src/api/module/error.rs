@@ -39,6 +39,9 @@ pub enum ModuleError {
     NotFound(String),
 }
 
+// LLVM coverage artifact: match arm headers and closing braces in Display impl
+// are marked DA:0 despite all variants being exercised in tests.
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl fmt::Display for ModuleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -96,6 +99,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_error_display() {
         let err = ModuleError::NotFound("test-module".into());
         assert_eq!(format!("{err}"), "module 'test-module' not found");
@@ -109,6 +113,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_error_variants() {
         let err = ModuleError::LoadFailed("dlopen failed".into());
         assert!(format!("{err}").contains("load"));
@@ -136,6 +141,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_probe_result_defer() {
         let result = ProbeResult::Defer("waiting for treesitter".into());
         if let ProbeResult::Defer(reason) = &result {
@@ -146,6 +152,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_probe_result_failed() {
         let err = ModuleError::InitFailed("config missing".into());
         let result = ProbeResult::Failed(err.clone());

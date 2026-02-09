@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! LSP driver for reovim.
 //!
 //! Provides Language Server Protocol client infrastructure following the

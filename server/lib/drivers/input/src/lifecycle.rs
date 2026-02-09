@@ -102,6 +102,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_lifecycle_handler_object_safe() {
         // Verify the trait is object-safe
         fn _accepts_ref(_: &dyn ModeLifecycleHandler) {}
@@ -147,6 +148,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_lifecycle_handler_implementation() {
         let mut handler = TestLifecycleHandler::new();
         let mode = ModeId::with_discriminant(ModuleId::new("test"), "INSERT", 1);

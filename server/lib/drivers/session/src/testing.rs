@@ -257,6 +257,7 @@ impl TestSessionRuntime {
     /// # Panics
     ///
     /// Panics if the mode name doesn't match.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn assert_mode_name(&self, expected_name: &str) {
         let current = self.mode_stack.current(); // Use separate field
         assert_eq!(
@@ -391,6 +392,17 @@ impl TestSessionRuntime {
     pub const fn session(&self) -> &Session {
         &self.session
     }
+
+    /// Set the compositor for layout testing.
+    ///
+    /// Required for testing commands that need window navigation, splitting,
+    /// or other compositor operations (e.g., window-ops commands).
+    pub fn set_compositor(
+        &mut self,
+        compositor: Box<dyn reovim_driver_display::layout::RootCompositor>,
+    ) {
+        self.session.set_compositor(compositor);
+    }
 }
 
 /// Test buffer manager that actually stores buffers.
@@ -409,6 +421,7 @@ impl TestBufferManager {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl BufferManager for TestBufferManager {
     fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
         self.buffers.read().get(&id).cloned()
@@ -452,6 +465,7 @@ impl BufferManager for TestBufferManager {
 /// Always returns `Success` for any command execution.
 struct StubExecutor;
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandExecutor for StubExecutor {
     fn execute(
         &self,
@@ -465,7 +479,10 @@ impl CommandExecutor for StubExecutor {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::api::ModeApi};
+    use {
+        super::*,
+        crate::api::{BufferApi, ModeApi},
+    };
 
     #[test]
     fn test_new_creates_valid_runtime() {
@@ -499,6 +516,7 @@ mod tests {
         assert!(changes.mode_changed);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_buffer_operations() {
         use crate::api::BufferApi;
@@ -633,5 +651,207 @@ mod tests {
             // Named register unchanged
             assert_eq!(runtime.get_register(Some('a')).unwrap().text, "world\n");
         });
+    }
+
+    // =========================================================================
+    // TestSessionRuntime assertion tests
+    // =========================================================================
+
+    #[test]
+    fn test_assert_mode() {
+        let mode = ModeId::new(ModuleId::new("test"), "normal");
+        let test = TestSessionRuntime::new();
+        test.assert_mode(&mode); // Should not panic
+    }
+
+    #[test]
+    fn test_assert_mode_name() {
+        let test = TestSessionRuntime::new();
+        test.assert_mode_name("normal"); // Should not panic
+    }
+
+    #[test]
+    fn test_assert_mode_depth() {
+        let test = TestSessionRuntime::new();
+        test.assert_mode_depth(1); // Should not panic
+    }
+
+    #[test]
+    fn test_assert_window_count_empty() {
+        let test = TestSessionRuntime::new();
+        test.assert_window_count(0); // No windows initially
+    }
+
+    #[test]
+    fn test_assert_window_count_with_buffer() {
+        let test = TestSessionRuntime::with_buffer("hello");
+        test.assert_window_count(1);
+    }
+
+    #[test]
+    fn test_assert_line_count() {
+        let test = TestSessionRuntime::with_buffer("line1\nline2\nline3");
+        test.assert_line_count(3);
+    }
+
+    #[test]
+    fn test_assert_buffer_content() {
+        let test = TestSessionRuntime::with_buffer("hello world");
+        test.assert_buffer_content("hello world");
+    }
+
+    #[test]
+    fn test_assert_cursor_default() {
+        let test = TestSessionRuntime::with_buffer("hello");
+        test.assert_cursor(0, 0);
+    }
+
+    #[test]
+    fn test_current_mode_getter() {
+        let test = TestSessionRuntime::new();
+        assert_eq!(test.current_mode().name(), "normal");
+    }
+
+    #[test]
+    fn test_active_buffer_getter() {
+        let test = TestSessionRuntime::with_buffer("test");
+        assert!(test.active_buffer().is_some());
+    }
+
+    #[test]
+    fn test_active_buffer_none_when_no_buffer() {
+        let test = TestSessionRuntime::new();
+        assert!(test.active_buffer().is_none());
+    }
+
+    #[test]
+    fn test_cursor_position_getter() {
+        let test = TestSessionRuntime::with_buffer("hello");
+        assert_eq!(test.cursor_position(), Some(Position::new(0, 0)));
+    }
+
+    #[test]
+    fn test_cursor_position_none_when_no_window() {
+        let test = TestSessionRuntime::new();
+        assert!(test.cursor_position().is_none());
+    }
+
+    #[test]
+    fn test_buffer_content_getter() {
+        let test = TestSessionRuntime::with_buffer("hello world");
+        assert_eq!(test.buffer_content(), Some("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_buffer_content_none_when_no_buffer() {
+        let test = TestSessionRuntime::new();
+        assert!(test.buffer_content().is_none());
+    }
+
+    #[test]
+    fn test_kernel_getter() {
+        let test = TestSessionRuntime::new();
+        let _kernel = test.kernel(); // Should not panic
+    }
+
+    #[test]
+    fn test_session_getter() {
+        let test = TestSessionRuntime::new();
+        let session = test.session();
+        assert_eq!(session.id.as_usize(), 1);
+    }
+
+    #[test]
+    fn test_changes_getter() {
+        let test = TestSessionRuntime::new();
+        let changes = test.changes();
+        assert!(!changes.has_changes());
+    }
+
+    #[test]
+    fn test_take_changes_resets() {
+        let mut test = TestSessionRuntime::new();
+        let insert_mode = ModeId::new(ModuleId::new("test"), "insert");
+
+        test.with_runtime(|runtime| {
+            runtime.push_mode(insert_mode, crate::TransitionContext::new());
+        });
+
+        // Changes should be recorded
+        assert!(test.changes().mode_changed);
+
+        // Take should clear
+        let changes = test.take_changes();
+        assert!(changes.mode_changed);
+        assert!(!test.changes().has_changes());
+    }
+
+    #[test]
+    fn test_runtime_method() {
+        let mut test = TestSessionRuntime::new();
+        let runtime = test.runtime();
+        // Just verify it returns a valid runtime
+        assert_eq!(runtime.current_mode().name(), "normal");
+    }
+
+    #[test]
+    fn test_with_runtime_returns_value() {
+        let mut test = TestSessionRuntime::with_buffer("hello");
+        let line_count = test.with_runtime(|runtime| {
+            let buf = runtime.active_buffer().unwrap();
+            runtime.buffer_line_count(buf).unwrap()
+        });
+        assert_eq!(line_count, 1);
+    }
+
+    #[test]
+    fn test_default_impl() {
+        let test = TestSessionRuntime::default();
+        test.assert_mode_name("normal");
+        test.assert_mode_depth(1);
+    }
+
+    // =========================================================================
+    // TestBufferManager tests
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_manager_create() {
+        let test = TestSessionRuntime::new();
+        // Creating a buffer via runtime should work
+        let mut test = test;
+        let buf_id = test.with_runtime(|runtime| {
+            use crate::api::BufferApi;
+            runtime.create_buffer(None, "test content")
+        });
+
+        let content = test.with_runtime(|runtime| {
+            use crate::api::BufferApi;
+            runtime.buffer_content(buf_id)
+        });
+        assert_eq!(content, Some("test content".to_string()));
+    }
+
+    #[test]
+    fn test_buffer_manager_list() {
+        let mut test = TestSessionRuntime::new();
+
+        test.with_runtime(|runtime| {
+            use crate::api::BufferApi;
+            runtime.create_buffer(None, "buf1");
+            runtime.create_buffer(None, "buf2");
+        });
+
+        // Kernel should have buffers
+        let count = test.kernel().buffers.count();
+        assert!(count >= 2);
+    }
+
+    #[test]
+    fn test_with_home_mode_custom() {
+        let custom = ModeId::new(ModuleId::new("custom"), "special-mode");
+        let test = TestSessionRuntime::with_home_mode(custom.clone());
+        test.assert_mode(&custom);
+        test.assert_mode_name("special-mode");
     }
 }

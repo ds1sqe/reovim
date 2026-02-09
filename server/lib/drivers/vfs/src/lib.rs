@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Virtual filesystem driver for reovim.
 //!
 //! Linux equivalent: `fs/`
@@ -24,7 +25,7 @@
 //! │                                                             │
 //! └─────────────────────────────────────────────────────────────┘
 //!                              │
-//!                              │ (implementations in runner/ or plugins/)
+//!                              │ (implementations in server/modules/)
 //!                              ▼
 //!              ┌───────────────────────────────┐
 //!              │      Concrete VFS Impls       │
@@ -44,12 +45,11 @@
 //! - [`FilePermissions`] - Unix-style permissions
 //! - [`VfsError`] - Error types
 //!
-//! # Migration Note
+//! # Usage Note
 //!
-//! This driver is designed to replace ALL `std::fs` usage in the codebase.
-//! When `lib/core` is removed, all filesystem access will go through VFS.
+//! All filesystem access in the codebase goes through VFS.
 //!
-//! See the `VfsDriver` trait documentation for the complete replacement mapping.
+//! See the `VfsDriver` trait documentation for the complete API.
 //!
 //! # Example
 //!

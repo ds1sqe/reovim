@@ -39,6 +39,7 @@ impl Command for PasteAfter {
 }
 
 impl CommandHandler for PasteAfter {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -166,6 +167,7 @@ impl Command for PasteBefore {
 }
 
 impl CommandHandler for PasteBefore {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -239,5 +241,1033 @@ impl CommandHandler for PasteBefore {
         }
 
         CommandResult::Success
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_driver_command::{ArgKind, ArgValue, CommandContext},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, RegisterContent, Session, SessionRuntime, Window, WindowLayout,
+            api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
+                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    struct StubExecutor;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl TestState {
+        fn with_window(buffer_id: BufferId) -> Self {
+            let home_mode = test_mode();
+            let mut state = Self {
+                session: Session::new(ClientId::new(1), home_mode.clone()),
+                mode_stack: ModeStack::new(home_mode),
+                windows: WindowLayout::empty(),
+                extensions: ExtensionMap::new(),
+            };
+            let mut window = Window::new();
+            window.buffer_id = Some(buffer_id);
+            state.windows.add(window);
+            state.session.set_active_buffer(Some(buffer_id));
+            state
+        }
+
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a StubExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
+    // PasteAfter tests
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_id() {
+        assert_eq!(PasteAfter.id().name(), "paste-after");
+    }
+
+    #[test]
+    fn test_paste_after_description() {
+        assert_eq!(PasteAfter.description(), "Paste after cursor");
+    }
+
+    #[test]
+    fn test_paste_after_args() {
+        let args = PasteAfter.args();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+        assert_eq!(args[1].name, "register");
+        assert_eq!(args[1].kind, ArgKind::Register);
+    }
+
+    #[test]
+    fn test_paste_after_no_buffer_returns_error() {
+        let kernel = create_test_context();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_after_empty_register_returns_success() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_paste_after_empty_content_returns_success() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise(""));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_paste_after_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_after_linewise() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line one\nline two");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 3);
+        assert_eq!(buf_read.line(0), Some("line one"));
+        assert_eq!(buf_read.line(1), Some("pasted"));
+        assert_eq!(buf_read.line(2), Some("line two"));
+        drop(buf_read);
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_paste_after_linewise_empty_buffer() {
+        let kernel = create_test_context();
+        let buffer = Buffer::new();
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted line\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_paste_after_characterwise() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hXYZello"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.column, 3);
+    }
+
+    #[test]
+    fn test_paste_after_characterwise_on_empty_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("AB"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("AB"));
+    }
+
+    #[test]
+    fn test_paste_after_characterwise_multiline() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X\nY"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    fn test_paste_after_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hXXXello"));
+    }
+
+    #[test]
+    fn test_paste_after_linewise_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line one");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 3);
+        assert_eq!(buf_read.line(1), Some("pasted"));
+        assert_eq!(buf_read.line(2), Some("pasted"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // PasteBefore tests
+    // =========================================================================
+
+    #[test]
+    fn test_paste_before_id() {
+        assert_eq!(PasteBefore.id().name(), "paste-before");
+    }
+
+    #[test]
+    fn test_paste_before_description() {
+        assert_eq!(PasteBefore.description(), "Paste before cursor");
+    }
+
+    #[test]
+    fn test_paste_before_args() {
+        let args = PasteBefore.args();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+        assert_eq!(args[1].name, "register");
+        assert_eq!(args[1].kind, ArgKind::Register);
+    }
+
+    #[test]
+    fn test_paste_before_no_buffer_returns_error() {
+        let kernel = create_test_context();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_before_empty_register_returns_success() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_paste_before_empty_content_returns_success() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise(""));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_paste_before_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_paste_before_linewise() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line one\nline two");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 3);
+        assert_eq!(buf_read.line(0), Some("pasted"));
+        assert_eq!(buf_read.line(1), Some("line one"));
+        assert_eq!(buf_read.line(2), Some("line two"));
+        drop(buf_read);
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    #[test]
+    fn test_paste_before_characterwise() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("XYZ"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("XYZhello"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.column, 2);
+    }
+
+    #[test]
+    fn test_paste_before_characterwise_multiline() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("A\nB"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    fn test_paste_before_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("XXhello"));
+    }
+
+    #[test]
+    fn test_paste_after_characterwise_single_char_empty_line() {
+        // Tests paste on an empty line with characterwise content
+        // Covers the branch at line 104-108 where line_len is 0
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("test"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn test_paste_before_linewise_with_count_multiple() {
+        // Tests linewise paste with count, multi-line content
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line one");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("A\nB\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 5);
+        assert_eq!(buf_read.line(0), Some("A"));
+        assert_eq!(buf_read.line(1), Some("B"));
+        assert_eq!(buf_read.line(2), Some("A"));
+        assert_eq!(buf_read.line(3), Some("B"));
+        assert_eq!(buf_read.line(4), Some("line one"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // Metadata tests
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_default() {
+        let cmd = PasteAfter;
+        assert_eq!(cmd.id().name(), "paste-after");
+    }
+
+    #[test]
+    fn test_paste_before_default() {
+        let cmd = PasteBefore;
+        assert_eq!(cmd.id().name(), "paste-before");
+    }
+
+    // =========================================================================
+    // Characterwise paste cursor position - multiline with empty last line
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_characterwise_multiline_empty_last_line() {
+        // "A\n".lines() = ["A"] (single element), so single-line branch is taken.
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("A\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // "A\n".lines() => ["A"], treated as single-line paste
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 2);
+    }
+
+    #[test]
+    fn test_paste_before_characterwise_multiline_empty_last_line() {
+        // "A\n".lines() = ["A"] (single element), so single-line branch is taken.
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("A\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // "A\n".lines() => ["A"], treated as single-line paste
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 1);
+    }
+
+    // =========================================================================
+    // Paste after characterwise with count and multiline
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_characterwise_multiline_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("X\nY"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // count=2 means "X\nYX\nY" pasted
+        // Last line "Y" has 1 char, col = 0
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    // =========================================================================
+    // Paste before with count characterwise
+    // =========================================================================
+
+    #[test]
+    fn test_paste_before_characterwise_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("AB"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("ABABhello"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // "ABAB" is 4 chars, col = 4-1 = 3
+        assert_eq!(window.cursor.column, 3);
+    }
+
+    // =========================================================================
+    // Paste after linewise on non-first line
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_paste_after_linewise_on_second_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted\n"));
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 4);
+        assert_eq!(buf_read.line(1), Some("line 2"));
+        assert_eq!(buf_read.line(2), Some("pasted"));
+        assert_eq!(buf_read.line(3), Some("line 3"));
+        drop(buf_read);
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 2);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    // =========================================================================
+    // Paste before linewise on non-first line
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_paste_before_linewise_on_second_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::linewise("pasted\n"));
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 4);
+        assert_eq!(buf_read.line(0), Some("line 1"));
+        assert_eq!(buf_read.line(1), Some("pasted"));
+        assert_eq!(buf_read.line(2), Some("line 2"));
+        drop(buf_read);
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        assert_eq!(window.cursor.line, 1);
+        assert_eq!(window.cursor.column, 0);
+    }
+
+    // =========================================================================
+    // Paste after characterwise at end of line
+    // =========================================================================
+
+    #[test]
+    fn test_paste_after_characterwise_multiline_last_line_empty() {
+        // "A\n\n".lines() = ["A", ""], last_line_len = 0, col = 0 branch
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("A\n\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // "A\n\n".lines() => ["A", ""], len=2, last_line_len=0, col=0
+        // insert at (0, 1), final_line = 0 + 2 - 1 = 1
+        assert_eq!(window.cursor.column, 0);
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    fn test_paste_before_characterwise_multiline_last_line_empty() {
+        // "A\n\n".lines() = ["A", ""], last_line_len = 0, col = 0 branch
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("A\n\n"));
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // "A\n\n".lines() => ["A", ""], len=2, last_line_len=0, col=0
+        // insert at (0, 0), final_line = 0 + 2 - 1 = 1
+        assert_eq!(window.cursor.column, 0);
+        assert_eq!(window.cursor.line, 1);
+    }
+
+    #[test]
+    fn test_paste_after_named_register_not_set_returns_success() {
+        // When a named register (e.g., 'a') hasn't been set, get_register returns None.
+        // This covers line 54: `return CommandResult::Success; // Empty register`
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("register", ArgValue::Register('a'));
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Buffer should be unchanged
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn test_paste_before_named_register_not_set_returns_success() {
+        // When a named register (e.g., 'a') hasn't been set, get_register returns None.
+        // This covers line 181: `return CommandResult::Success; // Empty register`
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("register", ArgValue::Register('a'));
+        let result = PasteBefore.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Buffer should be unchanged
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("hello"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_paste_after_characterwise_at_end_of_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        kernel
+            .registers
+            .write()
+            .set(RegisterContent::characterwise("XY"));
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 4).into(); // last char 'o'
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = PasteAfter.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let content = buf.read().line(0).map(str::to_owned);
+        assert_eq!(content.as_deref(), Some("helloXY"));
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Cursor at end of pasted text - 1
+        assert_eq!(window.cursor.column, 6);
     }
 }

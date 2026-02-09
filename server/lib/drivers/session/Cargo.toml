@@ -27,3 +27,7 @@ reovim-driver-clipboard = { workspace = true }
 reovim-driver-undo = { workspace = true }
 # Search driver for Direction type (SearchState)
 reovim-driver-search = { workspace = true }
+
+[dev-dependencies]
+# VFS driver for MockUndoProvider's persist/load methods in tests
+reovim-driver-vfs = { workspace = true }

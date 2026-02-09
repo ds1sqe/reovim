@@ -565,4 +565,115 @@ mod tests {
         let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
         assert_eq!(span.byte_range(), 10..20);
     }
+
+    #[test]
+    fn test_highlight_group_all_categories_covered() {
+        // Ensure every variant has a non-empty category string
+        let all_groups = [
+            HighlightGroup::Keyword,
+            HighlightGroup::KeywordControl,
+            HighlightGroup::KeywordOperator,
+            HighlightGroup::KeywordFunction,
+            HighlightGroup::KeywordType,
+            HighlightGroup::Type,
+            HighlightGroup::TypeBuiltin,
+            HighlightGroup::Function,
+            HighlightGroup::FunctionBuiltin,
+            HighlightGroup::FunctionMacro,
+            HighlightGroup::Method,
+            HighlightGroup::Variable,
+            HighlightGroup::VariableBuiltin,
+            HighlightGroup::Parameter,
+            HighlightGroup::Field,
+            HighlightGroup::Constant,
+            HighlightGroup::String,
+            HighlightGroup::StringEscape,
+            HighlightGroup::Character,
+            HighlightGroup::Number,
+            HighlightGroup::Boolean,
+            HighlightGroup::Comment,
+            HighlightGroup::CommentDoc,
+            HighlightGroup::Punctuation,
+            HighlightGroup::PunctuationBracket,
+            HighlightGroup::PunctuationDelimiter,
+            HighlightGroup::Operator,
+            HighlightGroup::Error,
+            HighlightGroup::Warning,
+            HighlightGroup::Info,
+            HighlightGroup::Hint,
+            HighlightGroup::Namespace,
+            HighlightGroup::Constructor,
+            HighlightGroup::Label,
+            HighlightGroup::Attribute,
+            HighlightGroup::Tag,
+            HighlightGroup::MarkupHeading,
+            HighlightGroup::MarkupBold,
+            HighlightGroup::MarkupItalic,
+            HighlightGroup::MarkupStrikethrough,
+            HighlightGroup::MarkupLink,
+            HighlightGroup::MarkupLinkUrl,
+            HighlightGroup::MarkupList,
+            HighlightGroup::MarkupRaw,
+            HighlightGroup::MarkupRawInline,
+            HighlightGroup::Embedded,
+            HighlightGroup::Special,
+            HighlightGroup::Custom,
+        ];
+
+        for group in all_groups {
+            let category = group.category();
+            assert!(!category.is_empty(), "Category for {group:?} should not be empty");
+        }
+    }
+
+    #[test]
+    fn test_highlight_group_classification_non_overlapping() {
+        // Keyword groups should NOT match other classification methods
+        assert!(!HighlightGroup::Keyword.is_type());
+        assert!(!HighlightGroup::Keyword.is_function());
+        assert!(!HighlightGroup::Keyword.is_variable());
+        assert!(!HighlightGroup::Keyword.is_literal());
+        assert!(!HighlightGroup::Keyword.is_comment());
+        assert!(!HighlightGroup::Keyword.is_punctuation());
+        assert!(!HighlightGroup::Keyword.is_diagnostic());
+        assert!(!HighlightGroup::Keyword.is_markup());
+
+        // Operator should not match any classification
+        assert!(!HighlightGroup::Operator.is_keyword());
+        assert!(!HighlightGroup::Operator.is_type());
+        assert!(!HighlightGroup::Operator.is_function());
+        assert!(!HighlightGroup::Operator.is_variable());
+        assert!(!HighlightGroup::Operator.is_literal());
+        assert!(!HighlightGroup::Operator.is_comment());
+        assert!(!HighlightGroup::Operator.is_punctuation());
+        assert!(!HighlightGroup::Operator.is_diagnostic());
+        assert!(!HighlightGroup::Operator.is_markup());
+    }
+
+    #[test]
+    fn test_highlight_span_equality() {
+        let span1 = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
+        let span2 = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
+        let span3 = HighlightSpan::new(10, 20, HighlightGroup::Function);
+        let span4 = HighlightSpan::new(10, 25, HighlightGroup::Keyword);
+
+        assert_eq!(span1, span2);
+        assert_ne!(span1, span3);
+        assert_ne!(span1, span4);
+    }
+
+    #[test]
+    fn test_highlight_span_clone() {
+        let span = HighlightSpan::new(5, 15, HighlightGroup::String);
+        let cloned = span.clone();
+        assert_eq!(span, cloned);
+    }
+
+    #[test]
+    fn test_highlight_span_debug() {
+        let span = HighlightSpan::new(0, 5, HighlightGroup::Comment);
+        let debug = format!("{span:?}");
+        assert!(debug.contains("HighlightSpan"));
+        assert!(debug.contains("Comment"));
+    }
 }

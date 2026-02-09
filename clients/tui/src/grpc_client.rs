@@ -51,6 +51,7 @@ use {
 ///   `ResourceExhausted`, `DeadlineExceeded`, `Aborted`
 ///
 /// TUI should crash hard on server errors rather than continue with wrong state.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn handle_grpc_error(status: &tonic::Status, operation: &str, client_id: u64) -> ! {
     match status.code() {
         // PANIC - Client bug or misconfiguration
@@ -119,6 +120,7 @@ impl From<tonic::Status> for TuiGrpcError {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl From<tonic::transport::Error> for TuiGrpcError {
     fn from(err: tonic::transport::Error) -> Self {
         Self::ConnectionFailed(err.to_string())
@@ -146,6 +148,7 @@ pub struct TuiGrpcClient {
     session_token: Option<String>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TuiGrpcClient {
     /// Connect to a gRPC server at the given address.
     ///

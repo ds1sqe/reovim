@@ -129,36 +129,215 @@ pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, reovim_kernel::api::v1::KernelContext};
+
+    // ========================================================================
+    // DetachCommand tests
+    // ========================================================================
 
     #[test]
-    fn test_detach_command_metadata() {
+    fn test_detach_command_id() {
         let cmd = DetachCommand;
         assert_eq!(cmd.id(), "detach");
-        assert_eq!(cmd.names(), &["detach"]);
-        assert!(!cmd.help().is_empty());
     }
 
     #[test]
-    fn test_servers_command_metadata() {
+    fn test_detach_command_names() {
+        let cmd = DetachCommand;
+        assert_eq!(cmd.names(), &["detach"]);
+        assert_eq!(cmd.names().len(), 1);
+    }
+
+    #[test]
+    fn test_detach_command_help() {
+        let cmd = DetachCommand;
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("Detach"));
+    }
+
+    #[test]
+    fn test_detach_command_complete_returns_empty() {
+        let cmd = DetachCommand;
+        let completions = cmd.complete("anything");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_detach_command_execute() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = DetachCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_detach_command_execute_ignores_args() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = DetachCommand;
+        let result = cmd.execute(&mut ctx, &["extra", "args"]);
+        assert!(result.is_ok());
+    }
+
+    // ========================================================================
+    // ServersCommand tests
+    // ========================================================================
+
+    #[test]
+    fn test_servers_command_id() {
         let cmd = ServersCommand;
         assert_eq!(cmd.id(), "servers");
-        assert_eq!(cmd.names(), &["servers"]);
-        assert!(!cmd.help().is_empty());
     }
 
     #[test]
-    fn test_kill_server_command_metadata() {
+    fn test_servers_command_names() {
+        let cmd = ServersCommand;
+        assert_eq!(cmd.names(), &["servers"]);
+        assert_eq!(cmd.names().len(), 1);
+    }
+
+    #[test]
+    fn test_servers_command_help() {
+        let cmd = ServersCommand;
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("server"));
+    }
+
+    #[test]
+    fn test_servers_command_complete_returns_empty() {
+        let cmd = ServersCommand;
+        let completions = cmd.complete("");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_servers_command_execute() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ServersCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_servers_command_execute_ignores_args() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = ServersCommand;
+        let result = cmd.execute(&mut ctx, &["arg1"]);
+        assert!(result.is_ok());
+    }
+
+    // ========================================================================
+    // KillServerCommand tests
+    // ========================================================================
+
+    #[test]
+    fn test_kill_server_command_id() {
         let cmd = KillServerCommand;
         assert_eq!(cmd.id(), "kill-server");
-        assert!(cmd.names().contains(&"kill-server"));
-        assert!(cmd.names().contains(&"killserver"));
-        assert!(!cmd.help().is_empty());
     }
 
     #[test]
-    fn test_commands_collection() {
+    fn test_kill_server_command_names() {
+        let cmd = KillServerCommand;
+        let names = cmd.names();
+        assert_eq!(names.len(), 2);
+        assert!(names.contains(&"kill-server"));
+        assert!(names.contains(&"killserver"));
+    }
+
+    #[test]
+    fn test_kill_server_command_help() {
+        let cmd = KillServerCommand;
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("Kill"));
+    }
+
+    #[test]
+    fn test_kill_server_command_complete_returns_empty() {
+        let cmd = KillServerCommand;
+        let completions = cmd.complete("anything");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_kill_server_command_execute() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = KillServerCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_kill_server_command_execute_ignores_args() {
+        let kernel = KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = KillServerCommand;
+        let result = cmd.execute(&mut ctx, &["extra"]);
+        assert!(result.is_ok());
+    }
+
+    // ========================================================================
+    // commands() collection tests
+    // ========================================================================
+
+    #[test]
+    fn test_commands_collection_count() {
         let cmds = commands();
         assert_eq!(cmds.len(), 3);
+    }
+
+    #[test]
+    fn test_commands_collection_ids() {
+        let cmds = commands();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+        assert!(ids.contains(&"detach"));
+        assert!(ids.contains(&"servers"));
+        assert!(ids.contains(&"kill-server"));
+    }
+
+    #[test]
+    fn test_commands_collection_all_have_names() {
+        let cmds = commands();
+        for cmd in &cmds {
+            assert!(!cmd.names().is_empty(), "command '{}' has no names", cmd.id());
+        }
+    }
+
+    #[test]
+    fn test_commands_collection_all_have_help() {
+        let cmds = commands();
+        for cmd in &cmds {
+            assert!(!cmd.help().is_empty(), "command '{}' has no help text", cmd.id());
+        }
+    }
+
+    // ========================================================================
+    // Trait object safety tests
+    // ========================================================================
+
+    #[test]
+    fn test_session_commands_as_trait_objects() {
+        let cmds: Vec<Box<dyn ExCommandHandler>> = vec![
+            Box::new(DetachCommand),
+            Box::new(ServersCommand),
+            Box::new(KillServerCommand),
+        ];
+        assert_eq!(cmds.len(), 3);
+        for cmd in &cmds {
+            assert!(!cmd.id().is_empty());
+        }
     }
 }

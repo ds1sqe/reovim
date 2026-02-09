@@ -65,6 +65,7 @@ mod tests {
     fn test_quit_command_names() {
         let cmd = QuitCommand;
         let names = cmd.names();
+        assert_eq!(names.len(), 2);
         assert!(names.contains(&"q"));
         assert!(names.contains(&"quit"));
     }
@@ -72,6 +73,67 @@ mod tests {
     #[test]
     fn test_quit_command_help() {
         let cmd = QuitCommand;
-        assert!(!cmd.help().is_empty());
+        let help = cmd.help();
+        assert!(!help.is_empty());
+        assert!(help.contains("Quit"));
+        assert!(help.contains("q!"));
+    }
+
+    #[test]
+    fn test_quit_command_complete_returns_empty() {
+        let cmd = QuitCommand;
+        let completions = cmd.complete("anything");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_quit_command_execute_without_bang() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+        ctx.bang = false;
+
+        let cmd = QuitCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_quit_command_execute_with_bang() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel).with_bang(true);
+
+        let cmd = QuitCommand;
+        let result = cmd.execute(&mut ctx, &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_quit_command_execute_ignores_args() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut ctx = ExCommandContext::new(&kernel);
+
+        let cmd = QuitCommand;
+        let result = cmd.execute(&mut ctx, &["extra", "args"]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_quit_command_debug() {
+        let cmd = QuitCommand;
+        let debug = format!("{cmd:?}");
+        assert!(debug.contains("QuitCommand"));
+    }
+
+    #[test]
+    fn test_quit_command_clone() {
+        let cmd = QuitCommand;
+        let cloned = cmd;
+        assert_eq!(cmd.id(), cloned.id());
+    }
+
+    #[test]
+    fn test_quit_command_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<QuitCommand>();
     }
 }

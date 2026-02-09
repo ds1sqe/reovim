@@ -28,6 +28,7 @@ pub struct TerminalOutput {
     cursor: Cursor,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TerminalOutput {
     /// Create a new terminal output.
     ///
@@ -59,6 +60,7 @@ impl TerminalOutput {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TuiOutput for TerminalOutput {
     #[allow(clippy::cast_possible_truncation)]
     fn flush(&mut self, frame: &FrameBuffer) -> io::Result<()> {

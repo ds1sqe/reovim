@@ -201,6 +201,7 @@ mod tests {
         assert_eq!(config.args, vec!["--log-file", "/tmp/ra.log"]);
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_uri_from_path_unix() {
         // Note: This test may behave differently on Windows
@@ -217,5 +218,74 @@ mod tests {
         let config = LspServerConfig::rust_analyzer(root);
         // Name should be extracted from path
         assert!(!config.workspace_folders[0].name.is_empty());
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let root = Path::new("/tmp/project");
+        let config = LspServerConfig::rust_analyzer(root).with_args(["--log"]);
+        let cloned = config.clone();
+        assert_eq!(cloned.command, config.command);
+        assert_eq!(cloned.args, config.args);
+        assert_eq!(cloned.root_path, config.root_path);
+    }
+
+    #[test]
+    fn test_config_debug() {
+        let root = Path::new("/tmp/project");
+        let config = LspServerConfig::rust_analyzer(root);
+        let debug = format!("{config:?}");
+        assert!(debug.contains("rust-analyzer"));
+    }
+
+    #[test]
+    fn test_with_args_extends() {
+        let root = Path::new("/tmp/project");
+        let config = LspServerConfig::custom("my-lsp", root)
+            .with_args(["--stdio"])
+            .with_args(["--verbose"]);
+        assert_eq!(config.args, vec!["--stdio", "--verbose"]);
+    }
+
+    #[test]
+    fn test_typescript_has_stdio_arg() {
+        let root = Path::new("/tmp/ts");
+        let config = LspServerConfig::typescript(root);
+        assert!(config.args.contains(&"--stdio".to_string()));
+    }
+
+    #[test]
+    fn test_uri_from_path_nonexistent() {
+        // Non-existent path should still produce a valid URI via fallback
+        let path = Path::new("/nonexistent/path/for/uri/test");
+        let uri = uri_from_path(path);
+        let uri_str = uri.as_str();
+        assert!(uri_str.starts_with("file://"));
+    }
+
+    #[test]
+    fn test_workspace_folder_name_root_path() {
+        // A root path like "/" has no file_name(), should use "workspace" fallback
+        let root = Path::new("/");
+        let config = LspServerConfig::rust_analyzer(root);
+        assert_eq!(config.workspace_folders[0].name, "workspace");
+    }
+
+    #[test]
+    fn test_uri_from_path_existing() {
+        // An existing path should canonicalize and produce a file:// URI
+        let path = Path::new("/tmp");
+        let uri = uri_from_path(path);
+        let uri_str = uri.as_str();
+        assert!(uri_str.starts_with("file://"));
+    }
+
+    #[test]
+    fn test_uri_from_path_with_spaces_falls_back() {
+        // Spaces in path produce invalid URI (RFC 3986 forbids literal spaces)
+        // so uri_from_path should fall back to "file:///"
+        let path = Path::new("/nonexistent path with spaces/project");
+        let uri = uri_from_path(path);
+        assert_eq!(uri.as_str(), "file:///");
     }
 }

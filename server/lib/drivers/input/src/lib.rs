@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Input driver for reovim - canonical input types and traits.
 //!
 //! Linux equivalent: `drivers/input/` + `include/linux/input.h`
@@ -8,13 +9,13 @@
 //! Platform-specific code converts native events to these types.
 //!
 //! ```text
-//! lib/drivers/input/        <-- Canonical types (this crate)
+//! server/lib/drivers/input/  <-- Canonical types (this crate)
 //!        ^
 //!        |  (platform code converts to canonical types)
 //!        |
-//! lib/arch/unix/            <-- crossterm → canonical
-//! lib/arch/wasm/            <-- JS events → canonical [future]
-//! lib/arch/android/         <-- Android events → canonical [future]
+//! shared/arch/unix/          <-- crossterm → canonical
+//! shared/arch/wasm/          <-- JS events → canonical [future]
+//! shared/arch/android/       <-- Android events → canonical [future]
 //! ```
 //!
 //! # Components

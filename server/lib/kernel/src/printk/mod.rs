@@ -93,7 +93,7 @@
 //!     }
 //! }
 //!
-//! // Set once at startup (typically in runner/)
+//! // Set once at startup (typically in server/lib/server/)
 //! // static LOGGER: StderrLogger = StderrLogger;
 //! // set_logger(&LOGGER).expect("logger already set");
 //! ```

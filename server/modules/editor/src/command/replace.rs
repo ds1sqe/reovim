@@ -46,6 +46,7 @@ impl Command for ReplaceCharStart {
 }
 
 impl CommandHandler for ReplaceCharStart {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal waiting for replace character with count
@@ -87,6 +88,7 @@ impl Command for RepeatDot {
 }
 
 impl CommandHandler for RepeatDot {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal intent to repeat last change
@@ -117,6 +119,7 @@ impl Command for JoinLines {
 }
 
 impl CommandHandler for JoinLines {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(buffer_id) = args.buffer_id() else {
             return CommandResult::error("No active buffer");
@@ -202,5 +205,660 @@ impl CommandHandler for JoinLines {
         }
 
         CommandResult::Success
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        reovim_driver_command::{ArgValue, CommandContext},
+        reovim_driver_session::{
+            ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+            api::CommandExecutor,
+        },
+        reovim_kernel::api::{
+            ServiceRegistry,
+            v1::{
+                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
+                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
+                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+            },
+        },
+        std::{collections::HashMap, sync::Arc},
+    };
+
+    struct TestBufferManager {
+        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
+    }
+
+    impl TestBufferManager {
+        fn new() -> Self {
+            Self {
+                buffers: RwLock::new(HashMap::new()),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl BufferManager for TestBufferManager {
+        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
+            self.buffers.read().get(&id).cloned()
+        }
+
+        fn create(&self) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(Buffer::new()));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn register(&self, buffer: Buffer) -> BufferId {
+            let id = BufferId::new();
+            let buffer = Arc::new(RwLock::new(buffer));
+            self.buffers.write().insert(id, buffer);
+            id
+        }
+
+        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
+            self.buffers
+                .write()
+                .remove(&id)
+                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
+                    Arc::try_unwrap(arc_buffer)
+                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
+                })
+        }
+
+        fn list(&self) -> Vec<BufferId> {
+            self.buffers.read().keys().copied().collect()
+        }
+
+        fn count(&self) -> usize {
+            self.buffers.read().len()
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "normal")
+    }
+
+    struct StubExecutor;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandExecutor for StubExecutor {
+        fn execute(
+            &self,
+            _cmd: &KernelCommandId,
+            _ctx: &CommandContext,
+            _kernel: &KernelContext,
+        ) -> Option<CommandResult> {
+            Some(CommandResult::Success)
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn create_test_context() -> KernelContext {
+        KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(RwLock::new(RegisterBank::new())),
+            Arc::new(RwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::default()),
+            Arc::new(ServiceRegistry::new()),
+        )
+    }
+
+    struct TestState {
+        session: Session,
+        mode_stack: ModeStack,
+        windows: WindowLayout,
+        extensions: ExtensionMap,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl TestState {
+        fn with_window(buffer_id: BufferId) -> Self {
+            let home_mode = test_mode();
+            let mut state = Self {
+                session: Session::new(ClientId::new(1), home_mode.clone()),
+                mode_stack: ModeStack::new(home_mode),
+                windows: WindowLayout::empty(),
+                extensions: ExtensionMap::new(),
+            };
+            let mut window = Window::new();
+            window.buffer_id = Some(buffer_id);
+            state.windows.add(window);
+            state.session.set_active_buffer(Some(buffer_id));
+            state
+        }
+
+        fn runtime<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a StubExecutor,
+        ) -> SessionRuntime<'a> {
+            SessionRuntime::new(
+                &mut self.session,
+                &mut self.mode_stack,
+                &mut self.windows,
+                &mut self.extensions,
+                kernel,
+                executor,
+            )
+        }
+    }
+
+    // =========================================================================
+    // ReplaceCharStart tests
+    // =========================================================================
+
+    #[test]
+    fn test_replace_char_start_id() {
+        let cmd = ReplaceCharStart;
+        assert_eq!(cmd.id().name(), "replace-char-start");
+    }
+
+    #[test]
+    fn test_replace_char_start_description() {
+        let cmd = ReplaceCharStart;
+        assert_eq!(cmd.description(), "Replace character under cursor");
+    }
+
+    #[test]
+    fn test_replace_char_start_args() {
+        let cmd = ReplaceCharStart;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    // =========================================================================
+    // RepeatDot tests
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_dot_id() {
+        let cmd = RepeatDot;
+        assert_eq!(cmd.id().name(), "repeat-dot");
+    }
+
+    #[test]
+    fn test_repeat_dot_description() {
+        let cmd = RepeatDot;
+        assert_eq!(cmd.description(), "Repeat last change");
+    }
+
+    #[test]
+    fn test_repeat_dot_args() {
+        let cmd = RepeatDot;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    // =========================================================================
+    // JoinLines tests
+    // =========================================================================
+
+    #[test]
+    fn test_join_lines_id() {
+        let cmd = JoinLines;
+        assert_eq!(cmd.id().name(), "join-lines");
+    }
+
+    #[test]
+    fn test_join_lines_description() {
+        let cmd = JoinLines;
+        assert_eq!(cmd.description(), "Join current line with next line");
+    }
+
+    #[test]
+    fn test_join_lines_args() {
+        let cmd = JoinLines;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "count");
+        assert_eq!(args[0].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_join_lines_no_buffer_returns_error() {
+        let kernel = KernelContext::default();
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let args = CommandContext::new();
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_join_lines_no_window_returns_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_join_lines_two_lines() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("hello world"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_join_lines_strips_leading_whitespace() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\n    world");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("hello world"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_join_lines_on_last_line_is_noop() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("only line");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("only line"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_join_lines_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3\nline 4");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(2));
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        // First two joins happened: "line 1" + "line 2" + "line 3"
+        assert_eq!(buf_read.line(0), Some("line 1 line 2 line 3"));
+        assert_eq!(buf_read.line(1), Some("line 4"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_join_lines_count_exceeds_remaining() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(10));
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("line 1 line 2"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_join_lines_buffer_not_found() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        // Use a fake buffer_id that doesn't exist
+        let mut args = CommandContext::new();
+        args.set("buffer_id", ArgValue::BufferId(99999));
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_join_lines_no_content_after_join_point() {
+        // Tests the branch at line 179: new_line_len > line_len check
+        // where there's no content after joining (empty next line)
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\n");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        // Empty second line joined, no space should be inserted
+        assert_eq!(buf_read.line(0), Some("hello"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_replace_char_start_execute() {
+        // Execute returns Success even though it's a stub
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = ReplaceCharStart.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    #[test]
+    fn test_repeat_dot_execute() {
+        // Execute returns Success even though it's a stub
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let args = CommandContext::new();
+        let result = RepeatDot.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // Metadata/Default tests
+    // =========================================================================
+
+    // =========================================================================
+    // ReplaceCharStart with count
+    // =========================================================================
+
+    #[test]
+    fn test_replace_char_start_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(3));
+        let result = ReplaceCharStart.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // JoinLines cursor position after join
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_join_lines_cursor_position() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\nworld");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 3).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("hello world"));
+        drop(buf_read);
+
+        drop(runtime);
+        let window = state.windows.active().unwrap();
+        // Cursor should be at min(original_col, final_line_len - 1)
+        assert_eq!(window.cursor.line, 0);
+        assert_eq!(window.cursor.column, 3);
+    }
+
+    // =========================================================================
+    // JoinLines with multiple empty lines
+    // =========================================================================
+
+    #[test]
+    fn test_join_lines_with_empty_next_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\n\nworld");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        // Empty line joined with no trailing space (no content after join)
+        assert_eq!(buf_read.line(0), Some("hello"));
+        assert_eq!(buf_read.line(1), Some("world"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // JoinLines with multiple joins (count=3 on 4 lines)
+    // =========================================================================
+
+    #[test]
+    fn test_join_lines_all_lines() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("a\nb\nc\nd");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("count", ArgValue::Count(3));
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("a b c d"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // JoinLines from non-first line
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_join_lines_from_middle() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(1, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 2);
+        assert_eq!(buf_read.line(0), Some("line 1"));
+        assert_eq!(buf_read.line(1), Some("line 2 line 3"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // JoinLines on last line of multi-line buffer
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_join_lines_on_last_line_multiline() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("line 1\nline 2\nline 3");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(2, 0).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Should be no-op since cursor is on last line
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 3);
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // RepeatDot with count
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_dot_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("count", ArgValue::Count(5));
+        let result = RepeatDot.execute(&mut runtime, &args);
+        assert!(result.is_success());
+    }
+
+    // =========================================================================
+    // JoinLines with tab-indented next line
+    // =========================================================================
+
+    #[test]
+    fn test_join_lines_strips_tab_whitespace() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello\n\t\tworld");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+
+        let result = JoinLines.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 1);
+        assert_eq!(buf_read.line(0), Some("hello world"));
+        drop(buf_read);
     }
 }

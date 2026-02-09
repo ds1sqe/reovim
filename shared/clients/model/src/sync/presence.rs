@@ -205,6 +205,29 @@ mod tests {
     }
 
     #[test]
+    fn test_presence_tracker_get_mut() {
+        let mut tracker = PresenceTracker::new();
+        tracker.upsert(test_presence("client-1"));
+
+        let entry = tracker.get_mut("client-1");
+        assert!(entry.is_some());
+        entry.unwrap().is_active = false;
+        assert!(!tracker.get("client-1").unwrap().is_active);
+
+        assert!(tracker.get_mut("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_presence_tracker_all() {
+        let mut tracker = PresenceTracker::new();
+        tracker.upsert(test_presence("a"));
+        tracker.upsert(test_presence("b"));
+
+        let all: Vec<_> = tracker.all().collect();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
     fn test_presence_tracker_clear() {
         let mut tracker = PresenceTracker::new();
         tracker.upsert(test_presence("a"));

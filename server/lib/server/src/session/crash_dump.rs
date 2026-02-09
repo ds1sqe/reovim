@@ -151,6 +151,7 @@ mod tests {
         assert!(dir.ends_with("reovim/crash") || dir.ends_with("reovim\\crash"));
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_dump_client_to_file() {
         let ring_buffer = ClientRingBuffer::new();
@@ -174,6 +175,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_try_dump_client_to_file() {
         let ring_buffer = ClientRingBuffer::new();

@@ -33,6 +33,7 @@ mod buffer_id_tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_display() {
         let id = BufferId::from_raw(123);
         assert_eq!(format!("{id}"), "Buffer(123)");
@@ -95,6 +96,7 @@ mod position_tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_display() {
         let pos = Position::new(0, 5);
         // Display uses 1-indexed for human readability
@@ -433,6 +435,14 @@ mod buffer_tests {
         assert_eq!(deleted, "lo\nBeautiful\nWo");
         assert_eq!(buf.line_count(), 1);
         assert_eq!(buf.line(0), Some("Helrld"));
+    }
+
+    #[test]
+    fn test_delete_range_same_position() {
+        let mut buf = Buffer::from_string("Hello");
+        let deleted = buf.delete_range(Position::new(0, 2), Position::new(0, 2));
+        assert_eq!(deleted, "");
+        assert_eq!(buf.line(0), Some("Hello"));
     }
 
     #[test]

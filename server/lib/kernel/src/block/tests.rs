@@ -1241,4 +1241,1206 @@ mod snapshot_tests {
         assert_eq!(snapshot.line_count(), 0);
         assert_eq!(snapshot.char_count(), 0);
     }
+
+    #[test]
+    fn test_snapshot_clone() {
+        let buffer = Buffer::from_string("Hello\nWorld");
+        let cursor = Position::new(1, 3);
+        let snapshot = Snapshot::capture(&buffer, cursor);
+
+        let cloned = snapshot.clone();
+        assert_eq!(cloned.lines(), snapshot.lines());
+        assert_eq!(cloned.cursor(), snapshot.cursor());
+        assert_eq!(cloned.buffer_id(), snapshot.buffer_id());
+        assert_eq!(cloned.line_count(), snapshot.line_count());
+        assert_eq!(cloned.char_count(), snapshot.char_count());
+    }
+
+    #[test]
+    fn test_snapshot_single_line_char_count() {
+        let buffer = Buffer::from_string("Hello");
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
+
+        // "Hello" = 5 chars, 1 line, 0 newlines
+        assert_eq!(snapshot.char_count(), 5);
+    }
+
+    #[test]
+    fn test_snapshot_three_lines_char_count() {
+        let buffer = Buffer::from_string("AB\nCD\nEF");
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
+
+        // "AB" (2) + "CD" (2) + "EF" (2) = 6 chars + 2 newlines = 8
+        assert_eq!(snapshot.char_count(), 8);
+        assert_eq!(snapshot.line_count(), 3);
+    }
+
+    #[test]
+    fn test_snapshot_non_empty() {
+        let buffer = Buffer::from_string("x");
+        let snapshot = Snapshot::capture(&buffer, Position::origin());
+
+        assert!(!snapshot.is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_restore_multiline() {
+        let mut buffer = Buffer::from_string("Original\nContent");
+        let cursor = Position::new(0, 3);
+        let snapshot = Snapshot::capture(&buffer, cursor);
+
+        buffer.set_content("Modified completely");
+
+        let restored_cursor = snapshot.restore(&mut buffer);
+        assert_eq!(buffer.content(), "Original\nContent");
+        assert_eq!(restored_cursor, Position::new(0, 3));
+    }
+
+    #[test]
+    fn test_from_parts_accessors() {
+        let lines = vec!["A".to_string(), "B".to_string(), "C".to_string()];
+        let cursor = Position::new(2, 1);
+        let buffer_id = BufferId::new();
+        let timestamp = std::time::SystemTime::now();
+
+        let snapshot = Snapshot::from_parts(lines, cursor, buffer_id, timestamp);
+
+        assert_eq!(snapshot.lines(), &["A", "B", "C"]);
+        assert_eq!(snapshot.cursor(), Position::new(2, 1));
+        assert_eq!(snapshot.buffer_id(), buffer_id);
+        assert_eq!(snapshot.timestamp(), timestamp);
+        assert_eq!(snapshot.line_count(), 3);
+        assert!(!snapshot.is_empty());
+    }
+}
+
+// === Additional Transaction Tests ===
+
+mod transaction_extended_tests {
+    use super::*;
+
+    #[test]
+    fn test_default_is_empty() {
+        let txn = Transaction::default();
+        assert!(txn.is_empty());
+        assert_eq!(txn.len(), 0);
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let txn = Transaction::with_capacity(10);
+        assert!(txn.is_empty());
+        assert_eq!(txn.len(), 0);
+    }
+
+    #[test]
+    fn test_with_capacity_push() {
+        let mut txn = Transaction::with_capacity(2);
+        txn.push(Edit::insert(Position::new(0, 0), "A"));
+        txn.push(Edit::insert(Position::new(0, 1), "B"));
+        assert_eq!(txn.len(), 2);
+    }
+
+    #[test]
+    fn test_into_edits() {
+        let mut txn = Transaction::new();
+        txn.push(Edit::insert(Position::new(0, 0), "Hello"));
+        txn.push(Edit::insert(Position::new(0, 5), " World"));
+
+        let edits = txn.into_edits();
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].text(), "Hello");
+        assert_eq!(edits[1].text(), " World");
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut txn = Transaction::new();
+        txn.push(Edit::insert(Position::new(0, 0), "A"));
+        txn.push(Edit::insert(Position::new(0, 1), "B"));
+        txn.push(Edit::insert(Position::new(0, 2), "C"));
+
+        let texts: Vec<&str> = txn.iter().map(Edit::text).collect();
+        assert_eq!(texts, vec!["A", "B", "C"]);
+    }
+
+    #[test]
+    fn test_ref_into_iter() {
+        let mut txn = Transaction::new();
+        txn.push(Edit::insert(Position::new(0, 0), "X"));
+        txn.push(Edit::insert(Position::new(0, 1), "Y"));
+
+        let mut count = 0;
+        for edit in &txn {
+            assert!(edit.is_insert());
+            count += 1;
+        }
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_inverse_of_empty() {
+        let txn = Transaction::new();
+        let inverse = txn.inverse();
+        assert!(inverse.is_empty());
+    }
+
+    #[test]
+    fn test_inverse_of_deletes() {
+        let mut txn = Transaction::new();
+        txn.push(Edit::delete(Position::new(0, 0), "A"));
+        txn.push(Edit::delete(Position::new(0, 0), "B"));
+
+        let inverse = txn.inverse();
+        let edits = inverse.edits();
+
+        // Inverse of delete is insert, in reverse order
+        assert_eq!(edits.len(), 2);
+        assert!(edits[0].is_insert());
+        assert!(edits[1].is_insert());
+        assert_eq!(edits[0].text(), "B");
+        assert_eq!(edits[1].text(), "A");
+    }
+
+    #[test]
+    fn test_from_single_edit_content() {
+        let edit = Edit::delete(Position::new(1, 2), "removed");
+        let txn: Transaction = edit.into();
+        assert_eq!(txn.len(), 1);
+        assert!(txn.edits()[0].is_delete());
+        assert_eq!(txn.edits()[0].text(), "removed");
+    }
+
+    #[test]
+    fn test_clear_then_push() {
+        let mut txn = Transaction::new();
+        txn.push(Edit::insert(Position::new(0, 0), "A"));
+        txn.clear();
+        assert!(txn.is_empty());
+
+        txn.push(Edit::insert(Position::new(0, 0), "B"));
+        assert_eq!(txn.len(), 1);
+        assert_eq!(txn.edits()[0].text(), "B");
+    }
+
+    #[test]
+    fn test_into_iter_consumes() {
+        let txn: Transaction = vec![
+            Edit::insert(Position::new(0, 0), "A"),
+            Edit::insert(Position::new(0, 1), "B"),
+            Edit::insert(Position::new(0, 2), "C"),
+        ]
+        .into();
+
+        let collected: Vec<Edit> = txn.into_iter().collect();
+        assert_eq!(collected.len(), 3);
+        assert_eq!(collected[0].text(), "A");
+        assert_eq!(collected[1].text(), "B");
+        assert_eq!(collected[2].text(), "C");
+    }
+}
+
+// === Additional UndoTree Tests ===
+
+mod undo_tree_extended_tests {
+    use {super::*, crate::block::EditOrigin, std::time::Duration};
+
+    #[test]
+    fn test_default_is_new() {
+        let tree = UndoTree::default();
+        assert!(!tree.can_undo());
+        assert!(!tree.can_redo());
+        assert_eq!(tree.node_count(), 1);
+    }
+
+    #[test]
+    fn test_current_node_is_root_initially() {
+        let tree = UndoTree::new();
+        let node = tree.current_node();
+        assert!(node.is_root());
+        assert!(node.edits().is_empty());
+        assert!(node.children().is_empty());
+    }
+
+    #[test]
+    fn test_current_node_after_push() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "Hello")],
+            Position::new(0, 0),
+            Position::new(0, 5),
+        );
+
+        let node = tree.current_node();
+        assert!(!node.is_root());
+        assert_eq!(node.edits()[0].text(), "Hello");
+        assert_eq!(node.cursor_before(), Position::new(0, 0));
+        assert_eq!(node.cursor_after(), Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_current_index() {
+        let mut tree = UndoTree::new();
+        assert_eq!(tree.current_index(), 0);
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        assert_eq!(tree.current_index(), 1);
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        assert_eq!(tree.current_index(), 2);
+
+        tree.undo();
+        assert_eq!(tree.current_index(), 1);
+    }
+
+    #[test]
+    fn test_max_nodes_accessor() {
+        let tree = UndoTree::new();
+        assert_eq!(tree.max_nodes(), UndoTree::DEFAULT_MAX_NODES);
+
+        let tree = UndoTree::with_max_nodes(42);
+        assert_eq!(tree.max_nodes(), 42);
+    }
+
+    #[test]
+    fn test_with_max_nodes_minimum_one() {
+        let tree = UndoTree::with_max_nodes(0);
+        assert_eq!(tree.max_nodes(), 1);
+    }
+
+    #[test]
+    fn test_set_max_nodes() {
+        let mut tree = UndoTree::new();
+        tree.set_max_nodes(50);
+        assert_eq!(tree.max_nodes(), 50);
+    }
+
+    #[test]
+    fn test_set_max_nodes_minimum_one() {
+        let mut tree = UndoTree::new();
+        tree.set_max_nodes(0);
+        assert_eq!(tree.max_nodes(), 1);
+    }
+
+    #[test]
+    fn test_set_max_nodes_triggers_pruning() {
+        let mut tree = UndoTree::new();
+
+        // Create branching tree: root -> A -> [B, C, D]
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "D")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        // Current path: root -> A -> D (3 nodes protected)
+        // B and C are leaf nodes that can be pruned
+        assert!(tree.node_count() > 3);
+
+        tree.set_max_nodes(3);
+        assert!(tree.node_count() <= 3);
+
+        // Protected path should still be intact
+        assert!(tree.can_undo());
+    }
+
+    #[test]
+    fn test_seq_counter() {
+        let mut tree = UndoTree::new();
+        assert_eq!(tree.seq_counter(), 0);
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        assert_eq!(tree.seq_counter(), 1);
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        assert_eq!(tree.seq_counter(), 2);
+
+        // Undo/redo should not change seq_counter
+        tree.undo();
+        assert_eq!(tree.seq_counter(), 2);
+
+        tree.redo();
+        assert_eq!(tree.seq_counter(), 2);
+    }
+
+    #[test]
+    fn test_seq_counter_increments_on_empty_edit_skip() {
+        let mut tree = UndoTree::new();
+        tree.push(vec![], Position::new(0, 0), Position::new(0, 0));
+        // Empty edits are skipped, so seq_counter should not increment
+        assert_eq!(tree.seq_counter(), 0);
+    }
+
+    #[test]
+    fn test_undo_node_timestamp() {
+        let mut tree = UndoTree::new();
+        let before = std::time::Instant::now();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        let after = std::time::Instant::now();
+        let node = tree.node(1).unwrap();
+        let ts = node.timestamp();
+
+        assert!(ts >= before);
+        assert!(ts <= after);
+    }
+
+    #[test]
+    fn test_undo_node_seq_num() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        assert_eq!(tree.node(0).unwrap().seq_num(), 0); // root
+        assert_eq!(tree.node(1).unwrap().seq_num(), 1);
+        assert_eq!(tree.node(2).unwrap().seq_num(), 2);
+    }
+
+    #[test]
+    fn test_undo_node_branch_count() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // A has no children yet
+        assert_eq!(tree.node(1).unwrap().branch_count(), 0);
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+
+        // A now has 2 children (B and C)
+        assert_eq!(tree.node(1).unwrap().branch_count(), 2);
+    }
+
+    #[test]
+    fn test_redo_branch_valid() {
+        let mut tree = UndoTree::new();
+
+        // root -> A -> [B, C]
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+
+        // Redo branch 0 (B)
+        let result = tree.redo_branch(0).unwrap();
+        assert_eq!(result.edits[0].text(), "B");
+        assert_eq!(result.cursor, Position::new(0, 2));
+    }
+
+    #[test]
+    fn test_redo_branch_invalid() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // A has no children (we're at A), so redo_branch(0) is invalid
+        assert!(tree.redo_branch(0).is_none());
+    }
+
+    #[test]
+    fn test_redo_branch_out_of_range() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        tree.undo();
+
+        // A has 1 child (B), so branch_idx=1 is out of range
+        assert!(tree.redo_branch(1).is_none());
+    }
+
+    #[test]
+    fn test_switch_branch_invalid() {
+        let mut tree = UndoTree::new();
+        // Root has no children, so switching branch is invalid
+        assert!(!tree.switch_branch(0));
+    }
+
+    #[test]
+    fn test_undo_at_root_returns_none() {
+        let mut tree = UndoTree::new();
+        assert!(tree.undo().is_none());
+    }
+
+    #[test]
+    fn test_redo_at_leaf_returns_none() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        // At leaf node, redo returns None
+        assert!(tree.redo().is_none());
+    }
+
+    #[test]
+    fn test_clear_preserves_cursor_after() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "Hello")],
+            Position::new(0, 0),
+            Position::new(0, 5),
+        );
+
+        // After clear, root should preserve cursor_after from original root
+        // (which was default Position)
+        tree.clear();
+        let root = tree.node(0).unwrap();
+        assert_eq!(root.cursor_after(), Position::default());
+    }
+
+    #[test]
+    fn test_clear_preserves_max_nodes() {
+        let mut tree = UndoTree::with_max_nodes(42);
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.clear();
+        assert_eq!(tree.max_nodes(), 42);
+    }
+
+    #[test]
+    fn test_undo_result_edits_are_inverted() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![
+                Edit::insert(Position::new(0, 0), "A"),
+                Edit::insert(Position::new(0, 1), "B"),
+            ],
+            Position::new(0, 0),
+            Position::new(0, 2),
+        );
+
+        let result = tree.undo().unwrap();
+        // Undo reverses edits and inverts them
+        assert_eq!(result.edits.len(), 2);
+        assert!(result.edits[0].is_delete());
+        assert!(result.edits[1].is_delete());
+        // Order is reversed
+        assert_eq!(result.edits[0].text(), "B");
+        assert_eq!(result.edits[1].text(), "A");
+    }
+
+    #[test]
+    fn test_redo_result_edits_are_originals() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "Hello")],
+            Position::new(0, 0),
+            Position::new(0, 5),
+        );
+        tree.undo();
+
+        let result = tree.redo().unwrap();
+        assert_eq!(result.edits.len(), 1);
+        assert!(result.edits[0].is_insert());
+        assert_eq!(result.edits[0].text(), "Hello");
+    }
+
+    #[test]
+    fn test_from_serializable_basic() {
+        let nodes_data = vec![
+            // Root node
+            (
+                Vec::new(),             // edits
+                Position::new(0, 0),    // cursor_before
+                Position::new(0, 0),    // cursor_after
+                Duration::from_secs(0), // relative_time
+                None,                   // parent
+                vec![1],                // children
+                0u64,                   // seq_num
+                EditOrigin::System,     // origin
+            ),
+            // Child node
+            (
+                vec![Edit::insert(Position::new(0, 0), "A")],
+                Position::new(0, 0),
+                Position::new(0, 1),
+                Duration::from_secs(1),
+                Some(0),
+                Vec::new(),
+                1u64,
+                EditOrigin::Client(5),
+            ),
+        ];
+
+        let tree = UndoTree::from_serializable(
+            nodes_data,
+            1,   // current at child
+            1,   // seq_counter
+            100, // max_nodes
+            vec![0, 0],
+        );
+
+        assert_eq!(tree.node_count(), 2);
+        assert_eq!(tree.current_index(), 1);
+        assert_eq!(tree.seq_counter(), 1);
+        assert_eq!(tree.max_nodes(), 100);
+        assert!(tree.can_undo());
+        assert!(!tree.can_redo());
+
+        let root = tree.node(0).unwrap();
+        assert!(root.is_root());
+        assert_eq!(root.children(), &[1]);
+
+        let child = tree.node(1).unwrap();
+        assert_eq!(child.parent(), Some(0));
+        assert_eq!(child.origin(), EditOrigin::Client(5));
+        assert_eq!(child.edits()[0].text(), "A");
+    }
+
+    #[test]
+    fn test_from_serializable_min_max_nodes() {
+        let nodes_data = vec![(
+            Vec::new(),
+            Position::new(0, 0),
+            Position::new(0, 0),
+            Duration::from_secs(0),
+            None,
+            Vec::new(),
+            0u64,
+            EditOrigin::System,
+        )];
+
+        let tree = UndoTree::from_serializable(
+            nodes_data,
+            0,
+            0,
+            0, // should be clamped to 1
+            vec![0],
+        );
+
+        assert_eq!(tree.max_nodes(), 1);
+    }
+
+    #[test]
+    fn test_from_serializable_timestamps_ordered() {
+        let nodes_data = vec![
+            (
+                Vec::new(),
+                Position::new(0, 0),
+                Position::new(0, 0),
+                Duration::from_secs(0),
+                None,
+                vec![1],
+                0u64,
+                EditOrigin::System,
+            ),
+            (
+                vec![Edit::insert(Position::new(0, 0), "A")],
+                Position::new(0, 0),
+                Position::new(0, 1),
+                Duration::from_secs(5),
+                Some(0),
+                Vec::new(),
+                1u64,
+                EditOrigin::System,
+            ),
+        ];
+
+        let tree = UndoTree::from_serializable(nodes_data, 1, 1, 100, vec![0, 0]);
+
+        let root_ts = tree.node(0).unwrap().timestamp();
+        let child_ts = tree.node(1).unwrap().timestamp();
+        // Child has later relative_time, so its timestamp should be >= root's
+        assert!(child_ts >= root_ts);
+    }
+
+    #[test]
+    #[should_panic(expected = "UndoTree must have at least a root node")]
+    fn test_from_serializable_empty_panics() {
+        let _ = UndoTree::from_serializable(Vec::new(), 0, 0, 100, Vec::new());
+    }
+
+    #[test]
+    fn test_from_serializable_branching() {
+        let nodes_data = vec![
+            // Root
+            (
+                Vec::new(),
+                Position::new(0, 0),
+                Position::new(0, 0),
+                Duration::from_secs(0),
+                None,
+                vec![1],
+                0u64,
+                EditOrigin::System,
+            ),
+            // A
+            (
+                vec![Edit::insert(Position::new(0, 0), "A")],
+                Position::new(0, 0),
+                Position::new(0, 1),
+                Duration::from_secs(1),
+                Some(0),
+                vec![2, 3],
+                1u64,
+                EditOrigin::Client(0),
+            ),
+            // B (branch 0 of A)
+            (
+                vec![Edit::insert(Position::new(0, 1), "B")],
+                Position::new(0, 1),
+                Position::new(0, 2),
+                Duration::from_secs(2),
+                Some(1),
+                Vec::new(),
+                2u64,
+                EditOrigin::Client(0),
+            ),
+            // C (branch 1 of A)
+            (
+                vec![Edit::insert(Position::new(0, 1), "C")],
+                Position::new(0, 1),
+                Position::new(0, 2),
+                Duration::from_secs(3),
+                Some(1),
+                Vec::new(),
+                3u64,
+                EditOrigin::Client(1),
+            ),
+        ];
+
+        let tree = UndoTree::from_serializable(
+            nodes_data,
+            3, // current at C
+            3,
+            100,
+            vec![0, 1, 0, 0],
+        );
+
+        assert_eq!(tree.node_count(), 4);
+        assert_eq!(tree.current_index(), 3);
+
+        let node_a = tree.node(1).unwrap();
+        assert_eq!(node_a.branch_count(), 2);
+        assert_eq!(node_a.children(), &[2, 3]);
+
+        // Active branch at A should be 1 (C)
+        assert_eq!(tree.active_branch_at(1), Some(1));
+    }
+
+    #[test]
+    fn test_multiple_undo_redo_cycle() {
+        let mut tree = UndoTree::new();
+
+        for i in 0..5 {
+            tree.push(
+                vec![Edit::insert(Position::new(0, i), i.to_string())],
+                Position::new(0, i),
+                Position::new(0, i + 1),
+            );
+        }
+
+        assert_eq!(tree.node_count(), 6); // root + 5 nodes
+
+        // Undo all 5
+        for _ in 0..5 {
+            assert!(tree.undo().is_some());
+        }
+        assert!(!tree.can_undo());
+        assert_eq!(tree.current_index(), 0);
+
+        // Redo all 5
+        for _ in 0..5 {
+            assert!(tree.redo().is_some());
+        }
+        assert!(!tree.can_redo());
+    }
+
+    #[test]
+    fn test_branches_empty_at_leaf() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        assert!(tree.branches().is_empty());
+    }
+
+    #[test]
+    fn test_branches_after_multiple_pushes() {
+        let mut tree = UndoTree::new();
+
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // Create 3 branches from A
+        for text in ["B", "C", "D"] {
+            tree.push(
+                vec![Edit::insert(Position::new(0, 1), text)],
+                Position::new(0, 1),
+                Position::new(0, 2),
+            );
+            tree.undo();
+        }
+
+        let branches = tree.branches();
+        assert_eq!(branches.len(), 3);
+    }
+
+    #[test]
+    fn test_push_with_origin_empty_edits_skipped() {
+        let mut tree = UndoTree::new();
+        tree.push_with_origin(
+            vec![],
+            Position::new(0, 0),
+            Position::new(0, 0),
+            EditOrigin::Client(1),
+        );
+        assert_eq!(tree.node_count(), 1); // Only root
+    }
+
+    #[test]
+    fn test_edit_origin_copy_and_hash() {
+        use std::collections::HashSet;
+
+        let origin1 = EditOrigin::Client(1);
+        let origin2 = origin1; // Copy
+        assert_eq!(origin1, origin2);
+
+        let mut set = HashSet::new();
+        set.insert(EditOrigin::System);
+        set.insert(EditOrigin::Client(1));
+        set.insert(EditOrigin::Client(1)); // duplicate
+        set.insert(EditOrigin::Client(2));
+
+        assert_eq!(set.len(), 3);
+    }
+
+    #[test]
+    fn test_undo_node_clone() {
+        let mut tree = UndoTree::new();
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+
+        // UndoTree implements Clone
+        let cloned = tree.clone();
+        assert_eq!(cloned.node_count(), tree.node_count());
+        assert_eq!(cloned.current_index(), tree.current_index());
+        assert_eq!(cloned.seq_counter(), tree.seq_counter());
+    }
+}
+
+// === Additional History Tests ===
+
+mod history_extended_tests {
+    use super::*;
+
+    #[test]
+    fn test_default_is_new() {
+        let history = History::default();
+        assert!(history.is_empty());
+        assert_eq!(history.max_entries(), History::DEFAULT_MAX_ENTRIES);
+    }
+
+    #[test]
+    fn test_max_entries_accessor() {
+        let history = History::new();
+        assert_eq!(history.max_entries(), History::DEFAULT_MAX_ENTRIES);
+
+        let history = History::with_max_entries(42);
+        assert_eq!(history.max_entries(), 42);
+    }
+
+    #[test]
+    fn test_with_max_entries_minimum_one() {
+        let history = History::with_max_entries(0);
+        assert_eq!(history.max_entries(), 1);
+    }
+
+    #[test]
+    fn test_get_accessor() {
+        let mut history = History::new();
+        assert!(history.get(0).is_none());
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+        history.record(vec![Edit::insert(Position::new(0, 1), "B")]);
+
+        assert_eq!(history.get(0).unwrap().edits()[0].text(), "A");
+        assert_eq!(history.get(1).unwrap().edits()[0].text(), "B");
+        assert!(history.get(2).is_none());
+    }
+
+    #[test]
+    fn test_set_max_entries() {
+        let mut history = History::new();
+
+        for i in 0..10 {
+            history.record(vec![Edit::insert(Position::new(0, 0), i.to_string())]);
+        }
+        assert_eq!(history.len(), 10);
+
+        // Shrink max - should trim old entries
+        history.set_max_entries(3);
+        assert_eq!(history.max_entries(), 3);
+        assert_eq!(history.len(), 3);
+
+        // Verify oldest were removed
+        assert_eq!(history.entries()[0].edits()[0].text(), "7");
+        assert_eq!(history.entries()[1].edits()[0].text(), "8");
+        assert_eq!(history.entries()[2].edits()[0].text(), "9");
+    }
+
+    #[test]
+    fn test_set_max_entries_minimum_one() {
+        let mut history = History::new();
+        history.set_max_entries(0);
+        assert_eq!(history.max_entries(), 1);
+    }
+
+    #[test]
+    fn test_set_max_entries_grow() {
+        let mut history = History::with_max_entries(3);
+
+        for i in 0..5 {
+            history.record(vec![Edit::insert(Position::new(0, 0), i.to_string())]);
+        }
+        assert_eq!(history.len(), 3);
+
+        history.set_max_entries(100);
+        assert_eq!(history.max_entries(), 100);
+        assert_eq!(history.len(), 3); // existing entries preserved
+    }
+
+    #[test]
+    fn test_seq_counter() {
+        let mut history = History::new();
+        assert_eq!(history.seq_counter(), 0);
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+        assert_eq!(history.seq_counter(), 1);
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "B")]);
+        assert_eq!(history.seq_counter(), 2);
+    }
+
+    #[test]
+    fn test_seq_counter_not_reset_on_clear() {
+        let mut history = History::new();
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+        history.record(vec![Edit::insert(Position::new(0, 0), "B")]);
+        assert_eq!(history.seq_counter(), 2);
+
+        history.clear();
+        assert_eq!(history.seq_counter(), 2); // preserved
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "C")]);
+        assert_eq!(history.seq_counter(), 3);
+    }
+
+    #[test]
+    fn test_seq_counter_not_incremented_for_empty() {
+        let mut history = History::new();
+        history.record(vec![]); // empty, should not record
+        assert_eq!(history.seq_counter(), 0);
+    }
+
+    #[test]
+    fn test_entry_timestamp() {
+        let mut history = History::new();
+        let before = std::time::Instant::now();
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+
+        let after = std::time::Instant::now();
+        let entry = history.get(0).unwrap();
+        let ts = entry.timestamp();
+
+        assert!(ts >= before);
+        assert!(ts <= after);
+    }
+
+    #[test]
+    fn test_between() {
+        let mut history = History::new();
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+        let start = std::time::Instant::now();
+        history.record(vec![Edit::insert(Position::new(0, 0), "B")]);
+        history.record(vec![Edit::insert(Position::new(0, 0), "C")]);
+        let end = std::time::Instant::now();
+
+        let entries = history.between(start, end);
+        // B and C should be within the range (they were recorded after start and before end)
+        assert!(entries.len() >= 2);
+        // All returned entries should have timestamps in range
+        for entry in &entries {
+            assert!(entry.timestamp() >= start);
+            assert!(entry.timestamp() <= end);
+        }
+    }
+
+    #[test]
+    fn test_between_empty_range() {
+        let mut history = History::new();
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+
+        // Use a time range in the far past
+        let start = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(100))
+            .unwrap();
+        let end = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(99))
+            .unwrap();
+
+        let entries = history.between(start, end);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_since_empty_history() {
+        let history = History::new();
+        let entries = history.since(0);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_since_all() {
+        let mut history = History::new();
+        for i in 0..3 {
+            history.record(vec![Edit::insert(Position::new(0, 0), i.to_string())]);
+        }
+
+        let entries = history.since(0);
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[test]
+    fn test_since_none() {
+        let mut history = History::new();
+        for i in 0..3 {
+            history.record(vec![Edit::insert(Position::new(0, 0), i.to_string())]);
+        }
+
+        let entries = history.since(100);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_last_on_empty() {
+        let history = History::new();
+        assert!(history.last().is_none());
+    }
+
+    #[test]
+    fn test_record_multiple_edits_per_entry() {
+        let mut history = History::new();
+        history.record(vec![
+            Edit::insert(Position::new(0, 0), "A"),
+            Edit::insert(Position::new(0, 1), "B"),
+            Edit::insert(Position::new(0, 2), "C"),
+        ]);
+
+        assert_eq!(history.len(), 1);
+        let entry = history.get(0).unwrap();
+        assert_eq!(entry.edits().len(), 3);
+        assert_eq!(entry.edits()[0].text(), "A");
+        assert_eq!(entry.edits()[1].text(), "B");
+        assert_eq!(entry.edits()[2].text(), "C");
+    }
+
+    #[test]
+    fn test_max_entries_one() {
+        let mut history = History::with_max_entries(1);
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+        assert_eq!(history.len(), 1);
+
+        history.record(vec![Edit::insert(Position::new(0, 0), "B")]);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history.entries()[0].edits()[0].text(), "B");
+    }
+
+    #[test]
+    fn test_history_entry_clone() {
+        let mut history = History::new();
+        history.record(vec![Edit::insert(Position::new(0, 0), "A")]);
+
+        let entry = history.get(0).unwrap();
+        let cloned = entry.clone();
+        assert_eq!(cloned.edits()[0].text(), entry.edits()[0].text());
+        assert_eq!(cloned.seq_num(), entry.seq_num());
+        assert_eq!(cloned.timestamp(), entry.timestamp());
+    }
+
+    // === Coverage: remove_node root protection (L554-555) ===
+
+    #[test]
+    fn test_remove_node_root_protection() {
+        // Create a tree with max_nodes=2. Push 2 edits on a linear path.
+        // Tree: root(0) -> A(1) -> B(2). Current = 2.
+        // When B is pushed, node_count=3 > max_nodes=2.
+        // prune_if_needed tries to remove nodes not on the protected path.
+        // Protected path: root(0) -> A(1) -> B(2). All are protected.
+        // No leaf nodes to prune, so nothing removed. Root survives.
+        let mut tree = UndoTree::with_max_nodes(2);
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Root must still exist
+        assert!(tree.node_count() >= 2);
+        assert!(tree.can_undo());
+    }
+
+    // === Coverage: prune_adjusts_parent_indices (L565-568) ===
+
+    #[test]
+    fn test_prune_adjusts_parent_indices() {
+        // Build a tree with branches, then trigger pruning that removes
+        // a node with index lower than other nodes' parent indices,
+        // forcing the index adjustment code at L565-568.
+        //
+        // Tree structure with max_nodes=4:
+        //   root(0) -> A(1) -> B(2)   (branch 1, leaf)
+        //                  \-> C(3)    (branch 2)
+        //                       \-> D(4)  (current, protected)
+        //
+        // Protected path: root(0) -> A(1) -> C(3) -> D(4)
+        // B(2) is a leaf, not protected -> gets pruned.
+        // After removing B(2), indices shift: C was 3 -> becomes 2, D was 4 -> becomes 3.
+        // Parent index of C (was pointing to A=1) stays 1.
+        // Parent index of D (was pointing to C=3) must be adjusted to 2.
+        let mut tree = UndoTree::with_max_nodes(4);
+
+        // Push A
+        tree.push(
+            vec![Edit::insert(Position::new(0, 0), "A")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        // Push B (branch from A)
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "B")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Undo back to A
+        tree.undo();
+        // Push C (new branch from A)
+        tree.push(
+            vec![Edit::insert(Position::new(0, 1), "C")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        // Push D (child of C) - this puts us over max_nodes, triggers prune
+        tree.push(
+            vec![Edit::insert(Position::new(0, 2), "D")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+        );
+
+        // After pruning, B should be removed and indices adjusted
+        assert!(tree.node_count() <= 4);
+        // The path root -> A -> C -> D should still be navigable
+        assert!(tree.can_undo());
+        let result = tree.undo().unwrap();
+        assert_eq!(result.edits[0].text(), "D");
+    }
 }

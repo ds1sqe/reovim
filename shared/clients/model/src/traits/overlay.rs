@@ -171,6 +171,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_confirm() {
         let renderer = TestRenderer::new("completion");
         let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
@@ -195,6 +196,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_overlay_renderer_interact_select_next() {
         let renderer = TestRenderer::new("completion");
         let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor)
@@ -240,5 +242,152 @@ mod tests {
         // Verify the trait bounds
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<TestRenderer>();
+    }
+
+    #[test]
+    fn test_overlay_renderer_default_priority() {
+        let renderer = TestRenderer::new("completion");
+        let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
+        // default_priority default method returns 0
+        assert_eq!(renderer.default_priority(&overlay), 0);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_overlay_renderer_default_is_modal() {
+        // Test with a renderer that does not override is_modal
+        struct MinimalRenderer;
+        impl OverlayRenderer for MinimalRenderer {
+            fn handles(&self, _kind: &str) -> bool {
+                true
+            }
+            fn measure(&self, _overlay: &LogicalOverlay, _max_size: Size) -> Size {
+                Size::new(10, 5)
+            }
+            fn interact(
+                &self,
+                _overlay: &LogicalOverlay,
+                _interaction: Interaction,
+            ) -> InteractionResult {
+                InteractionResult::PassThrough
+            }
+            // is_modal uses default (returns false)
+            // default_priority uses default (returns 0)
+        }
+
+        let renderer = MinimalRenderer;
+        let overlay = LogicalOverlay::new("test", "test", Anchor::Cursor);
+        assert!(!renderer.is_modal(&overlay));
+        assert_eq!(renderer.default_priority(&overlay), 0);
+    }
+
+    #[test]
+    fn test_overlay_renderer_modal_defaults_to_false() {
+        let renderer = TestRenderer::new("hover");
+        let overlay = LogicalOverlay::new("test", "hover", Anchor::Cursor);
+        assert!(!renderer.is_modal(&overlay));
+    }
+
+    #[test]
+    fn test_overlay_renderer_handles_empty_kind() {
+        let renderer = TestRenderer::new("");
+        assert!(renderer.handles(""));
+        assert!(!renderer.handles("something"));
+    }
+
+    #[test]
+    fn test_overlay_renderer_measure_zero_size() {
+        let renderer = TestRenderer::new("completion");
+        let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
+        let size = renderer.measure(&overlay, Size::new(0, 0));
+        assert_eq!(size.width, 0);
+        assert_eq!(size.height, 0);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_overlay_renderer_interact_select_next_from_none() {
+        let renderer = TestRenderer::new("completion");
+        // Overlay with no initial selection (selected_index is None)
+        let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
+
+        let result = renderer.interact(&overlay, Interaction::SelectNext);
+        if let InteractionResult::StateUpdate(state) = result {
+            // None -> 0 + 1 = 1
+            assert_eq!(state.selected_index, Some(1));
+        } else {
+            panic!("Expected StateUpdate result");
+        }
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_overlay_renderer_custom_priority() {
+        struct PriorityRenderer;
+        impl OverlayRenderer for PriorityRenderer {
+            fn handles(&self, _kind: &str) -> bool {
+                true
+            }
+            fn measure(&self, _overlay: &LogicalOverlay, _max_size: Size) -> Size {
+                Size::new(10, 5)
+            }
+            fn interact(
+                &self,
+                _overlay: &LogicalOverlay,
+                _interaction: Interaction,
+            ) -> InteractionResult {
+                InteractionResult::PassThrough
+            }
+            fn default_priority(&self, _overlay: &LogicalOverlay) -> u32 {
+                100
+            }
+        }
+
+        let renderer = PriorityRenderer;
+        let overlay = LogicalOverlay::new("test", "test", Anchor::Cursor);
+        assert_eq!(renderer.default_priority(&overlay), 100);
+    }
+
+    #[test]
+    fn test_overlay_renderer_modal_renderer_is_modal() {
+        let modal = TestRenderer::modal("dialog");
+        let overlay = LogicalOverlay::new("test", "dialog", Anchor::Center);
+        assert!(modal.is_modal(&overlay));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_overlay_renderer_interact_with_state_update() {
+        let renderer = TestRenderer::new("completion");
+        let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor)
+            .with_state(OverlayState::with_selection(5));
+
+        let result = renderer.interact(&overlay, Interaction::SelectNext);
+        if let InteractionResult::StateUpdate(state) = result {
+            assert_eq!(state.selected_index, Some(6));
+        } else {
+            panic!("Expected StateUpdate result");
+        }
+    }
+
+    #[test]
+    fn test_overlay_renderer_measure_large_max() {
+        let renderer = TestRenderer::new("completion");
+        let overlay = LogicalOverlay::new("test", "completion", Anchor::Cursor);
+        let size = renderer.measure(&overlay, Size::new(1000, 500));
+        // TestRenderer caps at 40x10
+        assert_eq!(size.width, 40);
+        assert_eq!(size.height, 10);
+    }
+
+    #[test]
+    fn test_overlay_renderer_different_anchors() {
+        let renderer = TestRenderer::new("tooltip");
+        for anchor in [Anchor::Cursor, Anchor::Center] {
+            let overlay = LogicalOverlay::new("test", "tooltip", anchor);
+            let size = renderer.measure(&overlay, Size::new(80, 24));
+            assert_eq!(size.width, 40);
+            assert_eq!(size.height, 10);
+        }
     }
 }

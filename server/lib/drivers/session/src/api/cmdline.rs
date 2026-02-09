@@ -261,4 +261,159 @@ mod tests {
         assert!(state.was_cancelled());
         assert!(state.input().is_empty());
     }
+
+    #[test]
+    fn test_cancel_resets_cursor() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.insert_char('w');
+        state.insert_char('q');
+        assert_eq!(state.cursor(), 2);
+
+        state.cancel();
+        assert_eq!(state.cursor(), 0);
+    }
+
+    #[test]
+    fn test_exit_preserves_prompt() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::SearchBackward);
+        state.exit();
+
+        // Prompt should be preserved after exit for runner to read
+        assert_eq!(state.prompt(), CmdlinePrompt::SearchBackward);
+        assert!(!state.was_cancelled());
+    }
+
+    #[test]
+    fn test_enter_resets_cancelled_flag() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.cancel();
+        assert!(state.was_cancelled());
+
+        // Entering again should clear cancelled flag
+        state.enter(CmdlinePrompt::SearchForward);
+        assert!(!state.was_cancelled());
+    }
+
+    #[test]
+    fn test_enter_clears_previous_input() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.insert_char('w');
+        state.insert_char('q');
+        assert_eq!(state.input(), "wq");
+
+        // Entering again should clear input
+        state.enter(CmdlinePrompt::SearchForward);
+        assert!(state.input().is_empty());
+        assert_eq!(state.cursor(), 0);
+    }
+
+    #[test]
+    fn test_take_cmdline_input_resets_cursor() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.insert_char('w');
+        assert_eq!(state.cursor(), 1);
+
+        let input = state.take_cmdline_input();
+        assert_eq!(input, "w");
+        assert_eq!(state.cursor(), 0);
+        assert!(state.input().is_empty());
+    }
+
+    #[test]
+    fn test_insert_char_at_beginning_of_input() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+
+        // Insert characters normally
+        state.insert_char('b');
+        state.insert_char('c');
+        assert_eq!(state.input(), "bc");
+        assert_eq!(state.cursor(), 2);
+
+        // Move cursor to beginning by manual manipulation
+        // (In real usage, a cursor-move command would do this)
+        state.cursor = 0;
+        state.insert_char('a');
+        assert_eq!(state.input(), "abc");
+        assert_eq!(state.cursor(), 1);
+    }
+
+    #[test]
+    fn test_insert_char_in_middle_of_input() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.insert_char('a');
+        state.insert_char('c');
+        assert_eq!(state.input(), "ac");
+
+        // Move cursor to position 1 (between 'a' and 'c')
+        state.cursor = 1;
+        state.insert_char('b');
+        assert_eq!(state.input(), "abc");
+        assert_eq!(state.cursor(), 2);
+    }
+
+    #[test]
+    fn test_backspace_at_beginning_is_noop() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+        state.cursor = 0;
+        state.backspace();
+        assert!(state.input().is_empty());
+        assert_eq!(state.cursor(), 0);
+    }
+
+    #[test]
+    fn test_cmdline_prompt_default() {
+        let prompt = CmdlinePrompt::default();
+        assert_eq!(prompt, CmdlinePrompt::Command);
+        assert_eq!(prompt.char(), ':');
+        assert!(!prompt.is_search());
+    }
+
+    #[test]
+    fn test_cmdline_prompt_clone_copy() {
+        let prompt = CmdlinePrompt::SearchForward;
+        let cloned = prompt;
+        assert_eq!(prompt, cloned);
+    }
+
+    #[test]
+    fn test_cmdline_state_debug() {
+        let state = CmdlineState::default();
+        let debug = format!("{state:?}");
+        assert!(debug.contains("CmdlineState"));
+    }
+
+    #[test]
+    fn test_session_extension_create() {
+        let state = CmdlineState::create();
+        assert!(!state.is_active());
+        assert!(state.input().is_empty());
+    }
+
+    #[test]
+    fn test_text_input_sink_integration() {
+        let mut state = CmdlineState::default();
+        state.enter(CmdlinePrompt::Command);
+
+        // Use the TextInputSink trait method
+        TextInputSink::insert_char(&mut state, 'h');
+        TextInputSink::insert_char(&mut state, 'i');
+
+        assert_eq!(state.input(), "hi");
+    }
+
+    #[test]
+    fn test_as_text_input_sink_returns_some() {
+        let mut state = CmdlineState::default();
+        // CmdlineState should return Some from as_text_input_sink
+        let sink = SessionExtension::as_text_input_sink(&mut state);
+        assert!(sink.is_some());
+    }
 }

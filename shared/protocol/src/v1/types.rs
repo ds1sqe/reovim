@@ -719,4 +719,314 @@ mod tests {
         let parsed: WireLayoutInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, layout);
     }
+
+    // Additional coverage tests
+
+    #[test]
+    fn test_position_default() {
+        let pos = Position::default();
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.column, 0);
+    }
+
+    #[test]
+    fn test_position_deserialization() {
+        let json = r#"{"line":42,"column":7}"#;
+        let pos: Position = serde_json::from_str(json).unwrap();
+        assert_eq!(pos, Position::new(42, 7));
+    }
+
+    #[test]
+    fn test_buffer_id_from_into() {
+        let id = BufferId::from(42_usize);
+        let back: usize = id.into();
+        assert_eq!(back, 42);
+        assert_eq!(id.0, 42);
+    }
+
+    #[test]
+    fn test_buffer_id_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(BufferId(1));
+        set.insert(BufferId(2));
+        set.insert(BufferId(1));
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn test_wire_window_id_from_usize() {
+        let id = WireWindowId::from(10_usize);
+        assert_eq!(id.0, 10);
+        let back: usize = id.into();
+        assert_eq!(back, 10);
+    }
+
+    #[test]
+    fn test_wire_layer_id_from_usize() {
+        let id = WireLayerId::from(5_usize);
+        assert_eq!(id.0, 5);
+        let back: usize = id.into();
+        assert_eq!(back, 5);
+    }
+
+    #[test]
+    fn test_wire_rect_default() {
+        let rect = WireRect::default();
+        assert_eq!(rect.x, 0);
+        assert_eq!(rect.y, 0);
+        assert_eq!(rect.width, 0);
+        assert_eq!(rect.height, 0);
+    }
+
+    #[test]
+    fn test_wire_zone_default() {
+        let zone = WireZone::default();
+        assert!(matches!(zone, WireZone::Tiled));
+    }
+
+    #[test]
+    fn test_selection_mode_default() {
+        let mode = SelectionMode::default();
+        assert!(matches!(mode, SelectionMode::Character));
+    }
+
+    #[test]
+    fn test_screen_format_default() {
+        let format = ScreenFormat::default();
+        assert!(matches!(format, ScreenFormat::PlainText));
+    }
+
+    #[test]
+    fn test_cursor_info_default() {
+        let info = CursorInfo::default();
+        assert_eq!(info.line, 0);
+        assert_eq!(info.column, 0);
+    }
+
+    #[test]
+    fn test_cursor_info_from_position() {
+        let pos = Position::new(10, 5);
+        let info = CursorInfo::from(pos);
+        assert_eq!(info.line, 10);
+        assert_eq!(info.column, 5);
+    }
+
+    #[test]
+    fn test_position_from_cursor_info() {
+        let info = CursorInfo {
+            line: 20,
+            column: 15,
+        };
+        let pos = Position::from(info);
+        assert_eq!(pos.line, 20);
+        assert_eq!(pos.column, 15);
+    }
+
+    #[test]
+    fn test_cursor_info_position_roundtrip() {
+        let original = Position::new(99, 42);
+        let cursor = CursorInfo::from(original);
+        let back = Position::from(cursor);
+        assert_eq!(original, back);
+    }
+
+    #[test]
+    fn test_selection_info_default() {
+        let info = SelectionInfo::default();
+        assert!(!info.active);
+        assert!(matches!(info.mode, SelectionMode::Character));
+        assert_eq!(info.anchor, Position::default());
+        assert_eq!(info.cursor, Position::default());
+    }
+
+    #[test]
+    fn test_selection_info_serialization() {
+        let info = SelectionInfo {
+            active: true,
+            mode: SelectionMode::Line,
+            anchor: Position::new(1, 0),
+            cursor: Position::new(5, 0),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"active\":true"));
+        assert!(json.contains("\"mode\":\"line\""));
+        let decoded: SelectionInfo = serde_json::from_str(&json).unwrap();
+        assert!(decoded.active);
+        assert_eq!(decoded.anchor, Position::new(1, 0));
+    }
+
+    #[test]
+    fn test_mode_info_default() {
+        let info = ModeInfo::default();
+        assert!(info.focus.is_empty());
+        assert!(info.edit_mode.is_empty());
+        assert!(info.sub_mode.is_empty());
+        assert!(info.display.is_empty());
+    }
+
+    #[test]
+    fn test_mode_info_serialization() {
+        let info = ModeInfo {
+            focus: "Editor".to_string(),
+            edit_mode: "Normal".to_string(),
+            sub_mode: "None".to_string(),
+            display: "NORMAL".to_string(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"focus\":\"Editor\""));
+        assert!(json.contains("\"edit_mode\":\"Normal\""));
+        let decoded: ModeInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.display, "NORMAL");
+    }
+
+    #[test]
+    fn test_cell_info_default() {
+        let cell = CellInfo::default();
+        assert_eq!(cell.char, ' ');
+        assert!(cell.fg.is_none());
+        assert!(cell.bg.is_none());
+        assert!(!cell.bold);
+        assert!(!cell.italic);
+        assert!(!cell.underline);
+    }
+
+    #[test]
+    fn test_cell_info_with_all_attributes() {
+        let cell = CellInfo {
+            char: 'X',
+            fg: Some("#ff0000".to_string()),
+            bg: Some("#0000ff".to_string()),
+            bold: true,
+            italic: true,
+            underline: true,
+        };
+        let json = serde_json::to_string(&cell).unwrap();
+        assert!(json.contains("\"bold\":true"));
+        assert!(json.contains("\"italic\":true"));
+        assert!(json.contains("\"underline\":true"));
+        assert!(json.contains("\"fg\":\"#ff0000\""));
+        assert!(json.contains("\"bg\":\"#0000ff\""));
+
+        let decoded: CellInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.char, 'X');
+        assert!(decoded.bold);
+    }
+
+    #[test]
+    fn test_buffer_info_without_file_path() {
+        let buffer = BufferInfo {
+            id: 1,
+            file_path: None,
+            modified: false,
+            line_count: 0,
+        };
+        let json = serde_json::to_string(&buffer).unwrap();
+        assert!(!json.contains("file_path"));
+    }
+
+    #[test]
+    fn test_screen_info_serialization() {
+        let info = ScreenInfo {
+            width: 80,
+            height: 24,
+            active_buffer_id: BufferId(0),
+            active_window_id: Some(WireWindowId(1)),
+            window_count: 2,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"width\":80"));
+        assert!(json.contains("\"active_window_id\":1"));
+
+        let decoded: ScreenInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.window_count, 2);
+    }
+
+    #[test]
+    fn test_screen_info_without_active_window() {
+        let info = ScreenInfo {
+            width: 80,
+            height: 24,
+            active_buffer_id: BufferId(0),
+            active_window_id: None,
+            window_count: 0,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(!json.contains("active_window_id"));
+    }
+
+    #[test]
+    fn test_window_info_serialization() {
+        let info = WindowInfo {
+            id: WireWindowId(0),
+            buffer_id: BufferId(1),
+            is_active: false,
+            cursor: Position::new(0, 0),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"id\":0"));
+        assert!(json.contains("\"buffer_id\":1"));
+        assert!(json.contains("\"is_active\":false"));
+
+        let decoded: WindowInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.id, WireWindowId(0));
+    }
+
+    #[test]
+    fn test_wire_layout_info_focused_none() {
+        let layout = WireLayoutInfo::default();
+        assert!(layout.focused().is_none());
+    }
+
+    #[test]
+    fn test_wire_layout_info_focused_missing_window() {
+        let layout = WireLayoutInfo {
+            focused_window: Some(WireWindowId(999)),
+            windows: vec![],
+            ..WireLayoutInfo::default()
+        };
+        // focused_window points to non-existent window
+        assert!(layout.focused().is_none());
+    }
+
+    #[test]
+    fn test_wire_layout_info_single_window_no_buffer() {
+        let layout = WireLayoutInfo::single_window(80, 24, None);
+        assert_eq!(layout.windows.len(), 1);
+        assert!(layout.windows[0].buffer_id.is_none());
+    }
+
+    #[test]
+    fn test_selection_mode_deserialization() {
+        let block: SelectionMode = serde_json::from_str("\"block\"").unwrap();
+        assert_eq!(block, SelectionMode::Block);
+    }
+
+    #[test]
+    fn test_screen_format_deserialization() {
+        let format: ScreenFormat = serde_json::from_str("\"cell_grid\"").unwrap();
+        assert_eq!(format, ScreenFormat::CellGrid);
+    }
+
+    #[test]
+    fn test_wire_layout_change_kind_close_no_focus() {
+        let kind = WireLayoutChangeKind::Close {
+            closed_window: WireWindowId(1),
+            new_focus: None,
+        };
+        let json = serde_json::to_string(&kind).unwrap();
+        assert!(json.contains("\"type\":\"close\""));
+        assert!(json.contains("\"new_focus\":null"));
+    }
+
+    #[test]
+    fn test_wire_layout_change_kind_focus_no_from() {
+        let kind = WireLayoutChangeKind::Focus {
+            from: None,
+            to: WireWindowId(0),
+        };
+        let json = serde_json::to_string(&kind).unwrap();
+        assert!(json.contains("\"from\":null"));
+        assert!(json.contains("\"to\":0"));
+    }
 }

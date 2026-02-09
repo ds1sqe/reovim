@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Integration test harness for reovim.
 //!
 //! This crate provides the **mechanism** layer for integration testing.
@@ -6,14 +7,14 @@
 //! # Architecture (Mechanism vs Policy)
 //!
 //! ```text
-//! lib/testing/            ← MECHANISM (this crate)
-//! ├── harness.rs          - Server process lifecycle
-//! ├── integration.rs      - Single-client test builder
-//! ├── multi_client.rs     - Multi-client test builder
-//! ├── step_test.rs        - Per-key state tracking
-//! └── assertions.rs       - Assertion macros
+//! shared/testing/            ← MECHANISM (this crate)
+//! ├── harness.rs             - Server process lifecycle
+//! ├── integration.rs         - Single-client test builder
+//! ├── multi_client.rs        - Multi-client test builder
+//! ├── step_test.rs           - Per-key state tracking
+//! └── assertions.rs          - Assertion macros
 //!
-//! modules/vim/tests/      ← POLICY (module-specific tests)
+//! server/modules/vim/tests/  ← POLICY (module-specific tests)
 //! ├── operators.rs        - What operators to test
 //! ├── registers.rs        - What register behaviors to verify
 //! └── cursor_movement.rs  - What cursor behaviors to verify
@@ -84,6 +85,7 @@ use std::path::PathBuf;
 ///
 /// Panics if the parent directory of `CARGO_MANIFEST_DIR` doesn't exist.
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub fn demo_module_path() -> PathBuf {
     let lib_name = demo_module_filename();
 
@@ -133,6 +135,7 @@ pub fn demo_module_path() -> PathBuf {
 /// - macOS: `libreovim_module_hot_reload_demo.dylib`
 /// - Windows: `reovim_module_hot_reload_demo.dll`
 #[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
 pub const fn demo_module_filename() -> &'static str {
     #[cfg(target_os = "linux")]
     {

@@ -122,6 +122,7 @@ mod tests {
             self.current = Focus::Panel(viewport_id);
         }
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn focus_overlay(&mut self, overlay_id: &str) {
             // Remember the last panel before switching to overlay
             if let Focus::Panel(id) = self.current {

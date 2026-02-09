@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim TUI driver - terminal abstraction layer.
 //!
 //! This crate provides the **mechanism** for terminal-based user interfaces.

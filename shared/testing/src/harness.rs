@@ -56,6 +56,7 @@ const TEST_LOG_DIR: &str = "tmp/test-logs";
 ///    server binary. This works with any target directory including
 ///    `cargo-llvm-cov`'s `target/llvm-cov-target/`.
 /// 3. Fallback to `{workspace}/target/debug/reovim` via `CARGO_MANIFEST_DIR`.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn binary_path() -> PathBuf {
     // Check for override (useful for testing release builds)
     if let Ok(path) = std::env::var("REOVIM_TEST_BINARY") {
@@ -91,6 +92,7 @@ fn binary_path() -> PathBuf {
 ///
 /// Uses the same target-dir detection as `binary_path()` so modules are
 /// loaded from the correct target directory (works under `cargo-llvm-cov`).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn workspace_module_dir() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         let debug_dir = exe
@@ -116,6 +118,7 @@ fn workspace_module_dir() -> PathBuf {
 /// Read port from stderr and return the reader for continued use.
 ///
 /// Returns the reader so logs can continue to be captured after port extraction.
+#[cfg_attr(coverage_nightly, coverage(off))]
 async fn read_port_preserving_reader(
     stderr: ChildStderr,
 ) -> Result<
@@ -144,6 +147,7 @@ async fn read_port_preserving_reader(
 }
 
 /// Spawn a background task that writes stderr lines to a log file.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn spawn_log_capture_task(
     mut reader: Lines<BufReader<ChildStderr>>,
     log_path: PathBuf,
@@ -191,6 +195,7 @@ pub struct TestServerHarness {
     log_task: Option<JoinHandle<()>>,
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl TestServerHarness {
     /// Spawn server with automatic log capture.
     ///
@@ -311,6 +316,7 @@ impl TestServerHarness {
     }
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 impl Drop for TestServerHarness {
     fn drop(&mut self) {
         // Explicitly kill the server process to ensure cleanup.
@@ -326,6 +332,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_workspace_module_dir_ends_with_debug() {
         let dir = workspace_module_dir();
         // Under cargo-llvm-cov the target dir is target/llvm-cov-target/debug,
@@ -344,6 +351,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_binary_path_ends_with_reovim() {
         let path = binary_path();
         assert!(
@@ -354,6 +362,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_binary_and_module_share_workspace_root() {
         // Both paths should be under the same workspace root.
         // Under cargo-llvm-cov, binary may fall back to target/debug/ while

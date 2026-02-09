@@ -516,4 +516,233 @@ mod tests {
         let renderer = FrameRenderer::default();
         assert_eq!(renderer.dimensions(), (80, 24));
     }
+
+    #[test]
+    fn test_disable_capture() {
+        let mut renderer = FrameRenderer::new(10, 1);
+        let _handle = renderer.enable_capture();
+
+        renderer.disable_capture();
+        // After disabling, flush should not update capture buffer
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Test", &Style::default());
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+        // Just verify no panic
+    }
+
+    #[test]
+    fn test_capture_snapshot() {
+        let mut renderer = FrameRenderer::new(10, 1);
+        let handle = renderer.enable_capture();
+
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Snap", &Style::default());
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+
+        let snapshot = handle.snapshot();
+        assert!(snapshot.is_some());
+        let snap = snapshot.unwrap();
+        assert_eq!(snap.width(), 10);
+        assert_eq!(snap.height(), 1);
+    }
+
+    #[test]
+    fn test_capture_to_ansi() {
+        let mut renderer = FrameRenderer::new(10, 1);
+        let handle = renderer.enable_capture();
+
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Color", &Style::new().bold());
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+
+        let ansi = handle.to_ansi();
+        assert!(ansi.is_some());
+        let ansi_str = ansi.unwrap();
+        // Should contain the text
+        assert!(ansi_str.contains("Color"));
+        // Should contain ANSI codes
+        assert!(ansi_str.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_flush_second_render_only_diffs() {
+        let mut renderer = FrameRenderer::new(5, 1);
+
+        // First render: all cells get written
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Hello", &Style::default());
+        let mut output1 = Vec::new();
+        renderer.flush(&mut output1).unwrap();
+
+        // Second render: same content - should be minimal output
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Hello", &Style::default());
+        let mut output2 = Vec::new();
+        renderer.flush(&mut output2).unwrap();
+
+        // Second render should be shorter (only style set/reset, no content changes)
+        assert!(
+            output2.len() <= output1.len(),
+            "Second render ({} bytes) should be <= first ({} bytes)",
+            output2.len(),
+            output1.len()
+        );
+    }
+
+    #[test]
+    fn test_flush_writes_all_command_types() {
+        let mut renderer = FrameRenderer::new(20, 3);
+
+        // Write content with different styles to exercise multiple code paths
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Normal", &Style::default());
+        renderer
+            .buffer_mut()
+            .write_str(10, 0, "Bold", &Style::new().bold());
+        renderer
+            .buffer_mut()
+            .write_str(0, 1, "Line2", &Style::default());
+
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+
+        let output_str = String::from_utf8_lossy(&output);
+        // Should contain MoveTo sequences (ESC[row;colH)
+        assert!(output_str.contains("\x1b["));
+        assert!(output_str.contains("Normal"));
+        assert!(output_str.contains("Bold"));
+    }
+
+    #[test]
+    fn test_style_to_ansi_default_produces_escape() {
+        let ansi = style_to_ansi(&Style::default());
+        // Default style should produce some ANSI escape sequence
+        assert!(ansi.starts_with("\x1b["), "Expected ANSI escape, got: {ansi:?}");
+    }
+
+    #[test]
+    fn test_style_to_ansi_with_color() {
+        use reovim_arch::Color;
+        let style = Style::new().fg(Color::Red).bold();
+        let ansi = style_to_ansi(&style);
+        // Should contain ANSI escape
+        assert!(ansi.starts_with("\x1b["));
+    }
+
+    #[test]
+    fn test_write_command_clear_rect() {
+        let renderer = FrameRenderer::new(10, 5);
+        let mut output = Vec::new();
+        let cmd = RenderCommand::ClearRect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 3,
+        };
+        renderer.write_command(&mut output, &cmd).unwrap();
+        let output_str = String::from_utf8_lossy(&output);
+        // Should contain MoveTo and spaces for each row
+        assert!(!output_str.is_empty());
+    }
+
+    #[test]
+    fn test_write_command_show_hide_cursor() {
+        let renderer = FrameRenderer::new(10, 5);
+        let mut output = Vec::new();
+        renderer
+            .write_command(&mut output, &RenderCommand::ShowCursor)
+            .unwrap();
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(output_str.contains("\x1b[?25h"));
+
+        let mut output2 = Vec::new();
+        renderer
+            .write_command(&mut output2, &RenderCommand::HideCursor)
+            .unwrap();
+        let output_str2 = String::from_utf8_lossy(&output2);
+        assert!(output_str2.contains("\x1b[?25l"));
+    }
+
+    #[test]
+    fn test_write_command_clear_line() {
+        let renderer = FrameRenderer::new(10, 5);
+        let mut output = Vec::new();
+        renderer
+            .write_command(&mut output, &RenderCommand::ClearLine)
+            .unwrap();
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(output_str.contains("\x1b[2K"));
+    }
+
+    #[test]
+    fn test_write_command_clear_to_end() {
+        let renderer = FrameRenderer::new(10, 5);
+        let mut output = Vec::new();
+        renderer
+            .write_command(&mut output, &RenderCommand::ClearToEndOfLine)
+            .unwrap();
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(output_str.contains("\x1b[K"));
+    }
+
+    #[test]
+    fn test_resize_forces_full_redraw() {
+        let mut renderer = FrameRenderer::new(5, 1);
+
+        // First flush initializes
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Hello", &Style::default());
+        let mut output = Vec::new();
+        renderer.flush(&mut output).unwrap();
+
+        // Resize
+        renderer.resize(10, 2);
+        assert_eq!(renderer.dimensions(), (10, 2));
+
+        // Next flush should re-render everything (initialized is false)
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "World", &Style::default());
+        let mut output2 = Vec::new();
+        renderer.flush(&mut output2).unwrap();
+
+        let output_str = String::from_utf8_lossy(&output2);
+        assert!(output_str.contains("World"));
+    }
+
+    #[test]
+    fn test_compute_diff_style_change_midline() {
+        use reovim_arch::Color;
+        let mut renderer = FrameRenderer::new(10, 1);
+
+        // Write "Hello" in default + "World" in bold
+        renderer
+            .buffer_mut()
+            .write_str(0, 0, "Hello", &Style::default());
+        renderer
+            .buffer_mut()
+            .write_str(5, 0, "World", &Style::new().fg(Color::Red));
+
+        let commands = renderer.compute_diff();
+
+        // Should have multiple SetStyle commands (style change at position 5)
+        let set_style_count = commands
+            .iter()
+            .filter(|c| matches!(c, RenderCommand::SetStyle(_)))
+            .count();
+        assert!(
+            set_style_count >= 2,
+            "Should have at least 2 SetStyle commands, got {set_style_count}"
+        );
+    }
 }

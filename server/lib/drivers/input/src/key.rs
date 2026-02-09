@@ -441,6 +441,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Prefix")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_keymap_result_unwrap_prefix_panics() {
         let prefix: KeymapResult<i32> = KeymapResult::Prefix;
         let _ = prefix.unwrap();
@@ -448,6 +449,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "None")]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_keymap_result_unwrap_none_panics() {
         let none: KeymapResult<i32> = KeymapResult::None;
         let _ = none.unwrap();

@@ -153,12 +153,14 @@ impl Rect {
     ///
     /// This is a convenience method equivalent to `contains(ScreenPosition::new(x, y))`.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn contains_xy(&self, x: u16, y: u16) -> bool {
         x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
     }
 
     /// Check if this rectangle intersects with another.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn intersects(&self, other: &Self) -> bool {
         self.x < other.right()
             && self.right() > other.x

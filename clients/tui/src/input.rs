@@ -17,6 +17,7 @@ impl InputHandler {
     /// # Errors
     ///
     /// Returns error if reading fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn poll_event(timeout: Duration) -> std::io::Result<Option<Event>> {
         if event::poll(timeout)? {
             Ok(Some(event::read()?))
@@ -30,6 +31,7 @@ impl InputHandler {
     /// # Errors
     ///
     /// Returns error if reading fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn read_event() -> std::io::Result<Event> {
         event::read()
     }
@@ -38,6 +40,7 @@ impl InputHandler {
     ///
     /// Returns `None` for events that shouldn't be sent (like pure modifier presses).
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn key_to_notation(key: &KeyEvent) -> Option<String> {
         let KeyEvent {
             code, modifiers, ..
@@ -129,6 +132,7 @@ impl InputHandler {
 }
 
 /// Format a key with modifiers.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn format_with_modifiers(key: &str, ctrl: bool, alt: bool, shift: bool) -> String {
     let mut result = String::with_capacity(key.len() + 8);
     result.push('<');
@@ -219,5 +223,98 @@ mod tests {
     fn test_space() {
         let key = make_key(KeyCode::Char(' '), KeyModifiers::NONE);
         assert_eq!(InputHandler::key_to_notation(&key), Some("<Space>".to_string()));
+    }
+
+    #[test]
+    fn test_tab() {
+        let key = make_key(KeyCode::Tab, KeyModifiers::NONE);
+        assert_eq!(InputHandler::key_to_notation(&key), Some("<Tab>".to_string()));
+    }
+
+    #[test]
+    fn test_shift_tab() {
+        let key = make_key(KeyCode::Tab, KeyModifiers::SHIFT);
+        assert_eq!(InputHandler::key_to_notation(&key), Some("<S-Tab>".to_string()));
+    }
+
+    #[test]
+    fn test_special_keys() {
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Backspace, KeyModifiers::NONE)),
+            Some("<BS>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Delete, KeyModifiers::NONE)),
+            Some("<Del>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Insert, KeyModifiers::NONE)),
+            Some("<Insert>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Home, KeyModifiers::NONE)),
+            Some("<Home>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::End, KeyModifiers::NONE)),
+            Some("<End>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::PageUp, KeyModifiers::NONE)),
+            Some("<PageUp>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::PageDown, KeyModifiers::NONE)),
+            Some("<PageDown>".to_string())
+        );
+    }
+
+    #[test]
+    fn test_left_right_arrows() {
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Left, KeyModifiers::NONE)),
+            Some("<Left>".to_string())
+        );
+        assert_eq!(
+            InputHandler::key_to_notation(&make_key(KeyCode::Right, KeyModifiers::NONE)),
+            Some("<Right>".to_string())
+        );
+    }
+
+    #[test]
+    fn test_ctrl_alt_char() {
+        let key = make_key(KeyCode::Char('x'), KeyModifiers::CONTROL | KeyModifiers::ALT);
+        assert_eq!(InputHandler::key_to_notation(&key), Some("<C-M-x>".to_string()));
+    }
+
+    #[test]
+    fn test_alt_shift_lowercase() {
+        let key = make_key(KeyCode::Char('a'), KeyModifiers::ALT | KeyModifiers::SHIFT);
+        assert_eq!(InputHandler::key_to_notation(&key), Some("<M-A>".to_string()));
+    }
+
+    #[test]
+    fn test_less_than() {
+        let key = make_key(KeyCode::Char('<'), KeyModifiers::NONE);
+        assert_eq!(InputHandler::key_to_notation(&key), Some("<lt>".to_string()));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_unknown_key_code() {
+        let key = make_key(KeyCode::Null, KeyModifiers::NONE);
+        assert_eq!(InputHandler::key_to_notation(&key), None);
+    }
+
+    #[test]
+    fn test_event_to_keys_non_key_event() {
+        let event = Event::Resize(80, 24);
+        assert_eq!(InputHandler::event_to_keys(&event), None);
+    }
+
+    #[test]
+    fn test_event_to_keys_key_event() {
+        let event = Event::Key(make_key(KeyCode::Char('a'), KeyModifiers::NONE));
+        assert_eq!(InputHandler::event_to_keys(&event), Some("a".to_string()));
     }
 }

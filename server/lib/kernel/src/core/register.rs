@@ -381,4 +381,110 @@ mod tests {
         bank.clear_all();
         assert!(bank.get_named('a').is_none());
     }
+
+    // === RegisterContent::default() ===
+
+    #[test]
+    fn test_register_content_default() {
+        let content = RegisterContent::default();
+        assert!(content.is_empty());
+        assert!(content.is_characterwise());
+        assert!(!content.is_linewise());
+    }
+
+    // === clear_named ===
+
+    #[test]
+    fn test_clear_named_existing() {
+        let mut bank = RegisterBank::new();
+        bank.set_named('a', RegisterContent::characterwise("hello"));
+        assert!(bank.clear_named('a'));
+        assert!(bank.get_named('a').is_none());
+    }
+
+    #[test]
+    fn test_clear_named_nonexisting() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.clear_named('a'));
+    }
+
+    #[test]
+    fn test_clear_named_invalid() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.clear_named('1'));
+        assert!(!bank.clear_named('A'));
+    }
+
+    // === iter_non_empty ===
+
+    #[test]
+    fn test_iter_non_empty_with_unnamed() {
+        let mut bank = RegisterBank::new();
+        bank.set(RegisterContent::characterwise("hello"));
+        bank.set_named('a', RegisterContent::characterwise("alpha"));
+
+        let items: Vec<_> = bank.iter_non_empty().collect();
+        assert!(items.len() >= 2);
+        assert!(items.iter().any(|(name, _)| *name == '"'));
+        assert!(items.iter().any(|(name, _)| *name == 'a'));
+    }
+
+    #[test]
+    fn test_iter_non_empty_skips_empty() {
+        let bank = RegisterBank::new();
+        // Unnamed is empty by default
+        assert_eq!(bank.iter_non_empty().count(), 0);
+    }
+
+    // === set_by_name uppercase to non-existing ===
+
+    #[test]
+    fn test_set_by_name_uppercase_creates_new() {
+        let mut bank = RegisterBank::new();
+        // Append to non-existing register creates it
+        assert!(bank.set_by_name(Some('A'), RegisterContent::characterwise("hello")));
+        assert_eq!(bank.get_named('a').map(|r| r.text.as_str()), Some("hello"));
+    }
+
+    // === set_by_name invalid char ===
+
+    #[test]
+    fn test_set_by_name_invalid() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.set_by_name(Some('+'), RegisterContent::characterwise("test")));
+        assert!(!bank.set_by_name(Some('1'), RegisterContent::characterwise("test")));
+    }
+
+    // === append_named to non-existing ===
+
+    #[test]
+    fn test_append_named_creates_new() {
+        let mut bank = RegisterBank::new();
+        assert!(bank.append_named('A', "world"));
+        assert_eq!(bank.get_named('a').map(|r| r.text.as_str()), Some("world"));
+    }
+
+    #[test]
+    fn test_append_named_invalid() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.append_named('a', "test")); // lowercase is invalid for append
+        assert!(!bank.append_named('1', "test"));
+    }
+
+    // === get_by_name with quote ===
+
+    #[test]
+    fn test_get_by_name_quote() {
+        let mut bank = RegisterBank::new();
+        bank.set(RegisterContent::characterwise("unnamed"));
+        assert_eq!(bank.get_by_name(Some('"')).map(|r| r.text.as_str()), Some("unnamed"));
+    }
+
+    // === RegisterBank Default ===
+
+    #[test]
+    fn test_register_bank_default() {
+        let bank = RegisterBank::default();
+        assert!(bank.get().is_empty());
+    }
 }
