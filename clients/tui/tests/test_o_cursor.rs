@@ -29,7 +29,6 @@ fn extract_cursor_from_statusline(frame: &str) -> Option<(u32, u32)> {
 }
 
 #[tokio::test]
-#[ignore = "cursor notifications not sent during insert mode - separate issue from #474"]
 async fn test_o_cursor_position() {
     let harness = TestServerHarness::spawn().await.expect("spawn");
     let addr = format!("127.0.0.1:{}", harness.port());

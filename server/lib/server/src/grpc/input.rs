@@ -182,16 +182,13 @@ impl InputService for InputServiceImpl {
             }
         }
 
-        // Phase 11.2: Record cursor movement for active buffer
-        // This ensures cursor_moved notifications have affected_buffers populated.
-        // Most key operations move the cursor, so record it if any key was handled.
+        // Record cursor movement for active buffer whenever any key was handled.
+        // Most key operations move the cursor (typing, motions, commands like `o`).
+        // `record_cursor_move` is idempotent on `affected_buffers`, so calling it
+        // even when InsertChar already recorded cursor_move is safe (#505).
         #[allow(clippy::redundant_closure_for_method_calls)]
-        if any_handled
-            && let Some(buffer_id) = session.with_state(|s| s.active_buffer()).await
-            && !accumulated_changes.affected_buffers.contains(&buffer_id)
-        {
+        if any_handled && let Some(buffer_id) = session.with_state(|s| s.active_buffer()).await {
             accumulated_changes.record_cursor_move(buffer_id);
-            tracing::trace!(?buffer_id, "Recorded cursor move for active buffer");
         }
 
         // Emit notifications for accumulated state changes
@@ -342,9 +339,10 @@ impl InputServiceImpl {
                     // Phase #477: Use insert_char_for_client which checks per-client extensions first
                     let modified_buffer = session.insert_char_for_client(client_id, ch, target);
 
-                    // Record buffer modification for notification
+                    // Record buffer modification and cursor movement for notification
                     if let Some(buffer_id) = modified_buffer {
                         changes.record_buffer_modified(buffer_id);
+                        changes.record_cursor_move(buffer_id);
                         tracing::debug!(?buffer_id, "Recorded buffer modification for InsertChar");
                     }
                     (true, changes)
