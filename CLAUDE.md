@@ -179,6 +179,32 @@ nursery = "deny"
 - **All warnings are compile errors** - code won't build with warnings
 - `#[allow(...)]` - escape-hatch only with justification, try not to use
 
+### Coverage Policy
+
+This project enforces **100% code coverage** in CI via Codecov status checks.
+
+**Requirements:**
+- All non-server crates: 100% MC/DC coverage (line + condition)
+- Server crate (`reovim-server`): 100% line coverage (MC/DC excluded due to LLVM bug #119558)
+- PRs that regress coverage will be blocked by Codecov
+
+**Writing covered code:**
+- Every new function must have test coverage for all code paths
+- Use `#[cfg_attr(coverage_nightly, coverage(off))]` only for genuinely untestable code:
+  - Tracing closure bodies (execute only at debug level)
+  - `tokio::spawn` task bodies (require real stream lifecycle)
+  - Async channel error variants
+  - OnceLock-dependent globals
+- Test mock/stub trait impls should also use `coverage(off)` to suppress false BRDA entries
+
+**Coverage tools:**
+```bash
+./scripts/coverage.sh line --lcov      # Line coverage (full workspace)
+./scripts/coverage.sh mcdc --lcov      # MC/DC coverage (excludes server)
+./scripts/coverage.sh server           # Server branch coverage (text only)
+./scripts/coverage-report.sh <lcov>    # Generate COVERAGE.md from LCOV
+```
+
 ### Kernel Purity Policy
 
 **NEVER add plugin/module-specific code to kernel.** Kernel must remain policy-agnostic.

@@ -541,6 +541,46 @@ fn test_count_parser() {
 3. **Use descriptive assertions**: `assert_eq!` over `assert!`
 4. **Keep tests fast**: Avoid I/O in unit tests
 
+## Code Coverage
+
+Reovim enforces **100% code coverage** in CI. Every PR must maintain full coverage.
+
+### Running Coverage Locally
+
+```bash
+# MC/DC coverage (non-server crates) — primary metric
+./scripts/coverage.sh mcdc --lcov
+
+# Line coverage (full workspace including server)
+./scripts/coverage.sh line --lcov
+
+# Generate human-readable report
+./scripts/coverage-report.sh target/llvm-cov/lcov.mcdc.info
+
+# Open HTML report in browser
+./scripts/coverage.sh mcdc --open
+```
+
+### Coverage Annotations
+
+For genuinely untestable code, use the `coverage(off)` attribute:
+
+```rust
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn untestable_function() { /* ... */ }
+```
+
+This requires `#![cfg_attr(coverage_nightly, feature(coverage_attribute))]` in the crate's `lib.rs`.
+
+Use sparingly — only for code paths that cannot be exercised in unit tests (async runtime internals, tracing closures, panic handlers).
+
+### Codecov Integration
+
+Coverage is enforced via Codecov status checks on PRs:
+- **Project target**: 100% (0.5% threshold for float rounding)
+- **Patch target**: 100% (all new code must be covered)
+- Reports uploaded as CI artifacts (`COVERAGE-workspace.md`, `COVERAGE-server.md`)
+
 ## Performance Benchmarks
 
 Reovim uses Criterion for performance benchmarking.
