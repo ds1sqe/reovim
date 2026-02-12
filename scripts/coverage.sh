@@ -69,14 +69,13 @@ fi
 #   reovim-module-macros     — proc-macro, runs at compile time
 #   reovim-driver-ffi-python — pyo3 cdylib, linker issues under coverage
 #   reovim-bench / perf-report — tools, not product code
-#   runner / display / layout / statusline / which-key — legacy (same as check.sh)
+#   runner / layout / statusline / which-key — legacy (same as check.sh)
 EXCLUDE=(
   --exclude reovim-module-macros
   --exclude reovim-driver-ffi-python
   --exclude reovim-bench
   --exclude perf-report
   --exclude runner
-  --exclude reovim-driver-display
   --exclude reovim-module-layout
   --exclude reovim-module-statusline
   --exclude reovim-module-which-key

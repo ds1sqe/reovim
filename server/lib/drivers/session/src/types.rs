@@ -917,7 +917,13 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::ModuleId};
+    use {
+        super::*,
+        reovim_driver_display::layout::{
+            CompositeResult, Layer, LayerConfig, LayerId, RootCompositor, WindowLayerCompositor,
+        },
+        reovim_kernel::api::v1::ModuleId,
+    };
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
@@ -1674,5 +1680,182 @@ mod tests {
     fn test_client_id_display_format() {
         assert_eq!(ClientId::new(0).to_string(), "client-0");
         assert_eq!(ClientId::new(100).to_string(), "client-100");
+    }
+
+    // =========================================================================
+    // MockCompositor for compositor tests
+    // =========================================================================
+
+    struct MockCompositor;
+
+    impl MockCompositor {
+        fn new() -> Self {
+            Self
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl RootCompositor for MockCompositor {
+        fn composite(&self, screen: reovim_driver_display::Rect) -> CompositeResult {
+            CompositeResult::empty(screen)
+        }
+        fn create_layer(&mut self, _config: LayerConfig) -> LayerId {
+            LayerId::new(0)
+        }
+        fn remove_layer(&mut self, _layer: LayerId) {}
+        fn layer_by_label(&self, _label: &str) -> Option<LayerId> {
+            None
+        }
+        fn layers(&self) -> Vec<&Layer> {
+            Vec::new()
+        }
+        fn set_layer_visible(&mut self, _layer: LayerId, _visible: bool) {}
+        fn set_layer_opacity(&mut self, _layer: LayerId, _opacity: f32) {}
+        fn reorder_layer(&mut self, _layer: LayerId, _new_z: u16) {}
+        fn set_active_layer(&mut self, _layer: LayerId) {}
+        fn active_layer(&self) -> Option<LayerId> {
+            None
+        }
+        fn set_focus(&mut self, _window: WindowId) {}
+        fn focused(&self) -> Option<WindowId> {
+            None
+        }
+        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<WindowId> {
+            None
+        }
+        fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
+            None
+        }
+        fn layer_compositor_mut(
+            &mut self,
+            _layer: LayerId,
+        ) -> Option<&mut dyn WindowLayerCompositor> {
+            None
+        }
+        fn window_count(&self) -> usize {
+            0
+        }
+        fn set_screen(&mut self, _screen: reovim_driver_display::Rect) {}
+        fn layer_of(&self, _window: WindowId) -> Option<LayerId> {
+            None
+        }
+        fn boxed_clone(&self) -> Box<dyn RootCompositor> {
+            Box::new(Self)
+        }
+    }
+
+    // =========================================================================
+    // Compositor tests
+    // =========================================================================
+
+    #[test]
+    fn test_session_shared_compositor_set_and_get() {
+        let mode = test_mode();
+        let mut shared = SessionShared::new(mode);
+
+        shared.set_compositor(Box::new(MockCompositor::new()));
+        assert!(shared.compositor().is_some());
+        assert!(shared.compositor_mut().is_some());
+    }
+
+    #[test]
+    fn test_session_compositor_set_and_get() {
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode);
+
+        session.set_compositor(Box::new(MockCompositor::new()));
+        assert!(session.compositor().is_some());
+        assert!(session.compositor_mut().is_some());
+    }
+
+    // =========================================================================
+    // Window::with_id_and_buffer test
+    // =========================================================================
+
+    #[test]
+    fn test_window_with_id_and_buffer() {
+        let wid = WindowId::new();
+        let bid = BufferId::new();
+        let w = Window::with_id_and_buffer(wid, bid);
+
+        assert_eq!(w.id, wid);
+        assert_eq!(w.buffer_id, Some(bid));
+        assert_eq!(w.cursor, CursorPosition::origin());
+        assert!(w.selection.is_none());
+    }
+
+    // =========================================================================
+    // WindowLayout::remove() tests
+    // =========================================================================
+
+    #[test]
+    fn test_window_layout_remove_active_window() {
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let w2 = Window::new();
+        let id1 = w1.id;
+        let id2 = w2.id;
+        layout.add(w1);
+        layout.add(w2);
+
+        // Remove active window (w1 at index 0) → resets to Some(0)
+        assert!(layout.remove(id1));
+        assert_eq!(layout.len(), 1);
+        assert_eq!(layout.active_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_window_layout_remove_before_active() {
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let w2 = Window::new();
+        let id1 = w1.id;
+        let id2 = w2.id;
+        layout.add(w1);
+        layout.add(w2);
+        layout.set_active(id2); // active_index = 1
+
+        // Remove w1 (before active) → active shifts from 1 to 0
+        assert!(layout.remove(id1));
+        assert_eq!(layout.len(), 1);
+        assert_eq!(layout.active_id(), Some(id2));
+    }
+
+    #[test]
+    fn test_window_layout_remove_after_active() {
+        let mut layout = WindowLayout::empty();
+        let w1 = Window::new();
+        let w2 = Window::new();
+        let id1 = w1.id;
+        let id2 = w2.id;
+        layout.add(w1);
+        layout.add(w2);
+        // active is w1 at index 0
+
+        // Remove w2 (after active) → active_index unchanged
+        assert!(layout.remove(id2));
+        assert_eq!(layout.len(), 1);
+        assert_eq!(layout.active_id(), Some(id1));
+    }
+
+    #[test]
+    fn test_window_layout_remove_nonexistent() {
+        let mut layout = WindowLayout::empty();
+        layout.add(Window::new());
+        let fake_id = WindowId::new();
+        assert!(!layout.remove(fake_id));
+        assert_eq!(layout.len(), 1);
+    }
+
+    #[test]
+    fn test_window_layout_remove_last_window() {
+        let mut layout = WindowLayout::empty();
+        let w = Window::new();
+        let id = w.id;
+        layout.add(w);
+
+        assert!(layout.remove(id));
+        assert!(layout.is_empty());
+        assert!(layout.active_id().is_none());
     }
 }
