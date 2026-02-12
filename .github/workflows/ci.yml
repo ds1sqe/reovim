@@ -105,11 +105,23 @@ jobs:
             --lcov --output-path server-lcov.info
       - name: Merge coverage reports
         run: cat mcdc-lcov.info server-lcov.info > lcov.info
+      - name: Generate coverage reports
+        run: |
+          ./scripts/coverage-report.sh mcdc-lcov.info
+          mv COVERAGE.md COVERAGE-workspace.md
+          ./scripts/coverage-report.sh server-lcov.info --server
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            COVERAGE-workspace.md
+            COVERAGE-server.md
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: lcov.info
           flags: coverage
-          fail_ci_if_error: false
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
