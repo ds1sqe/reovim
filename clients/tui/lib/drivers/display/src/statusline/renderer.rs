@@ -667,4 +667,103 @@ mod tests {
         assert_eq!(StatuslineSeparator::POWERLINE_ROUND.left, "\u{e0b4}");
         assert_eq!(StatuslineSeparator::POWERLINE_ROUND.right, "\u{e0b6}");
     }
+
+    #[test]
+    fn test_render_separator_at_buffer_edge() {
+        // Buffer width 3, separator starts at position 2 - separator char breaks at edge
+        let mut buffer = FrameBuffer::new(3, 1);
+        let style = Style::new().bg(Color::Blue);
+
+        let sections = vec![
+            Section::new(SectionId::A, "AB", style.clone()),
+            Section::new(SectionId::B, "CD", style),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::PIPE,
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        // This exercises the `if pos >= buffer.width() { break; }` path (line 209)
+        // because after rendering "AB" (x=2), the separator "|" starts at x=2,
+        // and then "CD" starts at x=3 which is >= width(3).
+        render_sections(&mut buffer, 0, &sections, &config);
+
+        assert_eq!(buffer.get(0, 0).unwrap().char, 'A');
+        assert_eq!(buffer.get(1, 0).unwrap().char, 'B');
+    }
+
+    #[test]
+    fn test_render_statusline_simple_mode_exceeds_width() {
+        // Mode text longer than buffer width - exercises `if x >= width { break; }` at line 252
+        // Use empty position to avoid overwriting mode chars.
+        let mut buffer = FrameBuffer::new(3, 1);
+        let mode_style = Style::new().bg(Color::Blue);
+        let pos_style = Style::new().bg(Color::Green);
+        let fill_style = Style::default();
+
+        render_statusline_simple(
+            &mut buffer,
+            0,
+            "NORMAL",
+            "",
+            &mode_style,
+            &pos_style,
+            &fill_style,
+        );
+
+        // Only first 3 chars fit, the rest are truncated by the break
+        assert_eq!(buffer.get(0, 0).unwrap().char, 'N');
+        assert_eq!(buffer.get(1, 0).unwrap().char, 'O');
+        assert_eq!(buffer.get(2, 0).unwrap().char, 'R');
+    }
+
+    #[test]
+    fn test_render_separator_break_on_width_exceeded() {
+        // Covers line 209: break in render_separator when pos >= buffer.width()
+        // Use a buffer just wide enough for "AB" (2 chars), then the separator
+        // character would need to start at x=2 which equals the width.
+        let mut buffer = FrameBuffer::new(2, 1);
+
+        // Render separator directly to test the break condition
+        let style = Style::new().bg(Color::Blue);
+        let pos = render_separator(
+            &mut buffer,
+            2, // Start at the edge
+            0,
+            Some(&style),
+            Some(&style),
+            "|", // Single char separator
+            false,
+        );
+        // pos should remain 2 since the separator char couldn't be rendered
+        assert_eq!(pos, 2);
+    }
+
+    #[test]
+    fn test_render_statusline_simple_position_exceeds_width() {
+        // Position starts near right edge and position text extends past buffer
+        // This exercises `if x >= width { break; }` at line 267
+        let mut buffer = FrameBuffer::new(5, 1);
+        let mode_style = Style::new().bg(Color::Blue);
+        let pos_style = Style::new().bg(Color::Green);
+        let fill_style = Style::default();
+
+        // Position "123456" is 6 chars, but buffer is only 5 wide.
+        // pos_start = 5 - 6 = 0 (saturating_sub), so it starts at 0.
+        // Rendering position chars: at x=5 the break triggers.
+        render_statusline_simple(
+            &mut buffer,
+            0,
+            "",
+            "123456",
+            &mode_style,
+            &pos_style,
+            &fill_style,
+        );
+
+        assert_eq!(buffer.get(0, 0).unwrap().char, '1');
+        assert_eq!(buffer.get(4, 0).unwrap().char, '5');
+    }
 }

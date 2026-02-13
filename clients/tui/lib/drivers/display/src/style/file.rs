@@ -518,15 +518,8 @@ mod tests {
             keyword = { fg = "not-a-color" }
         "#;
 
-        let result = FileTheme::parse(toml);
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            ThemeError::InvalidColor { key, value } => {
-                assert_eq!(key, "keyword");
-                assert_eq!(value, "not-a-color");
-            }
-            _ => panic!("Expected InvalidColor error"),
-        }
+        let err = FileTheme::parse(toml).unwrap_err();
+        assert_eq!(err.to_string(), "Invalid color 'not-a-color' for key 'keyword'");
     }
 
     #[test]
@@ -580,5 +573,105 @@ mod tests {
         let theme = FileTheme::parse(toml).unwrap();
         let arc_theme = theme.into_arc();
         assert_eq!(arc_theme.name(), "Arc Test");
+    }
+
+    // =========================================================================
+    // ThemeError Display and Error trait impls
+    // =========================================================================
+
+    #[test]
+    fn test_theme_error_display_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = ThemeError::Io(io_err);
+        let msg = err.to_string();
+        assert!(msg.starts_with("IO error:"));
+        assert!(msg.contains("file not found"));
+    }
+
+    #[test]
+    fn test_theme_error_display_parse() {
+        let parse_err = toml::from_str::<ThemeFile>("{{invalid toml").unwrap_err();
+        let err = ThemeError::Parse(parse_err);
+        let msg = err.to_string();
+        assert!(msg.starts_with("TOML parse error:"));
+    }
+
+    #[test]
+    fn test_theme_error_display_invalid_color() {
+        let err = ThemeError::InvalidColor {
+            key: "keyword".to_string(),
+            value: "not-a-color".to_string(),
+        };
+        assert_eq!(err.to_string(), "Invalid color 'not-a-color' for key 'keyword'");
+    }
+
+    #[test]
+    fn test_theme_error_display_palette_not_found() {
+        let err = ThemeError::PaletteNotFound {
+            key: "keyword".to_string(),
+            reference: "my_red".to_string(),
+        };
+        assert_eq!(err.to_string(), "Palette color 'my_red' not found for key 'keyword'");
+    }
+
+    #[test]
+    fn test_theme_error_source_io() {
+        use std::error::Error as _;
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let err = ThemeError::Io(io_err);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn test_theme_error_source_parse() {
+        use std::error::Error as _;
+        let parse_err = toml::from_str::<ThemeFile>("{{invalid").unwrap_err();
+        let err = ThemeError::Parse(parse_err);
+        assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn test_theme_error_source_invalid_color_is_none() {
+        use std::error::Error as _;
+        let err = ThemeError::InvalidColor {
+            key: "k".to_string(),
+            value: "v".to_string(),
+        };
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn test_theme_error_source_palette_not_found_is_none() {
+        use std::error::Error as _;
+        let err = ThemeError::PaletteNotFound {
+            key: "k".to_string(),
+            reference: "r".to_string(),
+        };
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn test_theme_error_from_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let err: ThemeError = io_err.into();
+        assert!(matches!(err, ThemeError::Io(_)));
+    }
+
+    #[test]
+    fn test_theme_error_from_toml() {
+        let parse_err = toml::from_str::<ThemeFile>("{{bad").unwrap_err();
+        let err: ThemeError = parse_err.into();
+        assert!(matches!(err, ThemeError::Parse(_)));
+    }
+
+    #[test]
+    fn test_default_theme_name_used_when_name_missing() {
+        // When [meta] section exists but name is missing, default_theme_name() is used
+        let toml = r#"
+            [meta]
+            author = "Test Author"
+        "#;
+        let theme = FileTheme::parse(toml).unwrap();
+        assert_eq!(theme.name(), "Unnamed Theme");
     }
 }

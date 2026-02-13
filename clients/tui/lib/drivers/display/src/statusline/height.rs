@@ -416,7 +416,7 @@ pub fn calculate_height_with_metrics(
     let has_overflow = metrics.overflows(available_width);
 
     // 4. Calculate required rows based on overflow strategy
-    let required_rows = if has_overflow && config.overflow_strategy.may_use_multiple_rows() {
+    let required_rows = if has_overflow {
         match config.overflow_strategy {
             OverflowStrategy::Wrap => metrics.rows_for_wrap(available_width),
             OverflowStrategy::Redistribute => metrics.rows_for_redistribute(available_width),
@@ -658,5 +658,186 @@ mod tests {
         assert_eq!(result.height, 1);
         assert!(!result.has_overflow);
         assert_eq!(result.strategy, OverflowStrategy::Truncate);
+    }
+
+    #[test]
+    fn test_height_config_unlimited() {
+        let config = HeightConfig::default().unlimited();
+        assert!(config.max_height.is_none());
+        assert_eq!(config.min_height, 1);
+    }
+
+    #[test]
+    fn test_rows_for_wrap_zero_width() {
+        let metrics = ContentMetrics {
+            total_width: 100,
+            ..Default::default()
+        };
+        assert_eq!(metrics.rows_for_wrap(0), 1);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_zero_width() {
+        let metrics = ContentMetrics {
+            total_width: 100,
+            left_width: 50,
+            right_width: 50,
+            section_widths: [10, 20, 20, 20, 20, 10],
+        };
+        assert_eq!(metrics.rows_for_redistribute(0), 1);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_3_rows_exact() {
+        // A+B fits, C fits, X+Y+Z fits -> exactly 3 rows
+        let metrics = ContentMetrics {
+            total_width: 150,
+            left_width: 90,
+            right_width: 60,
+            section_widths: [20, 20, 50, 20, 20, 20],
+        };
+        // width = 55: left(90) > 55, right(60) > 55 -> skip 2-row
+        // A+B = 40 <= 55, C = 50 <= 55, X+Y+Z = 60 > 55 -> 3-row condition false
+        // Falls through to rows_for_wrap(55) -> 150/55 = 3
+        assert_eq!(metrics.rows_for_redistribute(55), 3);
+
+        // Now test where the 3-row condition IS true (line 296-298)
+        let metrics2 = ContentMetrics {
+            total_width: 140,
+            left_width: 80,
+            right_width: 60,
+            section_widths: [20, 20, 40, 15, 15, 30],
+        };
+        // width = 65: left(80) > 65, right(60) <= 65 -> skip 2-row (left doesn't fit)
+        // A+B = 40 <= 65, C = 40 <= 65, X+Y+Z = 60 <= 65 -> 3-row condition TRUE
+        assert_eq!(metrics2.rows_for_redistribute(65), 3);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_fallback_to_wrap() {
+        // None of the groups fit individually -> fallback to wrap calculation
+        let metrics = ContentMetrics {
+            total_width: 300,
+            left_width: 200,
+            right_width: 100,
+            section_widths: [80, 80, 40, 40, 40, 20],
+        };
+        // width = 30: left(200) > 30, right(100) > 30 -> skip 2-row
+        // A+B = 160 > 30, C = 40 > 30, X+Y+Z = 100 > 30 -> 3-row false
+        // Fallback to rows_for_wrap(30) -> 300/30 = 10
+        assert_eq!(metrics.rows_for_redistribute(30), 10);
+    }
+
+    #[test]
+    fn test_calculate_height_with_metrics_wrap_strategy() {
+        let config = HeightConfig {
+            min_height: 1,
+            max_height: Some(5),
+            screen_thresholds: vec![ScreenThreshold {
+                min_screen_height: 20,
+                additional_rows: 4,
+            }],
+            overflow_strategy: OverflowStrategy::Wrap,
+        };
+
+        let metrics = ContentMetrics {
+            total_width: 200,
+            left_width: 100,
+            right_width: 100,
+            section_widths: [30, 30, 40, 30, 30, 40],
+        };
+
+        // Screen height 30 >= threshold 20, so allowed_height = 1 + 4 = 5
+        // Overflow: 200 > 80 -> true
+        // Wrap strategy: rows_for_wrap(80) = 200/80 = 3
+        // Final: max(1, 3).min(5) = 3
+        let result = calculate_height_with_metrics(30, &metrics, 80, &config);
+        assert_eq!(result.height, 3);
+        assert!(result.has_overflow);
+        assert_eq!(result.strategy, OverflowStrategy::Wrap);
+    }
+
+    #[test]
+    fn test_calculate_height_with_metrics_redistribute_strategy() {
+        let config = HeightConfig {
+            min_height: 1,
+            max_height: Some(5),
+            screen_thresholds: vec![ScreenThreshold {
+                min_screen_height: 20,
+                additional_rows: 4,
+            }],
+            overflow_strategy: OverflowStrategy::Redistribute,
+        };
+
+        let metrics = ContentMetrics {
+            total_width: 140,
+            left_width: 80,
+            right_width: 60,
+            section_widths: [20, 20, 40, 15, 15, 30],
+        };
+
+        // Overflow: 140 > 65 -> true
+        // Redistribute strategy: rows_for_redistribute(65)
+        // left(80) > 65 -> skip 2-row
+        // A+B=40 <= 65, C=40 <= 65, X+Y+Z=60 <= 65 -> 3 rows
+        let result = calculate_height_with_metrics(30, &metrics, 65, &config);
+        assert_eq!(result.height, 3);
+        assert!(result.has_overflow);
+        assert_eq!(result.strategy, OverflowStrategy::Redistribute);
+    }
+
+    #[test]
+    fn test_calculate_height_with_metrics_truncate_strategy() {
+        // Covers line 423: OverflowStrategy::Truncate arm in calculate_height_with_metrics
+        let config = HeightConfig {
+            min_height: 1,
+            max_height: Some(3),
+            screen_thresholds: vec![ScreenThreshold {
+                min_screen_height: 20,
+                additional_rows: 2,
+            }],
+            overflow_strategy: OverflowStrategy::Truncate,
+        };
+
+        let metrics = ContentMetrics {
+            total_width: 200,
+            left_width: 100,
+            right_width: 100,
+            section_widths: [30, 30, 40, 30, 30, 40],
+        };
+
+        // Overflow: 200 > 80 -> true
+        // Truncate strategy: returns config.min_height = 1
+        let result = calculate_height_with_metrics(30, &metrics, 80, &config);
+        assert_eq!(result.height, 1);
+        assert!(result.has_overflow);
+        assert_eq!(result.strategy, OverflowStrategy::Truncate);
+    }
+
+    #[test]
+    fn test_height_config_with_overflow_strategy() {
+        let config = HeightConfig::default().with_overflow_strategy(OverflowStrategy::Redistribute);
+        assert_eq!(config.overflow_strategy, OverflowStrategy::Redistribute);
+    }
+
+    #[test]
+    fn test_calculate_height_with_metrics_unlimited_config() {
+        let config = HeightConfig::default()
+            .unlimited()
+            .with_overflow_strategy(OverflowStrategy::Wrap);
+
+        let metrics = ContentMetrics {
+            total_width: 400,
+            left_width: 200,
+            right_width: 200,
+            section_widths: [60, 60, 80, 60, 60, 80],
+        };
+
+        // No max_height cap, large screen triggers both thresholds
+        // allowed_height = 1 + 1 + 2 = 4 (from default thresholds)
+        // Wrap: 400/80 = 5, but capped at allowed_height = 4
+        let result = calculate_height_with_metrics(70, &metrics, 80, &config);
+        assert_eq!(result.height, 4);
+        assert!(result.has_overflow);
     }
 }

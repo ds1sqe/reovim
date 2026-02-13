@@ -154,6 +154,7 @@ impl std::fmt::Debug for PresenterRegistry {
 
 // Ensure registry is Send + Sync
 const _: () = {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<PresenterRegistry>();
 };
@@ -401,5 +402,61 @@ mod tests {
     fn test_registry_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PresenterRegistry>();
+    }
+
+    #[test]
+    fn test_exact_presenter_present_and_column_width() {
+        let presenter = ExactPresenter::new("test", "line_number");
+        let annotation = Annotation::line_number(0, 1);
+        let ctx = PresenterContext {
+            total_lines: 10,
+            cursor_line: 0,
+            is_cursor_line: false,
+        };
+
+        let output = presenter.present(&annotation, &ctx);
+        assert_eq!(output.width(), 1);
+
+        let width = presenter.column_width(&ctx);
+        assert_eq!(width, ColumnWidth::fixed(1));
+    }
+
+    #[test]
+    fn test_prefix_presenter_present_and_column_width() {
+        let presenter = PrefixPresenter::new("diag", "diagnostic");
+        let annotation = Annotation::new(
+            crate::annotation::AnnotationKind::new("diagnostic.error"),
+            crate::annotation::AnnotationTarget::Line(0),
+            50,
+            crate::annotation::AnnotationPayload::Severity(0),
+        );
+        let ctx = PresenterContext {
+            total_lines: 10,
+            cursor_line: 0,
+            is_cursor_line: false,
+        };
+
+        let output = presenter.present(&annotation, &ctx);
+        assert_eq!(output.width(), 1);
+
+        let width = presenter.column_width(&ctx);
+        assert_eq!(width, ColumnWidth::fixed(1));
+    }
+
+    #[test]
+    fn test_catch_all_presenter_present_and_column_width() {
+        let presenter = CatchAllPresenter;
+        let annotation = Annotation::line_number(0, 1);
+        let ctx = PresenterContext {
+            total_lines: 10,
+            cursor_line: 0,
+            is_cursor_line: false,
+        };
+
+        let output = presenter.present(&annotation, &ctx);
+        assert_eq!(output.width(), 1);
+
+        let width = presenter.column_width(&ctx);
+        assert_eq!(width, ColumnWidth::fixed(1));
     }
 }

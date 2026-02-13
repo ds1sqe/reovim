@@ -336,4 +336,85 @@ mod tests {
         let screen = Screen::default();
         assert_eq!(screen.size(), (80, 24));
     }
+
+    // =========================================================================
+    // Coverage tests for uncovered lines
+    // =========================================================================
+
+    /// Test `frame_buffer_mut` returns mutable back buffer (lines 99-101).
+    #[test]
+    fn test_frame_buffer_mut() {
+        let mut screen = Screen::new(10, 10);
+        let buf = screen.frame_buffer_mut();
+        buf.set(0, 0, crate::frame::Cell::from_char('X'));
+        // Verify through the immutable accessor
+        assert_eq!(screen.frame_buffer().get(0, 0).unwrap().char, 'X');
+    }
+
+    /// Test `clear_rect` clears a rectangular region (lines 115-117).
+    #[test]
+    fn test_clear_rect() {
+        let mut screen = Screen::new(10, 10);
+        // Fill the screen with non-empty cells
+        screen.fill(&Style::default());
+        screen.draw_str(2, 2, "Hello", &Style::default());
+
+        // Clear a rect over that region
+        screen.clear_rect(2, 2, 5, 1);
+
+        // The cleared cells should be empty
+        let buf = screen.frame_buffer();
+        assert!(buf.get(2, 2).unwrap().is_empty());
+        assert!(buf.get(3, 2).unwrap().is_empty());
+    }
+
+    /// Test `disable_capture` (lines 128-130).
+    #[test]
+    fn test_disable_capture() {
+        let mut screen = Screen::new(80, 24);
+        let _handle = screen.enable_capture();
+        screen.disable_capture();
+
+        // After disabling capture, flush should still work without panicking
+        screen.draw_str(0, 0, "Test", &Style::default());
+        let mut output = Vec::new();
+        screen.flush(&mut output).unwrap();
+    }
+
+    /// Test `render_views` with window too narrow for ID text (line 216).
+    #[test]
+    fn test_render_views_small_window() {
+        let mut screen = Screen::new(80, 24);
+
+        // Create a window too narrow for the "Win N" text indicator
+        let views = vec![WindowView::new(
+            WindowId::from_raw(999),
+            Rect::new(0, 0, 4, 4),
+        )];
+
+        // Should not panic even if window is too narrow for the text
+        screen.render_views(&views, &Style::default());
+
+        // Check that borders were still drawn
+        let buf = screen.frame_buffer();
+        assert_eq!(buf.get(0, 0).unwrap().char, '┌');
+    }
+
+    /// Test `render_views` with zero-size window (line 216 else branch).
+    #[test]
+    fn test_render_views_zero_size_window() {
+        let mut screen = Screen::new(80, 24);
+
+        // Create a window with zero dimensions
+        let views = vec![WindowView::new(
+            WindowId::from_raw(0),
+            Rect::new(0, 0, 0, 0),
+        )];
+
+        screen.render_views(&views, &Style::default());
+
+        // Zero-size window should not draw anything (cells remain as fill)
+        let buf = screen.frame_buffer();
+        assert_eq!(buf.get(0, 0).unwrap().char, ' ');
+    }
 }

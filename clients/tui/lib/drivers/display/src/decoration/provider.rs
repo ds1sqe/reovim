@@ -171,6 +171,7 @@ mod tests {
         valid: bool,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl DecorationProvider for TestProvider {
         fn name(&self) -> &'static str {
             "test"
@@ -256,6 +257,7 @@ mod tests {
     fn test_provider_default_is_valid() {
         // The default implementation of is_valid returns true
         struct MinimalProvider;
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl DecorationProvider for MinimalProvider {
             fn name(&self) -> &'static str {
                 "minimal"
@@ -276,6 +278,7 @@ mod tests {
     #[test]
     fn test_factory_default_supported_languages() {
         struct MinimalFactory;
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl DecorationProviderFactory for MinimalFactory {
             #[allow(clippy::unnecessary_literal_bound)]
             fn name(&self) -> &str {

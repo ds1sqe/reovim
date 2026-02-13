@@ -177,4 +177,29 @@ mod tests {
         // Default style should match foreground
         assert_eq!(default.fg, foreground.fg);
     }
+
+    /// Test that the default trait impl of `default_style()` returns `Style::default()`.
+    ///
+    /// This tests the trait's provided default implementation, not the
+    /// `SimpleBuiltinTheme` override.
+    #[test]
+    fn test_theme_provider_trait_default_style() {
+        struct MinimalTheme;
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        #[allow(clippy::unnecessary_literal_bound)]
+        impl ThemeProvider for MinimalTheme {
+            fn get_style(&self, _group: &str) -> Option<Style> {
+                None
+            }
+            fn name(&self) -> &str {
+                "minimal"
+            }
+            // Intentionally NOT overriding default_style() to test the trait default
+        }
+
+        let theme = MinimalTheme;
+        let default = theme.default_style();
+        assert_eq!(default, Style::default());
+    }
 }

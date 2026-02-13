@@ -34,9 +34,22 @@ pub enum ColorMode {
 impl ColorMode {
     /// Detect terminal color capability from environment variables.
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn detect() -> Self {
+        Self::detect_from_env(
+            std::env::var("COLORTERM").ok().as_deref(),
+            std::env::var("TERM").ok().as_deref(),
+        )
+    }
+
+    /// Determine color mode from optional COLORTERM and TERM values.
+    ///
+    /// Extracted from `detect()` for testability (env var mutation is
+    /// `unsafe` in Rust 2024 edition).
+    #[must_use]
+    pub fn detect_from_env(colorterm: Option<&str>, term: Option<&str>) -> Self {
         // Check COLORTERM first (most specific)
-        if let Ok(colorterm) = std::env::var("COLORTERM") {
+        if let Some(colorterm) = colorterm {
             let ct = colorterm.to_lowercase();
             if ct == "truecolor" || ct == "24bit" {
                 return Self::TrueColor;
@@ -44,7 +57,7 @@ impl ColorMode {
         }
 
         // Check TERM for 256color
-        if let Ok(term) = std::env::var("TERM")
+        if let Some(term) = term
             && term.contains("256color")
         {
             return Self::Color256;
@@ -443,16 +456,14 @@ impl Style {
             owned_codes.push(color_to_underline_ansi(&converted));
         }
 
-        if codes.is_empty() && owned_codes.is_empty() {
-            String::new()
-        } else {
-            let all_codes: Vec<&str> = owned_codes
-                .iter()
-                .map(String::as_str)
-                .chain(codes)
-                .collect();
-            format!("\x1b[{}m", all_codes.join(";"))
-        }
+        // Always has at least one code ("49" for bg reset when bg is None),
+        // so we unconditionally format the ANSI escape sequence.
+        let all_codes: Vec<&str> = owned_codes
+            .iter()
+            .map(String::as_str)
+            .chain(codes)
+            .collect();
+        format!("\x1b[{}m", all_codes.join(";"))
     }
 
     /// ANSI reset sequence.
@@ -1418,5 +1429,384 @@ mod tests {
         assert_eq!(named_color_to_ansi_index(&Color::Cyan), 14);
         assert_eq!(named_color_to_ansi_index(&Color::White), 15);
         assert_eq!(named_color_to_ansi_index(&Color::Reset), 0);
+    }
+
+    // =========================================================================
+    // named_color_to_ansi_index: AnsiValue passthrough (line 718)
+    // =========================================================================
+
+    #[test]
+    fn test_named_color_to_ansi_index_ansi_value() {
+        assert_eq!(named_color_to_ansi_index(&Color::AnsiValue(42)), 42);
+        assert_eq!(named_color_to_ansi_index(&Color::AnsiValue(0)), 0);
+        assert_eq!(named_color_to_ansi_index(&Color::AnsiValue(255)), 255);
+    }
+
+    // =========================================================================
+    // Attributes Display: dotted_underline and dashed_underline (lines 227, 230)
+    // =========================================================================
+
+    #[test]
+    fn test_attributes_display_dotted_underline() {
+        let mut attrs = Attributes::new();
+        attrs.set(Attributes::DOTTED_UNDERLINE);
+        assert_eq!(attrs.to_string(), "dotted_underline");
+    }
+
+    #[test]
+    fn test_attributes_display_dashed_underline() {
+        let mut attrs = Attributes::new();
+        attrs.set(Attributes::DASHED_UNDERLINE);
+        assert_eq!(attrs.to_string(), "dashed_underline");
+    }
+
+    #[test]
+    fn test_attributes_display_all_extended() {
+        let mut attrs = Attributes::new();
+        attrs.set(Attributes::DOUBLE_UNDERLINE);
+        attrs.set(Attributes::CURLY_UNDERLINE);
+        attrs.set(Attributes::DOTTED_UNDERLINE);
+        attrs.set(Attributes::DASHED_UNDERLINE);
+        attrs.set(Attributes::OVERLINE);
+        attrs.set(Attributes::HIDDEN);
+        assert_eq!(
+            attrs.to_string(),
+            "double_underline,curly_underline,dotted_underline,dashed_underline,overline,hidden"
+        );
+    }
+
+    // =========================================================================
+    // rgb_to_ansi256: to_cube returning 1 for v in [48, 115) (line 541)
+    // =========================================================================
+
+    #[test]
+    fn test_rgb_to_ansi256_cube_index_1() {
+        // r=80 is in [48, 115) so to_cube(80) = 1, g=0 and b=0 are < 48 so to_cube = 0
+        // Not grayscale because r != g
+        // Result: 16 + 36*1 + 6*0 + 0 = 52
+        assert_eq!(rgb_to_ansi256(80, 0, 0), 52);
+    }
+
+    #[test]
+    fn test_rgb_to_ansi256_cube_index_1_green() {
+        // g=100 is in [48, 115), r and b are different
+        // to_cube(0) = 0, to_cube(100) = 1, to_cube(0) = 0
+        // Result: 16 + 36*0 + 6*1 + 0 = 22
+        assert_eq!(rgb_to_ansi256(0, 100, 0), 22);
+    }
+
+    #[test]
+    fn test_rgb_to_ansi256_cube_index_1_blue() {
+        // b=60 is in [48, 115)
+        // to_cube(0) = 0, to_cube(0) = 0, to_cube(60) = 1
+        // Result: 16 + 36*0 + 6*0 + 1 = 17
+        assert_eq!(rgb_to_ansi256(0, 0, 60), 17);
+    }
+
+    // =========================================================================
+    // ansi_index_to_color: all 16 indices (lines 614-629)
+    // =========================================================================
+
+    #[test]
+    fn test_ansi256_to_ansi16_all_basic_indices() {
+        // Exercise ansi256_to_ansi16 with indices 0-15 which directly call
+        // ansi_index_to_color, covering all match arms in lines 612-631.
+        let expected = [
+            (0, Color::Black),
+            (1, Color::DarkRed),
+            (2, Color::DarkGreen),
+            (3, Color::DarkYellow),
+            (4, Color::DarkBlue),
+            (5, Color::DarkMagenta),
+            (6, Color::DarkCyan),
+            (7, Color::Grey),
+            (8, Color::DarkGrey),
+            (9, Color::Red),
+            (10, Color::Green),
+            (11, Color::Yellow),
+            (12, Color::Blue),
+            (13, Color::Magenta),
+            (14, Color::Cyan),
+            (15, Color::White),
+        ];
+
+        for (idx, expected_color) in expected {
+            let result = ansi256_to_ansi16(idx);
+            assert_eq!(
+                result, expected_color,
+                "ansi256_to_ansi16({idx}) should be {expected_color:?}, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_ansi_index_to_color_out_of_range() {
+        // Index >= 16 should map to Color::Reset (line 629)
+        assert_eq!(ansi_index_to_color(16), Color::Reset);
+        assert_eq!(ansi_index_to_color(255), Color::Reset);
+    }
+
+    // =========================================================================
+    // ColorMode::detect_from_env() (covers lines 43-44, 47-48, 50-51, 54)
+    // =========================================================================
+
+    #[test]
+    fn test_colormode_detect_truecolor() {
+        assert_eq!(ColorMode::detect_from_env(Some("truecolor"), None), ColorMode::TrueColor,);
+    }
+
+    #[test]
+    fn test_colormode_detect_truecolor_uppercase() {
+        assert_eq!(ColorMode::detect_from_env(Some("TRUECOLOR"), None), ColorMode::TrueColor,);
+    }
+
+    #[test]
+    fn test_colormode_detect_24bit() {
+        assert_eq!(ColorMode::detect_from_env(Some("24bit"), None), ColorMode::TrueColor,);
+    }
+
+    #[test]
+    fn test_colormode_detect_256color() {
+        assert_eq!(ColorMode::detect_from_env(None, Some("xterm-256color")), ColorMode::Color256,);
+    }
+
+    #[test]
+    fn test_colormode_detect_256color_screen() {
+        assert_eq!(ColorMode::detect_from_env(None, Some("screen-256color")), ColorMode::Color256,);
+    }
+
+    #[test]
+    fn test_colormode_detect_ansi16_fallback() {
+        assert_eq!(ColorMode::detect_from_env(None, Some("xterm")), ColorMode::Ansi16,);
+    }
+
+    #[test]
+    fn test_colormode_detect_no_env_vars() {
+        assert_eq!(ColorMode::detect_from_env(None, None), ColorMode::Ansi16,);
+    }
+
+    #[test]
+    fn test_colormode_detect_colorterm_non_truecolor_with_256_term() {
+        // COLORTERM set but not "truecolor" or "24bit" -> falls through to TERM check
+        assert_eq!(
+            ColorMode::detect_from_env(Some("something-else"), Some("xterm-256color")),
+            ColorMode::Color256,
+        );
+    }
+
+    #[test]
+    fn test_colormode_detect_colorterm_non_truecolor_no_term() {
+        // COLORTERM set to unrecognized value, no TERM -> fallback to Ansi16
+        assert_eq!(ColorMode::detect_from_env(Some("something-else"), None), ColorMode::Ansi16,);
+    }
+
+    #[test]
+    fn test_colormode_detect_truecolor_overrides_256_term() {
+        // COLORTERM=truecolor should take precedence even if TERM has 256color
+        assert_eq!(
+            ColorMode::detect_from_env(Some("truecolor"), Some("xterm-256color")),
+            ColorMode::TrueColor,
+        );
+    }
+
+    // =========================================================================
+    // to_ansi_start: empty output path (line 447)
+    // =========================================================================
+    //
+    // Line 447 (String::new() when both codes and owned_codes are empty) is
+    // unreachable with the current logic: when bg is None, "49" is always
+    // pushed to codes; when bg is Some, the bg ANSI code is pushed to
+    // owned_codes. So at least one collection always has an element.
+    // No test needed for dead code.
+
+    // =========================================================================
+    // Underline color with named color via underline_ansi (exercises
+    // named_color_to_ansi_index through color_to_underline_ansi)
+    // =========================================================================
+
+    #[test]
+    fn test_underline_color_named_all_variants() {
+        // Test that all named colors produce valid underline ANSI via
+        // the named_color_to_ansi_index -> format!("58;5;{ansi}") path
+        let named_colors = [
+            (Color::DarkRed, "58;5;1"),
+            (Color::DarkGreen, "58;5;2"),
+            (Color::DarkYellow, "58;5;3"),
+            (Color::DarkBlue, "58;5;4"),
+            (Color::DarkMagenta, "58;5;5"),
+            (Color::DarkCyan, "58;5;6"),
+            (Color::Grey, "58;5;7"),
+            (Color::DarkGrey, "58;5;8"),
+            (Color::Green, "58;5;10"),
+            (Color::Yellow, "58;5;11"),
+            (Color::Blue, "58;5;12"),
+            (Color::Magenta, "58;5;13"),
+            (Color::Cyan, "58;5;14"),
+            (Color::White, "58;5;15"),
+            (Color::Black, "58;5;0"),
+        ];
+
+        for (color, expected_code) in named_colors {
+            let style = Style::new().underline().underline_color(color);
+            let ansi = style.to_ansi_start(ColorMode::TrueColor);
+            assert!(
+                ansi.contains(expected_code),
+                "underline color {color:?} should produce {expected_code}, got: {ansi}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_color_to_fg_ansi_direct_all() {
+        assert_eq!(color_to_fg_ansi(&Color::Reset), "39");
+        assert_eq!(color_to_fg_ansi(&Color::Black), "30");
+        assert_eq!(color_to_fg_ansi(&Color::DarkGrey), "90");
+        assert_eq!(color_to_fg_ansi(&Color::Red), "31");
+        assert_eq!(color_to_fg_ansi(&Color::DarkRed), "91");
+        assert_eq!(color_to_fg_ansi(&Color::Green), "32");
+        assert_eq!(color_to_fg_ansi(&Color::DarkGreen), "92");
+        assert_eq!(color_to_fg_ansi(&Color::Yellow), "33");
+        assert_eq!(color_to_fg_ansi(&Color::DarkYellow), "93");
+        assert_eq!(color_to_fg_ansi(&Color::Blue), "34");
+        assert_eq!(color_to_fg_ansi(&Color::DarkBlue), "94");
+        assert_eq!(color_to_fg_ansi(&Color::Magenta), "35");
+        assert_eq!(color_to_fg_ansi(&Color::DarkMagenta), "95");
+        assert_eq!(color_to_fg_ansi(&Color::Cyan), "36");
+        assert_eq!(color_to_fg_ansi(&Color::DarkCyan), "96");
+        assert_eq!(color_to_fg_ansi(&Color::White), "37");
+        assert_eq!(color_to_fg_ansi(&Color::Grey), "97");
+        assert_eq!(color_to_fg_ansi(&Color::AnsiValue(196)), "38;5;196");
+        assert_eq!(
+            color_to_fg_ansi(&Color::Rgb {
+                r: 10,
+                g: 20,
+                b: 30
+            }),
+            "38;2;10;20;30"
+        );
+    }
+
+    #[test]
+    fn test_color_to_bg_ansi_direct_all() {
+        assert_eq!(color_to_bg_ansi(&Color::Reset), "49");
+        assert_eq!(color_to_bg_ansi(&Color::Black), "40");
+        assert_eq!(color_to_bg_ansi(&Color::DarkGrey), "100");
+        assert_eq!(color_to_bg_ansi(&Color::Red), "41");
+        assert_eq!(color_to_bg_ansi(&Color::DarkRed), "101");
+        assert_eq!(color_to_bg_ansi(&Color::Green), "42");
+        assert_eq!(color_to_bg_ansi(&Color::DarkGreen), "102");
+        assert_eq!(color_to_bg_ansi(&Color::Yellow), "43");
+        assert_eq!(color_to_bg_ansi(&Color::DarkYellow), "103");
+        assert_eq!(color_to_bg_ansi(&Color::Blue), "44");
+        assert_eq!(color_to_bg_ansi(&Color::DarkBlue), "104");
+        assert_eq!(color_to_bg_ansi(&Color::Magenta), "45");
+        assert_eq!(color_to_bg_ansi(&Color::DarkMagenta), "105");
+        assert_eq!(color_to_bg_ansi(&Color::Cyan), "46");
+        assert_eq!(color_to_bg_ansi(&Color::DarkCyan), "106");
+        assert_eq!(color_to_bg_ansi(&Color::White), "47");
+        assert_eq!(color_to_bg_ansi(&Color::Grey), "107");
+        assert_eq!(color_to_bg_ansi(&Color::AnsiValue(52)), "48;5;52");
+        assert_eq!(
+            color_to_bg_ansi(&Color::Rgb {
+                r: 10,
+                g: 20,
+                b: 30
+            }),
+            "48;2;10;20;30"
+        );
+    }
+
+    #[test]
+    fn test_color_to_underline_ansi_direct_all() {
+        assert_eq!(color_to_underline_ansi(&Color::Reset), "59");
+        assert_eq!(color_to_underline_ansi(&Color::AnsiValue(42)), "58;5;42");
+        assert_eq!(color_to_underline_ansi(&Color::Rgb { r: 1, g: 2, b: 3 }), "58;2;1;2;3");
+        assert_eq!(color_to_underline_ansi(&Color::Black), "58;5;0");
+        assert_eq!(color_to_underline_ansi(&Color::DarkRed), "58;5;1");
+        assert_eq!(color_to_underline_ansi(&Color::DarkGreen), "58;5;2");
+        assert_eq!(color_to_underline_ansi(&Color::DarkYellow), "58;5;3");
+        assert_eq!(color_to_underline_ansi(&Color::DarkBlue), "58;5;4");
+        assert_eq!(color_to_underline_ansi(&Color::DarkMagenta), "58;5;5");
+        assert_eq!(color_to_underline_ansi(&Color::DarkCyan), "58;5;6");
+        assert_eq!(color_to_underline_ansi(&Color::Grey), "58;5;7");
+        assert_eq!(color_to_underline_ansi(&Color::DarkGrey), "58;5;8");
+        assert_eq!(color_to_underline_ansi(&Color::Red), "58;5;9");
+        assert_eq!(color_to_underline_ansi(&Color::Green), "58;5;10");
+        assert_eq!(color_to_underline_ansi(&Color::Yellow), "58;5;11");
+        assert_eq!(color_to_underline_ansi(&Color::Blue), "58;5;12");
+        assert_eq!(color_to_underline_ansi(&Color::Magenta), "58;5;13");
+        assert_eq!(color_to_underline_ansi(&Color::Cyan), "58;5;14");
+        assert_eq!(color_to_underline_ansi(&Color::White), "58;5;15");
+    }
+
+    #[test]
+    fn test_ansi_index_to_color_direct_all() {
+        assert_eq!(ansi_index_to_color(0), Color::Black);
+        assert_eq!(ansi_index_to_color(1), Color::DarkRed);
+        assert_eq!(ansi_index_to_color(2), Color::DarkGreen);
+        assert_eq!(ansi_index_to_color(3), Color::DarkYellow);
+        assert_eq!(ansi_index_to_color(4), Color::DarkBlue);
+        assert_eq!(ansi_index_to_color(5), Color::DarkMagenta);
+        assert_eq!(ansi_index_to_color(6), Color::DarkCyan);
+        assert_eq!(ansi_index_to_color(7), Color::Grey);
+        assert_eq!(ansi_index_to_color(8), Color::DarkGrey);
+        assert_eq!(ansi_index_to_color(9), Color::Red);
+        assert_eq!(ansi_index_to_color(10), Color::Green);
+        assert_eq!(ansi_index_to_color(11), Color::Yellow);
+        assert_eq!(ansi_index_to_color(12), Color::Blue);
+        assert_eq!(ansi_index_to_color(13), Color::Magenta);
+        assert_eq!(ansi_index_to_color(14), Color::Cyan);
+        assert_eq!(ansi_index_to_color(15), Color::White);
+    }
+
+    #[test]
+    fn test_ansi256_to_ansi16_grayscale_direct() {
+        let dark = ansi256_to_ansi16(232);
+        assert_eq!(dark, Color::Black);
+        let light = ansi256_to_ansi16(255);
+        assert_eq!(light, Color::White);
+        let mid = ansi256_to_ansi16(244);
+        assert!(
+            matches!(mid, Color::Grey | Color::DarkGrey | Color::White),
+            "mid-grayscale {mid:?} should be a grey/white variant"
+        );
+    }
+
+    #[test]
+    fn test_ansi256_to_ansi16_color_cube_direct() {
+        let red = ansi256_to_ansi16(196);
+        assert_eq!(red, Color::Red);
+        let green = ansi256_to_ansi16(46);
+        assert_eq!(green, Color::Green);
+        let blue = ansi256_to_ansi16(21);
+        assert_eq!(blue, Color::Blue);
+    }
+
+    #[test]
+    fn test_rgb_to_nearest_ansi16_all_exact() {
+        for (idx, &(r, g, b)) in ANSI16_RGB.iter().enumerate() {
+            let result = rgb_to_nearest_ansi16(r, g, b);
+            #[allow(clippy::cast_possible_truncation)]
+            let expected = ansi_index_to_color(idx as u8);
+            assert_eq!(
+                result, expected,
+                "RGB ({r},{g},{b}) at index {idx} should map to {expected:?}, got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_attributes_from_str_infallible() {
+        let result: Result<Attributes, std::convert::Infallible> = "bold".parse();
+        assert!(result.is_ok());
+        let attrs = result.unwrap();
+        assert!(attrs.contains(Attributes::BOLD));
+    }
+
+    #[test]
+    fn test_style_struct_fields_default() {
+        let style = Style::default();
+        assert_eq!(style.attributes, Attributes::default());
+        assert!(style.underline_color.is_none());
     }
 }

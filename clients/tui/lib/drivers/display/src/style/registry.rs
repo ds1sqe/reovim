@@ -173,4 +173,12 @@ mod tests {
         assert!(groups.contains(&"a"));
         assert!(groups.contains(&"b"));
     }
+
+    #[test]
+    fn test_style_group_registry_default() {
+        let registry = StyleGroupRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+        assert!(registry.get("anything").is_none());
+    }
 }

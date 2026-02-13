@@ -421,4 +421,105 @@ mod tests {
         assert_eq!(buf.width(), 80);
         assert_eq!(buf.height(), 24);
     }
+
+    // =========================================================================
+    // Coverage tests for uncovered lines
+    // =========================================================================
+
+    /// Test `resize` with same dimensions is a no-op (line 42).
+    #[test]
+    fn test_resize_same_dimensions_noop() {
+        let mut buf = FrameBuffer::new(10, 5);
+        buf.set(3, 3, Cell::from_char('x'));
+
+        // Resize to same dimensions - should early return
+        buf.resize(10, 5);
+
+        // Content should be preserved (no reallocation)
+        assert_eq!(buf.width(), 10);
+        assert_eq!(buf.height(), 5);
+        assert_eq!(buf.get(3, 3).unwrap().char, 'x');
+    }
+
+    /// Test `apply_style` with bg and fg overlays (lines 132, 135).
+    #[test]
+    fn test_apply_style_with_bg_and_fg() {
+        use reovim_arch::Color;
+
+        let mut buf = FrameBuffer::new(10, 10);
+        buf.put_char(0, 0, 'A', &Style::default());
+
+        // Apply a style with both bg and fg set
+        let overlay = Style::new().bg(Color::Blue).fg(Color::Yellow);
+        buf.apply_style(0, 0, &overlay);
+
+        let cell = buf.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'A'); // Character preserved
+        assert_eq!(cell.style.bg, Some(Color::Blue));
+        assert_eq!(cell.style.fg, Some(Color::Yellow));
+    }
+
+    /// Test `get_mut` returns `None` for out-of-bounds coordinates (line 96).
+    #[test]
+    fn test_get_mut_out_of_bounds() {
+        let mut buf = FrameBuffer::new(10, 10);
+        assert!(buf.get_mut(10, 0).is_none());
+        assert!(buf.get_mut(0, 10).is_none());
+        assert!(buf.get_mut(100, 100).is_none());
+    }
+
+    /// Test `apply_style` with `underline_color` (line 139).
+    #[test]
+    fn test_apply_style_underline_color() {
+        use reovim_arch::Color;
+
+        let mut buf = FrameBuffer::new(10, 10);
+        buf.put_char(0, 0, 'A', &Style::default());
+
+        // Apply a style with underline_color set
+        let overlay = Style::new().underline_color(Color::Red);
+        buf.apply_style(0, 0, &overlay);
+
+        let cell = buf.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'A'); // Character preserved
+        assert_eq!(cell.style.underline_color, Some(Color::Red));
+    }
+
+    /// Test `apply_style` on out-of-bounds position (line 141 - else branch).
+    #[test]
+    fn test_apply_style_out_of_bounds() {
+        let mut buf = FrameBuffer::new(5, 5);
+        // This should be a no-op (no panic) since (10, 10) is out of bounds
+        buf.apply_style(10, 10, &Style::default());
+    }
+
+    /// Test `write_str` truncation when string exceeds buffer width (line 152).
+    #[test]
+    fn test_write_str_truncation() {
+        let mut buf = FrameBuffer::new(5, 1);
+        let written = buf.write_str(0, 0, "Hello World", &Style::default());
+
+        // Only first 5 chars should fit in a 5-wide buffer
+        assert_eq!(written, 5);
+        assert_eq!(buf.get(0, 0).unwrap().char, 'H');
+        assert_eq!(buf.get(4, 0).unwrap().char, 'o');
+    }
+
+    /// Test `write_str` with wide char at buffer edge (lines 160-162).
+    /// When a wide char would go past the edge, a space is written instead.
+    #[test]
+    fn test_write_str_wide_char_at_edge() {
+        // Buffer is 5 columns wide
+        let mut buf = FrameBuffer::new(5, 1);
+
+        // "ABCD" takes 4 columns, then '中' needs 2 columns but only 1 remains
+        let written = buf.write_str(0, 0, "ABCD中", &Style::default());
+
+        // Should write "ABCD" (4 cols) + space (1 col) = 5 columns
+        assert_eq!(written, 5);
+        assert_eq!(buf.get(0, 0).unwrap().char, 'A');
+        assert_eq!(buf.get(3, 0).unwrap().char, 'D');
+        // Position 4 should be a space (wide char didn't fit)
+        assert_eq!(buf.get(4, 0).unwrap().char, ' ');
+    }
 }

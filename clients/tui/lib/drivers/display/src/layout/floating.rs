@@ -120,6 +120,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_floating_layer_is_object_safe() {
         fn _accepts_ref(_: &dyn FloatingLayer) {}
         fn _accepts_box(_: Box<dyn FloatingLayer>) {}

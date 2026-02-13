@@ -485,4 +485,105 @@ mod tests {
         assert!(config.bounds.is_none());
         assert!((config.opacity - 1.0).abs() < f32::EPSILON);
     }
+
+    #[test]
+    fn test_z_order_as_u16() {
+        let z = ZOrder::new(42);
+        assert_eq!(z.as_u16(), 42);
+
+        let z_zero = ZOrder::new(0);
+        assert_eq!(z_zero.as_u16(), 0);
+
+        let z_max = ZOrder::new(u16::MAX);
+        assert_eq!(z_max.as_u16(), u16::MAX);
+    }
+
+    #[test]
+    fn test_z_order_offset() {
+        let z = ZOrder::new(100);
+        let shifted = z.offset(25);
+        assert_eq!(shifted.as_u16(), 125);
+
+        let z_zero = ZOrder::new(0);
+        assert_eq!(z_zero.offset(0).as_u16(), 0);
+        assert_eq!(z_zero.offset(50).as_u16(), 50);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_overlay_constraints_at_cursor() {
+        let window = WindowId::from_raw(5);
+        let line = LineIndex::new(10);
+        let col = ColIndex::new(20);
+        let constraints = OverlayConstraints::at_cursor(window, line, col);
+
+        match constraints.anchor {
+            Anchor::Cursor {
+                window: w,
+                line: l,
+                col: c,
+            } => {
+                assert_eq!(w, window);
+                assert_eq!(l, line);
+                assert_eq!(c, col);
+            }
+            _ => panic!("Expected Anchor::Cursor"),
+        }
+        assert_eq!(constraints.preferred_width, None);
+        assert_eq!(constraints.preferred_height, None);
+        assert_eq!(constraints.max_width, None);
+        assert_eq!(constraints.max_height, None);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_overlay_constraints_at_cursor_raw() {
+        let window = WindowId::from_raw(3);
+        let constraints = OverlayConstraints::at_cursor_raw(window, 7, 15);
+
+        match constraints.anchor {
+            Anchor::Cursor {
+                window: w,
+                line,
+                col,
+            } => {
+                assert_eq!(w, window);
+                assert_eq!(line, LineIndex::new(7));
+                assert_eq!(col, ColIndex::new(15));
+            }
+            _ => panic!("Expected Anchor::Cursor"),
+        }
+        assert_eq!(constraints.preferred_width, None);
+        assert_eq!(constraints.preferred_height, None);
+        assert_eq!(constraints.max_width, None);
+        assert_eq!(constraints.max_height, None);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_overlay_constraints_at_position() {
+        let constraints = OverlayConstraints::at_position(30, 10);
+
+        match constraints.anchor {
+            Anchor::Screen { x, y } => {
+                assert_eq!(x, 30);
+                assert_eq!(y, 10);
+            }
+            _ => panic!("Expected Anchor::Screen"),
+        }
+        assert_eq!(constraints.preferred_width, None);
+        assert_eq!(constraints.preferred_height, None);
+        assert_eq!(constraints.max_width, None);
+        assert_eq!(constraints.max_height, None);
+    }
+
+    #[test]
+    fn test_layer_config_with_bounds() {
+        let bounds = Rect::new(10, 5, 60, 20);
+        let config = LayerConfig::with_bounds("sidebar", bounds);
+
+        assert_eq!(config.label, "sidebar");
+        assert_eq!(config.bounds, Some(bounds));
+        assert!((config.opacity - 1.0).abs() < f32::EPSILON);
+    }
 }

@@ -336,4 +336,107 @@ mod tests {
         assert!(!rows[1].is_left_only);
         assert!(rows[1].is_right_only);
     }
+
+    #[test]
+    fn test_multi_row_layout_default() {
+        let layout = MultiRowLayout::default();
+        assert_eq!(layout.row_count(), 1);
+        assert_eq!(layout.sections_for_row(0), SectionId::ALL);
+    }
+
+    #[test]
+    fn test_custom_layout() {
+        let layout = MultiRowLayout::custom(vec![
+            vec![SectionId::A],
+            vec![SectionId::B, SectionId::C],
+            vec![SectionId::X, SectionId::Y, SectionId::Z],
+        ]);
+        assert_eq!(layout.row_count(), 3);
+        assert_eq!(layout.sections_for_row(0), &[SectionId::A]);
+        assert_eq!(layout.sections_for_row(1), &[SectionId::B, SectionId::C]);
+        assert_eq!(layout.sections_for_row(2), &[SectionId::X, SectionId::Y, SectionId::Z]);
+    }
+
+    #[test]
+    fn test_layout_calculator_fallback_three_rows() {
+        // Force the path where max_rows > 3 but nothing fits,
+        // reaching the fallback `MultiRowLayout::three_rows()` at line 183.
+        let calc = LayoutCalculator::new(10);
+        // Total = 360, nothing fits in 10 width.
+        // left(180) > 10, right(180) > 10 -> not 2-row
+        // A+B(60) > 10, C(120) > 10, X+Y+Z(180) > 10 -> not 3-row condition
+        // max_rows = 5, so none of the `max_rows == N` guards fire
+        // Falls through to line 183: `MultiRowLayout::three_rows()`
+        let widths = [30, 30, 120, 60, 60, 60];
+        let layout = calc.calculate(&widths, 5);
+        assert_eq!(layout.row_count(), 3);
+    }
+
+    #[test]
+    fn test_layout_calculator_three_row_condition_line_180() {
+        // Test the exact condition at line 178-180:
+        // ab_width <= width && c_width <= width && xyz_width <= width
+        let calc = LayoutCalculator::new(50);
+        // Total = 100, doesn't fit in 50 (line 161)
+        // left = 10+10+30 = 50, right = 20+15+15 = 50
+        // Both fit in 50, so two_rows() returns at line 170
+        // We need left OR right to NOT fit to skip line 170,
+        // but A+B, C, and X+Y+Z each fit in 50.
+        let widths = [20, 20, 40, 20, 20, 20];
+        // total = 140, doesn't fit
+        // left = 80 > 50, right = 60 > 50 -> skip 2-row
+        // A+B = 40 <= 50, C = 40 <= 50, X+Y+Z = 60 > 50 -> condition false
+        // max_rows != 3 (using 5), so fallback at line 183
+        let layout = calc.calculate(&widths, 5);
+        assert_eq!(layout.row_count(), 3);
+
+        // Now test where the 3-row condition IS true (line 178 true -> 179-180):
+        // widths [10, 10, 30, 15, 15, 15] total=95 but left=50<=50, right=45<=50
+        // -> takes 2-row path. Adjust so left doesn't fit in 50:
+        let widths3 = [10, 10, 40, 15, 15, 15];
+        // total = 105, doesn't fit in 50
+        // left = 60 > 50 -> skip 2-row
+        // A+B = 20 <= 50, C = 40 <= 50, X+Y+Z = 45 <= 50 -> 3-row condition TRUE
+        let layout2 = calc.calculate(&widths3, 5);
+        assert_eq!(layout2.row_count(), 3);
+    }
+
+    #[test]
+    fn test_calculate_from_metrics() {
+        use super::super::height::ContentMetrics;
+
+        let calc = LayoutCalculator::new(100);
+        let metrics = ContentMetrics {
+            total_width: 80,
+            left_width: 40,
+            right_width: 40,
+            section_widths: [10, 10, 20, 10, 15, 15],
+        };
+        let layout = calc.calculate_from_metrics(&metrics, 3);
+        assert_eq!(layout.row_count(), 1);
+
+        // Also test overflow case
+        let metrics_overflow = ContentMetrics {
+            total_width: 200,
+            left_width: 100,
+            right_width: 100,
+            section_widths: [30, 30, 40, 30, 30, 40],
+        };
+        let layout2 = calc.calculate_from_metrics(&metrics_overflow, 3);
+        assert!(layout2.row_count() >= 2);
+    }
+
+    #[test]
+    fn test_sections_for_row_out_of_bounds() {
+        let layout = MultiRowLayout::single_row();
+        assert_eq!(layout.sections_for_row(5), &[] as &[SectionId]);
+    }
+
+    #[test]
+    fn test_layout_calculator_max_rows_1() {
+        let calc = LayoutCalculator::new(10);
+        let widths = [30, 30, 30, 30, 30, 30];
+        let layout = calc.calculate(&widths, 1);
+        assert_eq!(layout.row_count(), 1);
+    }
 }

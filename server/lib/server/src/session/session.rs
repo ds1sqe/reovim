@@ -2544,4 +2544,268 @@ mod tests {
         let removed = session.remove_client(client_id);
         assert!(removed.is_some());
     }
+
+    // =========================================================================
+    // Coverage: EditingState Debug impl (#497 lines 612-622)
+    // =========================================================================
+
+    #[test]
+    fn test_editing_state_debug_format() {
+        // Exercise the manual Debug impl for EditingState (lines 611-622).
+        // The impl formats compositor as "..." via `.map(|_| "...")`.
+        let session = Session::new(SessionId::new("debug-fmt-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        let state = session.client_state(client_id).unwrap();
+        let debug_str = format!("{state:?}");
+        assert!(debug_str.contains("EditingState"));
+        assert!(debug_str.contains("mode_stack"));
+        assert!(debug_str.contains("pending_keys"));
+        assert!(debug_str.contains("windows"));
+        assert!(debug_str.contains("viewport"));
+        assert!(debug_str.contains("selection"));
+        assert!(debug_str.contains("extensions"));
+        assert!(debug_str.contains("compositor"));
+    }
+
+    // =========================================================================
+    // Coverage: compositor-driven window creation (#497 lines 239-251, 590-600)
+    // =========================================================================
+
+    /// Mock compositor that returns one tiled placement with a focused window.
+    ///
+    /// Unlike `MockRootCompositor` in `runtime.rs` which returns empty results,
+    /// this compositor provides actual placements so the session code at
+    /// lines 239-251 and 590-600 can create windows from them.
+    struct TestPlacementCompositor;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_display::layout::RootCompositor for TestPlacementCompositor {
+        fn composite(
+            &self,
+            screen: reovim_driver_display::Rect,
+        ) -> reovim_driver_display::layout::CompositeResult {
+            use reovim_driver_display::{
+                WindowId,
+                layout::{CompositeResult, LayerId, WindowPlacement, ZOrder, Zone},
+            };
+
+            CompositeResult {
+                placements: vec![WindowPlacement {
+                    window_id: WindowId::from_raw(1),
+                    layer_id: LayerId::new(0),
+                    zone: Zone::Tiled,
+                    bounds: reovim_driver_display::Rect::new(0, 0, 80, 24),
+                    z_order: ZOrder::new(0),
+                    visible: true,
+                    focusable: true,
+                }],
+                focused: Some(WindowId::from_raw(1)),
+                active_layer: Some(LayerId::new(0)),
+                screen,
+            }
+        }
+
+        fn create_layer(
+            &mut self,
+            _config: reovim_driver_display::layout::LayerConfig,
+        ) -> reovim_driver_display::layout::LayerId {
+            reovim_driver_display::layout::LayerId::new(0)
+        }
+
+        fn remove_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+
+        fn layer_by_label(&self, _label: &str) -> Option<reovim_driver_display::layout::LayerId> {
+            None
+        }
+
+        fn layers(&self) -> Vec<&reovim_driver_display::layout::Layer> {
+            Vec::new()
+        }
+
+        fn set_layer_visible(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _visible: bool,
+        ) {
+        }
+
+        fn set_layer_opacity(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+            _opacity: f32,
+        ) {
+        }
+
+        fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
+
+        fn set_active_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}
+
+        fn active_layer(&self) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+
+        fn set_focus(&mut self, _window: reovim_driver_display::WindowId) {}
+
+        fn focused(&self) -> Option<reovim_driver_display::WindowId> {
+            Some(reovim_driver_display::WindowId::from_raw(1))
+        }
+
+        fn focus_at(&mut self, _x: u16, _y: u16) -> Option<reovim_driver_display::WindowId> {
+            None
+        }
+
+        fn layer_compositor(
+            &self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            None
+        }
+
+        fn layer_compositor_mut(
+            &mut self,
+            _layer: reovim_driver_display::layout::LayerId,
+        ) -> Option<&mut dyn reovim_driver_display::layout::WindowLayerCompositor> {
+            None
+        }
+
+        fn window_count(&self) -> usize {
+            1
+        }
+
+        fn set_screen(&mut self, _screen: reovim_driver_display::Rect) {}
+
+        fn layer_of(
+            &self,
+            _window: reovim_driver_display::WindowId,
+        ) -> Option<reovim_driver_display::layout::LayerId> {
+            Some(reovim_driver_display::layout::LayerId::new(0))
+        }
+
+        fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
+            Box::new(Self)
+        }
+    }
+
+    #[test]
+    fn test_add_client_with_compositor_creates_windows() {
+        // Exercise lines 239-251: compositor-driven window creation in
+        // add_client_with_metadata() when shared compositor is set and
+        // an active buffer exists.
+        use {
+            parking_lot::RwLock as ParkingLotRwLock,
+            reovim_driver_buffer::TestBufferManager,
+            reovim_kernel::api::v1::{
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
+                ServiceRegistry, TextObjectEngine,
+            },
+            std::sync::Arc,
+        };
+
+        let kernel = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
+            Arc::new(ParkingLotRwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::new()),
+            Arc::new(ServiceRegistry::new()),
+        );
+
+        let mut state = SessionState::with_kernel(kernel);
+
+        // Set the compositor on the shared session state BEFORE creating the session
+        state
+            .driver_session
+            .shared
+            .set_compositor(Box::new(TestPlacementCompositor));
+
+        let session = Session::from_state(SessionId::new("compositor-add-test"), state);
+
+        // Create a buffer so there is an active buffer
+        session.with_state_mut_sync(|state| {
+            state.create_buffer("hello compositor");
+        });
+
+        // Add a client - should use compositor for window creation
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Verify client has windows from compositor placements
+        let editing_state = session.client_state(client_id).unwrap();
+        assert!(!editing_state.windows.is_empty());
+        // The compositor returned WindowId(1), so the active window should be set
+        assert!(editing_state.windows.active().is_some());
+        // Compositor should be cloned into per-client state
+        assert!(editing_state.compositor.is_some());
+    }
+
+    #[test]
+    fn test_ensure_client_has_window_with_compositor() {
+        // Exercise lines 590-600: compositor-driven window sync in
+        // ensure_client_has_window() when a client has a compositor but
+        // empty windows, and the session acquires an active buffer later.
+        use {
+            parking_lot::RwLock as ParkingLotRwLock,
+            reovim_driver_buffer::TestBufferManager,
+            reovim_kernel::api::v1::{
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
+                ServiceRegistry, TextObjectEngine,
+            },
+            std::sync::Arc,
+        };
+
+        let kernel = KernelContext::new(
+            Arc::new(EventBus::new()),
+            Arc::new(TestBufferManager::new()),
+            Arc::new(MotionEngine),
+            Arc::new(TextObjectEngine),
+            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
+            Arc::new(ParkingLotRwLock::new(MarkBank::new())),
+            Arc::new(OptionRegistry::new()),
+            Arc::new(ServiceRegistry::new()),
+        );
+
+        let mut state = SessionState::with_kernel(kernel);
+
+        // Set compositor on shared state
+        state
+            .driver_session
+            .shared
+            .set_compositor(Box::new(TestPlacementCompositor));
+
+        let session = Session::from_state(SessionId::new("compositor-ensure-test"), state);
+
+        // Add client BEFORE any buffer exists. The compositor is cloned into
+        // per-client state but no windows are created yet (no active buffer).
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Client should have compositor but empty windows
+        let editing_state = session.client_state(client_id).unwrap();
+        assert!(editing_state.compositor.is_some());
+        assert!(editing_state.windows.is_empty());
+
+        // Now create a buffer
+        session.with_state_mut_sync(|state| {
+            state.create_buffer("hello lazy compositor");
+        });
+
+        // Trigger ensure_client_has_window via resolve_key_for_client.
+        // The client has a compositor + empty windows + active buffer now,
+        // so lines 589-600 should execute.
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _result = rt.block_on(session.resolve_key_for_client(client_id, &key));
+
+        // After resolve_key, client should now have windows from compositor
+        let editing_state = session.client_state(client_id).unwrap();
+        assert!(!editing_state.windows.is_empty());
+        assert!(editing_state.windows.active().is_some());
+    }
 }

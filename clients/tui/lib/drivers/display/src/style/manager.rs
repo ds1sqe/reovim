@@ -460,4 +460,60 @@ mod tests {
         let style = manager.get_style("completely.unknown.group");
         assert_eq!(style, manager.current_theme().default_style());
     }
+
+    // =========================================================================
+    // Coverage tests for manager.rs uncovered paths
+    // =========================================================================
+
+    #[test]
+    fn test_module_defaults_accessor() {
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Initially None
+        assert!(manager.module_defaults().is_none());
+
+        // After setting, should be Some
+        let registry = Arc::new(StyleGroupRegistry::new());
+        manager.set_module_defaults(registry);
+        assert!(manager.module_defaults().is_some());
+    }
+
+    #[test]
+    fn test_try_get_style_returns_override() {
+        let mut manager = ThemeManager::new(BuiltinTheme::Dark.load());
+        let override_style = Style::new().fg(Color::Magenta);
+        manager.set_override("custom.test", override_style);
+
+        // try_get_style should find the override (tier 1)
+        let style = manager.try_get_style("custom.test");
+        assert!(style.is_some());
+        assert_eq!(style.unwrap().fg, Some(Color::Magenta));
+    }
+
+    #[test]
+    fn test_shared_theme_manager_with_module_defaults() {
+        let registry = Arc::new(StyleGroupRegistry::new());
+        registry.register("shared.test", Style::new().fg(Color::Yellow));
+
+        let shared = SharedThemeManager::with_module_defaults(BuiltinTheme::Dark.load(), registry);
+
+        // Verify theme name through read lock
+        assert_eq!(shared.read().current_theme_name(), "dark");
+
+        // Verify module defaults are set
+        assert!(shared.read().module_defaults().is_some());
+
+        // Verify the registered style is accessible
+        let style = shared.read().get_style("shared.test");
+        assert_eq!(style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_shared_theme_manager_write_set_theme() {
+        let shared = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        assert_eq!(shared.read().current_theme_name(), "dark");
+
+        shared.write().set_theme(BuiltinTheme::Light.load());
+        assert_eq!(shared.read().current_theme_name(), "light");
+    }
 }

@@ -376,6 +376,7 @@ impl BufferAnnotationStore {
 
 // Ensure types are Send + Sync for async compatibility
 const _: () = {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<SourceId>();
     assert_send_sync::<AnnotationLayer>();
@@ -791,5 +792,58 @@ mod tests {
         // buffer2 should be empty
         let store2 = store.get_or_create(buffer2);
         assert!(store2.is_empty());
+    }
+
+    // ========================================================================
+    // Additional coverage tests
+    // ========================================================================
+
+    #[test]
+    fn test_store_layer_mut() {
+        let mut store = AnnotationStore::new();
+        let source_id = SourceId::new("test");
+
+        // layer_mut should create a new layer if it doesn't exist
+        let layer = store.layer_mut(&source_id);
+        layer.add(make_annotation(5, 10));
+
+        assert_eq!(store.source_count(), 1);
+        assert!(!store.is_empty());
+    }
+
+    #[test]
+    fn test_buffer_store_get_mut() {
+        let mut store = BufferAnnotationStore::new();
+        let buffer_id = BufferId::new();
+
+        // get_mut returns None for non-existent buffer
+        assert!(store.get_mut(buffer_id).is_none());
+
+        // Create the store first
+        store.get_or_create(buffer_id);
+
+        // Now get_mut should return Some
+        let annotation_store = store.get_mut(buffer_id);
+        assert!(annotation_store.is_some());
+
+        // Verify we can mutate through it
+        let annotation_store = annotation_store.unwrap();
+        annotation_store.replace_source(SourceId::new("test"), vec![make_annotation(0, 10)]);
+        assert!(!annotation_store.is_empty());
+    }
+
+    #[test]
+    fn test_buffer_store_buffer_ids() {
+        let mut store = BufferAnnotationStore::new();
+        let buffer1 = BufferId::new();
+        let buffer2 = BufferId::new();
+
+        store.get_or_create(buffer1);
+        store.get_or_create(buffer2);
+
+        let ids: Vec<_> = store.buffer_ids().collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&&buffer1));
+        assert!(ids.contains(&&buffer2));
     }
 }

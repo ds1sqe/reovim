@@ -457,18 +457,27 @@ mod tests {
         manager.get_or_create(2);
         manager.get_or_create(3); // Should evict one
 
-        // Only 2 buffers should remain
-        let mut count = 0;
-        if manager.get(1).is_some() {
-            count += 1;
-        }
-        if manager.get(2).is_some() {
-            count += 1;
-        }
-        if manager.get(3).is_some() {
-            count += 1;
-        }
+        // Only 2 buffers should remain (buffer 3 is always present; one of 1 or 2 evicted)
+        let count = [1_u64, 2, 3]
+            .iter()
+            .filter(|&&id| manager.get(id).is_some())
+            .count();
         assert_eq!(count, 2);
+        assert!(manager.get(3).is_some());
+    }
+
+    #[test]
+    fn test_cache_manager_eviction_with_max_one() {
+        // Use max_buffers=1 for deterministic eviction
+        let mut manager = TokenCacheManager::with_max_buffers(1);
+
+        manager.get_or_create(1);
+        assert!(manager.get(1).is_some());
+
+        // Adding buffer 2 must evict buffer 1
+        manager.get_or_create(2);
+        assert!(manager.get(1).is_none());
+        assert!(manager.get(2).is_some());
     }
 
     #[test]

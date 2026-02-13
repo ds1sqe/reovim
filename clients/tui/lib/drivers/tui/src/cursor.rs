@@ -630,6 +630,25 @@ mod tests {
     }
 
     #[test]
+    fn test_cursor_invalidate_position() {
+        let mut cursor = Cursor::new();
+        // Apply to clear all dirty flags
+        let mut discard = Vec::new();
+        cursor.apply_to(&mut discard).unwrap();
+        assert!(!cursor.is_dirty());
+
+        // invalidate_position only marks position dirty
+        cursor.invalidate_position();
+        assert!(cursor.is_dirty());
+
+        // Apply should update position
+        let mut output = Vec::new();
+        cursor.apply_to(&mut output).unwrap();
+        assert!(!cursor.is_dirty());
+        assert!(!output.is_empty());
+    }
+
+    #[test]
     fn test_cursor_all_styles_apply() {
         let styles = [
             CursorStyle::Default,

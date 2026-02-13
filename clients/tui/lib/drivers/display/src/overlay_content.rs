@@ -186,6 +186,11 @@ mod tests {
         assert_eq!(format!("{key}"), "OverlayContentKey(which-key)");
     }
 
+    #[test]
+    fn test_overlay_content_key_service_name() {
+        assert_eq!(OverlayContentKey::service_name(), "OverlayContent");
+    }
+
     // Storage tests
 
     #[test]
