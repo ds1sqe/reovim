@@ -225,6 +225,7 @@ impl Default for GutterRenderer {
 
 // Ensure GutterRenderer is Send + Sync
 const _: () = {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     const fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<GutterRenderer>();
 };
@@ -247,6 +248,7 @@ mod tests {
         id: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl AnnotationSource for MockSource {
         fn id(&self) -> &'static str {
             self.id
@@ -276,6 +278,7 @@ mod tests {
     // Mock presenter for testing
     struct MockPresenter;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl AnnotationPresenter for MockPresenter {
         fn id(&self) -> &'static str {
             "test"
@@ -401,6 +404,7 @@ mod tests {
     fn test_gutter_renderer_render_multiple_sources() {
         struct MockSource2;
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl AnnotationSource for MockSource2 {
             fn id(&self) -> &'static str {
                 "test2"

@@ -441,6 +441,7 @@ mod tests {
         highlight: Option<(usize, usize, usize)>, // line, start, end
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl RenderStage for TestStage {
         fn name(&self) -> &str {
             self.name
@@ -526,5 +527,69 @@ mod tests {
         assert_eq!(decoration.line, 5);
         assert_eq!(decoration.column, 10);
         assert!(decoration.is_virtual);
+    }
+
+    #[test]
+    fn test_set_gutter_out_of_bounds() {
+        let lines = vec!["Line 1".to_string()];
+        let mut data = RenderData::new(lines);
+
+        // Line index 10 is out of bounds (only 1 line exists)
+        data.set_gutter(
+            10,
+            GutterDecoration {
+                char: 'X',
+                style: Style::default(),
+                priority: 5,
+            },
+        );
+
+        // Original line should be unaffected
+        assert!(data.gutter_decorations[0].is_none());
+    }
+
+    // Stage that uses the default priority (100)
+    struct DefaultPriorityStage;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl RenderStage for DefaultPriorityStage {
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn name(&self) -> &str {
+            "DefaultPriority"
+        }
+
+        fn process(&self, data: &mut RenderData, _context: &RenderContext) {
+            data.add_highlight(0, 0, 1, Style::default());
+        }
+
+        // Does NOT override priority() - exercises the default impl returning 100
+    }
+
+    #[test]
+    fn test_render_stage_default_priority() {
+        let stage = DefaultPriorityStage;
+        assert_eq!(stage.priority(), 100);
+    }
+
+    #[test]
+    fn test_execute_pipeline_with_default_priority() {
+        let lines = vec!["Test".to_string()];
+        let mut data = RenderData::new(lines);
+        let bounds = Rect::new(0, 0, 80, 24);
+        let context = RenderContext::new(bounds);
+
+        let mut stages: Vec<Box<dyn RenderStage>> = vec![
+            Box::new(DefaultPriorityStage),
+            Box::new(TestStage {
+                name: "HighPriority",
+                priority: 200,
+                highlight: Some((0, 1, 4)),
+            }),
+        ];
+
+        execute_pipeline(&mut stages, &mut data, &context);
+
+        // Both stages should have run: default priority (100) first, then 200
+        assert_eq!(data.highlights[0].len(), 2);
     }
 }

@@ -325,6 +325,7 @@ mod tests {
 
     struct TestComponent;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ComponentProvider for TestComponent {
         fn id(&self) -> &'static str {
             "test"
@@ -431,5 +432,76 @@ mod tests {
         let ctx = ComponentContext::default();
         let output = component.unwrap().render(&ctx);
         assert!(output.text.contains("Mode:"));
+    }
+
+    #[test]
+    fn test_component_output_with_style() {
+        let style = Style::new().fg(crate::Color::Red);
+        let output = ComponentOutput::new("styled").with_style(style.clone());
+
+        assert_eq!(output.text, "styled");
+        assert!(output.visible);
+        assert_eq!(output.style, Some(style));
+    }
+
+    #[test]
+    fn test_component_output_default() {
+        let output = ComponentOutput::default();
+        assert!(output.text.is_empty());
+        assert!(!output.visible);
+        assert!(output.style.is_none());
+        assert_eq!(output.truncation_priority, 0);
+    }
+
+    #[test]
+    fn test_component_provider_style_for_mode_default() {
+        let component = TestComponent;
+        assert!(component.style_for_mode("NORMAL").is_none());
+        assert!(component.style_for_mode("INSERT").is_none());
+    }
+
+    #[test]
+    fn test_component_provider_needs_frequent_update_default() {
+        let component = TestComponent;
+        assert!(!component.needs_frequent_update());
+    }
+
+    /// A component that overrides the default trait methods.
+    struct CustomComponent;
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ComponentProvider for CustomComponent {
+        fn id(&self) -> &'static str {
+            "custom"
+        }
+
+        fn render(&self, _ctx: &ComponentContext) -> ComponentOutput {
+            ComponentOutput::new("custom")
+        }
+
+        fn style_for_mode(&self, mode: &str) -> Option<Style> {
+            if mode == "INSERT" {
+                Some(Style::new().fg(crate::Color::Green))
+            } else {
+                None
+            }
+        }
+
+        fn needs_frequent_update(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn test_custom_component_style_for_mode() {
+        let component = CustomComponent;
+        assert!(component.style_for_mode("INSERT").is_some());
+        assert!(component.style_for_mode("NORMAL").is_none());
+    }
+
+    #[test]
+    fn test_custom_component_needs_frequent_update() {
+        let component = CustomComponent;
+        assert!(component.needs_frequent_update());
     }
 }

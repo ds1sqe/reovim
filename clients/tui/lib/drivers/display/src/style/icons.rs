@@ -508,6 +508,7 @@ mod tests {
     fn test_icon_registry_provider_priority() {
         struct HighPriorityProvider;
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl IconProvider for HighPriorityProvider {
             fn name(&self) -> &'static str {
                 "high-priority"

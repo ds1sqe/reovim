@@ -661,4 +661,88 @@ mod tests {
         let mode = BorderMode::default();
         assert_eq!(mode, BorderMode::Always);
     }
+
+    // =========================================================================
+    // Coverage tests for uncovered select_corner_char branches
+    // =========================================================================
+
+    /// Test `TopRight` corner with top adjacency -> `tee_top` (line 288).
+    #[test]
+    fn test_select_corner_top_right_with_top() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            top: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::TopRight, adj), '┬');
+    }
+
+    /// Test `TopRight` corner with both right and top adjacency -> cross (line 289).
+    #[test]
+    fn test_select_corner_top_right_with_both() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            right: true,
+            top: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::TopRight, adj), '┼');
+    }
+
+    /// Test `BottomLeft` corner with left adjacency -> `tee_left` (line 293).
+    #[test]
+    fn test_select_corner_bottom_left_with_left() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            left: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::BottomLeft, adj), '├');
+    }
+
+    /// Test `BottomLeft` corner with bottom adjacency -> `tee_bottom` (line 294).
+    #[test]
+    fn test_select_corner_bottom_left_with_bottom() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            bottom: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::BottomLeft, adj), '┴');
+    }
+
+    /// Test `BottomLeft` corner with both left and bottom adjacency -> cross (line 295).
+    #[test]
+    fn test_select_corner_bottom_left_with_both() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            left: true,
+            bottom: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::BottomLeft, adj), '┼');
+    }
+
+    /// Test `BottomRight` corner with bottom adjacency -> `tee_bottom` (line 300).
+    #[test]
+    fn test_select_corner_bottom_right_with_bottom() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            bottom: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::BottomRight, adj), '┴');
+    }
+
+    /// Test `BottomRight` corner with both right and bottom adjacency -> cross (line 301).
+    #[test]
+    fn test_select_corner_bottom_right_with_both() {
+        let chars = BorderChars::SINGLE;
+        let adj = WindowAdjacency {
+            right: true,
+            bottom: true,
+            ..WindowAdjacency::none()
+        };
+        assert_eq!(select_corner_char(&chars, Corner::BottomRight, adj), '┼');
+    }
 }

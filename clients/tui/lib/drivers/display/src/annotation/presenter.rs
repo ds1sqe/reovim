@@ -345,6 +345,7 @@ impl Default for ColumnWidth {
 
 // Ensure trait is object-safe
 const _: () = {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn _assert_object_safe(_: &dyn AnnotationPresenter) {}
 };
 
@@ -530,6 +531,7 @@ mod tests {
         pattern: KindPattern,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl AnnotationPresenter for MockPresenter {
         fn id(&self) -> &'static str {
             "test.mock"
@@ -614,5 +616,27 @@ mod tests {
     fn test_presenter_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockPresenter>();
+    }
+
+    // ========================================================================
+    // Additional coverage tests
+    // ========================================================================
+
+    #[test]
+    fn test_gutter_cell_space_styled() {
+        // Covers lines 60-62: space_styled constructor
+        let style = Style::default();
+        let cell = GutterCell::space_styled(style);
+        assert_eq!(cell.char, ' ');
+        assert_eq!(cell.width(), 1);
+    }
+
+    #[test]
+    fn test_presented_output_into_cells_single_cell() {
+        // Covers line 138: Cell variant of into_cells
+        let output = PresentedOutput::cell('x', Style::default());
+        let cells = output.into_cells();
+        assert_eq!(cells.len(), 1);
+        assert_eq!(cells[0].char, 'x');
     }
 }

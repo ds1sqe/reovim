@@ -159,6 +159,7 @@ mod tests {
 
     struct TestProvider;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl StatuslineProvider for TestProvider {
         fn render(&self, ctx: &ComponentContext) -> Vec<Section> {
             vec![

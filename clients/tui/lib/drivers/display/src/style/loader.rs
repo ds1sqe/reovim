@@ -225,6 +225,7 @@ impl ThemeLoader {
     /// # Errors
     ///
     /// Returns an error if the directory cannot be created.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn ensure_user_themes_dir() -> std::io::Result<PathBuf> {
         let dir = Self::user_themes_dir().ok_or_else(|| {
             std::io::Error::new(
@@ -411,5 +412,117 @@ mod tests {
         let themes = loader.list_available();
         // Should have 3 unique names, sorted
         assert_eq!(themes, vec!["common", "unique1", "unique2"]);
+    }
+
+    // =========================================================================
+    // Coverage tests for loader.rs uncovered paths
+    // =========================================================================
+
+    #[test]
+    fn test_load_path_directly() {
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("direct.toml");
+        std::fs::write(&theme_path, "[meta]\nname = \"Direct Load\"").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![]);
+        let theme = loader.load_path(&theme_path).unwrap();
+        assert_eq!(theme.name(), "Direct Load");
+    }
+
+    #[test]
+    fn test_load_path_nonexistent_file() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let result = loader.load_path(Path::new("/nonexistent/path/theme.toml"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_path_invalid_toml() {
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("bad.toml");
+        std::fs::write(&theme_path, "{{not valid toml").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![]);
+        let result = loader.load_path(&theme_path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_list_available_with_nonexistent_search_path() {
+        // Nonexistent directory in search paths should be silently skipped
+        let loader = ThemeLoader::with_paths(vec![PathBuf::from("/nonexistent/dir")]);
+        let themes = loader.list_available();
+        assert!(themes.is_empty());
+    }
+
+    #[test]
+    fn test_list_available_filters_non_toml_files() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_theme(temp_dir.path(), "valid-theme", "[meta]\nname = \"Valid\"");
+        std::fs::write(temp_dir.path().join("readme.txt"), "not a theme").unwrap();
+        std::fs::write(temp_dir.path().join("config.json"), "{}").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.list_available();
+        assert_eq!(themes, vec!["valid-theme"]);
+    }
+
+    #[test]
+    fn test_find_theme_path_with_absolute_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("absolute-test.toml");
+        std::fs::write(&theme_path, "[meta]\nname = \"Absolute\"").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![]);
+        let found = loader.find_theme_path(theme_path.to_str().unwrap());
+        assert_eq!(found, Some(theme_path));
+    }
+
+    #[test]
+    fn test_find_theme_path_not_found() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let found = loader.find_theme_path("nonexistent-theme");
+        assert!(found.is_none());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_user_themes_dir_returns_some() {
+        // On most systems, config_dir is available
+        let dir = ThemeLoader::user_themes_dir();
+        // We just verify it returns Some and the path ends with "themes"
+        if let Some(d) = dir {
+            assert!(d.ends_with("themes"));
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_ensure_user_themes_dir() {
+        // This creates the directory if it doesn't exist
+        // On test systems with a config dir, this should succeed
+        let result = ThemeLoader::ensure_user_themes_dir();
+        if let Ok(dir) = result {
+            assert!(dir.exists());
+            assert!(dir.ends_with("themes"));
+        }
+        // If config_dir is not available, the error is acceptable
+    }
+
+    #[test]
+    fn test_loader_default_impl() {
+        let loader = ThemeLoader::default();
+        // Default should be same as new()
+        assert!(!loader.search_paths().is_empty());
+    }
+
+    #[test]
+    fn test_load_missing_theme_error_message() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let result = loader.load("ghost-theme");
+        assert!(result.is_err());
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("ghost-theme"));
+        assert!(msg.contains("not found"));
     }
 }

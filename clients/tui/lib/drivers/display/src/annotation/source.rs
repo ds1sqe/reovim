@@ -267,6 +267,7 @@ pub trait AnnotationSource: Send + Sync {
 
 // Ensure trait is object-safe by checking we can create trait objects
 const _: () = {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn _assert_object_safe(_: &dyn AnnotationSource) {}
 };
 
@@ -294,6 +295,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl AnnotationSource for MockSource {
         fn id(&self) -> &'static str {
             "test.mock"
@@ -416,5 +418,30 @@ mod tests {
     fn test_source_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<MockSource>();
+    }
+
+    // ========================================================================
+    // Additional coverage tests
+    // ========================================================================
+
+    #[test]
+    fn test_source_default_on_buffer_change() {
+        // Covers lines 251, 253: on_buffer_change default impl
+        let source = MockSource::empty();
+        // Should not panic - default impl does nothing
+        source.on_buffer_change(BufferId::new());
+    }
+
+    #[test]
+    fn test_annotation_context_with_line_number_mode() {
+        // Covers the with_line_number_mode constructor
+        use crate::window_renderer::LineNumberMode;
+
+        let ctx =
+            AnnotationContext::with_line_number_mode(100, 50, "NORMAL", LineNumberMode::Absolute);
+        assert_eq!(ctx.total_lines, 100);
+        assert_eq!(ctx.cursor_line, 50);
+        assert_eq!(ctx.mode, "NORMAL");
+        assert_eq!(ctx.line_number_mode(), Some(LineNumberMode::Absolute));
     }
 }

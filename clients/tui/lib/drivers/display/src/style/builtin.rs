@@ -1330,11 +1330,11 @@ mod tests {
     fn test_all_themes_have_italic_comments() {
         for variant in super::super::BuiltinTheme::all() {
             let palette = get_palette(*variant);
+            let name = variant.name();
             let comment = palette.get(groups::COMMENT).unwrap();
             assert!(
                 comment.attributes.contains(Attributes::ITALIC),
-                "{} theme should have italic comments",
-                variant.name()
+                "{name} theme should have italic comments",
             );
         }
     }

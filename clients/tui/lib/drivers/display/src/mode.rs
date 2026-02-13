@@ -135,7 +135,9 @@ mod tests {
     #[test]
     fn test_mode_display_trait_object_safety() {
         // Verify ModeDisplay trait is object-safe
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn _accepts_ref(_: &dyn ModeDisplay) {}
+        #[cfg_attr(coverage_nightly, coverage(off))]
         fn _accepts_box(_: Box<dyn ModeDisplay>) {}
     }
 
@@ -145,6 +147,7 @@ mod tests {
         status: &'static str,
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl ModeDisplay for TestMode {
         fn cursor_style(&self) -> CursorStyle {
             self.cursor
@@ -169,6 +172,7 @@ mod tests {
     fn test_mode_display_default_status() {
         struct MinimalMode;
 
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl ModeDisplay for MinimalMode {
             fn cursor_style(&self) -> CursorStyle {
                 CursorStyle::Block

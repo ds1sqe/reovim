@@ -247,6 +247,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl Composable for MockComposable {
         fn id(&self) -> ComposableId {
             self.id

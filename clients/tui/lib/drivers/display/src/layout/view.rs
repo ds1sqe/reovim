@@ -389,4 +389,80 @@ mod tests {
         assert_eq!(view.scroll_top.as_usize(), 100);
         assert_eq!(view.scroll_left.as_usize(), 20);
     }
+
+    // Mock ViewManager for testing default trait methods
+    struct MockViewManager {
+        views: std::collections::HashMap<WindowId, View>,
+    }
+
+    impl MockViewManager {
+        fn new() -> Self {
+            Self {
+                views: std::collections::HashMap::new(),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ViewManager for MockViewManager {
+        fn create(&mut self, window: WindowId, buffer: BufferId) -> &View {
+            self.views.insert(window, View::new(buffer));
+            self.views.get(&window).unwrap()
+        }
+
+        fn get(&self, window: WindowId) -> Option<&View> {
+            self.views.get(&window)
+        }
+
+        fn get_mut(&mut self, window: WindowId) -> Option<&mut View> {
+            self.views.get_mut(&window)
+        }
+
+        fn remove(&mut self, window: WindowId) {
+            self.views.remove(&window);
+        }
+
+        fn on_focus_changed(&mut self, _from: WindowId, _to: WindowId) {}
+
+        fn all_views(&self) -> Vec<(WindowId, &View)> {
+            self.views.iter().map(|(&k, v)| (k, v)).collect()
+        }
+    }
+
+    #[test]
+    fn test_view_manager_buffer_of() {
+        let mut vm = MockViewManager::new();
+        let win = WindowId::from_raw(1);
+        let buf = BufferId::from_raw(10);
+
+        vm.create(win, buf);
+        assert_eq!(vm.buffer_of(win), Some(buf));
+        assert_eq!(vm.buffer_of(WindowId::from_raw(99)), None);
+    }
+
+    #[test]
+    fn test_view_manager_contains() {
+        let mut vm = MockViewManager::new();
+        let win = WindowId::from_raw(1);
+        let buf = BufferId::from_raw(10);
+
+        assert!(!vm.contains(win));
+        vm.create(win, buf);
+        assert!(vm.contains(win));
+    }
+
+    #[test]
+    fn test_view_manager_len_and_is_empty() {
+        let mut vm = MockViewManager::new();
+
+        assert!(vm.is_empty());
+        assert_eq!(vm.len(), 0);
+
+        vm.create(WindowId::from_raw(1), BufferId::from_raw(10));
+        assert!(!vm.is_empty());
+        assert_eq!(vm.len(), 1);
+
+        vm.create(WindowId::from_raw(2), BufferId::from_raw(20));
+        assert_eq!(vm.len(), 2);
+    }
 }

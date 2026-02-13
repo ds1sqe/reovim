@@ -418,4 +418,46 @@ mod tests {
         // Check intersection
         assert_eq!(buffer.get(40, 12).unwrap().char, '┼');
     }
+
+    #[test]
+    fn test_select_intersection_corners() {
+        let chars = SeparatorChars::SINGLE;
+
+        // Bottom-left corner: right + down (no left, no up)
+        let ch = select_intersection_char(false, true, false, true, &chars);
+        assert_eq!(ch, chars.vertical);
+
+        // Bottom-right corner: left + down (no right, no up)
+        let ch = select_intersection_char(true, false, false, true, &chars);
+        assert_eq!(ch, chars.vertical);
+
+        // Top-left corner: right + up (no left, no down)
+        let ch = select_intersection_char(false, true, true, false, &chars);
+        assert_eq!(ch, chars.vertical);
+
+        // Top-right corner: left + up (no right, no down)
+        let ch = select_intersection_char(true, false, true, false, &chars);
+        assert_eq!(ch, chars.vertical);
+    }
+
+    #[test]
+    fn test_select_intersection_single_direction() {
+        let chars = SeparatorChars::SINGLE;
+
+        // Single left endpoint
+        let ch = select_intersection_char(true, false, false, false, &chars);
+        assert_eq!(ch, chars.horizontal);
+
+        // Single right endpoint
+        let ch = select_intersection_char(false, true, false, false, &chars);
+        assert_eq!(ch, chars.horizontal);
+
+        // Single up endpoint
+        let ch = select_intersection_char(false, false, true, false, &chars);
+        assert_eq!(ch, chars.vertical);
+
+        // Single down endpoint
+        let ch = select_intersection_char(false, false, false, true, &chars);
+        assert_eq!(ch, chars.vertical);
+    }
 }

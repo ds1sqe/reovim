@@ -287,4 +287,95 @@ mod tests {
         assert_eq!(buffer.get(0, 23).unwrap().char, 'L');
         assert_eq!(buffer.get(75, 23).unwrap().char, 'R');
     }
+
+    #[test]
+    fn test_render_tabline_overflow_tab_start() {
+        // Width is very small so that a tab's x position starts beyond width
+        let mut buffer = FrameBuffer::new(5, 2);
+        let tabs = vec![TabInfo::new("longname1.rs"), TabInfo::new("longname2.rs")];
+
+        // First tab " longname1.rs " is 14 chars wide, so second tab
+        // starts at x=14 which is >= width(5). The loop should break at line 82.
+        render_tabline(
+            &mut buffer,
+            &tabs,
+            0,
+            0,
+            5,
+            &Style::default(),
+            &Style::default(),
+            &Style::default(),
+        );
+
+        // First tab partially rendered, second tab not rendered at all
+        assert_eq!(buffer.get(1, 0).unwrap().char, 'l');
+    }
+
+    #[test]
+    fn test_render_tabline_overflow_mid_tab() {
+        // Width cuts off in the middle of a tab's characters
+        let mut buffer = FrameBuffer::new(4, 2);
+        let tabs = vec![TabInfo::new("abcdefgh")];
+
+        // Tab text is " abcdefgh " (10 chars). Width is 4, so chars after x=3
+        // should trigger the inner break at line 94.
+        render_tabline(
+            &mut buffer,
+            &tabs,
+            0,
+            0,
+            4,
+            &Style::default(),
+            &Style::default(),
+            &Style::default(),
+        );
+
+        // Only first 4 characters of " abcdefgh " should be rendered
+        assert_eq!(buffer.get(0, 0).unwrap().char, ' ');
+        assert_eq!(buffer.get(1, 0).unwrap().char, 'a');
+        assert_eq!(buffer.get(2, 0).unwrap().char, 'b');
+        assert_eq!(buffer.get(3, 0).unwrap().char, 'c');
+    }
+
+    #[test]
+    fn test_render_statusline_left_overflow() {
+        // Left text is long enough to be truncated by center/right position
+        let mut buffer = FrameBuffer::new(10, 2);
+
+        // With width=10, right "RIGHTRIGHT" starts at x=0, center "" at x=5
+        // Left text "LEFTLEFTLEFT" should break when reaching center_x/right_x
+        render_statusline(&mut buffer, 0, "LEFTLEFTLEFT", "", "RRRRRRRRRR", 10, &Style::default());
+
+        // Left should be fully truncated since right fills the entire width
+        // Right section starts at x=0 (10 - 10 = 0)
+        assert_eq!(buffer.get(0, 0).unwrap().char, 'R');
+    }
+
+    #[test]
+    fn test_render_statusline_center_overflow() {
+        // Center text overflows into right section area
+        let mut buffer = FrameBuffer::new(20, 2);
+
+        // right "RR" at x=18, center "CCCCCCCCCCCCCCCCCCCC" (20 chars) at ~x=0
+        // The center loop should break when x >= right_x (line 161)
+        render_statusline(&mut buffer, 0, "", "CCCCCCCCCCCCCCCCCCCC", "RR", 20, &Style::default());
+
+        // Right section should still appear at x=18
+        assert_eq!(buffer.get(18, 0).unwrap().char, 'R');
+        assert_eq!(buffer.get(19, 0).unwrap().char, 'R');
+    }
+
+    #[test]
+    fn test_render_statusline_right_overflow() {
+        // Right text is wider than the buffer
+        let mut buffer = FrameBuffer::new(5, 2);
+
+        // right "RIGHTTEXT" (9 chars), width=5. right_x = 5-9 = 0 (saturating).
+        // Right loop should break at x >= width (line 171)
+        render_statusline(&mut buffer, 0, "", "", "RIGHTTEXT", 5, &Style::default());
+
+        // Only first 5 chars of right text should render
+        assert_eq!(buffer.get(0, 0).unwrap().char, 'R');
+        assert_eq!(buffer.get(4, 0).unwrap().char, 'T');
+    }
 }

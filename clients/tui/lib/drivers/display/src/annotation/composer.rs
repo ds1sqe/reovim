@@ -189,14 +189,9 @@ impl<'a> GutterComposer<'a> {
         // Check if any source provides annotations matching this pattern
         // For efficiency, we just check if any layer has data
         // A more precise check would iterate annotations and match against pattern
-        for source_id in self.store.source_ids() {
-            if let Some(layer) = self.store.layer(source_id)
-                && !layer.is_empty()
-            {
-                return true;
-            }
-        }
-        false
+        self.store
+            .source_ids()
+            .any(|source_id| self.store.layer(source_id).is_some_and(|l| !l.is_empty()))
     }
 
     /// Get the width for a column based on its pattern.
@@ -349,6 +344,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     impl AnnotationPresenter for MockPresenter {
         fn id(&self) -> &'static str {
             self.id
@@ -527,5 +523,191 @@ mod tests {
         let (registry, config) = builder.build();
         assert!(registry.is_empty());
         assert_eq!(config.column_count(), 1);
+    }
+
+    // ========================================================================
+    // Additional coverage tests
+    // ========================================================================
+
+    #[test]
+    fn test_compose_line_skips_never_visible_columns() {
+        // Covers line 137: `continue` when visibility is Never
+        let mut store = AnnotationStore::new();
+        store.replace_source(SourceId::new("line_number"), vec![Annotation::line_number(0, 1)]);
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::line_number()));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::exact("line_number")).visibility(VisibilityMode::Never),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, true);
+        let line = composer.compose_line(0, &ctx);
+        // Column with Never visibility should be skipped
+        assert!(line.cells.is_empty());
+    }
+
+    #[test]
+    fn test_compose_line_fixed_width_column() {
+        // Covers line 143: fixed width branch in map_or_else
+        let mut store = AnnotationStore::new();
+        store.replace_source(SourceId::new("line_number"), vec![Annotation::line_number(0, 1)]);
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::line_number()));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::exact("line_number"))
+                .visibility(VisibilityMode::Always)
+                .width(6),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, true);
+        let line = composer.compose_line(0, &ctx);
+        assert!(!line.cells.is_empty());
+    }
+
+    #[test]
+    fn test_compose_line_has_annotations_for_pattern_true() {
+        // Covers line 197: has_annotations_for_pattern returning true
+        // The sign column is Auto, store has annotations -> shown
+        let mut store = AnnotationStore::new();
+        store.replace_source(SourceId::new("line_number"), vec![Annotation::line_number(0, 1)]);
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::line_number()));
+        registry.register(Arc::new(MockPresenter::sign()));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::prefix("sign"))
+                .visibility(VisibilityMode::Auto)
+                .width(2),
+            ColumnConfig::new(KindPattern::exact("line_number")).visibility(VisibilityMode::Always),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, true);
+        let line = composer.compose_line(0, &ctx);
+        assert!(!line.cells.is_empty());
+    }
+
+    struct CatchAllPresenter;
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl AnnotationPresenter for CatchAllPresenter {
+        fn id(&self) -> &'static str {
+            "catch_all"
+        }
+        fn handles(&self) -> KindPattern {
+            KindPattern::All
+        }
+        fn present(&self, _: &Annotation, _: &PresenterContext) -> PresentedOutput {
+            PresentedOutput::cell('*', Style::default())
+        }
+        fn column_width(&self, _: &PresenterContext) -> ColumnWidth {
+            ColumnWidth::fixed(1)
+        }
+    }
+
+    struct WideOutputPresenter;
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl AnnotationPresenter for WideOutputPresenter {
+        fn id(&self) -> &'static str {
+            "wide"
+        }
+        fn handles(&self) -> KindPattern {
+            KindPattern::exact("test")
+        }
+        fn present(&self, annotation: &Annotation, _: &PresenterContext) -> PresentedOutput {
+            annotation
+                .payload
+                .as_number()
+                .map_or(PresentedOutput::Hidden, |n| {
+                    PresentedOutput::text(&n.to_string(), &Style::default())
+                })
+        }
+        fn column_width(&self, _: &PresenterContext) -> ColumnWidth {
+            ColumnWidth::fixed(3)
+        }
+    }
+
+    #[test]
+    fn test_total_width_with_prefix_and_all_patterns() {
+        // Covers lines 220, 222, 224: kind_for_pattern Prefix and All branches
+        let store = AnnotationStore::new();
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::sign()));
+        registry.register(Arc::new(CatchAllPresenter));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::prefix("sign")).visibility(VisibilityMode::Always),
+            ColumnConfig::new(KindPattern::All)
+                .visibility(VisibilityMode::Always)
+                .width(1),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, false);
+        let width = composer.total_width(&ctx);
+        assert!(width > 0);
+    }
+
+    #[test]
+    fn test_has_annotations_for_pattern_returns_true() {
+        // Covers line 197: `return true;` when store has non-empty layers
+        let mut store = AnnotationStore::new();
+        store.replace_source(SourceId::new("test_source"), vec![Annotation::line_number(0, 1)]);
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(CatchAllPresenter));
+
+        // Auto visibility with non-fixed width -> has_annotations_for_pattern is called
+        // AND get_column_width with KindPattern::All is called (covers line 224)
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::All).visibility(VisibilityMode::Auto),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, false);
+
+        // Since store has data, has_annotations_for_pattern returns true (line 197)
+        // And get_column_width calls kind_for_pattern with KindPattern::All (line 224)
+        let width = composer.total_width(&ctx);
+        assert!(width > 0);
+    }
+
+    #[test]
+    fn test_add_cells_padded_output_wider_than_column() {
+        // Covers lines 250 (no padding) and 260 (break on truncation)
+        let mut store = AnnotationStore::new();
+        store.replace_source(
+            SourceId::new("test"),
+            vec![Annotation::new(
+                AnnotationKind::new("test"),
+                crate::annotation::AnnotationTarget::Line(0),
+                0,
+                crate::annotation::AnnotationPayload::Number(12345),
+            )],
+        );
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(WideOutputPresenter));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::exact("test"))
+                .visibility(VisibilityMode::Always)
+                .width(3),
+        ]);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, true);
+        let line = composer.compose_line(0, &ctx);
+        // "12345" is 5 chars wide, column is 3 wide
+        // No padding (output >= width), then truncation after 3 chars
+        assert!(!line.cells.is_empty());
+        // Width should be 3 (truncated) + 1 (separator)
+        assert_eq!(line.width, 4);
     }
 }

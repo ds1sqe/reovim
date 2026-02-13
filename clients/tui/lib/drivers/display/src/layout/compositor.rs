@@ -491,12 +491,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_root_compositor_is_object_safe() {
         fn _accepts_ref(_: &dyn RootCompositor) {}
         fn _accepts_box(_: Box<dyn RootCompositor>) {}
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_window_layer_compositor_is_object_safe() {
         fn _accepts_ref(_: &dyn WindowLayerCompositor) {}
         fn _accepts_box(_: Box<dyn WindowLayerCompositor>) {}

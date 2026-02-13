@@ -236,6 +236,16 @@ mod tests {
     }
 
     #[test]
+    fn test_registry_display_string_owned_unregistered() {
+        let registry = DisplayRegistry::new();
+        let id = ComponentId::new(999);
+
+        // Unregistered component should return empty string
+        let display = registry.display_string_owned(id, None);
+        assert_eq!(display, "");
+    }
+
+    #[test]
     fn test_registry_clear() {
         let mut registry = DisplayRegistry::new();
 
