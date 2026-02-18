@@ -185,11 +185,10 @@ impl LayerCompositor {
         self.ensure_render_order();
 
         // Search from back (highest z-order) to front
+        // render_order is built from entries.keys(), so indexing is always valid
         for id in self.render_order.iter().rev() {
-            if let Some(entry) = self.entries.get(id)
-                && entry.composable.is_visible()
-                && entry.composable.captures_keyboard()
-            {
+            let entry = &self.entries[id];
+            if entry.composable.is_visible() && entry.composable.captures_keyboard() {
                 return Some(*id);
             }
         }
@@ -211,10 +210,10 @@ impl LayerCompositor {
         let screen_height = buffer.height();
 
         // Search from back (highest z-order) to front
+        // render_order is built from entries.keys(), so indexing is always valid
         for id in self.render_order.iter().rev() {
-            if let Some(entry) = self.entries.get(id)
-                && entry.composable.is_visible()
-            {
+            let entry = &self.entries[id];
+            if entry.composable.is_visible() {
                 let bounds = entry.composable.bounds(screen_width, screen_height);
                 if bounds.contains(x, y) {
                     return Some(*id);
@@ -705,6 +704,76 @@ mod tests {
         let cursor = compositor.render(&mut buffer, &Style::default());
         // Topmost (modal, Window(1)) cursor should win
         assert_eq!(cursor, Some((7, 7)));
+    }
+
+    #[test]
+    fn test_set_z_order_nonexistent() {
+        // Line 122 else branch: set_z_order with nonexistent ID
+        let mut compositor = LayerCompositor::new();
+        compositor.set_z_order(ComposableId::Window(999), ZOrder::editor(0));
+        // Should be a no-op without panic
+        assert!(compositor.get(ComposableId::Window(999)).is_none());
+    }
+
+    #[test]
+    fn test_set_z_group_nonexistent() {
+        // Line 133 else branch: set_z_group with nonexistent ID
+        let mut compositor = LayerCompositor::new();
+        compositor.set_z_group(ComposableId::Window(999), ZGroup::Editor);
+        assert!(compositor.get(ComposableId::Window(999)).is_none());
+    }
+
+    #[test]
+    fn test_bring_to_front_nonexistent() {
+        // Line 146 else branch: bring_to_front with nonexistent ID
+        let mut compositor = LayerCompositor::new();
+        compositor.bring_to_front(ComposableId::Window(999));
+        assert!(compositor.get(ComposableId::Window(999)).is_none());
+    }
+
+    #[test]
+    fn test_send_to_back_nonexistent() {
+        // Line 158 else branch: send_to_back with nonexistent ID
+        let mut compositor = LayerCompositor::new();
+        compositor.send_to_back(ComposableId::Window(999));
+        assert!(compositor.get(ComposableId::Window(999)).is_none());
+    }
+
+    #[test]
+    fn test_keyboard_target_visible_not_capturing() {
+        // Line 189/191: visible=true but captures_keyboard=false
+        let mut compositor = LayerCompositor::new();
+        let mock = MockComposable {
+            id: ComposableId::Window(0),
+            z_order: ZOrder::editor(0),
+            visible: true,
+            bounds: Bounds::new(0, 0, 10, 10),
+            captures_keyboard: false,
+            cursor_pos: None,
+        };
+        compositor.register(Box::new(mock));
+
+        // No element captures keyboard, should return None
+        assert!(compositor.keyboard_target().is_none());
+    }
+
+    #[test]
+    fn test_hit_test_invisible_element() {
+        // Line 215/216: entry exists but is not visible in hit_test
+        let mut compositor = LayerCompositor::new();
+        let mock = MockComposable {
+            id: ComposableId::Window(0),
+            z_order: ZOrder::editor(0),
+            visible: false,
+            bounds: Bounds::new(0, 0, 80, 24),
+            captures_keyboard: false,
+            cursor_pos: None,
+        };
+        compositor.register(Box::new(mock));
+
+        let buffer = FrameBuffer::new(80, 24);
+        // Point is within bounds, but element is invisible
+        assert!(compositor.hit_test(5, 5, &buffer).is_none());
     }
 
     /// Test `ids()` iterator returns all registered composable IDs (lines 301-303).

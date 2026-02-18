@@ -273,14 +273,23 @@ impl TokenCacheManager {
     }
 
     /// Get or create a cache for a buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the cache map reports non-zero length but has no first key
+    /// (structurally impossible for `HashMap`).
     pub fn get_or_create(&mut self, buffer_id: u64) -> &mut TokenCache {
         // Simple eviction: remove oldest if at limit
         // TODO: Implement proper LRU eviction
         if !self.caches.contains_key(&buffer_id) && self.caches.len() >= self.max_buffers {
             // Remove first entry (arbitrary for now)
-            if let Some(&first_id) = self.caches.keys().next() {
-                self.caches.remove(&first_id);
-            }
+            // len >= max_buffers >= 1, so keys().next() is always Some
+            let first_id = *self
+                .caches
+                .keys()
+                .next()
+                .expect("non-empty after length check");
+            self.caches.remove(&first_id);
         }
 
         self.caches.entry(buffer_id).or_default()
@@ -810,6 +819,65 @@ mod tests {
     }
 
     #[test]
+    fn test_byte_span_to_cached_returns_none() {
+        // Line 102: byte_span_to_cached returns None (byte offset beyond content)
+        let mut cache = TokenCache::new();
+        let content = "hello";
+        cache.rebuild_line_offsets(content);
+
+        let invalid_span = TokenSpan {
+            start_byte: 100, // Far beyond content length
+            end_byte: 200,
+            category: "error".to_string(),
+        };
+
+        cache.apply_update(&[invalid_span], 0, 0, true, content);
+        // No tokens should be added since byte_span_to_cached returns None
+        assert!(cache.tokens_for_line(0).next().is_none());
+    }
+
+    #[test]
+    fn test_byte_span_to_cached_multi_line_token() {
+        // Line 118: start_line != end_line (multi-line token, truncated to first line)
+        let mut cache = TokenCache::new();
+        let content = "line1\nline2\nline3";
+        cache.rebuild_line_offsets(content);
+
+        // Token spanning from line 0 to line 1
+        let span = TokenSpan {
+            start_byte: 0,
+            end_byte: 8, // Into line 2
+            category: "comment".to_string(),
+        };
+
+        cache.apply_update(&[span], 0, 2, true, content);
+        // Multi-line token should be truncated to end of first line
+        let tokens: Vec<_> = cache.tokens_for_line(0).collect();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].category, "comment");
+        // end_col should be the end of line 0 (5 chars "line1")
+        assert_eq!(tokens[0].end_col, 5);
+    }
+
+    #[test]
+    fn test_cache_manager_eviction_at_limit() {
+        // Line 281: eviction triggers when cache is at max_buffers limit
+        let mut manager = TokenCacheManager::with_max_buffers(2);
+        manager.get_or_create(1);
+        manager.get_or_create(2);
+
+        // At limit (2 buffers). Adding a third triggers eviction of one.
+        manager.get_or_create(3);
+
+        // Should still have exactly 2 buffers (one was evicted)
+        let count = [1u64, 2, 3]
+            .iter()
+            .filter(|&&id| manager.get(id).is_some())
+            .count();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
     fn test_cache_manager_default() {
         let manager = TokenCacheManager::default();
         // Default should have max 10 buffers
@@ -820,5 +888,30 @@ mod tests {
     fn test_cache_manager_with_max_buffers() {
         let manager = TokenCacheManager::with_max_buffers(5);
         assert!(manager.get(0).is_none());
+    }
+
+    #[test]
+    fn test_line_end_col_empty_trailing_line() {
+        // Line 175: line_len == 0 (first term false), short-circuits
+        let mut cache = TokenCache::new();
+        let content = "hello\n";
+        cache.rebuild_line_offsets(content);
+        // Line 1: start=6, end=6 (content.len()=6), line_len=0
+        assert_eq!(cache.line_end_col(1, content), 0);
+    }
+
+    #[test]
+    fn test_cache_manager_get_or_create_existing_at_limit() {
+        // Line 281: contains_key(buffer_id) is true when cache is at max_buffers
+        // So the eviction condition short-circuits (no eviction for existing key)
+        let mut manager = TokenCacheManager::with_max_buffers(2);
+        manager.get_or_create(1);
+        manager.get_or_create(2);
+
+        // Cache is now at limit (2/2). Calling get_or_create for existing buffer 1
+        // should NOT trigger eviction (contains_key returns true, first condition false)
+        manager.get_or_create(1);
+        assert!(manager.get(1).is_some());
+        assert!(manager.get(2).is_some());
     }
 }

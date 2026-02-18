@@ -51,10 +51,11 @@ impl FrameBuffer {
 
         for y in 0..copy_height {
             for x in 0..copy_width {
-                if let Some(cell) = self.get(x, y) {
-                    let new_idx = usize::from(y) * usize::from(width) + usize::from(x);
-                    new_cells[new_idx] = cell.clone();
-                }
+                // x < copy_width <= self.width and y < copy_height <= self.height,
+                // so direct index is always valid.
+                let old_idx = self.index(x, y);
+                let new_idx = usize::from(y) * usize::from(width) + usize::from(x);
+                new_cells[new_idx] = self.cells[old_idx].clone();
             }
         }
 
@@ -208,9 +209,11 @@ impl FrameBuffer {
 
         for y in 0..copy_height {
             for x in 0..copy_width {
-                if let Some(cell) = other.get(x, y) {
-                    self.set(x, y, cell.clone());
-                }
+                // x < copy_width <= other.width and y < copy_height <= other.height,
+                // so direct index is always valid.
+                let src_idx = usize::from(y) * usize::from(other.width) + usize::from(x);
+                let dst_idx = self.index(x, y);
+                self.cells[dst_idx] = other.cells[src_idx].clone();
             }
         }
     }
@@ -521,5 +524,77 @@ mod tests {
         assert_eq!(buf.get(3, 0).unwrap().char, 'D');
         // Position 4 should be a space (wide char didn't fit)
         assert_eq!(buf.get(4, 0).unwrap().char, ' ');
+    }
+
+    // MC/DC tests for && conditions
+
+    #[test]
+    fn test_resize_same_width_different_height() {
+        // width == self.width (true) && height == self.height (false)
+        let mut buf = FrameBuffer::new(10, 5);
+        buf.set(3, 3, Cell::from_char('x'));
+        buf.resize(10, 8);
+        assert_eq!(buf.width(), 10);
+        assert_eq!(buf.height(), 8);
+        assert_eq!(buf.get(3, 3).unwrap().char, 'x');
+    }
+
+    #[test]
+    fn test_resize_different_width_same_height() {
+        // width == self.width (false) && height == self.height (true)
+        let mut buf = FrameBuffer::new(10, 5);
+        buf.set(3, 3, Cell::from_char('x'));
+        buf.resize(8, 5);
+        assert_eq!(buf.width(), 8);
+        assert_eq!(buf.height(), 5);
+        assert_eq!(buf.get(3, 3).unwrap().char, 'x');
+    }
+
+    #[test]
+    fn test_get_x_in_bounds_y_out_of_bounds() {
+        // x < self.width (true) && y < self.height (false)
+        let buf = FrameBuffer::new(10, 5);
+        assert!(buf.get(5, 10).is_none());
+    }
+
+    #[test]
+    fn test_get_x_out_of_bounds_y_in_bounds() {
+        // x < self.width (false) && y < self.height (true)
+        let buf = FrameBuffer::new(10, 5);
+        assert!(buf.get(15, 2).is_none());
+    }
+
+    #[test]
+    fn test_set_x_in_bounds_y_out_of_bounds() {
+        // set: x < width (true) && y < height (false)
+        let mut buf = FrameBuffer::new(10, 5);
+        buf.set(5, 10, Cell::from_char('x')); // no-op, no panic
+    }
+
+    #[test]
+    fn test_set_x_out_of_bounds_y_in_bounds() {
+        // set: x < width (false) && y < height (not evaluated)
+        let mut buf = FrameBuffer::new(10, 5);
+        buf.set(15, 2, Cell::from_char('x')); // no-op, no panic
+    }
+
+    #[test]
+    fn test_put_char_wide_at_last_column() {
+        // width == 2 (true) && x + 1 < self.width (false -> x+1 == width)
+        let mut buf = FrameBuffer::new(5, 1);
+        buf.put_char(4, 0, '中', &Style::default());
+        // Wide char at position 4 in a 5-wide buffer: x+1=5 >= 5, no continuation
+        let cell = buf.get(4, 0).unwrap();
+        assert_eq!(cell.char, '中');
+    }
+
+    #[test]
+    fn test_copy_from_different_sizes() {
+        // copy_from uses get() which returns Some for in-bounds
+        let mut dst = FrameBuffer::new(3, 3);
+        let mut src = FrameBuffer::new(5, 5);
+        src.set(1, 1, Cell::from_char('x'));
+        dst.copy_from(&src);
+        assert_eq!(dst.get(1, 1).unwrap().char, 'x');
     }
 }

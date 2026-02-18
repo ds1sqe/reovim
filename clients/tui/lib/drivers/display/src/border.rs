@@ -663,6 +663,80 @@ mod tests {
     }
 
     // =========================================================================
+    // MC/DC coverage for WindowAdjacency::compute and render_border
+    // =========================================================================
+
+    #[test]
+    fn test_adjacency_edge_touches_but_no_vertical_overlap() {
+        // Left edge touches (other.x + other.width == target.x) but
+        // ranges don't overlap vertically -> left stays false.
+        let target = Rect::new(10, 0, 10, 5);
+        let windows = vec![
+            Rect::new(0, 10, 10, 5), // Left edge touches at x=10, but y ranges don't overlap
+            target,
+        ];
+        let adj = WindowAdjacency::compute(&target, &windows);
+        assert!(!adj.left);
+    }
+
+    #[test]
+    fn test_adjacency_right_edge_touches_no_overlap() {
+        // Right edge touches but no vertical overlap.
+        let target = Rect::new(0, 0, 10, 5);
+        let windows = vec![
+            target,
+            Rect::new(10, 10, 10, 5), // Right edge at x=10, y doesn't overlap
+        ];
+        let adj = WindowAdjacency::compute(&target, &windows);
+        assert!(!adj.right);
+    }
+
+    #[test]
+    fn test_adjacency_top_edge_touches_no_overlap() {
+        // Top edge touches but no horizontal overlap.
+        let target = Rect::new(0, 10, 5, 10);
+        let windows = vec![
+            Rect::new(10, 0, 5, 10), // Bottom at y=10 matches target.y, but x doesn't overlap
+            target,
+        ];
+        let adj = WindowAdjacency::compute(&target, &windows);
+        assert!(!adj.top);
+    }
+
+    #[test]
+    fn test_adjacency_bottom_edge_touches_no_overlap() {
+        // Bottom edge touches but no horizontal overlap.
+        let target = Rect::new(0, 0, 5, 10);
+        let windows = vec![
+            target,
+            Rect::new(10, 10, 5, 10), // Top at y=10 matches target bottom, but x doesn't overlap
+        ];
+        let adj = WindowAdjacency::compute(&target, &windows);
+        assert!(!adj.bottom);
+    }
+
+    #[test]
+    fn test_ranges_overlap_first_true_second_false() {
+        // a_start < b_end is true, but b_start >= a_end is true (not overlapping)
+        // ranges_overlap(0, 5, 5, 10): a_start(0) < b_end(10) = true, b_start(5) < a_end(5) = false
+        assert!(!ranges_overlap(0, 5, 5, 10));
+    }
+
+    #[test]
+    fn test_render_border_width_ok_height_too_small() {
+        let mut buffer = FrameBuffer::new(10, 10);
+        buffer.set(0, 0, Cell::from_char('X'));
+        // width >= 2 but height < 2
+        render_border_simple(
+            &mut buffer,
+            Rect::new(0, 0, 5, 1),
+            BorderStyle::Single,
+            &Style::default(),
+        );
+        assert_eq!(buffer.get(0, 0).unwrap().char, 'X'); // Unchanged
+    }
+
+    // =========================================================================
     // Coverage tests for uncovered select_corner_char branches
     // =========================================================================
 

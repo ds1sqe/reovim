@@ -833,6 +833,15 @@ mod tests {
     }
 
     #[test]
+    fn test_clear_source_nonexistent() {
+        let mut store = AnnotationStore::new();
+        // clear_source with a source_id that was never added (line 232 else branch)
+        store.clear_source(&SourceId::new("nonexistent"));
+        // Should be a no-op without panic
+        assert!(store.is_empty());
+    }
+
+    #[test]
     fn test_buffer_store_buffer_ids() {
         let mut store = BufferAnnotationStore::new();
         let buffer1 = BufferId::new();

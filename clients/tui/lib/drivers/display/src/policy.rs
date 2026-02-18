@@ -299,6 +299,23 @@ mod tests {
     }
 
     #[test]
+    fn test_default_focus_best_skips_farther_window() {
+        // Exercise line 183: best is Some with dist >= d (farther window is skipped)
+        let policy = DefaultFocusPolicy;
+        let views = vec![
+            WindowView::new(WindowId::from_raw(1), Rect::new(0, 0, 40, 24)),
+            // Window 2 is closer to the right
+            WindowView::new(WindowId::from_raw(2), Rect::new(40, 0, 20, 24)),
+            // Window 3 is farther to the right
+            WindowView::new(WindowId::from_raw(3), Rect::new(80, 0, 20, 24)),
+        ];
+
+        // From window 1, going right: window 2 (closer) should win over window 3 (farther)
+        let next = policy.next(NavigateDirection::Right, WindowId::from_raw(1), &views);
+        assert_eq!(next, Some(WindowId::from_raw(2)));
+    }
+
+    #[test]
     fn test_center() {
         assert_eq!(center(Rect::new(0, 0, 80, 24)), (40, 12));
         assert_eq!(center(Rect::new(10, 10, 20, 20)), (20, 20));

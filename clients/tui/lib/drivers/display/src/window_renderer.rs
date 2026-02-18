@@ -1099,6 +1099,28 @@ mod tests {
     }
 
     #[test]
+    fn test_render_show_cursor_false() {
+        // Exercise line 228: show_cursor is false, so cursor rendering is skipped
+        let config = WindowRendererConfig {
+            line_numbers: LineNumberMode::Absolute,
+            line_number_width: 4,
+            show_cursor: false,
+            ..Default::default()
+        };
+        let renderer = WindowRenderer::with_config(config);
+        let mut buffer = FrameBuffer::new(40, 5);
+        let lines = vec!["hello world".to_string()];
+        let content = make_content(&lines, 0);
+
+        renderer.render(&content, Rect::new(0, 0, 40, 5), &mut buffer, &Style::default());
+
+        // Cursor should NOT be rendered (no reverse-video cell)
+        // The character at cursor position should remain unchanged
+        let cell = buffer.get(4, 0).unwrap(); // content_x = gutter_width = 4
+        assert_eq!(cell.char, 'h');
+    }
+
+    #[test]
     fn test_render_empty_lines_tilde_break() {
         // Verifies tilde rendering for empty lines in bounds
         // Use height=2 with 1 content line, so only 1 tilde line

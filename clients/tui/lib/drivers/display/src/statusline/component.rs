@@ -493,6 +493,46 @@ mod tests {
     }
 
     #[test]
+    fn test_diagnostic_counts_is_empty_individual_nonzero() {
+        // Line 97: exercise each individual non-zero count causing is_empty() to be false
+        // errors != 0
+        let counts = DiagnosticCounts {
+            errors: 1,
+            warnings: 0,
+            info: 0,
+            hints: 0,
+        };
+        assert!(!counts.is_empty());
+
+        // warnings != 0
+        let counts = DiagnosticCounts {
+            errors: 0,
+            warnings: 1,
+            info: 0,
+            hints: 0,
+        };
+        assert!(!counts.is_empty());
+
+        // info != 0
+        let counts = DiagnosticCounts {
+            errors: 0,
+            warnings: 0,
+            info: 1,
+            hints: 0,
+        };
+        assert!(!counts.is_empty());
+
+        // hints != 0
+        let counts = DiagnosticCounts {
+            errors: 0,
+            warnings: 0,
+            info: 0,
+            hints: 1,
+        };
+        assert!(!counts.is_empty());
+    }
+
+    #[test]
     fn test_custom_component_style_for_mode() {
         let component = CustomComponent;
         assert!(component.style_for_mode("INSERT").is_some());
