@@ -1197,6 +1197,13 @@ mod tests {
     }
 
     #[test]
+    fn test_mode_abbreviation_cmdline_without_command() {
+        // Exercise line 457: mode contains "cmdline" but not "command"
+        let abbrev = mode_abbreviation("CMDLINE");
+        assert_eq!(abbrev, "[C]");
+    }
+
+    #[test]
     fn test_mode_style_replace() {
         let style = mode_style("REPLACE");
         assert_eq!(style.bg, Some(Color::Red));

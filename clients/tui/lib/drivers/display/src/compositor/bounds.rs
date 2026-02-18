@@ -154,6 +154,21 @@ mod tests {
     }
 
     #[test]
+    fn test_bounds_overlaps_vertical_non_overlap() {
+        // Horizontally overlapping but vertically non-overlapping (lines 68, 69 false)
+        let a = Bounds::new(0, 0, 10, 5); // y: 0..5
+        let b = Bounds::new(0, 10, 10, 5); // y: 10..15
+        // x ranges overlap (both 0..10), but y ranges don't
+        assert!(!a.overlaps(&b));
+        assert!(!b.overlaps(&a));
+
+        // Vertically adjacent (a bottom == b top)
+        let c = Bounds::new(0, 0, 10, 10); // y: 0..10
+        let d = Bounds::new(0, 10, 10, 10); // y: 10..20
+        assert!(!c.overlaps(&d));
+    }
+
+    #[test]
     fn test_bounds_is_empty() {
         assert!(Bounds::new(0, 0, 0, 10).is_empty());
         assert!(Bounds::new(0, 0, 10, 0).is_empty());

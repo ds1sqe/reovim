@@ -509,6 +509,15 @@ mod tests {
     }
 
     #[test]
+    fn test_try_get_style_no_module_defaults() {
+        // module_defaults is None in try_get_style (line 202 else branch)
+        let manager = ThemeManager::new(BuiltinTheme::Dark.load());
+        // No module_defaults set, query a group not in overrides or theme
+        let style = manager.try_get_style("nonexistent.group");
+        assert!(style.is_none());
+    }
+
+    #[test]
     fn test_shared_theme_manager_write_set_theme() {
         let shared = SharedThemeManager::new(BuiltinTheme::Dark.load());
         assert_eq!(shared.read().current_theme_name(), "dark");

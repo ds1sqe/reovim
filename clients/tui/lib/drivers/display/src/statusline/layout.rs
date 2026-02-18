@@ -358,6 +358,29 @@ mod tests {
     }
 
     #[test]
+    fn test_layout_calculator_two_row_via_max_rows() {
+        // Line 169: condition false but max_rows == 2 forces 2-row layout
+        let calc = LayoutCalculator::new(20);
+        // total=120>20, left=60>20, right=60>20 -> condition false
+        // But max_rows == 2 -> returns two_rows()
+        let widths = [20, 20, 20, 20, 20, 20];
+        let layout = calc.calculate(&widths, 2);
+        assert_eq!(layout.row_count(), 2);
+    }
+
+    #[test]
+    fn test_layout_calculator_three_row_via_max_rows() {
+        // Line 178: condition false but max_rows == 3 forces 3-row layout
+        let calc = LayoutCalculator::new(10);
+        // total=180>10, left=90>10, right=90>10 -> skip 2-row
+        // A+B=60>10 -> 3-row condition false
+        // But max_rows == 3 -> returns three_rows()
+        let widths = [30, 30, 30, 30, 30, 30];
+        let layout = calc.calculate(&widths, 3);
+        assert_eq!(layout.row_count(), 3);
+    }
+
+    #[test]
     fn test_layout_calculator_fallback_three_rows() {
         // Force the path where max_rows > 3 but nothing fits,
         // reaching the fallback `MultiRowLayout::three_rows()` at line 183.
@@ -438,5 +461,43 @@ mod tests {
         let widths = [30, 30, 30, 30, 30, 30];
         let layout = calc.calculate(&widths, 1);
         assert_eq!(layout.row_count(), 1);
+    }
+
+    #[test]
+    fn test_layout_calculator_two_row_left_fits_right_does_not() {
+        // Line 169: left_width <= width (true) && right_width <= width (false), max_rows != 2
+        // Forces fall-through to 3-row check
+        let calc = LayoutCalculator::new(50);
+        // left = 10+10+20 = 40 <= 50 (true), right = 20+20+20 = 60 > 50 (false)
+        let widths = [10, 10, 20, 20, 20, 20];
+        let layout = calc.calculate(&widths, 5);
+        // Should NOT take 2-row path. Instead checks 3-row.
+        // A+B=20<=50, C=20<=50, X+Y+Z=60>50 -> 3-row false, fallback
+        assert_eq!(layout.row_count(), 3);
+    }
+
+    #[test]
+    fn test_layout_calculator_three_row_ab_exceeds() {
+        // Line 178: ab_width > width (first term false), skip 3-row condition
+        let calc = LayoutCalculator::new(30);
+        // total=120>30, left=70>30, right=50>30 -> skip 2-row
+        // A+B=40>30 -> first term of 3-row AND is false
+        // max_rows=5 -> fallback to three_rows
+        let widths = [20, 20, 30, 20, 15, 15];
+        let layout = calc.calculate(&widths, 5);
+        assert_eq!(layout.row_count(), 3);
+    }
+
+    #[test]
+    fn test_layout_calculator_three_row_ab_fits_c_exceeds() {
+        // Line 178 MC/DC: ab_width <= width (true), c_width > width (false)
+        // Middle sub-condition independently flips the 3-term AND
+        let calc = LayoutCalculator::new(40);
+        // left=40+70=110>40, right=60>40 -> skip 2-row
+        // A+B=20<=40 (true), C=70>40 (false) -> 3-row AND fails at second term
+        // max_rows=5 -> fallback to three_rows
+        let widths = [10, 10, 70, 20, 20, 20];
+        let layout = calc.calculate(&widths, 5);
+        assert_eq!(layout.row_count(), 3);
     }
 }

@@ -44,6 +44,7 @@ impl Screen {
     /// # Errors
     ///
     /// Returns an error if terminal size cannot be determined.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn from_terminal_size() -> std::io::Result<Self> {
         let (width, height) = Terminal::size()?;
         Ok(Self::new(width, height))

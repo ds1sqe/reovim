@@ -420,6 +420,64 @@ mod tests {
     }
 
     #[test]
+    fn test_grid_separators_col_at_edge() {
+        // Line 222: x >= width (column position at buffer edge, skipped)
+        let mut buffer = FrameBuffer::new(10, 10);
+        let chars = SeparatorChars::SINGLE;
+        let style = Style::default();
+
+        // Column at x=10 is >= width=10, should be skipped
+        render_grid_separators(&mut buffer, &[10], &[], 10, 10, &chars, &style);
+        // No vertical separator should be drawn
+        // All cells should still be spaces
+        assert_eq!(buffer.get(9, 0).unwrap().char, ' ');
+    }
+
+    #[test]
+    fn test_grid_separators_row_at_edge() {
+        // Line 229: y >= height (row position at buffer edge, skipped)
+        let mut buffer = FrameBuffer::new(10, 10);
+        let chars = SeparatorChars::SINGLE;
+        let style = Style::default();
+
+        // Row at y=10 is >= height=10, should be skipped
+        render_grid_separators(&mut buffer, &[], &[10], 10, 10, &chars, &style);
+        assert_eq!(buffer.get(0, 9).unwrap().char, ' ');
+    }
+
+    #[test]
+    fn test_grid_separators_intersection_partial_bounds() {
+        // Line 237: x < width && y < height with one condition false
+        // (intersection skipped when col or row is at edge)
+        let mut buffer = FrameBuffer::new(10, 10);
+        let chars = SeparatorChars::SINGLE;
+        let style = Style::default();
+
+        // col at x=10 (>= width) and row at y=5 (< height)
+        // x < width is false, so intersection is skipped
+        render_grid_separators(&mut buffer, &[10], &[5], 10, 10, &chars, &style);
+
+        // Only the horizontal separator at y=5 should be drawn (row is valid)
+        assert_eq!(buffer.get(0, 5).unwrap().char, chars.horizontal);
+        // No intersection at (10, 5) since x >= width
+    }
+
+    #[test]
+    fn test_grid_separators_intersection_x_ok_y_out() {
+        // Line 237: x < width (true) && y < height (false)
+        let mut buffer = FrameBuffer::new(10, 10);
+        let chars = SeparatorChars::SINGLE;
+        let style = Style::default();
+
+        // col at x=5 (< width=10) and row at y=10 (>= height=10)
+        // x < width is true, y < height is false -> intersection skipped
+        render_grid_separators(&mut buffer, &[5], &[10], 10, 10, &chars, &style);
+
+        // Vertical separator at x=5 should be drawn, but no intersection
+        assert_eq!(buffer.get(5, 0).unwrap().char, chars.vertical);
+    }
+
+    #[test]
     fn test_select_intersection_corners() {
         let chars = SeparatorChars::SINGLE;
 

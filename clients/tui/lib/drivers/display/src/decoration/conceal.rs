@@ -473,6 +473,18 @@ mod tests {
     }
 
     #[test]
+    fn test_hide_span_different_line() {
+        // Hide span on a different line should not produce a region (line 93 guard false)
+        let content = "abcdef";
+        let hide = Decoration::hide(Span::line(5, 0, 3)); // line 5, but we render line 0
+        let decorations = [&hide];
+
+        let result = apply_conceals(content, 0, &decorations);
+        // No concealment should apply since the span is on line 5
+        assert_eq!(result.text, "abcdef");
+    }
+
+    #[test]
     fn test_conceal_with_style() {
         let content = "abc123def";
         let style = Style::new().fg(crate::Color::Red);

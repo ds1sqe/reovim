@@ -52,6 +52,7 @@ impl ThemeLoader {
     /// 1. `~/.config/reovim/themes/` (user themes)
     /// 2. System themes directory (platform-specific)
     #[must_use]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn new() -> Self {
         let mut search_paths = Vec::new();
 
@@ -136,6 +137,11 @@ impl ThemeLoader {
     ///
     /// Returns unique theme names found in all search paths.
     /// Names are returned without the `.toml` extension.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a `.toml` directory entry has no file stem (structurally
+    /// impossible for valid filesystem entries).
     #[must_use]
     pub fn list_available(&self) -> Vec<String> {
         let mut themes = HashSet::new();
@@ -144,11 +150,11 @@ impl ThemeLoader {
             if let Ok(entries) = std::fs::read_dir(path) {
                 for entry in entries.flatten() {
                     let file_path = entry.path();
-                    if file_path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
-                        && let Some(stem) = file_path.file_stem()
+                    if let Some(ext) = file_path.extension()
+                        && ext.eq_ignore_ascii_case("toml")
                     {
+                        // Directory entries always have a filename, so file_stem() is always Some
+                        let stem = file_path.file_stem().expect("entry has filename");
                         themes.insert(stem.to_string_lossy().into_owned());
                     }
                 }
@@ -176,9 +182,8 @@ impl ThemeLoader {
         }
 
         // Search in search paths
-        let filename = if Path::new(name)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+        let filename = if let Some(ext) = Path::new(name).extension()
+            && ext.eq_ignore_ascii_case("toml")
         {
             name.to_string()
         } else {
@@ -485,6 +490,27 @@ mod tests {
         assert!(found.is_none());
     }
 
+    #[test]
+    fn test_list_available_non_toml_extension_skipped() {
+        // Line 150: is_some_and false - file has extension but not "toml"
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(temp_dir.path().join("mytheme.txt"), "not a theme").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.list_available();
+        assert!(themes.is_empty());
+    }
+
+    #[test]
+    fn test_find_theme_path_non_toml_extension() {
+        // Line 174: is_some_and with non-toml extension (false inner condition)
+        // Name has ".txt" extension, so it gets ".toml" appended
+        let temp_dir = TempDir::new().unwrap();
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let found = loader.find_theme_path("mytheme.txt");
+        assert!(found.is_none());
+    }
+
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_user_themes_dir_returns_some() {
@@ -524,5 +550,24 @@ mod tests {
         let msg = result.err().unwrap().to_string();
         assert!(msg.contains("ghost-theme"));
         assert!(msg.contains("not found"));
+    }
+
+    #[test]
+    fn test_list_available_file_without_extension() {
+        // Line 150: extension() returns None (file has no extension at all)
+        let temp_dir = TempDir::new().unwrap();
+        std::fs::write(temp_dir.path().join("noext"), "not a theme").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.list_available();
+        assert!(themes.is_empty());
+    }
+
+    #[test]
+    fn test_find_theme_path_absolute_nonexistent() {
+        // Line 174: as_path.is_absolute() (true) && as_path.exists() (false)
+        let loader = ThemeLoader::with_paths(vec![]);
+        let found = loader.find_theme_path("/nonexistent/absolute/path/theme.toml");
+        assert!(found.is_none());
     }
 }

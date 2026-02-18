@@ -400,6 +400,40 @@ mod tests {
         assert_eq!(buf.get(0, 0).unwrap().char, '┌');
     }
 
+    /// Test `render_views` with one zero dimension (width=0, height>0).
+    #[test]
+    fn test_render_views_zero_width_nonzero_height() {
+        let mut screen = Screen::new(80, 24);
+
+        let views = vec![WindowView::new(
+            WindowId::from_raw(0),
+            Rect::new(0, 0, 0, 10),
+        )];
+
+        screen.render_views(&views, &Style::default());
+
+        // Zero-width window should not draw anything
+        let buf = screen.frame_buffer();
+        assert_eq!(buf.get(0, 0).unwrap().char, ' ');
+    }
+
+    #[test]
+    fn test_render_views_nonzero_width_zero_height() {
+        // Line 191: b.width > 0 (true) && b.height > 0 (false)
+        let mut screen = Screen::new(80, 24);
+
+        let views = vec![WindowView::new(
+            WindowId::from_raw(0),
+            Rect::new(0, 0, 10, 0),
+        )];
+
+        screen.render_views(&views, &Style::default());
+
+        // Width>0 but height=0: should not draw anything
+        let buf = screen.frame_buffer();
+        assert_eq!(buf.get(0, 0).unwrap().char, ' ');
+    }
+
     /// Test `render_views` with zero-size window (line 216 else branch).
     #[test]
     fn test_render_views_zero_size_window() {

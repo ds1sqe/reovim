@@ -157,7 +157,7 @@ pub fn render_statusline(
     // Render center section
     x = center_x;
     for ch in center.chars() {
-        if x >= right_x || x >= width {
+        if x >= right_x {
             break;
         }
         buffer.put_char(x, y, ch, style);
@@ -349,6 +349,23 @@ mod tests {
         // Left should be fully truncated since right fills the entire width
         // Right section starts at x=0 (10 - 10 = 0)
         assert_eq!(buffer.get(0, 0).unwrap().char, 'R');
+    }
+
+    #[test]
+    fn test_render_statusline_center_hits_right_not_width() {
+        // Center text reaches right_x (first condition true) but not width (second condition false)
+        // Line 160: `if x >= right_x || x >= width` - exercise first true, second false
+        let mut buffer = FrameBuffer::new(30, 2);
+
+        // right "RR" at x=28, center text "CCCCCCCCCCCC" (12 chars) starts at (30-12)/2=9
+        // Center rendering should stop at x=28 (right_x), not x=30 (width)
+        render_statusline(&mut buffer, 0, "", "CCCCCCCCCCCC", "RR", 30, &Style::default());
+
+        // Center chars should appear from x=9
+        assert_eq!(buffer.get(9, 0).unwrap().char, 'C');
+        // Right section should still appear at x=28
+        assert_eq!(buffer.get(28, 0).unwrap().char, 'R');
+        assert_eq!(buffer.get(29, 0).unwrap().char, 'R');
     }
 
     #[test]

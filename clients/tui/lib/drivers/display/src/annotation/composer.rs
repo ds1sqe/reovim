@@ -679,6 +679,60 @@ mod tests {
     }
 
     #[test]
+    fn test_total_width_no_separator_with_content() {
+        // Line 116: show_separator=false but total > 0
+        // The separator width (+1) should NOT be added
+        let store = AnnotationStore::new();
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::sign()));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::exact("sign"))
+                .visibility(VisibilityMode::Always)
+                .width(2),
+        ])
+        .with_separator(false);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, false);
+        let width = composer.total_width(&ctx);
+        // Should be 2 (column width) without +1 separator
+        assert_eq!(width, 2);
+    }
+
+    #[test]
+    fn test_compose_line_no_separator_with_cells() {
+        // Line 160: show_separator=false and cells are non-empty
+        // The separator cell should NOT be appended
+        let mut store = AnnotationStore::new();
+        store.replace_source(
+            SourceId::new("test"),
+            vec![Annotation::new(
+                AnnotationKind::new("sign"),
+                crate::annotation::AnnotationTarget::Line(0),
+                0,
+                crate::annotation::AnnotationPayload::Text("!".into()),
+            )],
+        );
+
+        let mut registry = PresenterRegistry::new();
+        registry.register(Arc::new(MockPresenter::sign()));
+
+        let config = GutterConfig::new(vec![
+            ColumnConfig::new(KindPattern::exact("sign"))
+                .visibility(VisibilityMode::Always)
+                .width(2),
+        ])
+        .with_separator(false);
+
+        let composer = GutterComposer::new(&store, &registry, &config);
+        let ctx = PresenterContext::new(10, 0, true);
+        let line = composer.compose_line(0, &ctx);
+        // No separator cell should be present
+        assert!(!line.cells.iter().any(|c| c.char == '\u{2502}')); // '│'
+    }
+
+    #[test]
     fn test_add_cells_padded_output_wider_than_column() {
         // Covers lines 250 (no padding) and 260 (break on truncation)
         let mut store = AnnotationStore::new();

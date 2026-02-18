@@ -530,6 +530,57 @@ mod tests {
     }
 
     #[test]
+    fn test_render_sections_left_empty_filtered() {
+        // Lines 102, 106: left-positioned but empty section should be filtered out
+        let mut buffer = FrameBuffer::new(80, 24);
+
+        let sections = vec![
+            Section::new(SectionId::A, " NOR ", Style::new().bg(Color::Blue)),
+            Section::empty(SectionId::B), // Empty left section, filtered at line 102
+            Section::new(SectionId::C, " file.rs ", Style::new().bg(Color::Green)),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::PIPE,
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // A and C should be rendered, B should be filtered out
+        assert_eq!(buffer.get(1, 23).unwrap().char, 'N'); // A section
+    }
+
+    #[test]
+    fn test_render_sections_empty_separator() {
+        // Lines 117, 142: i > 0 but separator is empty (second condition false)
+        let mut buffer = FrameBuffer::new(80, 24);
+
+        let sections = vec![
+            Section::new(SectionId::A, " A ", Style::default()),
+            Section::new(SectionId::B, " B ", Style::default()),
+            Section::new(SectionId::Y, " Y ", Style::default()),
+            Section::new(SectionId::Z, " Z ", Style::default()),
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator {
+                left: "",  // Empty separator for left sections
+                right: "", // Empty separator for right sections
+            },
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // Sections should render directly adjacent without separators
+        assert_eq!(buffer.get(1, 23).unwrap().char, 'A');
+        assert_eq!(buffer.get(4, 23).unwrap().char, 'B');
+    }
+
+    #[test]
     fn test_render_sections_right_with_separators() {
         let mut buffer = FrameBuffer::new(80, 24);
         let style = Style::new().bg(Color::Blue);
@@ -765,5 +816,29 @@ mod tests {
 
         assert_eq!(buffer.get(0, 0).unwrap().char, '1');
         assert_eq!(buffer.get(4, 0).unwrap().char, '5');
+    }
+
+    #[test]
+    fn test_render_sections_right_empty_filtered() {
+        // Line 106: s.position() == Right (true) && !s.is_empty() (false)
+        // An empty right section should be filtered out
+        let mut buffer = FrameBuffer::new(80, 24);
+
+        let sections = vec![
+            Section::new(SectionId::Y, " utf-8 ", Style::new().bg(Color::Blue)),
+            Section::empty(SectionId::Z), // Empty right section, filtered at line 106
+        ];
+
+        let config = StatuslineRendererConfig {
+            separator: StatuslineSeparator::PIPE,
+            powerline_coloring: false,
+            ..Default::default()
+        };
+
+        render_sections(&mut buffer, 23, &sections, &config);
+
+        // Y should be rendered near the right edge, Z should be filtered out
+        let y_start = 80 - 7; // " utf-8 " = 7 chars
+        assert_eq!(buffer.get(y_start + 1, 23).unwrap().char, 'u');
     }
 }

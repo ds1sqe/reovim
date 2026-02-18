@@ -815,6 +815,50 @@ mod tests {
     }
 
     #[test]
+    fn test_rows_for_redistribute_left_exceeds_right_fits() {
+        // Line 286: left_fits && right_fits where left_fits is false (left exceeds width)
+        let metrics = ContentMetrics {
+            total_width: 100,
+            left_width: 60,  // Exceeds width=50
+            right_width: 40, // Fits in 50
+            section_widths: [20, 20, 20, 15, 15, 10],
+        };
+        // total > width -> not 1 row; left_fits=false -> skip 2-row
+        // A+B=40<=50, C=20<=50, X+Y+Z=40<=50 -> 3-row condition true
+        assert_eq!(metrics.rows_for_redistribute(50), 3);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_both_exceed() {
+        // Line 296: multi-term AND where xyz_width > width
+        let metrics = ContentMetrics {
+            total_width: 200,
+            left_width: 80,
+            right_width: 120,
+            section_widths: [20, 20, 40, 40, 40, 40],
+        };
+        // left(80)>50, right(120)>50 -> skip 2-row
+        // A+B=40<=50, C=40<=50, X+Y+Z=120>50 -> condition false
+        // Falls through to rows_for_wrap
+        let rows = metrics.rows_for_redistribute(50);
+        assert!(rows >= 3);
+    }
+
+    #[test]
+    fn test_calculate_height_no_max() {
+        // Line 333: max_height is None (no cap applied)
+        let config = HeightConfig {
+            min_height: 1,
+            max_height: None,
+            screen_thresholds: vec![],
+            overflow_strategy: OverflowStrategy::Truncate,
+        };
+
+        let result = calculate_height(30, 100, 80, &config);
+        assert_eq!(result.height, 1);
+    }
+
+    #[test]
     fn test_height_config_with_overflow_strategy() {
         let config = HeightConfig::default().with_overflow_strategy(OverflowStrategy::Redistribute);
         assert_eq!(config.overflow_strategy, OverflowStrategy::Redistribute);
@@ -839,5 +883,56 @@ mod tests {
         let result = calculate_height_with_metrics(70, &metrics, 80, &config);
         assert_eq!(result.height, 4);
         assert!(result.has_overflow);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_right_exceeds_left_fits() {
+        // Line 286: left_fits (true) && right_fits (false)
+        let metrics = ContentMetrics {
+            total_width: 100,
+            left_width: 40,  // Fits in 50
+            right_width: 60, // Exceeds width=50
+            section_widths: [10, 10, 20, 20, 20, 20],
+        };
+        // total > width -> not 1 row
+        // left_fits=true, right_fits=false -> skip 2-row
+        // A+B=20<=50, C=20<=50, X+Y+Z=60>50 -> 3-row condition false
+        // Falls through to rows_for_wrap
+        let rows = metrics.rows_for_redistribute(50);
+        assert!(rows >= 2);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_ab_exceeds_but_c_xyz_fit() {
+        // Line 296: ab_width > width (first term false), c and xyz fit
+        let metrics = ContentMetrics {
+            total_width: 120,
+            left_width: 80,
+            right_width: 40,
+            section_widths: [30, 30, 20, 15, 15, 10],
+        };
+        // total(120) > 50 -> not 1 row
+        // left(80) > 50 -> skip 2-row
+        // A+B=60 > 50 (false), so the 3-term AND is false at first term
+        // Falls through to rows_for_wrap
+        let rows = metrics.rows_for_redistribute(50);
+        assert!(rows >= 2);
+    }
+
+    #[test]
+    fn test_rows_for_redistribute_ab_fits_c_exceeds() {
+        // Line 296 MC/DC: ab_width <= width (true), c_width > width (false)
+        // Middle sub-condition independently flips the 3-term AND
+        let metrics = ContentMetrics {
+            total_width: 150,
+            left_width: 90,
+            right_width: 60,
+            section_widths: [10, 10, 70, 20, 20, 20],
+        };
+        // total(150) > 50 -> not 1 row
+        // left(90) > 50 -> skip 2-row
+        // A+B=20<=50 (true), C=70>50 (false) -> 3-row AND fails at second term
+        let rows = metrics.rows_for_redistribute(50);
+        assert!(rows >= 2);
     }
 }
