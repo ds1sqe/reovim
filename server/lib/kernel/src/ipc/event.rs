@@ -741,4 +741,73 @@ mod tests {
         let mut event = DynEvent::new(TestEvent { value: 1 });
         assert!(event.take_scope().is_none());
     }
+
+    // === MC/DC: downcast_ref FALSE branch (type mismatch) ===
+    // Exercises line 330 FALSE branch: type_id != TypeId::of::<E>()
+
+    #[test]
+    fn test_dyn_event_downcast_ref_type_mismatch_returns_none() {
+        #[derive(Debug)]
+        struct EventA;
+        impl Event for EventA {}
+
+        #[derive(Debug)]
+        struct EventB;
+        impl Event for EventB {}
+
+        let event = DynEvent::new(EventA);
+        // Downcast to the wrong type must return None (FALSE branch of type check)
+        assert!(event.downcast_ref::<EventB>().is_none());
+        // Downcast to the correct type must return Some (TRUE branch of type check)
+        assert!(event.downcast_ref::<EventA>().is_some());
+    }
+
+    // === MC/DC: downcast_mut TRUE and FALSE branches ===
+    // Exercises line 343 TRUE branch (correct type) and FALSE branch (type mismatch)
+
+    #[test]
+    fn test_dyn_event_downcast_mut_type_mismatch_returns_none() {
+        #[derive(Debug)]
+        struct EventC {
+            x: i32,
+        }
+        impl Event for EventC {}
+
+        #[derive(Debug)]
+        struct EventD;
+        impl Event for EventD {}
+
+        let mut event = DynEvent::new(EventC { x: 7 });
+        // FALSE branch: wrong type returns None
+        assert!(event.downcast_mut::<EventD>().is_none());
+        // TRUE branch: correct type returns Some and allows mutation
+        if let Some(inner) = event.downcast_mut::<EventC>() {
+            inner.x = 99;
+        }
+        assert_eq!(event.downcast_ref::<EventC>().unwrap().x, 99);
+    }
+
+    // === MC/DC: into_inner FALSE branch (type mismatch returns Err) ===
+    // Exercises line 378 FALSE branch: type_id != TypeId::of::<E>()
+
+    #[test]
+    fn test_dyn_event_into_inner_type_mismatch_returns_err() {
+        #[derive(Debug, PartialEq)]
+        struct EventE {
+            val: u32,
+        }
+        impl Event for EventE {}
+
+        #[derive(Debug)]
+        struct EventF;
+        impl Event for EventF {}
+
+        let event = DynEvent::new(EventE { val: 55 });
+        // FALSE branch: wrong type causes into_inner to return Err(self)
+        let result = event.into_inner::<EventF>();
+        assert!(result.is_err());
+        // The returned Err still contains the original event
+        let recovered = result.unwrap_err();
+        assert!(recovered.is::<EventE>());
+    }
 }

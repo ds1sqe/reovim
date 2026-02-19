@@ -604,4 +604,101 @@ mod tests {
         let completed = scope.wait_timeout(Duration::from_millis(100));
         assert!(completed);
     }
+
+    // === MC/DC: submit() - scope present (TRUE branch at line 110) ===
+    // Exercises `if let Some(s) = scope` in submit() with a Some scope.
+
+    #[test]
+    fn test_submit_with_scope_increments_and_decrements() {
+        let scope = EventScope::new();
+
+        let handle = spawn_saturator(|x: i32| x, |_result| {});
+
+        // Before submit: in_flight is 0
+        assert_eq!(scope.in_flight(), 0);
+
+        // submit() with Some scope: TRUE branch increments the scope counter
+        handle.submit(42, Some(&scope));
+
+        // The scope counter was incremented by submit before sending to worker
+        // After worker processes it, it'll be decremented back to 0
+        let completed = scope.wait_timeout(Duration::from_millis(200));
+        assert!(completed, "Scope should reach 0 after worker processes the item");
+        assert_eq!(scope.in_flight(), 0);
+    }
+
+    // === MC/DC: submit_background() - scope present (TRUE branch at line 126) ===
+    // Exercises `if let Some(s) = scope` in submit_background() with a Some scope.
+
+    #[test]
+    fn test_submit_background_scope_increments_and_decrements() {
+        let scope = EventScope::new();
+
+        let handle = spawn_saturator(|x: i32| x, |_result| {});
+
+        assert_eq!(scope.in_flight(), 0);
+
+        // submit_background() with Some scope: TRUE branch at line 126
+        handle.submit_background(10, Some(&scope));
+
+        // Worker processes and decrements
+        let completed = scope.wait_timeout(Duration::from_millis(200));
+        assert!(completed, "Background scope should complete after worker processes");
+        assert_eq!(scope.in_flight(), 0);
+    }
+
+    // === MC/DC: Drop - worker present (TRUE branch at line 172) ===
+    // Exercises `if let Some(worker) = self.worker.take()` when the original
+    // handle (which owns the worker JoinHandle) is dropped.
+
+    #[test]
+    fn test_drop_original_handle_joins_worker_thread() {
+        use std::sync::atomic::AtomicBool;
+        let worker_started = Arc::new(AtomicBool::new(false));
+        let worker_started_clone = Arc::clone(&worker_started);
+
+        {
+            let handle = spawn_saturator(
+                move |x: i32| {
+                    worker_started_clone.store(true, Ordering::SeqCst);
+                    x
+                },
+                |_result| {},
+            );
+
+            // Submit work so the worker thread definitely starts
+            handle.submit(1, None);
+            // Give worker thread time to process
+            thread::sleep(Duration::from_millis(30));
+
+            // Drop the original handle here. The Drop impl TRUE branch is exercised:
+            // `if let Some(worker) = self.worker.take()` will be Some (original handle owns it).
+            // This sets shutdown=true and joins the worker thread.
+        }
+        // After drop, worker has been joined. The submitted work was processed.
+        assert!(worker_started.load(Ordering::SeqCst));
+    }
+
+    // === MC/DC: Drop - cloned handle has no worker (FALSE branch at line 172) ===
+    // A cloned SaturatorHandle has `worker: None`, so the Drop impl FALSE branch
+    // (`worker.take()` returns None) is exercised.
+
+    #[test]
+    fn test_drop_cloned_handle_does_not_join_worker() {
+        let handle = spawn_saturator(|x: i32| x, |_result| {});
+
+        // Clone does not own the worker thread (worker: None)
+        let clone = handle.clone();
+
+        // Dropping the clone exercises the FALSE branch of the Drop impl:
+        // `if let Some(worker) = self.worker.take()` -> None branch is taken
+        drop(clone);
+
+        // The original handle still works after the clone is dropped
+        handle.submit(1, None);
+        thread::sleep(Duration::from_millis(30));
+
+        // Original handle drops last, joining the worker thread
+        drop(handle);
+    }
 }

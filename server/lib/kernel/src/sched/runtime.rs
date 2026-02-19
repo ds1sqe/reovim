@@ -1161,4 +1161,61 @@ mod tests {
         runtime.emergency_stop();
         assert!(!runtime.tick());
     }
+
+    // === MC/DC: schedule_work() when state is Emergency (not accepting work) ===
+
+    #[test]
+    fn test_runtime_schedule_work_when_emergency() {
+        // Emergency state: can_accept_work() == false -> return false.
+        // This exercises the `!self.state.can_accept_work()` true branch of
+        // schedule_work() from a different non-accepting state than Booting.
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.emergency_stop();
+        assert_eq!(runtime.state(), RuntimeState::Emergency);
+        assert!(!runtime.schedule_work(|| {}));
+    }
+
+    // === MC/DC: schedule_work_with_priority() when state is Emergency ===
+
+    #[test]
+    fn test_runtime_schedule_work_with_priority_when_emergency() {
+        // Emergency state: can_accept_work() == false -> return false.
+        // Covers the rejection branch of schedule_work_with_priority() from
+        // a state distinct from Booting (already tested) to satisfy MC/DC.
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.emergency_stop();
+        assert!(!runtime.schedule_work_with_priority(Priority::HIGH, || {}));
+    }
+
+    // === MC/DC: schedule_task() when state is Emergency ===
+
+    #[test]
+    fn test_runtime_schedule_task_when_emergency() {
+        // Emergency state: can_accept_work() == false -> return false.
+        // Covers the rejection branch of schedule_task() from Emergency state.
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.emergency_stop();
+        let task = Task::new(|| {});
+        assert!(!runtime.schedule_task(task));
+    }
+
+    // === MC/DC: shutdown() when state is already Stopping (no-op) ===
+
+    #[test]
+    fn test_runtime_shutdown_when_already_stopping() {
+        // state == Stopping: the `if self.state == RuntimeState::Running` condition
+        // is false -> no-op. State remains Stopping.
+        // This provides a distinct false-branch case from test_runtime_shutdown_from_booting.
+        let mut runtime = Runtime::new();
+        runtime.boot();
+        runtime.shutdown(); // Running -> Stopping
+        assert_eq!(runtime.state(), RuntimeState::Stopping);
+
+        // Second shutdown call: state is Stopping, not Running -> no state change
+        runtime.shutdown();
+        assert_eq!(runtime.state(), RuntimeState::Stopping);
+    }
 }

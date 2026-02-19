@@ -496,4 +496,34 @@ mod tests {
         assert!(!queue.push(Task::new(|| {})));
         assert_eq!(queue.dropped_count(), 1);
     }
+
+    // === MC/DC: push() overflow branch (capacity == 1, second push drops) ===
+
+    #[test]
+    fn test_push_overflow_capacity_one() {
+        // Capacity = 1: first push succeeds (len < capacity), second fails (len >= capacity).
+        // This ensures the true branch of `if queue.len() >= self.capacity` is taken
+        // with capacity=1 to isolate the single-condition MC/DC branch.
+        let queue = WorkQueue::with_capacity(1);
+        assert!(queue.push(Task::new(|| {}))); // len was 0 < 1, succeeds
+        assert!(!queue.push(Task::new(|| {}))); // len is now 1 >= 1, drops
+        assert_eq!(queue.dropped_count(), 1);
+        assert_eq!(queue.len(), 1);
+    }
+
+    // === MC/DC: process_pending() empty-queue break branch ===
+
+    #[test]
+    fn test_process_pending_breaks_on_empty_queue() {
+        // Exercises the `else { break }` arm of the `let Some(mut task) = self.try_pop()`
+        // pattern when the queue is exhausted before the limit is reached.
+        let queue = WorkQueue::with_capacity(2);
+        queue.push(Task::new(|| {}));
+        queue.push(Task::new(|| {}));
+
+        // limit=100 but only 2 tasks: loop must break early via the else branch
+        let processed = queue.process_pending(100);
+        assert_eq!(processed, 2);
+        assert!(queue.is_empty());
+    }
 }
