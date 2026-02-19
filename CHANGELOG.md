@@ -2,7 +2,33 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.9.4-dev
+## [Unreleased] - v0.9.5-dev
+
+### Changed
+
+- **Explicit shared vs client extensions in resolver API (#474)**: Split the
+  single `extensions: &mut ExtensionMap` parameter in `ModeKeyResolver` trait
+  methods into `shared_extensions` and `client_extensions`. Modules now
+  explicitly choose which extension map to use. `VimSessionState` and
+  `OperatorPendingState` moved to `client_extensions` (per-client isolation),
+  fixing a bug where all operator+textobject combinations (`diw`, `ciw`, `yiw`,
+  `di"`, `ci{`, etc.) were broken because text objects wrote to per-client
+  extensions via `runtime.ext_mut()` but operator resolvers read from shared
+  `self.app.extensions`. Affected methods: `resolve_with_extensions`,
+  `resolve_with_session`, `on_command_complete`. Server call sites use a
+  placeholder `ExtensionMap` for `SessionRuntime` (resolvers access session
+  only via `SessionApiDyn`, not `ExtensionApi`), freeing `client_extensions`
+  to be passed separately without borrow conflicts.
+
+- **Extra module loading via `REOVIM_EXTRA_MODULES` env var (#474)**:
+  Integration tests can now explicitly load modules not in the defaults bundle.
+  `TextObjectsModule::init()` fixed to self-register commands via
+  `CommandHandlerStore` (was a no-op). `TestServerHarness::spawn_with_modules()`
+  and `IntegrationTest::with_modules()` pass the env var to the spawned server.
+  Four text object integration tests (`diw`, `daw`, `di"`, `ci{`) un-ignored
+  and passing.
+
+## [0.9.4-dev]
 
 ### Added
 

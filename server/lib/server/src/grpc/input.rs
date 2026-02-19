@@ -2510,7 +2510,8 @@ mod tests {
             fn on_command_complete(
                 &self,
                 _session: &mut dyn SessionApiDyn,
-                _extensions: &mut ExtensionMap,
+                _shared_extensions: &mut ExtensionMap,
+                _client_extensions: &mut ExtensionMap,
             ) -> Option<ModeTransition> {
                 Some(ModeTransition::Pop { result: None })
             }

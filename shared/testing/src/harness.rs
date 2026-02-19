@@ -216,7 +216,7 @@ impl TestServerHarness {
             .name()
             .unwrap_or("unknown_test")
             .to_string();
-        Self::spawn_with_name(&test_name).await
+        Self::spawn_inner(&test_name, &[]).await
     }
 
     /// Spawn server with explicit test name for log capture.
@@ -250,6 +250,38 @@ impl TestServerHarness {
     pub async fn spawn_with_name(
         test_name: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::spawn_inner(test_name, &[]).await
+    }
+
+    /// Spawn server with extra modules loaded.
+    ///
+    /// Sets `REOVIM_EXTRA_MODULES` env var on the spawned server process.
+    /// Test name is auto-extracted from the current thread name.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let harness = TestServerHarness::spawn_with_modules(&["textobjects"]).await?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns error if server fails to spawn or start.
+    pub async fn spawn_with_modules(
+        modules: &[&str],
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_test")
+            .to_string();
+        Self::spawn_inner(&test_name, modules).await
+    }
+
+    /// Internal spawn implementation.
+    async fn spawn_inner(
+        test_name: &str,
+        extra_modules: &[&str],
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Create log directory
         let log_dir = PathBuf::from(TEST_LOG_DIR);
         std::fs::create_dir_all(&log_dir)?;
@@ -261,23 +293,26 @@ impl TestServerHarness {
         let _test_id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
 
         // Use debug level by default for test log capture
-        // Note: Both REOVIM_LOG (kernel) and RUST_LOG (tracing) must be set
-        // for full log capture. The composite logger forwards kernel logs to
-        // tracing, so RUST_LOG controls what gets written to stderr.
         let log_level = std::env::var("REOVIM_LOG").unwrap_or_else(|_| "debug".to_string());
 
         // Use worktree modules instead of globally installed ones (#433)
         let module_dir = workspace_module_dir();
 
-        let mut process = Command::new(binary_path())
-            .args(["server", "--grpc", "0"])
+        let mut cmd = Command::new(binary_path());
+        cmd.args(["server", "--grpc", "0"])
             .env("REOVIM_LOG", &log_level)
             .env("RUST_LOG", &log_level) // Enable tracing output for log capture
             .env("REOVIM_MODULE_PATH", &module_dir)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
+            .kill_on_drop(true);
+
+        // Set extra modules if specified
+        if !extra_modules.is_empty() {
+            cmd.env("REOVIM_EXTRA_MODULES", extra_modules.join(","));
+        }
+
+        let mut process = cmd.spawn()?;
 
         // Extract stderr for port reading and log capture
         let stderr = process.stderr.take().ok_or("Failed to capture stderr")?;

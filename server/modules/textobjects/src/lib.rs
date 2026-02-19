@@ -31,7 +31,7 @@ pub mod quote;
 pub mod word;
 
 use {
-    reovim_driver_command::CommandHandler,
+    reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -68,12 +68,23 @@ impl Module for TextObjectsModule {
         Version::new(0, 9, 0)
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Self-register commands (same pattern as EditorModule)
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in self.command_handlers() {
+            command_store.add(handler);
+        }
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+}
+
+impl CommandProvider for TextObjectsModule {
+    fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
+        all_commands()
     }
 }
 
@@ -114,11 +125,36 @@ mod tests {
 
     #[test]
     fn test_module_init() {
-        use reovim_kernel::api::v1::ModuleContext;
+        use {
+            reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+            std::{path::PathBuf, sync::Arc},
+        };
+
+        let kernel = KernelContext::default();
+        let services = Arc::new(ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            kernel,
+            services.clone(),
+            PathBuf::from("/tmp/test-data"),
+            PathBuf::from("/tmp/test-cache"),
+        );
+
         let mut module = TextObjectsModule::new();
-        let ctx = ModuleContext::default();
         let result = module.init(&ctx);
         assert_eq!(result, ProbeResult::Success);
+
+        // Verify commands were registered in CommandHandlerStore
+        let store = services.get::<CommandHandlerStore>();
+        assert!(store.is_some(), "CommandHandlerStore should be registered");
+        let handlers = store.unwrap().take_handlers();
+        assert_eq!(handlers.len(), 20, "All 20 text object commands should be registered");
+    }
+
+    #[test]
+    fn test_command_provider_trait() {
+        let module = TextObjectsModule::new();
+        let handlers = module.command_handlers();
+        assert_eq!(handlers.len(), all_commands().len());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "reovim-bench"
-version = "0.9.2-dev"
+version = "0.9.5-dev"
 edition = "2024"
 description = "Benchmarks for reovim kernel operations"
 publish = false

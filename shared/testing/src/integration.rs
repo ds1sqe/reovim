@@ -87,6 +87,42 @@ impl IntegrationTest {
         }
     }
 
+    /// Create new test with extra modules loaded.
+    ///
+    /// Spawns a server with the default modules plus the specified extra
+    /// modules. Use this for testing functionality that requires modules
+    /// not in the defaults bundle (e.g., textobjects).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let result = IntegrationTest::with_modules(&["textobjects"])
+    ///     .await
+    ///     .with_buffer("hello world")
+    ///     .send_keys("diw")
+    ///     .run()
+    ///     .await;
+    /// result.assert_buffer_eq(" world");
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if server fails to spawn.
+    pub async fn with_modules(modules: &[&str]) -> Self {
+        let harness = TestServerHarness::spawn_with_modules(modules)
+            .await
+            .expect("Failed to spawn server with extra modules");
+        let addr = format!("127.0.0.1:{}", harness.port());
+        Self {
+            harness,
+            addr,
+            initial_content: None,
+            initial_cursor: None,
+            key_sequences: Vec::new(),
+            default_delay: DEFAULT_DELAY_MS,
+        }
+    }
+
     /// Get the path to the server log file for debugging.
     ///
     /// Returns `None` if log capture is not enabled.

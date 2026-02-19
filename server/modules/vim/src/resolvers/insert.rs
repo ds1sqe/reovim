@@ -127,12 +127,13 @@ impl ModeKeyResolver for VimInsertResolver {
         key: &KeyEvent,
         state: &mut ModeState,
         input: &ResolveInput<'_>,
-        extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
         // Check for insertable character first
         if let Some(c) = Self::is_insertable(key) {
             // Track inserted character for dot repeat (Epic #465)
-            if let Some(vim) = extensions.get_mut::<VimSessionState>() {
+            if let Some(vim) = client_extensions.get_mut::<VimSessionState>() {
                 vim.insert_buffer.push(c);
             }
             return ResolveResult::insert_char(c);
@@ -543,11 +544,17 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         // Pre-populate with VimSessionState
         let _ = extensions.get_or_insert::<VimSessionState>();
 
-        let result =
-            resolver.resolve_with_extensions(&key('a'), &mut state, &input, &mut extensions);
+        let result = resolver.resolve_with_extensions(
+            &key('a'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
         assert!(matches!(result, ResolveResult::InsertChar { char: 'a', .. }));
 
         // Check insert_buffer was populated
@@ -563,13 +570,44 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         let _ = extensions.get_or_insert::<VimSessionState>();
 
-        resolver.resolve_with_extensions(&key('h'), &mut state, &input, &mut extensions);
-        resolver.resolve_with_extensions(&key('e'), &mut state, &input, &mut extensions);
-        resolver.resolve_with_extensions(&key('l'), &mut state, &input, &mut extensions);
-        resolver.resolve_with_extensions(&key('l'), &mut state, &input, &mut extensions);
-        resolver.resolve_with_extensions(&key('o'), &mut state, &input, &mut extensions);
+        resolver.resolve_with_extensions(
+            &key('h'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
+        resolver.resolve_with_extensions(
+            &key('e'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
+        resolver.resolve_with_extensions(
+            &key('l'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
+        resolver.resolve_with_extensions(
+            &key('l'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
+        resolver.resolve_with_extensions(
+            &key('o'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
 
         let vim = extensions.get::<VimSessionState>().unwrap();
         assert_eq!(vim.insert_buffer, "hello");
@@ -583,12 +621,14 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         let _ = extensions.get_or_insert::<VimSessionState>();
 
         resolver.resolve_with_extensions(
             &KeyEvent::new(KeyCode::Tab),
             &mut state,
             &input,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -604,12 +644,14 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         let _ = extensions.get_or_insert::<VimSessionState>();
 
         resolver.resolve_with_extensions(
             &KeyEvent::new(KeyCode::Enter),
             &mut state,
             &input,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -626,6 +668,7 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         let _ = extensions.get_or_insert::<VimSessionState>();
 
         // Escape is non-insertable - should delegate to keymap
@@ -633,6 +676,7 @@ mod tests {
             &KeyEvent::new(KeyCode::Escape),
             &mut state,
             &input,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -656,6 +700,7 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         let _ = extensions.get_or_insert::<VimSessionState>();
 
         // Ctrl+H is non-insertable - should not be tracked
@@ -663,6 +708,7 @@ mod tests {
             &key_with_mod('h', Modifiers::CTRL),
             &mut state,
             &input,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::NotHandled));
@@ -679,10 +725,16 @@ mod tests {
         let input = resolve_input(&keymap);
 
         let mut extensions = reovim_driver_input::ExtensionMap::new();
+        let mut shared_ext = reovim_driver_input::ExtensionMap::new();
         // Don't insert VimSessionState - should still work
 
-        let result =
-            resolver.resolve_with_extensions(&key('x'), &mut state, &input, &mut extensions);
+        let result = resolver.resolve_with_extensions(
+            &key('x'),
+            &mut state,
+            &input,
+            &mut shared_ext,
+            &mut extensions,
+        );
         assert!(matches!(result, ResolveResult::InsertChar { char: 'x', .. }));
     }
 

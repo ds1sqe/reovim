@@ -664,10 +664,11 @@ impl ModeKeyResolver for VimNormalResolver {
         key: &KeyEvent,
         _state: &mut ModeState,
         input: &ResolveInput<'_>,
-        extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
-        // Get vim session state from extensions
-        let vim = extensions.get_or_insert::<VimSessionState>();
+        // Get vim session state from client extensions (per-client state)
+        let vim = client_extensions.get_or_insert::<VimSessionState>();
 
         // Handle escape - reset state and return NotHandled
         if key.code == KeyCode::Escape {
@@ -1423,7 +1424,8 @@ mod tests {
         input: &ResolveInput<'_>,
         extensions: &mut ExtensionMap,
     ) -> ResolveResult {
-        resolver.resolve_with_extensions(key, state, input, extensions)
+        let mut shared_ext = ExtensionMap::new();
+        resolver.resolve_with_extensions(key, state, input, &mut shared_ext, extensions)
     }
 
     #[test]

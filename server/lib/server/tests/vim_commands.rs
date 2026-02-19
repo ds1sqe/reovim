@@ -3,10 +3,10 @@
 //! These tests verify that vim commands work correctly through the full
 //! server/client architecture using gRPC v2 protocol.
 //!
-//! # Status (Phase 15)
+//! # Status
 //!
-//! - 28 of 34 tests are enabled and passing
-//! - 6 tests are ignored pending text object and dot repeat fixes
+//! - 32 of 34 tests are enabled and passing
+//! - 2 tests are ignored pending dot repeat implementation
 //!
 //! # Running Tests
 //!
@@ -359,9 +359,8 @@ async fn test_yw_p_yank_put_word() {
 
 /// Test `diw` deletes inner word.
 #[tokio::test]
-#[ignore = "Text object iw not fully implemented"]
 async fn test_diw_delete_inner_word() {
-    let result = IntegrationTest::new()
+    let result = IntegrationTest::with_modules(&["textobjects"])
         .await
         .with_buffer("hello world test")
         .with_cursor_at(0, 7) // On 'o' of 'world'
@@ -373,9 +372,8 @@ async fn test_diw_delete_inner_word() {
 
 /// Test `daw` deletes a word (with surrounding whitespace).
 #[tokio::test]
-#[ignore = "Text object aw not fully implemented"]
 async fn test_daw_delete_a_word() {
-    let result = IntegrationTest::new()
+    let result = IntegrationTest::with_modules(&["textobjects"])
         .await
         .with_buffer("hello world test")
         .with_cursor_at(0, 6) // On 'w' of 'world'
@@ -387,9 +385,8 @@ async fn test_daw_delete_a_word() {
 
 /// Test `di"` deletes inside quotes.
 #[tokio::test]
-#[ignore = "Text object i\" not fully implemented"]
 async fn test_di_quote_delete_inside() {
-    let result = IntegrationTest::new()
+    let result = IntegrationTest::with_modules(&["textobjects"])
         .await
         .with_buffer(r#"say "hello" please"#)
         .with_cursor_at(0, 5) // On '"'
@@ -401,9 +398,8 @@ async fn test_di_quote_delete_inside() {
 
 /// Test `ci{` changes inside braces.
 #[tokio::test]
-#[ignore = "Text object i{ not fully implemented"]
 async fn test_ci_brace_change_inside() {
-    let result = IntegrationTest::new()
+    let result = IntegrationTest::with_modules(&["textobjects"])
         .await
         .with_buffer("fn() { old }")
         .with_cursor_at(0, 7) // Inside braces

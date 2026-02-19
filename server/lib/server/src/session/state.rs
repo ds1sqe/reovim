@@ -411,14 +411,15 @@ impl SessionState {
         let stub_executor = StubExecutor;
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
-        let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
+        let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             &mut temp_mode_stack,
             &mut temp_windows,
-            &mut temp_extensions,
+            &mut runtime_ext,
             &mut temp_compositor,
             &self.app.kernel,
             &stub_executor,
@@ -432,6 +433,7 @@ impl SessionState {
             &self.keymap_registry,
             &mut runtime,
             &mut self.app.extensions,
+            &mut temp_client_extensions,
         );
 
         // Take accumulated changes
@@ -510,14 +512,18 @@ impl SessionState {
 
         // Create SessionRuntime with per-client state and owner (#471 Phase 5)
         // The owner enables undo_mine()/redo_mine() for per-client undo
+        //
+        // Use placeholder extensions in runtime - resolvers access session only
+        // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
         let stub_executor = StubExecutor;
         let driver_client_id = DriverClientId::new(client_id);
+        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
-            client_extensions,
+            &mut runtime_ext,
             client_compositor,
             &self.app.kernel,
             &stub_executor,
@@ -531,6 +537,7 @@ impl SessionState {
             &self.keymap_registry,
             &mut runtime,
             &mut self.app.extensions,
+            client_extensions,
         );
 
         // Take accumulated changes
@@ -578,20 +585,25 @@ impl SessionState {
         let stub_executor = StubExecutor;
         let mut temp_mode_stack = ModeStack::new(home_mode);
         let mut temp_windows = reovim_driver_session::WindowLayout::empty();
-        let mut temp_extensions = reovim_driver_session::ExtensionMap::new();
+        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
+        let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
             &mut temp_mode_stack,
             &mut temp_windows,
-            &mut temp_extensions,
+            &mut runtime_ext,
             &mut temp_compositor,
             &self.app.kernel,
             &stub_executor,
         );
 
-        resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
+        resolver.on_command_complete(
+            &mut runtime,
+            &mut self.app.extensions,
+            &mut temp_client_extensions,
+        )
     }
 
     /// Try to call `on_command_complete` with per-client state (#471, #477).
@@ -633,22 +645,26 @@ impl SessionState {
         }
 
         // Phase #471, #477: Use per-client state with owner for per-client undo
+        //
+        // Use placeholder extensions in runtime - resolvers access session only
+        // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
         let mode = client_mode_stack.current().clone();
         let resolver = self.resolver_registry.get(&mode)?;
         let stub_executor = StubExecutor;
         let driver_client_id = DriverClientId::new(client_id);
+        let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
             client_mode_stack,
             client_windows,
-            client_extensions,
+            &mut runtime_ext,
             client_compositor,
             &self.app.kernel,
             &stub_executor,
         );
 
-        resolver.on_command_complete(&mut runtime, &mut self.app.extensions)
+        resolver.on_command_complete(&mut runtime, &mut self.app.extensions, client_extensions)
     }
 }
 
@@ -1918,7 +1934,8 @@ mod tests {
         fn on_command_complete(
             &self,
             _session: &mut dyn reovim_driver_input::SessionApiDyn,
-            _extensions: &mut reovim_driver_input::ExtensionMap,
+            _shared_extensions: &mut reovim_driver_input::ExtensionMap,
+            _client_extensions: &mut reovim_driver_input::ExtensionMap,
         ) -> Option<reovim_driver_input::ModeTransition> {
             // Return a Pop transition to indicate completion
             Some(reovim_driver_input::ModeTransition::Pop { result: None })
@@ -2011,7 +2028,8 @@ mod tests {
         fn on_command_complete(
             &self,
             session: &mut dyn reovim_driver_input::SessionApiDyn,
-            _extensions: &mut reovim_driver_input::ExtensionMap,
+            _shared_extensions: &mut reovim_driver_input::ExtensionMap,
+            _client_extensions: &mut reovim_driver_input::ExtensionMap,
         ) -> Option<reovim_driver_input::ModeTransition> {
             // Call execute_command to exercise the StubExecutor path
             let cmd_id = reovim_kernel::api::v1::CommandId::new(
@@ -2095,7 +2113,8 @@ mod tests {
             _state: &mut reovim_driver_input::ModeState,
             _input: &reovim_driver_input::ResolveInput<'_>,
             session: &mut dyn reovim_driver_input::SessionApiDyn,
-            _extensions: &mut reovim_driver_input::ExtensionMap,
+            _shared_extensions: &mut reovim_driver_input::ExtensionMap,
+            _client_extensions: &mut reovim_driver_input::ExtensionMap,
         ) -> reovim_driver_input::ResolveResult {
             // Call execute_command to exercise the StubExecutor
             let cmd_id = reovim_kernel::api::v1::CommandId::new(
