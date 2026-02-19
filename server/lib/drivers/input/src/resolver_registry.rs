@@ -251,20 +251,34 @@ impl ResolverRegistry {
         key: &KeyEvent,
         state: &mut ModeState,
         keymap: &dyn KeymapQuery,
-        extensions: &mut ExtensionMap,
+        shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> Option<ResolveResult> {
         let resolver = self.get(mode)?;
 
         // Clone pending keys to avoid borrow checker issues
         let keys = state.pending_keys.clone();
         let input = ResolveInput::new(&keys, mode, keymap);
-        let result = resolver.resolve_with_extensions(key, state, &input, extensions);
+        let result = resolver.resolve_with_extensions(
+            key,
+            state,
+            &input,
+            shared_extensions,
+            client_extensions,
+        );
 
         // If not handled, try parent mode
         if matches!(result, ResolveResult::NotHandled)
             && let Some(parent) = resolver.inherits_from()
         {
-            return self.resolve_with_extensions(parent, key, state, keymap, extensions);
+            return self.resolve_with_extensions(
+                parent,
+                key,
+                state,
+                keymap,
+                shared_extensions,
+                client_extensions,
+            );
         }
 
         Some(result)
@@ -313,6 +327,7 @@ impl ResolverRegistry {
     ///     }
     /// }
     /// ```
+    #[allow(clippy::too_many_arguments)]
     pub fn resolve_with_session(
         &self,
         mode: &ModeId,
@@ -320,20 +335,36 @@ impl ResolverRegistry {
         state: &mut ModeState,
         keymap: &dyn KeymapQuery,
         session: &mut dyn SessionApiDyn,
-        extensions: &mut ExtensionMap,
+        shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> Option<ResolveResult> {
         let resolver = self.get(mode)?;
 
         // Clone pending keys to avoid borrow checker issues
         let keys = state.pending_keys.clone();
         let input = ResolveInput::new(&keys, mode, keymap);
-        let result = resolver.resolve_with_session(key, state, &input, session, extensions);
+        let result = resolver.resolve_with_session(
+            key,
+            state,
+            &input,
+            session,
+            shared_extensions,
+            client_extensions,
+        );
 
         // If not handled, try parent mode
         if matches!(result, ResolveResult::NotHandled)
             && let Some(parent) = resolver.inherits_from()
         {
-            return self.resolve_with_session(parent, key, state, keymap, session, extensions);
+            return self.resolve_with_session(
+                parent,
+                key,
+                state,
+                keymap,
+                session,
+                shared_extensions,
+                client_extensions,
+            );
         }
 
         Some(result)
@@ -628,9 +659,16 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
 
-        let result =
-            registry.resolve_with_extensions(&mode, &key, &mut state, &keymap, &mut extensions);
+        let result = registry.resolve_with_extensions(
+            &mode,
+            &key,
+            &mut state,
+            &keymap,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(result.is_none());
     }
 
@@ -644,9 +682,16 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
 
-        let result =
-            registry.resolve_with_extensions(&mode, &key, &mut state, &keymap, &mut extensions);
+        let result = registry.resolve_with_extensions(
+            &mode,
+            &key,
+            &mut state,
+            &keymap,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::Pending));
     }
@@ -664,6 +709,7 @@ mod tests {
         let mut state = ModeState::new(op_pending.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
 
         let result = registry.resolve_with_extensions(
             &op_pending,
@@ -671,6 +717,7 @@ mod tests {
             &mut state,
             &keymap,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::Pending));
@@ -723,6 +770,7 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
@@ -733,6 +781,7 @@ mod tests {
             &keymap,
             &mut runtime,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_none());
     }
@@ -747,6 +796,7 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
@@ -757,6 +807,7 @@ mod tests {
             &keymap,
             &mut runtime,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::Pending));
@@ -775,6 +826,7 @@ mod tests {
         let mut state = ModeState::new(op_pending.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
@@ -785,6 +837,7 @@ mod tests {
             &keymap,
             &mut runtime,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::Pending));
@@ -856,9 +909,16 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
 
-        let result =
-            registry.resolve_with_extensions(&mode, &key, &mut state, &keymap, &mut extensions);
+        let result = registry.resolve_with_extensions(
+            &mode,
+            &key,
+            &mut state,
+            &keymap,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::NotHandled));
     }
@@ -891,6 +951,7 @@ mod tests {
         let mut state = ModeState::new(mode.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
@@ -901,6 +962,7 @@ mod tests {
             &keymap,
             &mut runtime,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_some());
         assert!(matches!(result.unwrap(), ResolveResult::NotHandled));
@@ -1009,6 +1071,7 @@ mod tests {
         let mut state = ModeState::new(op_pending.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
 
         let result = registry.resolve_with_extensions(
             &op_pending,
@@ -1016,6 +1079,7 @@ mod tests {
             &mut state,
             &keymap,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_none());
     }
@@ -1032,6 +1096,7 @@ mod tests {
         let mut state = ModeState::new(op_pending.clone());
         let keymap = NoOpKeymap;
         let mut extensions = crate::ExtensionMap::new();
+        let mut client_ext = crate::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
@@ -1042,6 +1107,7 @@ mod tests {
             &keymap,
             &mut runtime,
             &mut extensions,
+            &mut client_ext,
         );
         assert!(result.is_none());
     }

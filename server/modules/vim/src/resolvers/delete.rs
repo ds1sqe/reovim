@@ -202,7 +202,8 @@ impl ModeKeyResolver for VimDeleteResolver {
         _mstate: &mut ModeState,
         input: &ResolveInput<'_>,
         session: &mut dyn SessionApiDyn,
-        extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
         tracing::debug!(key = ?key, "delete resolver: resolve_with_session");
 
@@ -216,7 +217,7 @@ impl ModeKeyResolver for VimDeleteResolver {
 
         // Initialize state from VimSessionState on first key in this mode entry
         if !state.initialized {
-            if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
+            if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
                 state.operator_count = vim.pending_count.take();
                 state.register = vim.pending_register.take();
                 tracing::debug!(
@@ -316,7 +317,7 @@ impl ModeKeyResolver for VimDeleteResolver {
                 // Inclusive motions need end position adjustment ($ returns ON last char)
                 let inclusive = !linewise && is_inclusive_motion(&cmd);
                 let word_forward = !linewise && is_word_forward_motion(&cmd);
-                if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
+                if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
                     vim.pending_motion =
                         Some(PendingMotion::new(linewise, inclusive, word_forward));
                 }
@@ -361,7 +362,8 @@ impl ModeKeyResolver for VimDeleteResolver {
     fn on_command_complete(
         &self,
         session: &mut dyn SessionApiDyn,
-        extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> Option<ModeTransition> {
         let state = self.state.read().expect("lock poisoned");
         let count = state.operator_count;
@@ -370,7 +372,7 @@ impl ModeKeyResolver for VimDeleteResolver {
 
         // Check for text object range first (Epic #465)
         // Text objects set this range directly, so it takes priority over motion-based calculation
-        if let Some(op_state) = extensions.get_mut::<OperatorPendingState>()
+        if let Some(op_state) = client_extensions.get_mut::<OperatorPendingState>()
             && let Some(textobj_range) = op_state.take_textobj_range()
         {
             tracing::debug!(
@@ -381,7 +383,7 @@ impl ModeKeyResolver for VimDeleteResolver {
             );
 
             // Record for dot repeat (Epic #465)
-            if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
+            if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
                 vim.last_change = Some(LastChange {
                     change_type: ChangeType::OperatorTextObject {
                         operator: SessionOperatorType::Delete,
@@ -408,7 +410,7 @@ impl ModeKeyResolver for VimDeleteResolver {
         }
 
         // Fall back to motion-based range calculation
-        let vim = extensions.get_mut::<crate::VimSessionState>()?;
+        let vim = client_extensions.get_mut::<crate::VimSessionState>()?;
         let motion = vim.pending_motion.take()?;
 
         let state = self.state.read().expect("lock poisoned");
@@ -437,7 +439,7 @@ impl ModeKeyResolver for VimDeleteResolver {
         };
 
         // Record for dot repeat (Epic #465)
-        if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
+        if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
             vim.last_change = Some(LastChange {
                 change_type: ChangeType::OperatorMotion {
                     operator: SessionOperatorType::Delete,
@@ -983,12 +985,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &KeyEvent::new(KeyCode::Escape),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1008,6 +1012,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(5, 3);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // Pre-set pending count and register in VimSessionState
         {
@@ -1021,6 +1026,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1047,12 +1053,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(3, 5);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('d'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1087,12 +1095,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('5'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::Pending));
@@ -1106,6 +1116,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(2, 5);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         extensions.get_or_insert::<crate::VimSessionState>();
 
         let result = resolver.resolve_with_session(
@@ -1113,6 +1124,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1135,6 +1147,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(0, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         extensions.get_or_insert::<crate::VimSessionState>();
 
         let result = resolver.resolve_with_session(
@@ -1142,6 +1155,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1161,6 +1175,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(0, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         extensions.get_or_insert::<crate::VimSessionState>();
 
         let result = resolver.resolve_with_session(
@@ -1168,6 +1183,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1189,12 +1205,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('z'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1218,6 +1236,7 @@ mod tests {
         let resolver = VimDeleteResolver::with_context(Some(1), None);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // Set up a text object range in OperatorPendingState
         let op_state = extensions.get_or_insert::<OperatorPendingState>();
@@ -1229,7 +1248,7 @@ mod tests {
 
         extensions.get_or_insert::<crate::VimSessionState>();
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_some());
 
         if let Some(ModeTransition::Pop {
@@ -1271,12 +1290,13 @@ mod tests {
 
         let mut session = MockSession::with_cursor(0, 5); // end position after motion
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // Set up pending_motion in VimSessionState (characterwise, not inclusive)
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, false, false));
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_some());
 
         if let Some(ModeTransition::Pop {
@@ -1313,11 +1333,12 @@ mod tests {
 
         let mut session = MockSession::with_cursor(0, 4); // cursor ON last char
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, true, false)); // inclusive
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_some());
 
         if let Some(ModeTransition::Pop {
@@ -1346,11 +1367,12 @@ mod tests {
 
         let mut session = MockSession::with_cursor(2, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(true, false, false)); // linewise
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_some());
 
         if let Some(ModeTransition::Pop {
@@ -1379,11 +1401,12 @@ mod tests {
         // Cursor moved backward
         let mut session = MockSession::with_cursor(0, 2);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, false, false));
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_some());
 
         if let Some(ModeTransition::Pop {
@@ -1409,9 +1432,10 @@ mod tests {
         let resolver = VimDeleteResolver::new();
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // No VimSessionState, no OperatorPendingState -> None
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_none());
     }
 
@@ -1420,10 +1444,11 @@ mod tests {
         let resolver = VimDeleteResolver::new();
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         extensions.get_or_insert::<crate::VimSessionState>();
         // VimSessionState has no pending_motion
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_none());
     }
 
@@ -1432,6 +1457,7 @@ mod tests {
         let resolver = VimDeleteResolver::with_context(Some(2), Some('a'));
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let op_state = extensions.get_or_insert::<OperatorPendingState>();
         op_state.set_textobj_range(TextObjRange {
@@ -1442,7 +1468,7 @@ mod tests {
 
         extensions.get_or_insert::<crate::VimSessionState>();
 
-        let _ = resolver.on_command_complete(&mut session, &mut extensions);
+        let _ = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
 
         let vim = extensions.get::<crate::VimSessionState>().unwrap();
         let lc = vim.last_change.as_ref().unwrap();
@@ -1482,6 +1508,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(0, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         // Do NOT insert VimSessionState
 
         let result = resolver.resolve_with_session(
@@ -1489,6 +1516,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1512,12 +1540,14 @@ mod tests {
             cursor: None,
         };
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('d'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1549,12 +1579,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('g'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1574,6 +1606,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(2, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         {
             let vim = extensions.get_or_insert::<crate::VimSessionState>();
@@ -1585,6 +1618,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1617,6 +1651,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::with_cursor(0, 0);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // First key '3' - motion count
         let result = resolver.resolve_with_session(
@@ -1624,6 +1659,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::Pending));
@@ -1634,6 +1670,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1654,12 +1691,13 @@ mod tests {
         let resolver = VimDeleteResolver::new();
         let mut session = MockSession::with_cursor(0, 5);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, false, false));
         // Don't set start_position in resolver state
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_none(), "should return None when start_position is not set");
     }
 
@@ -1678,11 +1716,12 @@ mod tests {
             cursor: None,
         };
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, false, false));
 
-        let result = resolver.on_command_complete(&mut session, &mut extensions);
+        let result = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
         assert!(result.is_none(), "should return None when cursor_position is None");
     }
 
@@ -1699,11 +1738,12 @@ mod tests {
 
         let mut session = MockSession::with_cursor(0, 5);
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let vim = extensions.get_or_insert::<crate::VimSessionState>();
         vim.pending_motion = Some(PendingMotion::new(false, false, false));
 
-        let _ = resolver.on_command_complete(&mut session, &mut extensions);
+        let _ = resolver.on_command_complete(&mut session, &mut shared_ext, &mut extensions);
 
         let vim = extensions.get::<crate::VimSessionState>().unwrap();
         let lc = vim.last_change.as_ref().unwrap();

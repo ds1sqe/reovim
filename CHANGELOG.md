@@ -2,7 +2,25 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.9.4-dev
+## [Unreleased] - v0.9.5-dev
+
+### Changed
+
+- **Explicit shared vs client extensions in resolver API (#474)**: Split the
+  single `extensions: &mut ExtensionMap` parameter in `ModeKeyResolver` trait
+  methods into `shared_extensions` and `client_extensions`. Modules now
+  explicitly choose which extension map to use. `VimSessionState` and
+  `OperatorPendingState` moved to `client_extensions` (per-client isolation),
+  fixing a bug where all operator+textobject combinations (`diw`, `ciw`, `yiw`,
+  `di"`, `ci{`, etc.) were broken because text objects wrote to per-client
+  extensions via `runtime.ext_mut()` but operator resolvers read from shared
+  `self.app.extensions`. Affected methods: `resolve_with_extensions`,
+  `resolve_with_session`, `on_command_complete`. Server call sites use a
+  placeholder `ExtensionMap` for `SessionRuntime` (resolvers access session
+  only via `SessionApiDyn`, not `ExtensionApi`), freeing `client_extensions`
+  to be passed separately without borrow conflicts.
+
+## [0.9.4-dev]
 
 ### Added
 

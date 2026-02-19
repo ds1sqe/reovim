@@ -376,18 +376,19 @@ pub trait ModeKeyResolver: Send + Sync {
     /// - **Mechanism**: Runner routes keys to resolvers, provides extension access
     /// - **Policy**: Vim resolver stores/reads `VimSessionState` in extensions
     ///
-    /// By passing `extensions` as a mutable reference, resolvers can:
-    /// - Read pending operator state
-    /// - Set pending char state (for f/t/r commands)
-    /// - Execute operators directly when motion provides range
-    /// - All without returning vim-specific `CommandResult` variants
+    /// # Extension Maps
+    ///
+    /// Two extension maps are provided so modules can choose the correct scope:
+    /// - `shared_extensions` - Shared across all clients in a session (e.g., syntax state)
+    /// - `client_extensions` - Per-client isolated state (e.g., vim operator state, counts)
     ///
     /// # Arguments
     ///
     /// * `key` - The key event to process
     /// * `state` - Mutable access to shared mode state
     /// * `input` - Input context with keymap access
-    /// * `extensions` - Per-session extension storage for module state
+    /// * `shared_extensions` - Session-wide extension storage (shared across clients)
+    /// * `client_extensions` - Per-client extension storage (isolated per connection)
     ///
     /// # Returns
     ///
@@ -408,10 +409,11 @@ pub trait ModeKeyResolver: Send + Sync {
     ///     key: &KeyEvent,
     ///     state: &mut ModeState,
     ///     input: &ResolveInput<'_>,
-    ///     extensions: &mut ExtensionMap,
+    ///     shared_extensions: &mut ExtensionMap,
+    ///     client_extensions: &mut ExtensionMap,
     /// ) -> ResolveResult {
-    ///     // Get vim-specific state
-    ///     let vim = extensions.get_or_insert::<VimSessionState>();
+    ///     // Per-client vim state (pending operator, counts)
+    ///     let vim = client_extensions.get_or_insert::<VimSessionState>();
     ///
     ///     // Check for pending operator
     ///     if let Some(pending) = &vim.pending_operator {
@@ -426,7 +428,8 @@ pub trait ModeKeyResolver: Send + Sync {
         key: &KeyEvent,
         state: &mut ModeState,
         input: &ResolveInput<'_>,
-        _extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        _client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
         // Default: delegate to resolve_with_keymap for backward compatibility
         self.resolve_with_keymap(key, state, input)
@@ -444,19 +447,24 @@ pub trait ModeKeyResolver: Send + Sync {
     /// - **Mechanism (runner)**: Creates `SessionRuntime`, routes keys to resolvers
     /// - **Policy (resolvers)**: Perform actions directly via `session.*` methods
     ///
+    /// # Extension Maps
+    ///
+    /// Two extension maps are provided so modules can choose the correct scope:
+    /// - `shared_extensions` - Shared across all clients in a session
+    /// - `client_extensions` - Per-client isolated state
+    ///
+    /// `ExtensionApi` has generic methods, making it incompatible with trait objects.
+    /// By passing extensions separately, we preserve dyn-compatibility for
+    /// `ModeKeyResolver` while still providing full access.
+    ///
     /// # Arguments
     ///
     /// * `key` - The key event to process
     /// * `state` - Mutable access to shared mode state
     /// * `input` - Input context with keymap access
     /// * `session` - Dyn-compatible session API (mode, buffer, window, command, changes)
-    /// * `extensions` - Per-session extension storage for module state
-    ///
-    /// # Why Separate `extensions`?
-    ///
-    /// `ExtensionApi` has generic methods (`ext<T>`, `ext_mut<T>`), making it
-    /// incompatible with trait objects. By passing extensions separately, we preserve
-    /// dyn-compatibility for `ModeKeyResolver` while still providing full access.
+    /// * `shared_extensions` - Session-wide extension storage (shared across clients)
+    /// * `client_extensions` - Per-client extension storage (isolated per connection)
     ///
     /// # Returns
     ///
@@ -479,14 +487,15 @@ pub trait ModeKeyResolver: Send + Sync {
     ///     state: &mut ModeState,
     ///     input: &ResolveInput<'_>,
     ///     session: &mut dyn SessionApiDyn,
-    ///     extensions: &mut ExtensionMap,
+    ///     shared_extensions: &mut ExtensionMap,
+    ///     client_extensions: &mut ExtensionMap,
     /// ) -> ResolveResult {
     ///     // Directly manipulate state via session
     ///     session.push_mode(insert_mode, TransitionContext::new());
     ///     session.move_cursor(buffer, Position::new(0, 5));
     ///
-    ///     // Access module state via extensions
-    ///     let vim = extensions.get_or_insert::<VimSessionState>();
+    ///     // Per-client module state
+    ///     let vim = client_extensions.get_or_insert::<VimSessionState>();
     ///     vim.pending_count = None;
     ///
     ///     // Tell runner: "I'm done, just broadcast the changes"
@@ -499,11 +508,12 @@ pub trait ModeKeyResolver: Send + Sync {
         state: &mut ModeState,
         input: &ResolveInput<'_>,
         _session: &mut dyn SessionApiDyn,
-        extensions: &mut ExtensionMap,
+        shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
         // Default: delegate to resolve_with_extensions for backward compatibility.
         // Resolvers that need session access should override this method.
-        self.resolve_with_extensions(key, state, input, extensions)
+        self.resolve_with_extensions(key, state, input, shared_extensions, client_extensions)
     }
 
     /// Hook called after a command executes successfully.
@@ -541,7 +551,8 @@ pub trait ModeKeyResolver: Send + Sync {
     /// # Arguments
     ///
     /// * `session` - Session API for cursor/buffer access
-    /// * `extensions` - Per-session extension storage (e.g., `VimSessionState`)
+    /// * `shared_extensions` - Session-wide extension storage (shared across clients)
+    /// * `client_extensions` - Per-client extension storage (isolated per connection)
     ///
     /// # Returns
     ///
@@ -554,7 +565,8 @@ pub trait ModeKeyResolver: Send + Sync {
     fn on_command_complete(
         &self,
         _session: &mut dyn SessionApiDyn,
-        _extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        _client_extensions: &mut ExtensionMap,
     ) -> Option<ModeTransition> {
         // Default: no pending operation to complete
         None
@@ -1955,8 +1967,15 @@ mod tests {
         let keymap = NoOpKeymap;
         let input = ResolveInput::new(&keys, &mode, &keymap);
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_ext = reovim_driver_session::ExtensionMap::new();
 
-        let result = resolver.resolve_with_extensions(&key, &mut state, &input, &mut extensions);
+        let result = resolver.resolve_with_extensions(
+            &key,
+            &mut state,
+            &input,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(matches!(result, ResolveResult::Pending));
     }
 
@@ -1977,7 +1996,8 @@ mod tests {
                 _key: &KeyEvent,
                 _state: &mut ModeState,
                 _input: &ResolveInput<'_>,
-                _extensions: &mut reovim_driver_session::ExtensionMap,
+                _shared_extensions: &mut reovim_driver_session::ExtensionMap,
+                _client_extensions: &mut reovim_driver_session::ExtensionMap,
             ) -> ResolveResult {
                 ResolveResult::Completed
             }
@@ -1998,13 +2018,20 @@ mod tests {
         let keymap = NoOpKeymap;
         let input = ResolveInput::new(&keys, &mode, &keymap);
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_ext = reovim_driver_session::ExtensionMap::new();
 
         // Use a test session runtime to get a dyn SessionApiDyn
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
-        let result =
-            resolver.resolve_with_session(&key, &mut state, &input, &mut runtime, &mut extensions);
+        let result = resolver.resolve_with_session(
+            &key,
+            &mut state,
+            &input,
+            &mut runtime,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(matches!(result, ResolveResult::Completed));
     }
 
@@ -2026,8 +2053,9 @@ mod tests {
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_ext = reovim_driver_session::ExtensionMap::new();
 
-        let result = resolver.on_command_complete(&mut runtime, &mut extensions);
+        let result = resolver.on_command_complete(&mut runtime, &mut extensions, &mut client_ext);
         assert!(result.is_none());
     }
 
@@ -2245,9 +2273,16 @@ mod tests {
         let keymap = NoOpKeymap;
         let input = ResolveInput::new(&keys, &mode, &keymap);
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_ext = reovim_driver_session::ExtensionMap::new();
 
         // Call resolve_with_extensions -> delegates to resolve_with_keymap -> delegates to resolve
-        let result = resolver.resolve_with_extensions(&key, &mut state, &input, &mut extensions);
+        let result = resolver.resolve_with_extensions(
+            &key,
+            &mut state,
+            &input,
+            &mut extensions,
+            &mut client_ext,
+        );
         assert!(matches!(result, ResolveResult::InsertChar { char: 'z', .. }));
         assert_eq!(resolver.call_count.load(Ordering::SeqCst), 1);
     }
@@ -2292,11 +2327,18 @@ mod tests {
         let keymap = NoOpKeymap;
         let input = ResolveInput::new(&keys, &mode, &keymap);
         let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let mut client_ext = reovim_driver_session::ExtensionMap::new();
         let mut test_rt = reovim_driver_session::testing::TestSessionRuntime::new();
         let mut runtime = test_rt.runtime();
 
-        let result =
-            resolver.resolve_with_session(&key, &mut state, &input, &mut runtime, &mut extensions);
+        let result = resolver.resolve_with_session(
+            &key,
+            &mut state,
+            &input,
+            &mut runtime,
+            &mut extensions,
+            &mut client_ext,
+        );
         if let ResolveResult::Execute(cmd, ctx) = result {
             assert_eq!(cmd, test_command());
             assert_eq!(ctx.count, Some(42));

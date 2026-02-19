@@ -260,7 +260,8 @@ impl ModeKeyResolver for VimVisualResolver {
         _mstate: &mut ModeState,
         input: &ResolveInput<'_>,
         _session: &mut dyn SessionApiDyn,
-        extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+        client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
         tracing::debug!(key = ?key, mode = ?self.mode_id, "visual resolver: resolve_with_session");
 
@@ -278,7 +279,7 @@ impl ModeKeyResolver for VimVisualResolver {
 
         // Initialize state on first key (read any pending count from normal mode)
         if !state.initialized {
-            if let Some(vim) = extensions.get_mut::<crate::VimSessionState>() {
+            if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
                 // Transfer any pending count from normal mode
                 if let Some(count) = vim.pending_count.take() {
                     state.motion_count = Some(count);
@@ -1027,12 +1028,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &KeyEvent::new(KeyCode::Escape),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1052,12 +1055,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &KeyEvent::with_modifiers(KeyCode::Char('c'), Modifiers::CTRL),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1077,6 +1082,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // Pre-set pending count in VimSessionState (from normal mode count before entering visual)
         {
@@ -1089,6 +1095,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1113,12 +1120,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('3'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::Pending));
@@ -1133,12 +1142,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('w'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1157,12 +1168,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('z'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1177,12 +1190,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('g'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1199,6 +1214,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         // No VimSessionState inserted
 
         let result = resolver.resolve_with_session(
@@ -1206,6 +1222,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1226,12 +1243,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &KeyEvent::new(KeyCode::Escape),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1251,12 +1270,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &KeyEvent::new(KeyCode::Escape),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1307,12 +1328,14 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         let result = resolver.resolve_with_session(
             &key('g'),
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1333,6 +1356,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
         extensions.get_or_insert::<crate::VimSessionState>(); // no pending_count
 
         let result = resolver.resolve_with_session(
@@ -1340,6 +1364,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
 
@@ -1360,6 +1385,7 @@ mod tests {
         let input = resolve_input(&keymap);
         let mut session = MockSession::new();
         let mut extensions = ExtensionMap::new();
+        let mut shared_ext = ExtensionMap::new();
 
         // First call initializes
         let result = resolver.resolve_with_session(
@@ -1367,6 +1393,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::Pending));
@@ -1377,6 +1404,7 @@ mod tests {
             &mut mstate,
             &input,
             &mut session,
+            &mut shared_ext,
             &mut extensions,
         );
         assert!(matches!(result, ResolveResult::Pending));
