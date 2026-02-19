@@ -1768,6 +1768,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-defaults",
+ "reovim-module-textobjects",
  "reovim-server",
  "tokio",
  "tracing",

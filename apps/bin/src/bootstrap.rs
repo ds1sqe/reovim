@@ -33,7 +33,7 @@ use {
     reovim_driver_syntax::SyntaxFactoryStore,
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, ModuleContext, ModuleId, MotionEngine,
+        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
         OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
@@ -310,7 +310,7 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
     ModuleContext::new(kernel, services, data_dir, cache_dir)
 }
 
-/// Initialize all default modules.
+/// Initialize all default modules plus any extra modules from environment.
 ///
 /// Modules self-register their services during `init()`:
 /// - Resolvers → `ResolverRegistry`
@@ -319,33 +319,85 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Mode info → `ModeInfoStore`
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn initialize_modules(ctx: &ModuleContext) {
-    // Get all default modules
     let modules = DefaultsModule::create_modules();
 
     tracing::info!(count = modules.len(), "Initializing default modules");
 
     for mut module in modules {
-        let id = module.id();
-        let name = module.name();
-
-        tracing::debug!(%id, name, "Initializing module");
-
-        match module.init(ctx) {
-            ProbeResult::Success => {
-                tracing::info!(%id, name, "Module initialized successfully");
-            }
-            ProbeResult::Defer(msg) => {
-                tracing::warn!(%id, name, %msg, "Module deferred initialization");
-                // TODO: Implement deferred module loading
-            }
-            ProbeResult::Failed(err) => {
-                tracing::error!(%id, name, ?err, "Module initialization failed");
-                // Continue with other modules - don't fail the whole bootstrap
-            }
-        }
+        init_single_module(&mut *module, ctx);
     }
 
+    // Load extra modules from REOVIM_EXTRA_MODULES env var
+    initialize_extra_modules(ctx);
+
     tracing::info!("Module initialization complete");
+}
+
+/// Initialize a single module, logging the result.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) {
+    let id = module.id();
+    let name = module.name();
+
+    tracing::debug!(%id, name, "Initializing module");
+
+    match module.init(ctx) {
+        ProbeResult::Success => {
+            tracing::info!(%id, name, "Module initialized successfully");
+        }
+        ProbeResult::Defer(msg) => {
+            tracing::warn!(%id, name, %msg, "Module deferred initialization");
+        }
+        ProbeResult::Failed(err) => {
+            tracing::error!(%id, name, ?err, "Module initialization failed");
+        }
+    }
+}
+
+/// Initialize extra modules from `REOVIM_EXTRA_MODULES` environment variable.
+///
+/// Parses a comma-separated list of module names and initializes each.
+/// Unknown names are logged as warnings and skipped.
+///
+/// # Example
+///
+/// ```bash
+/// REOVIM_EXTRA_MODULES=textobjects cargo run -- server --grpc 0
+/// ```
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn initialize_extra_modules(ctx: &ModuleContext) {
+    let Ok(extra) = std::env::var("REOVIM_EXTRA_MODULES") else {
+        return;
+    };
+
+    let names: Vec<&str> = extra
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    if names.is_empty() {
+        return;
+    }
+
+    tracing::info!(count = names.len(), ?names, "Loading extra modules");
+
+    for name in names {
+        if let Some(mut module) = create_extra_module(name) {
+            init_single_module(&mut *module, ctx);
+        } else {
+            tracing::warn!(name, "Unknown extra module, skipping");
+        }
+    }
+}
+
+/// Create an extra module by name.
+///
+/// Returns `None` for unknown module names.
+fn create_extra_module(name: &str) -> Option<Box<dyn Module>> {
+    match name {
+        "textobjects" => Some(Box::new(reovim_module_textobjects::TextObjectsModule::new())),
+        _ => None,
+    }
 }
 
 /// Configure syntax highlighting from `SyntaxFactoryStore`.
@@ -522,5 +574,18 @@ mod tests {
         let kernel = create_kernel_context(Arc::clone(&services));
         // The kernel should have been constructed successfully
         drop(kernel);
+    }
+
+    #[test]
+    fn test_create_extra_module_textobjects() {
+        let module = create_extra_module("textobjects");
+        assert!(module.is_some());
+        assert_eq!(module.unwrap().id().as_str(), "textobjects");
+    }
+
+    #[test]
+    fn test_create_extra_module_unknown() {
+        assert!(create_extra_module("nonexistent").is_none());
+        assert!(create_extra_module("").is_none());
     }
 }

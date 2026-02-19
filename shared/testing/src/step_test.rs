@@ -173,6 +173,28 @@ impl StepTest {
         }
     }
 
+    /// Create new step test with extra modules loaded.
+    ///
+    /// See [`super::IntegrationTest::with_modules`] for details.
+    ///
+    /// # Panics
+    ///
+    /// Panics if server fails to spawn.
+    pub async fn with_modules(modules: &[&str]) -> Self {
+        let harness = TestServerHarness::spawn_with_modules(modules)
+            .await
+            .expect("Failed to spawn server with extra modules");
+        let addr = format!("127.0.0.1:{}", harness.port());
+        Self {
+            harness,
+            addr,
+            initial_content: None,
+            initial_cursor: None,
+            steps: Vec::new(),
+            default_delay: DEFAULT_STEP_DELAY_MS,
+        }
+    }
+
     /// Get the path to the server log file for debugging.
     ///
     /// Returns `None` if log capture is not enabled.

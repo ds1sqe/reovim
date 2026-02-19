@@ -20,6 +20,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   only via `SessionApiDyn`, not `ExtensionApi`), freeing `client_extensions`
   to be passed separately without borrow conflicts.
 
+- **Extra module loading via `REOVIM_EXTRA_MODULES` env var (#474)**:
+  Integration tests can now explicitly load modules not in the defaults bundle.
+  `TextObjectsModule::init()` fixed to self-register commands via
+  `CommandHandlerStore` (was a no-op). `TestServerHarness::spawn_with_modules()`
+  and `IntegrationTest::with_modules()` pass the env var to the spawned server.
+  Four text object integration tests (`diw`, `daw`, `di"`, `ci{`) un-ignored
+  and passing.
+
 ## [0.9.4-dev]
 
 ### Added
