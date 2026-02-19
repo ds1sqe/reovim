@@ -22,7 +22,7 @@
 
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{SessionRuntime, api::ChangeTracker},
     reovim_kernel::api::v1::{CommandId, Cursor, Motion, MotionEngine, Position},
 };
 
@@ -103,10 +103,13 @@ impl CommandHandler for ExecuteFindChar {
         };
 
         // Apply motion if target found
-        if let Some(pos) = target
-            && let Some(window) = runtime.windows_mut().active_mut()
-        {
-            window.cursor = pos.into();
+        if let Some(pos) = target {
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor = pos.into();
+            }
+            // #474: Record cursor move so notification pipeline and
+            // centralized selection extension are triggered.
+            runtime.record_cursor_move(buffer_id);
         }
         // Character not found - this is not an error, just don't move
         // (Vim behavior: cursor stays in place, no beep)

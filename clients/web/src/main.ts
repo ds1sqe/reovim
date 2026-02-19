@@ -37,14 +37,18 @@ async function main() {
     const myClientId = joinResponse.clientId;
     console.log("Joined presence session, client ID:", myClientId.toString());
 
-    // Initialize editor state
-    const editor = new Editor(client, myClientId);
+    // #474: Store session token for authenticated RPCs (#483)
+    // Without this, all subsequent requests (sendKeys, etc.) are rejected
+    client.setSessionToken(joinResponse.sessionToken);
+
+    // Initialize editor state with existing peers (#474)
+    const editor = new Editor(client, myClientId, joinResponse.peersV2);
 
     // Initialize WASM module for multi-window support
     await editor.init();
 
-    // Setup keyboard input with client ID
-    setupKeyboardHandler(client, editor, myClientId);
+    // Setup keyboard input (#483: identity via token, not clientId parameter)
+    setupKeyboardHandler(client, editor);
 
     // Initial state fetch
     await editor.refresh();

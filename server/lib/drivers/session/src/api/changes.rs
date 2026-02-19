@@ -308,6 +308,13 @@ pub trait ChangeTracker: Send {
     /// Commands should call this after moving the cursor via
     /// `BufferApi::set_cursor_position()`.
     fn record_cursor_move(&mut self, buffer: BufferId);
+
+    /// Record that the selection changed in a buffer (#474).
+    ///
+    /// Commands should call this after creating, modifying, or clearing
+    /// a visual selection. The notification pipeline uses this to
+    /// broadcast selection state to other clients.
+    fn record_selection_change(&mut self, buffer: BufferId);
 }
 
 #[cfg(test)]

@@ -83,14 +83,10 @@ impl CommandHandler for CursorUp {
         // Normal mode: move cursor via per-client Window (#471)
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.cursor = new_pos.into();
-            // In visual mode, extend selection to cursor (#471)
-            // Selection end is exclusive, so add 1 to include the character under cursor
-            if let Some(ref mut sel) = window.selection {
-                sel.end = Position::new(new_pos.line, new_pos.column + 1);
-            }
         }
 
         // Record cursor move via ChangeTracker
+        // #474: Selection extension is centralized in SessionRuntime::record_cursor_move
         runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
@@ -164,14 +160,10 @@ impl CommandHandler for CursorDown {
         // Normal mode: move cursor via per-client Window (#471)
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.cursor = new_pos.into();
-            // In visual mode, extend selection to cursor (#471)
-            // Selection end is exclusive, so add 1 to include the character under cursor
-            if let Some(ref mut sel) = window.selection {
-                sel.end = Position::new(new_pos.line, new_pos.column + 1);
-            }
         }
 
         // Record cursor move via ChangeTracker
+        // #474: Selection extension is centralized in SessionRuntime::record_cursor_move
         runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
@@ -238,14 +230,10 @@ impl CommandHandler for CursorLeft {
         // Normal mode: move cursor via per-client Window (#471)
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.cursor = new_pos.into();
-            // In visual mode, extend selection to cursor (#471)
-            // Selection end is exclusive, so add 1 to include the character under cursor
-            if let Some(ref mut sel) = window.selection {
-                sel.end = Position::new(new_pos.line, new_pos.column + 1);
-            }
         }
 
         // Record cursor move via ChangeTracker
+        // #474: Selection extension is centralized in SessionRuntime::record_cursor_move
         runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success
@@ -322,14 +310,10 @@ impl CommandHandler for CursorRight {
         // Normal mode: move cursor via per-client Window (#471)
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.cursor = new_pos.into();
-            // In visual mode, extend selection to cursor (#471)
-            // Selection end is exclusive, so add 1 to include the character under cursor
-            if let Some(ref mut sel) = window.selection {
-                sel.end = Position::new(new_pos.line, new_pos.column + 1);
-            }
         }
 
         // Record cursor move via ChangeTracker
+        // #474: Selection extension is centralized in SessionRuntime::record_cursor_move
         runtime.record_cursor_move(buffer_id);
 
         CommandResult::Success

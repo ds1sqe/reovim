@@ -191,6 +191,29 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
+        // #474: Auto-detect selection changes (defense-in-depth).
+        // If cursor moved and client has an active selection, ensure
+        // selection_changed is recorded for the notification pipeline.
+        // This is a pure safety net: accumulated_changes is a plain
+        // StateChanges (not SessionRuntime), so the centralized sel.end
+        // extension doesn't apply here. Catches any future commands
+        // that record cursor_moved on accumulated_changes directly.
+        if accumulated_changes.cursor_moved
+            && !accumulated_changes.selection_changed
+            && let Some(state) = session.client_state(client_id)
+        {
+            let has_selection = state
+                .windows
+                .active()
+                .is_some_and(|w| w.selection.is_some());
+            if has_selection {
+                #[allow(clippy::redundant_closure_for_method_calls)]
+                if let Some(buffer_id) = session.with_state(|s| s.active_buffer()).await {
+                    accumulated_changes.record_selection_change(buffer_id);
+                }
+            }
+        }
+
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)

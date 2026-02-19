@@ -11,7 +11,7 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         BufferApi, SessionRuntime, TransitionContext,
-        api::{ModeApi, RegisterApi, RegisterContent, Selection, SelectionMode},
+        api::{ChangeTracker, ModeApi, RegisterApi, RegisterContent, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position},
 };
@@ -116,6 +116,9 @@ impl CommandHandler for DeleteSelection {
             window.cursor = cursor_pos.into();
         }
 
+        // #474: Notify other clients that selection was cleared
+        runtime.record_selection_change(buffer_id);
+
         // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
@@ -174,6 +177,9 @@ impl CommandHandler for YankSelection {
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = None;
         }
+
+        // #474: Notify other clients that selection was cleared
+        runtime.record_selection_change(buffer_id);
 
         // Mode transition to Normal
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
@@ -238,6 +244,9 @@ impl CommandHandler for ChangeSelection {
             window.cursor = cursor_pos.into();
         }
 
+        // #474: Notify other clients that selection was cleared
+        runtime.record_selection_change(buffer_id);
+
         // Mode transition to Insert (change = delete + insert mode)
         runtime.set_mode(VimMode::INSERT_ID, TransitionContext::new());
 
@@ -290,6 +299,9 @@ impl CommandHandler for IndentSelection {
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = None;
         }
+
+        // #474: Notify other clients that selection was cleared
+        runtime.record_selection_change(buffer_id);
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 
@@ -357,6 +369,9 @@ impl CommandHandler for DedentSelection {
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = None;
         }
+
+        // #474: Notify other clients that selection was cleared
+        runtime.record_selection_change(buffer_id);
 
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
 

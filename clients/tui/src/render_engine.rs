@@ -144,7 +144,7 @@ const LOCAL_SELECTION_BG: Color = Color::Rgb {
 /// This is a basic implementation that renders:
 /// - Buffer content (simple text, no syntax highlighting yet)
 /// - Remote selections (dimmed background overlay)
-/// - Local selection (headless mode only)
+/// - Local selection (background overlay)
 /// - Remote cursors (CBF-8 colorblind-friendly palette)
 /// - Self cursor (if `render_self_cursor` is true)
 /// - Statusline
@@ -166,9 +166,7 @@ pub fn render_frame<B: RenderBackend>(
 
     // Render selections (behind cursors — background overlay)
     render_remote_selections(backend, state, config.gutter_width, content_height);
-    if config.render_self_cursor {
-        render_local_selection(backend, state, config.gutter_width, content_height);
-    }
+    render_local_selection(backend, state, config.gutter_width, content_height);
 
     // Render cursors (on top of selections)
     render_remote_cursors(backend, state, config.gutter_width, content_height);
@@ -305,6 +303,7 @@ fn render_remote_selections<B: RenderBackend>(
 
     // TODO(#494): Multi-window — iterate all windows with tiling layout
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
+    let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
 
     for remote in state.other_clients.values() {
         if remote.buffer_id != current_buffer_id {
@@ -315,13 +314,21 @@ fn render_remote_selections<B: RenderBackend>(
         };
 
         let sel_color = dimmed_client_color(remote.client_id);
-        render_selection_range(backend, sel, sel_color, gutter_width, content_height, width);
+        render_selection_range(
+            backend,
+            sel,
+            sel_color,
+            gutter_width,
+            content_height,
+            width,
+            lines.map(Vec::as_slice),
+        );
     }
 }
 
-/// Render local client's visual selection (headless mode only).
+/// Render local client's visual selection.
 ///
-/// Interactive TUI uses terminal-level selection highlighting via crossterm.
+/// Overlays a subtle background color on the local selection range.
 #[allow(clippy::cast_possible_truncation)]
 fn render_local_selection<B: RenderBackend>(
     backend: &mut B,
@@ -334,7 +341,19 @@ fn render_local_selection<B: RenderBackend>(
         return;
     };
 
-    render_selection_range(backend, sel, LOCAL_SELECTION_BG, gutter_width, content_height, width);
+    // TODO(#494): Multi-window — iterate all windows with tiling layout
+    let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
+    let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
+
+    render_selection_range(
+        backend,
+        sel,
+        LOCAL_SELECTION_BG,
+        gutter_width,
+        content_height,
+        width,
+        lines.map(Vec::as_slice),
+    );
 }
 
 /// Render a selection range with a background color overlay.
@@ -352,6 +371,7 @@ fn render_selection_range<B: RenderBackend>(
     gutter_width: u16,
     content_height: u16,
     screen_width: u16,
+    lines: Option<&[String]>,
 ) {
     let (start_line, start_col, end_line, end_col) = normalize_selection(sel);
     let content_width = screen_width.saturating_sub(gutter_width);
@@ -361,19 +381,24 @@ fn render_selection_range<B: RenderBackend>(
             break;
         }
 
+        // Actual content length for this line (for clamping char/block modes)
+        let line_len = lines
+            .and_then(|l| l.get(line as usize))
+            .map_or(content_width, |s| s.len() as u16);
+
         let (col_start, col_end) = match sel.mode.as_str() {
             "line" => (0u16, content_width),
-            "block" => (start_col as u16, end_col as u16 + 1),
+            "block" => (start_col as u16, (end_col as u16 + 1).min(line_len)),
             _ => {
-                // Char mode
+                // Char mode — clamp to line content length (skip empty cells past EOL)
                 if start_line == end_line {
-                    (start_col as u16, end_col as u16 + 1)
+                    (start_col as u16, (end_col as u16 + 1).min(line_len))
                 } else if line == start_line {
-                    (start_col as u16, content_width)
+                    (start_col as u16, line_len)
                 } else if line == end_line {
-                    (0, end_col as u16 + 1)
+                    (0, (end_col as u16 + 1).min(line_len))
                 } else {
-                    (0, content_width)
+                    (0, line_len)
                 }
             }
         };
