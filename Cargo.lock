@@ -1969,6 +1969,7 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "serde_json",
 ]
 
 [[package]]

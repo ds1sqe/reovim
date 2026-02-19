@@ -12,13 +12,15 @@ use crate::{
 #[cfg(feature = "grpc")]
 use {
     crate::grpc::{
-        AuthInterceptor, BufferServiceImpl, EditorServiceImpl, InputServiceImpl, ModuleServiceImpl,
-        NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
-        SyntaxServiceImpl,
+        AuthInterceptor, BufferServiceImpl, EditorServiceImpl, ExtensionServiceImpl,
+        InputServiceImpl, ModuleServiceImpl, NotificationServiceImpl, PresenceServiceImpl,
+        ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
     },
+    reovim_driver_session::bridges::{BridgeRegistry, CmdlineBridge},
     reovim_protocol::v2::{
         buffer_service_server::BufferServiceServer, editor_service_server::EditorServiceServer,
-        input_service_server::InputServiceServer, module_service_server::ModuleServiceServer,
+        extension_service_server::ExtensionServiceServer, input_service_server::InputServiceServer,
+        module_service_server::ModuleServiceServer,
         notification_service_server::NotificationServiceServer,
         presence_service_server::PresenceServiceServer, server_service_server::ServerServiceServer,
         state_service_server::StateServiceServer, syntax_service_server::SyntaxServiceServer,
@@ -260,13 +262,21 @@ impl Server {
         // Auth interceptor: resolves x-reovim-token → ClientId (#483)
         let interceptor = AuthInterceptor::new(Arc::clone(&self.tokens));
 
+        // Extension bridge registry (#514) — shared between InputService and ExtensionService
+        let mut bridge_registry = BridgeRegistry::new();
+        bridge_registry.register(CmdlineBridge);
+        let bridges = Arc::new(bridge_registry);
+
         // Create all gRPC services
         let buffer_service =
             BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
         let editor_service =
             EditorServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
-        let input_service =
-            InputServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+        let input_service = InputServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            Arc::clone(&bridges),
+        );
         let state_service =
             StateServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
         let server_service =
@@ -287,9 +297,13 @@ impl Server {
         // PresenceService for multi-client awareness (Phase 14)
         let presence_service = PresenceServiceImpl::new(
             Arc::clone(&self.sessions),
-            default_session_id,
+            default_session_id.clone(),
             Arc::clone(&self.tokens),
         );
+
+        // ExtensionService for querying extension state (#514)
+        let extension_service =
+            ExtensionServiceImpl::new(Arc::clone(&self.sessions), default_session_id, bridges);
 
         // Build gRPC server with optional gRPC-Web support
         #[cfg(feature = "grpc-web")]
@@ -323,7 +337,11 @@ impl Server {
                     i.clone(),
                 ))
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
-                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()));
+                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
+                .add_service(ExtensionServiceServer::with_interceptor(
+                    extension_service,
+                    i.clone(),
+                ));
 
             if let Some(signal) = shutdown {
                 router
@@ -354,7 +372,11 @@ impl Server {
                     i.clone(),
                 ))
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
-                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()));
+                .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
+                .add_service(ExtensionServiceServer::with_interceptor(
+                    extension_service,
+                    i.clone(),
+                ));
 
             if let Some(signal) = shutdown {
                 router

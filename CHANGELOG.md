@@ -4,6 +4,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.5-dev
 
+### Added
+
+- **Extension state bridge foundation (#514)**: Server-side infrastructure for
+  exposing session extension state to clients via gRPC. Introduces
+  `ExtensionStateBridge` trait and `BridgeRegistry` in the driver layer,
+  `CmdlineBridge` as the first concrete bridge for command-line state, a new
+  `ExtensionService` gRPC service with `GetState` and `ListExtensions` RPCs,
+  `ExtensionUpdatedPayload` notification (field 26), and automatic CmdlineState
+  change detection during key resolution. Adds `Session::with_client_extensions()`
+  to access per-client extensions without cloning (works around
+  `EditingState::clone()` creating empty `ExtensionMap`). Enables client
+  extensions like which-key (#468) and cmdline UI (#469) to query and receive
+  updates for server-side state.
+
 ### Changed
 
 - **Explicit shared vs client extensions in resolver API (#474)**: Split the

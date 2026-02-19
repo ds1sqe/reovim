@@ -18,6 +18,7 @@ pub mod auth;
 mod buffer;
 mod debug;
 mod editor;
+mod extension;
 mod input;
 mod module;
 mod notification;
@@ -29,7 +30,8 @@ mod syntax;
 
 pub use {
     auth::AuthInterceptor, buffer::BufferServiceImpl, debug::DebugServiceImpl,
-    editor::EditorServiceImpl, input::InputServiceImpl, module::ModuleServiceImpl,
-    notification::NotificationServiceImpl, presence::PresenceServiceImpl,
-    server_service::ServerServiceImpl, state::StateServiceImpl, syntax::SyntaxServiceImpl,
+    editor::EditorServiceImpl, extension::ExtensionServiceImpl, input::InputServiceImpl,
+    module::ModuleServiceImpl, notification::NotificationServiceImpl,
+    presence::PresenceServiceImpl, server_service::ServerServiceImpl, state::StateServiceImpl,
+    syntax::SyntaxServiceImpl,
 };

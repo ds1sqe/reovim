@@ -25,7 +25,7 @@ use std::sync::Arc;
 use {
     reovim_driver_command_types::{ArgValue, CommandContext, CommandResult},
     reovim_driver_input::{KeySequence, ModeTransition, PopResult, ResolveContext, ResolveResult},
-    reovim_driver_session::api::StateChanges,
+    reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
     reovim_protocol::v2::{
         KeyStatus, SendKeysRequest, SendKeysResponse, input_service_server::InputService,
     },
@@ -48,15 +48,22 @@ pub struct InputServiceImpl {
     sessions: Arc<SessionRegistry>,
     /// Default session ID to use when not specified.
     default_session_id: SessionId,
+    /// Extension bridge registry for notification emission (#514).
+    bridges: Arc<BridgeRegistry>,
 }
 
 impl InputServiceImpl {
     /// Create a new `InputService` with access to the session registry.
     #[must_use]
-    pub const fn new(sessions: Arc<SessionRegistry>, default_session_id: SessionId) -> Self {
+    pub const fn new(
+        sessions: Arc<SessionRegistry>,
+        default_session_id: SessionId,
+        bridges: Arc<BridgeRegistry>,
+    ) -> Self {
         Self {
             sessions,
             default_session_id,
+            bridges,
         }
     }
 
@@ -120,6 +127,9 @@ impl InputService for InputServiceImpl {
         let keys = KeySequence::parse(&req.keys).ok_or_else(|| {
             Status::invalid_argument(format!("Invalid key notation: {}", req.keys))
         })?;
+
+        // #514: Snapshot extension active state before key resolution
+        let cmdline_was_active = Self::is_cmdline_active(&session, client_id);
 
         // Process each key through the resolver system
         let mut any_handled = false;
@@ -202,11 +212,22 @@ impl InputService for InputServiceImpl {
             );
         }
 
+        // #514: Detect CmdlineState activation/deactivation
+        let cmdline_is_active = Self::is_cmdline_active(&session, client_id);
+        if cmdline_was_active != cmdline_is_active {
+            accumulated_changes.record_extension_change("cmdline".into());
+        }
+
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
         if accumulated_changes.has_changes() {
-            Self::emit_notifications(&session, &accumulated_changes, client_id.as_usize() as u64);
+            Self::emit_notifications(
+                &session,
+                &accumulated_changes,
+                client_id.as_usize() as u64,
+                &self.bridges,
+            );
         }
 
         // Return result
@@ -218,6 +239,16 @@ impl InputService for InputServiceImpl {
 }
 
 impl InputServiceImpl {
+    /// Check if `CmdlineState` is currently active for a client (#514).
+    fn is_cmdline_active(session: &Session, client_id: ClientId) -> bool {
+        session
+            .with_client_extensions(client_id, |ext| {
+                ext.get::<reovim_driver_session::CmdlineState>()
+                    .is_some_and(reovim_driver_session::CmdlineState::is_active)
+            })
+            .unwrap_or(false)
+    }
+
     /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
     /// the resolver pipeline, check whether the client has an active selection and
     /// record `selection_changed` so the notification pipeline picks it up.
@@ -250,9 +281,14 @@ impl InputServiceImpl {
     /// * `client_id` - Client ID that originated these changes (for multi-client filtering)
     ///
     /// Phase #486: Now passes `&Session` directly to `build_notifications()` for per-client state.
-    fn emit_notifications(session: &Session, changes: &StateChanges, client_id: u64) {
-        // Phase #486: Pass session directly for per-client state access
-        let notifications = notification_builder::build_notifications(changes, session, client_id);
+    fn emit_notifications(
+        session: &Session,
+        changes: &StateChanges,
+        client_id: u64,
+        bridges: &BridgeRegistry,
+    ) {
+        let notifications =
+            notification_builder::build_notifications(changes, session, client_id, Some(bridges));
 
         let notification_count = notifications.len();
         for notification in notifications {
@@ -596,7 +632,11 @@ mod tests {
     #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
     async fn test_send_keys_valid_notation() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -618,7 +658,11 @@ mod tests {
             .get(&SessionId::new("test"))
             .unwrap()
             .add_client(ClientId::new(1));
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -638,7 +682,11 @@ mod tests {
     #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
     async fn test_send_keys_special_keys() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -659,7 +707,11 @@ mod tests {
     #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
     async fn test_send_keys_with_modifiers() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -679,7 +731,11 @@ mod tests {
     async fn test_send_keys_no_session() {
         let registry = Arc::new(SessionRegistry::new());
         // No session inserted
-        let service = InputServiceImpl::new(registry, SessionId::new("nonexistent"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("nonexistent"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -697,7 +753,11 @@ mod tests {
     #[tokio::test]
     async fn test_send_keys_rejects_unauthenticated() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         // No ClientId in extensions — should be rejected
         let request = Request::new(SendKeysRequest {
@@ -773,7 +833,11 @@ mod tests {
     #[tokio::test]
     async fn test_send_keys_client_not_found() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         // Client 42 is not added to session
         let request = authed_request(
@@ -804,7 +868,11 @@ mod tests {
             Some(crate::session::ClientRelation::Following { target: owner_id }),
         );
 
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -826,7 +894,7 @@ mod tests {
         let session = crate::session::Session::new(SessionId::new("emit-test"));
         let changes = StateChanges::new();
         // Should not panic even with empty changes
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
     }
 
     #[test]
@@ -836,7 +904,7 @@ mod tests {
         changes.record_mode_change();
 
         // Should emit mode_changed notification without panic
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
     }
 
     #[test]
@@ -848,7 +916,7 @@ mod tests {
 
         // Subscribe to verify notifications are emitted
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         let received = rx.try_recv();
         assert!(received.is_ok());
@@ -865,7 +933,7 @@ mod tests {
         changes.buffers_created.push(buffer_id);
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         // Should receive multiple notifications
         let mut count = 0;
@@ -1086,7 +1154,7 @@ mod tests {
         changes.record_cursor_move(buffer_id);
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 1);
+        InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new());
 
         let received = rx.try_recv();
         assert!(received.is_ok());
@@ -1104,7 +1172,7 @@ mod tests {
         // Emit notifications for selection changes
         // No client state set up, so selection notification may not produce output
         // but should not panic
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
     }
 
     #[test]
@@ -1114,7 +1182,7 @@ mod tests {
         changes.window_changed = true;
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         let received = rx.try_recv();
         assert!(received.is_ok());
@@ -1129,7 +1197,7 @@ mod tests {
         changes.buffers_created.push(buffer_id);
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         let received = rx.try_recv();
         assert!(received.is_ok());
@@ -1149,7 +1217,7 @@ mod tests {
         });
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         let received = rx.try_recv();
         assert!(received.is_ok());
@@ -1166,7 +1234,7 @@ mod tests {
 
         // No client windows means viewport notification won't be produced
         // but should not panic
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
     }
 
     #[test]
@@ -1189,7 +1257,7 @@ mod tests {
         });
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 42);
+        InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new());
 
         let mut count = 0;
         while rx.try_recv().is_ok() {
@@ -1370,7 +1438,11 @@ mod tests {
     #[test]
     fn test_input_service_impl_new() {
         let registry = test_registry();
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
         // get_session should succeed
         assert!(service.get_session().is_ok());
     }
@@ -1379,7 +1451,11 @@ mod tests {
     #[test]
     fn test_input_service_impl_get_session_not_found() {
         let registry = Arc::new(SessionRegistry::new());
-        let service = InputServiceImpl::new(registry, SessionId::new("nonexistent"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("nonexistent"),
+            Arc::new(BridgeRegistry::new()),
+        );
         match service.get_session() {
             Ok(_) => panic!("Expected NotFound error"),
             Err(err) => assert_eq!(err.code(), tonic::Code::NotFound),
@@ -1393,9 +1469,9 @@ mod tests {
         changes.record_mode_change();
 
         // Should work with any client_id value
-        InputServiceImpl::emit_notifications(&session, &changes, 42);
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
-        InputServiceImpl::emit_notifications(&session, &changes, u64::MAX);
+        InputServiceImpl::emit_notifications(&session, &changes, 42, &BridgeRegistry::new());
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
+        InputServiceImpl::emit_notifications(&session, &changes, u64::MAX, &BridgeRegistry::new());
     }
 
     #[test]
@@ -1594,7 +1670,7 @@ mod tests {
         assert!(!changes.has_changes());
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         // Should not receive any notifications
         assert!(rx.try_recv().is_err());
@@ -1611,7 +1687,7 @@ mod tests {
         changes.record_buffer_modified(buf2);
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, 0);
+        InputServiceImpl::emit_notifications(&session, &changes, 0, &BridgeRegistry::new());
 
         // Should receive notifications for both buffers
         let mut received = Vec::new();
@@ -1724,7 +1800,11 @@ mod tests {
         let client_id = ClientId::new(1);
         session.add_client(client_id);
 
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -1760,7 +1840,12 @@ mod tests {
         changes.cursor_moved = true;
 
         let mut rx = session.subscribe_notifications();
-        InputServiceImpl::emit_notifications(&session, &changes, client_id.as_usize() as u64);
+        InputServiceImpl::emit_notifications(
+            &session,
+            &changes,
+            client_id.as_usize() as u64,
+            &BridgeRegistry::new(),
+        );
 
         // Should emit cursor_moved notifications
         let received = rx.try_recv();
@@ -1772,7 +1857,7 @@ mod tests {
         // Test that new() is const
         let registry = test_registry();
         let session_id = SessionId::new("const-test");
-        let _service = InputServiceImpl::new(registry, session_id);
+        let _service = InputServiceImpl::new(registry, session_id, Arc::new(BridgeRegistry::new()));
     }
 
     #[tokio::test]
@@ -1837,7 +1922,11 @@ mod tests {
         // Set client as Independent (default)
         let _ = session.set_client_relation(client_id, None);
 
-        let service = InputServiceImpl::new(registry, SessionId::new("test"));
+        let service = InputServiceImpl::new(
+            registry,
+            SessionId::new("test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -1899,7 +1988,7 @@ mod tests {
         changes.scrolled_windows.push(window_id);
 
         // Should not panic even without client windows
-        InputServiceImpl::emit_notifications(&session, &changes, 1);
+        InputServiceImpl::emit_notifications(&session, &changes, 1, &BridgeRegistry::new());
     }
 
     // =========================================================================
@@ -2350,8 +2439,11 @@ mod tests {
         let session_arc = Arc::new(session);
         registry.insert(&session_arc);
 
-        let service =
-            InputServiceImpl::new(Arc::clone(&registry), SessionId::new("sendkeys-flow-test"));
+        let service = InputServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("sendkeys-flow-test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -2382,8 +2474,11 @@ mod tests {
         let session_arc = Arc::new(session);
         registry.insert(&session_arc);
 
-        let service =
-            InputServiceImpl::new(Arc::clone(&registry), SessionId::new("sendkeys-multi-test"));
+        let service = InputServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("sendkeys-multi-test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -2410,8 +2505,11 @@ mod tests {
         let session_arc = Arc::new(session);
         registry.insert(&session_arc);
 
-        let service =
-            InputServiceImpl::new(Arc::clone(&registry), SessionId::new("sendkeys-nobuf-test"));
+        let service = InputServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("sendkeys-nobuf-test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {
@@ -2590,8 +2688,11 @@ mod tests {
         let session_arc = Arc::new(session);
         registry.insert(&session_arc);
 
-        let service =
-            InputServiceImpl::new(Arc::clone(&registry), SessionId::new("sendkeys-tracing-test"));
+        let service = InputServiceImpl::new(
+            Arc::clone(&registry),
+            SessionId::new("sendkeys-tracing-test"),
+            Arc::new(BridgeRegistry::new()),
+        );
 
         let request = authed_request(
             SendKeysRequest {

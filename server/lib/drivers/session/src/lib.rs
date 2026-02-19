@@ -93,6 +93,7 @@
 //! ```
 
 pub mod api;
+pub mod bridges;
 mod empty_handler;
 mod extension;
 mod handler_key;

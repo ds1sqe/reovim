@@ -1,0 +1,46 @@
+// Extension service for querying extension state (#514).
+//
+// Enables clients to query server-side extension state (cmdline, which-key, etc.)
+// without per-feature protocol changes.
+
+syntax = "proto3";
+package reovim.v2;
+
+service ExtensionService {
+  // Query the current state of an extension by kind.
+  rpc GetState(GetExtensionStateRequest) returns (GetExtensionStateResponse);
+
+  // List all registered extensions and their capabilities.
+  rpc ListExtensions(ListExtensionsRequest) returns (ListExtensionsResponse);
+}
+
+message GetExtensionStateRequest {
+  // Extension kind (e.g., "cmdline").
+  string kind = 1;
+  // Client ID for per-client scoped extensions.
+  uint64 client_id = 2;
+}
+
+message GetExtensionStateResponse {
+  // Whether the extension is currently active.
+  bool active = 1;
+  // JSON-serialized extension state.
+  string data = 2;
+}
+
+message ListExtensionsRequest {}
+
+message ListExtensionsResponse {
+  repeated ExtensionInfo extensions = 1;
+}
+
+message ExtensionInfo {
+  // Extension kind (e.g., "cmdline").
+  string kind = 1;
+  // Human-readable description.
+  string description = 2;
+  // Whether this extension supports push notifications.
+  bool push_supported = 3;
+  // Whether this extension supports query via GetState.
+  bool query_supported = 4;
+}

@@ -20,6 +20,8 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceMap;
+use reovim_driver_session::ExtensionMap;
+
 use super::{Client, ClientId, SessionId, SessionState};
 
 /// Default channel capacity for notifications.
@@ -494,6 +496,25 @@ impl Session {
     {
         let mut clients = self.clients.write();
         f(&mut clients)
+    }
+
+    /// Run a closure on a client's `ExtensionMap` without cloning.
+    ///
+    /// `EditingState::clone()` creates an empty `ExtensionMap` because
+    /// `Box<dyn SessionExtensionDyn>` is not `Clone`. This method provides
+    /// direct read access to extensions through the clients lock.
+    ///
+    /// Respects Follow/Share relations via `effective_state()`.
+    pub fn with_client_extensions<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&ExtensionMap) -> R,
+    {
+        let clients = self.clients.read();
+        let client = clients.get(&client_id)?;
+        let state = client.effective_state(&clients)?;
+        let result = f(&state.extensions);
+        drop(clients);
+        Some(result)
     }
 
     /// Get count of connected clients.
@@ -2807,5 +2828,46 @@ mod tests {
         let editing_state = session.client_state(client_id).unwrap();
         assert!(!editing_state.windows.is_empty());
         assert!(editing_state.windows.active().is_some());
+    }
+
+    // ========================================================================
+    // with_client_extensions tests (#514)
+    // ========================================================================
+
+    #[test]
+    fn test_with_client_extensions_returns_none_for_unknown_client() {
+        let session = Session::new(SessionId::new("test"));
+        let result = session.with_client_extensions(ClientId::new(99), |_ext| 42);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_with_client_extensions_reads_extensions() {
+        let session = Session::new(SessionId::new("test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Initially empty
+        let has_cmdline = session
+            .with_client_extensions(client_id, |ext| {
+                ext.get::<reovim_driver_session::CmdlineState>().is_some()
+            })
+            .unwrap();
+        assert!(!has_cmdline);
+
+        // Insert CmdlineState
+        session.update_client_state(client_id, |state| {
+            state
+                .extensions
+                .get_or_insert::<reovim_driver_session::CmdlineState>();
+        });
+
+        // Now it exists
+        let has_cmdline = session
+            .with_client_extensions(client_id, |ext| {
+                ext.get::<reovim_driver_session::CmdlineState>().is_some()
+            })
+            .unwrap();
+        assert!(has_cmdline);
     }
 }
