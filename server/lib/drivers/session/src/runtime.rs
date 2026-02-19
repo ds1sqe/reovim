@@ -487,7 +487,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     #[allow(clippy::significant_drop_tightening)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn buffer_text_range(
         &self,
         buffer: BufferId,
@@ -741,7 +740,6 @@ impl WindowApi for SessionRuntime<'_> {
 // === RegisterApi ===
 
 impl RegisterApi for SessionRuntime<'_> {
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
         match name {
             // System clipboard (+)
@@ -781,7 +779,6 @@ impl RegisterApi for SessionRuntime<'_> {
         }
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
         match name {
             // System clipboard (+)
@@ -823,8 +820,30 @@ impl RegisterApi for SessionRuntime<'_> {
 
 // === UndoApi ===
 
+impl SessionRuntime<'_> {
+    /// Apply undo/redo edits to the kernel buffer.
+    ///
+    /// Extracted from the 4 undo/redo methods to deduplicate the edit-application
+    /// loop and avoid an LLVM coverage gap-region bug on `if let` closing braces.
+    fn apply_undo_edits(&self, buffer: BufferId, edits: &[Edit]) {
+        let Some(buf) = self.kernel.buffers.get(buffer) else {
+            return;
+        };
+        let mut buf = buf.write();
+        for edit in edits {
+            match edit {
+                Edit::Insert { position, text } => {
+                    buf.insert_at(*position, text);
+                }
+                Edit::Delete { position, text } => {
+                    buf.delete_at(*position, text.chars().count());
+                }
+            }
+        }
+    }
+}
+
 impl UndoApi for SessionRuntime<'_> {
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -833,22 +852,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.undo(buffer)?;
-
-        // Apply the inverse edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Phase #471: Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -862,7 +866,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -871,22 +874,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.redo(buffer)?;
-
-        // Apply the edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Phase #471: Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -900,7 +888,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit(
         &mut self,
         buffer: BufferId,
@@ -933,7 +920,6 @@ impl UndoApi for SessionRuntime<'_> {
             .is_some_and(|tree| tree.can_redo())
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -945,21 +931,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.undo_for_client(buffer, client_id)?;
-
-        // Apply the inverse edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -973,7 +945,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -985,21 +956,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.redo_for_client(buffer, client_id)?;
-
-        // Apply the edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -1013,7 +970,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit_mine(
         &mut self,
         buffer: BufferId,
@@ -1220,7 +1176,6 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(neighbor)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_others(&mut self) -> Result<(), CompositorError> {
         use reovim_driver_display::layout::Zone;
 
@@ -4288,6 +4243,33 @@ mod tests {
         assert!(runtime.changes.buffer_modified);
     }
 
+    /// `apply_undo_edits` returns early when the buffer is not in the kernel.
+    #[test]
+    fn test_apply_undo_edits_buffer_not_found() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+
+        // BufferId::new() is not registered in the kernel
+        let buf = BufferId::new();
+        let edits = vec![Edit::Insert {
+            position: Position::new(0, 0),
+            text: "X".to_string(),
+        }];
+
+        // Should return without panic (early return from let...else)
+        rt.apply_undo_edits(buf, &edits);
+    }
+
     // =========================================================================
     // CompositorApi with compositor (lines 1081-1537)
     // =========================================================================
@@ -5299,6 +5281,29 @@ mod tests {
         window.cursor = Position::new(0, 3).into();
         // No selection
         w.add(window);
+
+        let buf = BufferId::new();
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        rt.record_cursor_move(buf);
+
+        let changes = rt.take_changes();
+        assert!(changes.cursor_moved);
+        assert!(!changes.selection_changed);
+    }
+
+    /// When cursor moves with no active window, only `cursor_moved` is set.
+    #[test]
+    fn test_record_cursor_move_no_active_window() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty(); // No windows added
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
 
         let buf = BufferId::new();
         let mut rt =
