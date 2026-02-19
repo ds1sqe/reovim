@@ -103,6 +103,10 @@ jobs:
           RUSTFLAGS="--cfg coverage_nightly" \
           cargo +nightly llvm-cov -p reovim-server \
             --lcov --output-path server-lcov.info
+      - name: Filter test code from LCOV
+        run: |
+          ./scripts/lcov-filter-tests.sh mcdc-lcov.info
+          ./scripts/lcov-filter-tests.sh server-lcov.info
       - name: Merge coverage reports
         run: cat mcdc-lcov.info server-lcov.info > lcov.info
       - name: Generate coverage reports

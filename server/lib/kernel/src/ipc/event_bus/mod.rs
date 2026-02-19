@@ -1337,4 +1337,105 @@ mod tests {
         let bus = EventBus::new();
         assert_eq!(bus.handler_count::<OtherEvent>(), 0);
     }
+
+    // === MC/DC: subscribe_targeted - FALSE branch (target mismatch) ===
+    // Exercises line 429 FALSE branch: event.target() != target
+    // Also covers the TRUE branch (matching target) to satisfy MC/DC.
+
+    #[test]
+    fn test_subscribe_targeted_false_branch_target_mismatch() {
+        #[derive(Debug)]
+        struct PluginEvent {
+            target: &'static str,
+        }
+        impl Event for PluginEvent {}
+        impl TargetedEvent for PluginEvent {
+            fn target(&self) -> &str {
+                self.target
+            }
+        }
+
+        let bus = EventBus::new();
+        let call_count = Arc::new(AtomicU32::new(0));
+        let call_count2 = call_count.clone();
+
+        let _sub =
+            bus.subscribe_targeted::<PluginEvent, _>("correct_target", 100, move |_event, _ctx| {
+                call_count2.fetch_add(1, Ordering::SeqCst);
+                EventResult::Handled
+            });
+
+        // Emit with non-matching target: FALSE branch of `if event.target() == target`
+        // Handler should NOT be called
+        let wrong_target_event = DynEvent::new(PluginEvent {
+            target: "wrong_target",
+        });
+        let mut ctx = HandlerContext::new();
+        let result = bus.dispatch_with_context(&wrong_target_event, &mut ctx);
+        assert_eq!(result.result, EventResult::NotHandled);
+        assert_eq!(call_count.load(Ordering::SeqCst), 0);
+
+        // Emit with matching target: TRUE branch of `if event.target() == target`
+        // Handler SHOULD be called
+        let correct_target_event = DynEvent::new(PluginEvent {
+            target: "correct_target",
+        });
+        let mut ctx2 = HandlerContext::new();
+        let result2 = bus.dispatch_with_context(&correct_target_event, &mut ctx2);
+        assert_eq!(result2.result, EventResult::Handled);
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+    }
+
+    // === MC/DC: process_queue - scope present branch ===
+    // Exercises line 560 TRUE branch: scope is Some, decrement is called
+
+    #[test]
+    fn test_process_queue_with_scope_decrements() {
+        let bus = EventBus::new();
+        let scope = EventScope::new();
+
+        // emit_async_scoped increments the scope counter
+        bus.emit_async_scoped(TestEvent { value: 1 }, &scope);
+        bus.emit_async_scoped(TestEvent { value: 2 }, &scope);
+        assert_eq!(scope.in_flight(), 2);
+
+        // process_queue should decrement the scope for each event (TRUE branch at line 560)
+        let count = bus.process_queue();
+        assert_eq!(count, 2);
+        assert_eq!(scope.in_flight(), 0);
+    }
+
+    // === MC/DC: dispatch - no handlers registered for event type ===
+    // Exercises line 577 early return when handlers map has no entry for type_id
+
+    #[test]
+    fn test_dispatch_returns_not_handled_when_no_handlers_for_type() {
+        let bus = EventBus::new();
+
+        // Register a handler for TestEvent (so the handlers map is non-empty)
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::Handled);
+
+        // Dispatch OtherEvent which has NO handlers: early return at line 577
+        let dyn_event = DynEvent::new(OtherEvent);
+        let result = bus.dispatch(&dyn_event);
+        assert_eq!(result, EventResult::NotHandled);
+    }
+
+    // === MC/DC: dispatch_with_context - no handlers for event type ===
+    // Exercises line 637 early return: no handlers in the map for the event's TypeId
+
+    #[test]
+    fn test_dispatch_with_context_no_handlers_for_type() {
+        let bus = EventBus::new();
+
+        // Register a handler for TestEvent (so map is non-empty overall)
+        let _sub = bus.subscribe::<TestEvent, _>(100, |_| EventResult::Handled);
+
+        // Dispatch OtherEvent (no handlers): hits the early return at line 637
+        let dyn_event = DynEvent::new(OtherEvent);
+        let mut ctx = HandlerContext::new();
+        let result = bus.dispatch_with_context(&dyn_event, &mut ctx);
+        assert_eq!(result.result, EventResult::NotHandled);
+        assert!(!result.render_requested);
+    }
 }

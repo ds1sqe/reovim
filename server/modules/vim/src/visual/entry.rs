@@ -8,8 +8,8 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        SessionRuntime, TransitionContext,
-        api::{ModeApi, Selection},
+        BufferApi, SessionRuntime, TransitionContext,
+        api::{ChangeTracker, ModeApi, Selection},
     },
     reovim_kernel::api::v1::{CommandId, Position},
 };
@@ -48,6 +48,11 @@ impl CommandHandler for EnterVisualMode {
 
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = Some(selection);
+        }
+
+        // #474: Notify other clients about new selection
+        if let Some(buffer_id) = runtime.active_buffer() {
+            runtime.record_selection_change(buffer_id);
         }
 
         // Verify selection was set
@@ -93,6 +98,11 @@ impl CommandHandler for EnterVisualLineMode {
             window.selection = Some(selection);
         }
 
+        // #474: Notify other clients about new selection
+        if let Some(buffer_id) = runtime.active_buffer() {
+            runtime.record_selection_change(buffer_id);
+        }
+
         // Change to visual line mode
         runtime.set_mode(VimMode::VISUAL_LINE_ID, TransitionContext::new());
 
@@ -130,6 +140,11 @@ impl CommandHandler for EnterVisualBlockMode {
 
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = Some(selection);
+        }
+
+        // #474: Notify other clients about new selection
+        if let Some(buffer_id) = runtime.active_buffer() {
+            runtime.record_selection_change(buffer_id);
         }
 
         // Change to visual block mode

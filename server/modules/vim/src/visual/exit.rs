@@ -4,7 +4,10 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{
+        BufferApi, SessionRuntime, TransitionContext,
+        api::{ChangeTracker, ModeApi},
+    },
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -30,6 +33,11 @@ impl CommandHandler for ExitVisualMode {
         // Clear selection on the active window
         if let Some(window) = runtime.windows_mut().active_mut() {
             window.selection = None;
+        }
+
+        // #474: Notify other clients that selection was cleared
+        if let Some(buffer_id) = runtime.active_buffer() {
+            runtime.record_selection_change(buffer_id);
         }
 
         // Change to normal mode

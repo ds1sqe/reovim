@@ -191,6 +191,17 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
+        // #474: Auto-detect selection changes (defense-in-depth).
+        #[allow(clippy::redundant_closure_for_method_calls)]
+        if let Some(state) = session.client_state(client_id) {
+            let active_buffer = session.with_state(|s| s.active_buffer()).await;
+            Self::ensure_selection_change_recorded(
+                &mut accumulated_changes,
+                &state.windows,
+                active_buffer,
+            );
+        }
+
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
@@ -207,6 +218,26 @@ impl InputService for InputServiceImpl {
 }
 
 impl InputServiceImpl {
+    /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
+    /// the resolver pipeline, check whether the client has an active selection and
+    /// record `selection_changed` so the notification pipeline picks it up.
+    ///
+    /// This catches commands that set `cursor_moved` on `accumulated_changes`
+    /// directly (outside `SessionRuntime::record_cursor_move`).
+    fn ensure_selection_change_recorded(
+        changes: &mut StateChanges,
+        windows: &reovim_driver_session::WindowLayout,
+        active_buffer: Option<reovim_kernel::api::v1::BufferId>,
+    ) {
+        if !changes.cursor_moved || changes.selection_changed {
+            return;
+        }
+        let has_selection = windows.active().is_some_and(|w| w.selection.is_some());
+        if has_selection && let Some(buffer_id) = active_buffer {
+            changes.record_selection_change(buffer_id);
+        }
+    }
+
     /// Emit notifications for state changes.
     ///
     /// Converts accumulated `StateChanges` to gRPC notifications and emits them
@@ -2603,5 +2634,82 @@ mod tests {
         .await;
 
         assert!(handled);
+    }
+
+    // =========================================================================
+    // ensure_selection_change_recorded tests
+    // =========================================================================
+
+    #[test]
+    fn test_ensure_selection_change_cursor_moved_with_selection() {
+        let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
+        let mut changes = StateChanges::new();
+        changes.record_cursor_move(buffer_id);
+        assert!(!changes.selection_changed);
+
+        // Window with selection
+        let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+        window.selection = Some(reovim_driver_session::api::Selection::character(
+            reovim_kernel::api::v1::Position::new(0, 0),
+            reovim_kernel::api::v1::Position::new(0, 5),
+        ));
+        let windows = reovim_driver_session::WindowLayout::single(window);
+
+        InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
+
+        assert!(changes.selection_changed);
+    }
+
+    #[test]
+    fn test_ensure_selection_change_already_recorded_is_noop() {
+        let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
+        let mut changes = StateChanges::new();
+        changes.record_cursor_move(buffer_id);
+        changes.selection_changed = true;
+
+        let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+        window.selection = Some(reovim_driver_session::api::Selection::character(
+            reovim_kernel::api::v1::Position::new(0, 0),
+            reovim_kernel::api::v1::Position::new(0, 5),
+        ));
+        let windows = reovim_driver_session::WindowLayout::single(window);
+
+        // Already recorded — should not change anything
+        InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
+
+        assert!(changes.selection_changed);
+    }
+
+    #[test]
+    fn test_ensure_selection_change_no_selection_is_noop() {
+        let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
+        let mut changes = StateChanges::new();
+        changes.record_cursor_move(buffer_id);
+
+        // Window without selection
+        let window = reovim_driver_session::Window::with_buffer(buffer_id);
+        let windows = reovim_driver_session::WindowLayout::single(window);
+
+        InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
+
+        assert!(!changes.selection_changed);
+    }
+
+    #[test]
+    fn test_ensure_selection_change_no_cursor_moved_is_noop() {
+        let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(1);
+        let mut changes = StateChanges::new();
+        // cursor_moved is false
+
+        let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
+        window.selection = Some(reovim_driver_session::api::Selection::character(
+            reovim_kernel::api::v1::Position::new(0, 0),
+            reovim_kernel::api::v1::Position::new(0, 5),
+        ));
+        let windows = reovim_driver_session::WindowLayout::single(window);
+
+        InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
+
+        assert!(!changes.selection_changed);
     }
 }

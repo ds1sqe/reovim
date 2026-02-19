@@ -55,7 +55,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   [#119558](https://github.com/llvm/llvm-project/issues/119558)
   (`getInstantiationGroups` SIGSEGV on branch coverage data from
   `#[tonic::async_trait]` service implementations). Use `server` mode for
-  text-only branch coverage of the server crate.
+  text-only branch coverage of the server crate. Test code (`#[cfg(test)]`
+  modules) is automatically stripped from LCOV via `scripts/lcov-filter-tests.sh`
+  so coverage metrics reflect production code only.
 
 - **Floating cursor labels for remote clients (#474)**: TUI and Web clients now
   show a colored background overlay above each remote client's cursor, making it
@@ -80,6 +82,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `buffer_id: None`, so the `PresenceJoined` notification lacked the buffer_id.
   A's render engine skipped B (different-buffer filter). Fix: server now reads
   the new client's active window buffer_id before broadcasting the notification.
+
+- **Visual selection highlighting past EOL (#474)**: Char and block mode visual
+  selections highlighted empty space beyond end-of-line content, unlike vim which
+  only highlights actual characters. Fix: `render_selection_range` now accepts
+  buffer lines and clamps `col_end` to actual line length for char/block modes.
+  Line mode (`V`) retains full-width highlighting to match vim behavior.
+
+- **Web remote cursors disappearing on self move (#474)**: Moving the local cursor
+  in the web client caused remote cursors and selections to vanish. Root cause:
+  `renderMultiWindow()` and `renderSingleWindow()` rebuild the DOM, destroying
+  remote cursor/selection elements. Fix: call `renderRemoteCursors()` at the end
+  of both render paths to re-create remote presence after DOM rebuilds.
+
+- **Web cursor scroll offset in single-window mode (#474)**: Cursor and remote
+  presence positions in the web client's single-window mode used raw buffer
+  coordinates without subtracting the viewport scroll offset. Fix: added `topLine`
+  to `EditorState`, updated from `viewportUpdated` notifications, subtracted in
+  `renderCursor()`, `renderRemoteCursors()`, and `renderRemoteSelection()`.
 
 - **Resize propagation to all TUIs (#474)**: `ResizeRequestPayload` had no
   `target_client_id` field, causing all TUI clients to resize when any one

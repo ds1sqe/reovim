@@ -12,15 +12,15 @@ import { browserKeyToVim, shouldPreventDefault } from "./keymapper.js";
  * Setup keyboard event handler for the editor.
  *
  * Captures keydown events on the document and sends them to the server.
+ * Client identity is provided via the x-reovim-token header (#483),
+ * so no clientId parameter is needed in the request body.
  *
  * @param client - gRPC client for server communication
  * @param _editor - Editor instance (unused - state updates via notifications)
- * @param myClientId - This client's unique ID (Phase 11.2)
  */
 export function setupKeyboardHandler(
   client: ReovimClient,
   _editor: Editor,
-  myClientId: bigint
 ): void {
   document.addEventListener("keydown", async (event: KeyboardEvent) => {
     // Check if we should prevent browser default behavior
@@ -35,12 +35,10 @@ export function setupKeyboardHandler(
     }
 
     try {
-      // Send key to server WITH client ID (Phase 11.2)
-      // CRITICAL: Without clientId, all clients share state as ClientId(0)
-      console.log(`[input] Sending key: ${vimKey} (client ${myClientId})`);
+      // Send key to server (#483: identity via x-reovim-token header)
+      console.log(`[input] Sending key: ${vimKey}`);
       const response = await client.input.sendKeys({
         keys: vimKey,
-        clientId: myClientId,
       });
       console.log(`[input] Response: ok=${response.ok}, status=${response.status}`);
 

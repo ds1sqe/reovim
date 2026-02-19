@@ -8,6 +8,7 @@
 import type { ReovimClient } from "./client.js";
 import type { Notification } from "./gen/reovim/v2/notification_pb.js";
 import type { WindowInfo } from "./gen/reovim/v2/notification_pb.js";
+import type { ClientInfo } from "./gen/reovim/v2/presence_pb.js";
 
 // WASM bindings and types
 import {
@@ -63,6 +64,7 @@ interface EditorState {
   // Legacy single-window state (for backward compatibility)
   cursorLine: number;
   cursorCol: number;
+  topLine: number;
   lines: string[];
   hasSelection: boolean;
   selectionAnchor: Position | null;
@@ -85,6 +87,7 @@ interface RemoteClient {
   cursorLine: number;
   cursorCol: number;
   bufferId: number;
+  mode?: string;
   selection: { anchor: Position; cursor: Position; mode: VisualMode } | null;
 }
 
@@ -130,8 +133,9 @@ export class Editor {
    *
    * @param client - gRPC client for server communication
    * @param myClientId - This client's unique ID (Phase 11.2)
+   * @param peers - Connected peers from JoinResponse (#474)
    */
-  constructor(client: ReovimClient, myClientId: bigint) {
+  constructor(client: ReovimClient, myClientId: bigint, peers: ClientInfo[] = []) {
     this.client = client;
     this.myClientId = myClientId;
     this.state = {
@@ -139,6 +143,7 @@ export class Editor {
       modeDisplay: "NORMAL",
       cursorLine: 0,
       cursorCol: 0,
+      topLine: 0,
       lines: [""],
       hasSelection: false,
       selectionAnchor: null,
@@ -174,6 +179,44 @@ export class Editor {
     this.cursorElement = document.getElementById("cursor");
     this.positionElement = document.getElementById("position");
     this.editorElement = document.getElementById("editor");
+
+    // #474: Initialize remote clients from JoinResponse peers
+    for (const peer of peers) {
+      const peerId = BigInt(peer.id);
+      if (peerId !== this.myClientId) {
+        const cursor = peer.view?.cursor;
+        this.remoteClients.set(peerId, {
+          clientId: peerId,
+          displayName: peer.metadata?.displayName ?? `Client ${peer.id}`,
+          cursorLine: Number(cursor?.line ?? 0n),
+          cursorCol: Number(cursor?.column ?? 0n),
+          bufferId: Number(peer.view?.bufferId ?? 0n),
+          selection: null,
+        });
+      }
+    }
+  }
+
+  /**
+   * Get or create a remote client entry (#474).
+   *
+   * If the client is unknown (e.g., notification arrived before presenceJoined),
+   * creates a placeholder entry so cursor/selection updates are not lost.
+   */
+  private getOrCreateRemote(clientId: bigint): RemoteClient {
+    let remote = this.remoteClients.get(clientId);
+    if (!remote) {
+      remote = {
+        clientId,
+        displayName: `Client ${clientId}`,
+        cursorLine: 0,
+        cursorCol: 0,
+        bufferId: 0,
+        selection: null,
+      };
+      this.remoteClients.set(clientId, remote);
+    }
+    return remote;
   }
 
   /**
@@ -406,11 +449,9 @@ export class Editor {
           this.state.modeDisplay = display || "NORMAL";
           this.renderMode();
         } else {
-          // Remote mode update - update tracking map
-          const remote = this.remoteClients.get(notifClientId);
-          if (remote) {
-            remote.mode = display || "NORMAL";
-          }
+          // Remote mode update - update tracking map (#474: auto-create if unknown)
+          const remote = this.getOrCreateRemote(notifClientId);
+          remote.mode = display || "NORMAL";
         }
         break;
       }
@@ -445,12 +486,10 @@ export class Editor {
             this.renderPosition();
           }
         } else {
-          // Remote cursor update - update tracking map and re-render
-          const remote = this.remoteClients.get(notifClientId);
-          if (remote) {
-            remote.cursorLine = line;
-            remote.cursorCol = col;
-          }
+          // Remote cursor update (#474: auto-create if unknown)
+          const remote = this.getOrCreateRemote(notifClientId);
+          remote.cursorLine = line;
+          remote.cursorCol = col;
           this.renderRemoteCursors();
         }
         break;
@@ -538,26 +577,24 @@ export class Editor {
             this.renderBuffer();
           }
         } else {
-          // Remote selection update - track in remoteClients map
-          const remote = this.remoteClients.get(notifClientId);
-          if (remote) {
-            if (hasSelection && selection) {
-              remote.selection = {
-                anchor: {
-                  line: Number(selection.start?.line ?? 0n),
-                  col: Number(selection.start?.column ?? 0n),
-                },
-                cursor: {
-                  line: Number(selection.end?.line ?? 0n),
-                  col: Number(selection.end?.column ?? 0n),
-                },
-                mode: (visualMode as VisualMode) ?? "char",
-              };
-            } else {
-              remote.selection = null;
-            }
+          // Remote selection update (#474: auto-create if unknown)
+          const remote = this.getOrCreateRemote(notifClientId);
+          if (hasSelection && selection) {
+            remote.selection = {
+              anchor: {
+                line: Number(selection.start?.line ?? 0n),
+                col: Number(selection.start?.column ?? 0n),
+              },
+              cursor: {
+                line: Number(selection.end?.line ?? 0n),
+                col: Number(selection.end?.column ?? 0n),
+              },
+              mode: (visualMode as VisualMode) ?? "char",
+            };
+          } else {
+            remote.selection = null;
           }
-          // TODO: Render remote selections (future enhancement)
+          this.renderRemoteCursors();
         }
         break;
       }
@@ -603,8 +640,20 @@ export class Editor {
           // Only re-render the affected viewport/window
           this.renderMultiWindow();
         }
-        // Note: No single-window fallback needed here - viewport updates are
-        // only meaningful in multi-window mode
+        // Single-window fallback: track topLine for cursor offset (#474)
+        if (!this.state.useMultiWindow || !this.state.layout) {
+          if (update.topLine !== undefined) {
+            this.state.topLine = Number(update.topLine);
+          }
+          if (update.cursorLine !== undefined) {
+            this.state.cursorLine = Number(update.cursorLine);
+          }
+          if (update.cursorCol !== undefined) {
+            this.state.cursorCol = Number(update.cursorCol);
+          }
+          this.renderCursor();
+          this.renderPosition();
+        }
         break;
       }
 
@@ -864,6 +913,9 @@ export class Editor {
     // Also render mode indicator
     this.renderMode();
     this.renderPosition();
+
+    // Re-render remote cursors after DOM rebuild (#474)
+    this.renderRemoteCursors();
   }
 
   /**
@@ -874,6 +926,9 @@ export class Editor {
     this.renderBuffer();
     this.renderCursor();
     this.renderPosition();
+
+    // Re-render remote cursors after DOM rebuild (#474)
+    this.renderRemoteCursors();
   }
 
   /**
@@ -977,7 +1032,7 @@ export class Editor {
     const padding = 8;
 
     const x = padding + lineNumberWidth + this.state.cursorCol * charWidth;
-    const y = padding + this.state.cursorLine * lineHeight;
+    const y = padding + (this.state.cursorLine - this.state.topLine) * lineHeight;
 
     this.cursorElement.style.left = `${x}px`;
     this.cursorElement.style.top = `${y}px`;
@@ -1035,6 +1090,9 @@ export class Editor {
       ? (focusedWindow(this.state.layout, this.state.focusedWindowId)?.buffer_id ?? 0)
       : 0;
 
+    // Scroll offset for single-window mode (#474)
+    const topLine = this.state.topLine;
+
     for (const [clientId, remote] of this.remoteClients) {
       // Only show cursors for clients viewing the same buffer
       if (remote.bufferId !== currentBufferId && currentBufferId !== 0) continue;
@@ -1044,16 +1102,16 @@ export class Editor {
 
       // Render remote selection if present (Issue #474)
       if (remote.selection) {
-        this.renderRemoteSelection(container, clientId, remote, charWidth, lineHeight, lineNumberWidth, padding);
+        this.renderRemoteSelection(container, clientId, remote, charWidth, lineHeight, lineNumberWidth, padding, topLine);
       }
 
-      // Render remote cursor
+      // Render remote cursor (#474: subtract topLine for scroll offset)
       const el = document.createElement("div");
       el.className = "remote-cursor";
       el.style.cssText = `
         position: absolute;
         left: ${padding + lineNumberWidth + remote.cursorCol * charWidth}px;
-        top: ${padding + remote.cursorLine * lineHeight}px;
+        top: ${padding + (remote.cursorLine - topLine) * lineHeight}px;
         width: 2px;
         height: ${lineHeight}px;
         background: ${cursorColor};
@@ -1103,7 +1161,8 @@ export class Editor {
     charWidth: number,
     lineHeight: number,
     lineNumberWidth: number,
-    padding: number
+    padding: number,
+    topLine: number = 0,
   ): void {
     const selection = remote.selection;
     if (!selection) return;
@@ -1159,7 +1218,7 @@ export class Editor {
       el.style.cssText = `
         position: absolute;
         left: ${padding + lineNumberWidth + startCol * charWidth}px;
-        top: ${padding + line * lineHeight}px;
+        top: ${padding + (line - topLine) * lineHeight}px;
         width: ${(endCol - startCol) * charWidth}px;
         height: ${lineHeight}px;
         background: ${selectionColor};

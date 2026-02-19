@@ -1161,4 +1161,45 @@ mod tests {
         let wheel = Arc::new(TimerWheel::new());
         assert!(!wheel.cancel(TimerId::from_raw(99999)));
     }
+
+    // === MC/DC: schedule_internal capacity overflow with max_timers=1 ===
+
+    #[test]
+    fn test_timer_wheel_capacity_overflow_at_one() {
+        // max_timers=1: first schedule succeeds (len < 1), second hits the
+        // `if timers.len() >= self.max_timers` true branch and returns a failed handle.
+        let wheel = Arc::new(TimerWheel::with_max_timers(1));
+
+        let h1 = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});
+        assert!(!h1.is_failed());
+        assert_eq!(wheel.pending_count(), 1);
+        assert_eq!(wheel.dropped_count(), 0);
+
+        // Second scheduling hits the overflow branch
+        let h2 = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});
+        assert!(h2.is_failed());
+        assert_eq!(wheel.dropped_count(), 1);
+        assert_eq!(wheel.pending_count(), 1); // Still only 1 timer
+    }
+
+    // === MC/DC: cancel() already-cancelled timer (is_cancelled() true branch) ===
+
+    #[test]
+    fn test_timer_cancel_already_cancelled_returns_false() {
+        // Cancel a timer once (succeeds, is_cancelled() was false -> sets to true).
+        // Cancel the same timer again: is_cancelled() is now true -> returns false.
+        // This exercises the true branch of `if entry.is_cancelled()` in cancel().
+        let wheel = Arc::new(TimerWheel::new());
+
+        let handle = wheel.schedule_oneshot(Duration::from_secs(10), Priority::NORMAL, || {});
+        let id = handle.id();
+
+        // First cancel: is_cancelled() == false -> cancel and return true
+        let first = wheel.cancel(id);
+        assert!(first, "first cancel should succeed");
+
+        // Second cancel: is_cancelled() == true -> return false (already cancelled)
+        let second = wheel.cancel(id);
+        assert!(!second, "second cancel should return false (already cancelled)");
+    }
 }

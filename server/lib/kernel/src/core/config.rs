@@ -1508,6 +1508,113 @@ mod tests {
         assert_eq!(table.to_string(), "{50 entries}");
     }
 
+    // === MC/DC: ConfigValue type_name() - all 5 arms ===
+    // Exercises each arm of `const fn type_name()` for complete BRDA coverage.
+
+    #[test]
+    fn test_config_value_type_name_all_variants() {
+        assert_eq!(ConfigValue::Bool(true).type_name(), "bool");
+        assert_eq!(ConfigValue::Bool(false).type_name(), "bool");
+        assert_eq!(ConfigValue::Integer(0).type_name(), "integer");
+        assert_eq!(ConfigValue::Integer(-1).type_name(), "integer");
+        assert_eq!(ConfigValue::String(String::new()).type_name(), "string");
+        assert_eq!(ConfigValue::Array(Vec::new()).type_name(), "array");
+        assert_eq!(ConfigValue::Table(HashMap::new()).type_name(), "table");
+    }
+
+    // === MC/DC: Config::get_bool / get_int / get_str - both None and Some branches ===
+    // Each and_then chain has two MC/DC arms: None (short-circuit) and Some (apply closure).
+
+    #[test]
+    fn test_config_get_bool_none_and_some_branches() {
+        let config = Config::new();
+
+        // None branch: key does not exist
+        assert!(config.get_bool("nonexistent").is_none());
+
+        // Some(Bool) branch: key exists as Bool
+        config.set_bool("flag", true);
+        assert_eq!(config.get_bool("flag"), Some(true));
+
+        // Some(non-Bool) branch: key exists but wrong type - as_bool returns None
+        config.set_int("num", 1);
+        assert!(config.get_bool("num").is_none());
+    }
+
+    #[test]
+    fn test_config_get_int_none_and_some_branches() {
+        let config = Config::new();
+
+        // None branch: key does not exist
+        assert!(config.get_int("nonexistent").is_none());
+
+        // Some(Integer) branch: key exists as Integer
+        config.set_int("count", 7);
+        assert_eq!(config.get_int("count"), Some(7));
+
+        // Some(non-Integer) branch: key exists but wrong type - as_int returns None
+        config.set_bool("flag", false);
+        assert!(config.get_int("flag").is_none());
+    }
+
+    #[test]
+    fn test_config_get_str_none_and_some_branches() {
+        let config = Config::new();
+
+        // None branch: key does not exist
+        assert!(config.get_str("nonexistent").is_none());
+
+        // Some(String) branch: key exists as String
+        config.set_str("name", "alice");
+        assert_eq!(config.get_str("name"), Some("alice".to_string()));
+
+        // Some(non-String) branch: key exists but wrong type - as_str returns None
+        config.set_int("num", 42);
+        assert!(config.get_str("num").is_none());
+    }
+
+    // === MC/DC: Config::keys_with_prefix filter - TRUE and FALSE branches ===
+    // The filter closure `|k| k.starts_with(prefix)` has two branches.
+
+    #[test]
+    fn test_config_keys_with_prefix_true_and_false_branches() {
+        let config = Config::new();
+        config.set_str("editor.theme", "dark");
+        config.set_str("editor.font", "mono");
+        config.set_str("plugin.lsp", "enabled");
+
+        // Filter TRUE branch: "editor.theme" and "editor.font" start with "editor"
+        let editor_keys = config.keys_with_prefix("editor");
+        assert_eq!(editor_keys.len(), 2);
+
+        // Filter FALSE branch: "plugin.lsp" does NOT start with "editor" (filtered out)
+        // (Same call exercises both TRUE and FALSE branches of the predicate)
+        assert!(!editor_keys.iter().any(|k| k.starts_with("plugin")));
+    }
+
+    // === MC/DC: Config::merge - empty and non-empty iteration ===
+    // The for loop in merge() exercises both the loop-body and the no-iteration paths.
+
+    #[test]
+    fn test_config_merge_loop_iterations() {
+        let config1 = Config::new();
+        config1.set_str("key_a", "value_a");
+
+        // Merge empty config: loop body never executes (0 iterations)
+        let empty = Config::new();
+        config1.merge(&empty);
+        assert_eq!(config1.len(), 1); // unchanged
+
+        // Merge non-empty config: loop body executes (1+ iterations)
+        let source = Config::new();
+        source.set_str("key_b", "value_b");
+        source.set_int("key_c", 99);
+        config1.merge(&source);
+        assert_eq!(config1.len(), 3);
+        assert_eq!(config1.get_str("key_b"), Some("value_b".to_string()));
+        assert_eq!(config1.get_int("key_c"), Some(99));
+    }
+
     #[test]
     fn test_config_dot_notation_keys() {
         let config = Config::new();

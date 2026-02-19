@@ -1144,4 +1144,153 @@ mod tests {
         assert!(all.contains(&"a".to_string()));
         assert!(all.contains(&"b".to_string()));
     }
+
+    // === MC/DC: register() - AlreadyExists branch (line ~128-129) ===
+    // Exercises the duplicate name check returning AlreadyExists error.
+
+    #[test]
+    fn test_registry_register_already_exists_error() {
+        let registry = OptionRegistry::new();
+        let spec = OptionSpec::new("tabstop", "Tab stop width", OptionValue::int(8));
+        assert!(registry.register(spec).is_ok());
+
+        // Second registration of the same name must return AlreadyExists
+        let dup = OptionSpec::new("tabstop", "Duplicate", OptionValue::int(4));
+        let result = registry.register(dup);
+        assert!(matches!(result, Err(OptionError::AlreadyExists(name)) if name == "tabstop"));
+    }
+
+    // === MC/DC: register() - AliasConflict when alias matches existing spec name ===
+    // Exercises the check at line ~137: alias == an existing full spec name.
+
+    #[test]
+    fn test_registry_register_alias_conflicts_with_existing_spec_name() {
+        let registry = OptionRegistry::new();
+        // Register "ts" as a full spec name
+        assert!(
+            registry
+                .register(OptionSpec::new("ts", "Existing spec", OptionValue::int(4)))
+                .is_ok()
+        );
+        // Try to register "tabstop" with short alias "ts" - should fail because "ts" is a spec name
+        let result = registry
+            .register(OptionSpec::new("tabstop", "desc", OptionValue::int(8)).with_short("ts"));
+        assert!(matches!(result, Err(OptionError::AliasConflict(alias)) if alias == "ts"));
+    }
+
+    // === MC/DC: register() - AliasConflict when alias matches existing alias ===
+    // Exercises the check at line ~142: alias already registered as an alias.
+
+    #[test]
+    fn test_registry_register_alias_conflicts_with_existing_alias() {
+        let registry = OptionRegistry::new();
+        // Register "number" with alias "nu"
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "Line numbers", OptionValue::bool(false))
+                        .with_short("nu"),
+                )
+                .is_ok()
+        );
+        // Try to register "numberwidth" with the same alias "nu"
+        let result = registry.register(
+            OptionSpec::new("numberwidth", "Number column width", OptionValue::int(4))
+                .with_short("nu"),
+        );
+        assert!(matches!(result, Err(OptionError::AliasConflict(alias)) if alias == "nu"));
+    }
+
+    // === MC/DC: resolve_name() - TRUE branch: name is a direct spec name (line ~163) ===
+    // Exercises `if self.specs.read().contains_key(name)` returning true.
+
+    #[test]
+    fn test_resolve_name_returns_direct_spec_name() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("wrap", "Line wrap", OptionValue::bool(true)))
+                .is_ok()
+        );
+
+        // "wrap" is a registered spec name - resolve_name should return it directly
+        let resolved = registry.resolve_name("wrap");
+        assert_eq!(resolved, Some("wrap".to_string()));
+    }
+
+    // === MC/DC: get() - Window scope value found (line ~207) ===
+    // Exercises `if let Some(value) = self.window_values.read().get(...)` TRUE branch.
+
+    #[test]
+    fn test_get_returns_window_local_value_when_set() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "Line numbers", OptionValue::bool(false))
+                        .with_scope(OptionScope::Window),
+                )
+                .is_ok()
+        );
+
+        let window_id = WindowId::new();
+        // Set a window-local value
+        assert!(
+            registry
+                .set_for_window("number", OptionValue::bool(true), window_id)
+                .is_ok()
+        );
+
+        // get() with Window scope must return the window-local value (TRUE branch at ~207)
+        let value = registry.get("number", OptionScopeId::Window(window_id));
+        assert_eq!(value, Some(OptionValue::bool(true)));
+    }
+
+    // === MC/DC: get() - Buffer scope value found (line ~217) ===
+    // Exercises `if let Some(value) = self.buffer_values.read().get(...)` TRUE branch.
+
+    #[test]
+    fn test_get_returns_buffer_local_value_when_set() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("tabstop", "Tab width", OptionValue::int(4))
+                        .with_scope(OptionScope::Buffer),
+                )
+                .is_ok()
+        );
+
+        let buffer_id = BufferId::new();
+        // Set a buffer-local value
+        assert!(
+            registry
+                .set_for_buffer("tabstop", OptionValue::int(2), buffer_id)
+                .is_ok()
+        );
+
+        // get() with Buffer scope must return the buffer-local value (TRUE branch at ~217)
+        let value = registry.get("tabstop", OptionScopeId::Buffer(buffer_id));
+        assert_eq!(value, Some(OptionValue::int(2)));
+    }
+
+    // === MC/DC: get() - global override value present (line ~229) ===
+    // Exercises `if let Some(value) = self.global_values.read().get(&full_name)` TRUE branch.
+
+    #[test]
+    fn test_get_returns_global_override_when_set() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("tabstop", "Tab width", OptionValue::int(4)))
+                .is_ok()
+        );
+
+        // Set a global override (different from default)
+        assert!(registry.set_global("tabstop", OptionValue::int(8)).is_ok());
+
+        // get() with Global scope must return the global override (TRUE branch at ~229)
+        let value = registry.get("tabstop", OptionScopeId::Global);
+        assert_eq!(value, Some(OptionValue::int(8)));
+    }
 }

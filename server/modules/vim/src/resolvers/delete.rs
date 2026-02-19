@@ -971,6 +971,7 @@ mod tests {
             StateChanges::new()
         }
         fn record_cursor_move(&mut self, _b: BufferId) {}
+        fn record_selection_change(&mut self, _b: BufferId) {}
     }
 
     #[test]

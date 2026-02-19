@@ -98,20 +98,39 @@ esac
 
 echo -e "\033[1;33m==> Running $MODE coverage...\033[0m"
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 if $LCOV; then
   OUTPUT_PATH="target/llvm-cov/lcov.${MODE}.info"
   RUSTFLAGS="$EXTRA_RUSTFLAGS" cargo +nightly llvm-cov "${MODE_FLAG[@]}" \
     --workspace "${EXCLUDE[@]}" \
     --lcov --output-path "$OUTPUT_PATH"
+  # Strip #[cfg(test)] regions from LCOV (test code is not a coverage target)
+  "$SCRIPT_DIR/lcov-filter-tests.sh" "$OUTPUT_PATH"
   echo -e "\033[0;32m✓ LCOV report: $OUTPUT_PATH\033[0m"
 else
-  OUTPUT_DIR="target/llvm-cov/html"
-  OPEN_FLAG=()
-  if $OPEN; then
-    OPEN_FLAG=(--open)
-  fi
+  # For HTML, generate LCOV first, filter, then convert
+  LCOV_TMP="target/llvm-cov/lcov.${MODE}.info"
   RUSTFLAGS="$EXTRA_RUSTFLAGS" cargo +nightly llvm-cov "${MODE_FLAG[@]}" \
     --workspace "${EXCLUDE[@]}" \
-    --html --output-dir "$OUTPUT_DIR" "${OPEN_FLAG[@]}"
-  echo -e "\033[0;32m✓ HTML report: $OUTPUT_DIR/index.html\033[0m"
+    --lcov --output-path "$LCOV_TMP"
+  # Strip #[cfg(test)] regions
+  "$SCRIPT_DIR/lcov-filter-tests.sh" "$LCOV_TMP"
+  # Generate HTML from filtered LCOV
+  OUTPUT_DIR="target/llvm-cov/html"
+  if command -v genhtml &>/dev/null; then
+    genhtml "$LCOV_TMP" --output-directory "$OUTPUT_DIR" --quiet
+    if $OPEN; then
+      xdg-open "$OUTPUT_DIR/index.html" 2>/dev/null || open "$OUTPUT_DIR/index.html" 2>/dev/null || true
+    fi
+    echo -e "\033[0;32m✓ HTML report: $OUTPUT_DIR/index.html\033[0m"
+  else
+    echo -e "\033[0;33m⚠ genhtml not found, falling back to cargo llvm-cov HTML (unfiltered)\033[0m"
+    OPEN_FLAG=()
+    if $OPEN; then OPEN_FLAG=(--open); fi
+    RUSTFLAGS="$EXTRA_RUSTFLAGS" cargo +nightly llvm-cov "${MODE_FLAG[@]}" \
+      --workspace "${EXCLUDE[@]}" \
+      --html --output-dir "$OUTPUT_DIR" "${OPEN_FLAG[@]}"
+    echo -e "\033[0;32m✓ HTML report: $OUTPUT_DIR/index.html\033[0m"
+  fi
 fi

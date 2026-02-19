@@ -30,8 +30,8 @@ use std::sync::RwLock;
 
 use {
     reovim_driver_input::{
-        ExtensionMap, KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
-        Modifiers, ResolveContext, ResolveInput, ResolveResult, SessionApiDyn, TransitionContext,
+        ExtensionMap, KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState, Modifiers,
+        ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_kernel::api::v1::ModeId,
 };
@@ -191,15 +191,13 @@ impl ModeKeyResolver for VimVisualResolver {
         _state: &mut ModeState,
         input: &ResolveInput<'_>,
     ) -> ResolveResult {
-        // Escape or Ctrl-C exits visual mode
+        // Escape or Ctrl-C exits visual mode via ExitVisualMode command.
+        // The command clears selection, records selection_changed, and sets NORMAL mode.
         if is_escape(key)
             || (key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL))
         {
             self.clear_state();
-            return ResolveResult::ModeTransition(ModeTransition::Set {
-                mode: VimMode::NORMAL_ID,
-                context: TransitionContext::new(),
-            });
+            return ResolveResult::Execute(crate::ids::EXIT_VISUAL, ResolveContext::new());
         }
 
         let mut state = self.state.write().expect("lock poisoned");
@@ -266,16 +264,14 @@ impl ModeKeyResolver for VimVisualResolver {
     ) -> ResolveResult {
         tracing::debug!(key = ?key, mode = ?self.mode_id, "visual resolver: resolve_with_session");
 
-        // Escape or Ctrl-C exits visual mode
+        // Escape or Ctrl-C exits visual mode via ExitVisualMode command.
+        // The command clears selection, records selection_changed, and sets NORMAL mode.
         if is_escape(key)
             || (key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL))
         {
-            tracing::debug!("visual resolver: escape/ctrl-c - exiting visual mode");
+            tracing::debug!("visual resolver: escape/ctrl-c - executing EXIT_VISUAL command");
             self.clear_state();
-            return ResolveResult::ModeTransition(ModeTransition::Set {
-                mode: VimMode::NORMAL_ID,
-                context: TransitionContext::new(),
-            });
+            return ResolveResult::Execute(crate::ids::EXIT_VISUAL, ResolveContext::new());
         }
 
         let mut state = self.state.write().expect("lock poisoned");
@@ -466,10 +462,10 @@ mod tests {
         let result =
             resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -487,10 +483,10 @@ mod tests {
             &input,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -797,10 +793,10 @@ mod tests {
         let result =
             resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -818,10 +814,10 @@ mod tests {
             &input,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -1019,6 +1015,7 @@ mod tests {
             StateChanges::new()
         }
         fn record_cursor_move(&mut self, _b: BufferId) {}
+        fn record_selection_change(&mut self, _b: BufferId) {}
     }
 
     #[test]
@@ -1039,10 +1036,10 @@ mod tests {
             &mut extensions,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -1064,10 +1061,10 @@ mod tests {
             &mut extensions,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -1238,10 +1235,10 @@ mod tests {
             &mut extensions,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 
@@ -1263,10 +1260,10 @@ mod tests {
             &mut extensions,
         );
 
-        if let ResolveResult::ModeTransition(ModeTransition::Set { mode, .. }) = result {
-            assert_eq!(mode, VimMode::NORMAL_ID);
+        if let ResolveResult::Execute(cmd_id, _) = result {
+            assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
         } else {
-            panic!("expected Set to Normal, got {result:?}");
+            panic!("expected Execute(EXIT_VISUAL), got {result:?}");
         }
     }
 

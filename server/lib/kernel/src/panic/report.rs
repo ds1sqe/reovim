@@ -342,4 +342,49 @@ mod tests {
 
         std::fs::remove_file(&path).ok();
     }
+
+    // === MC/DC: write_to_file() with server_logs present (line 146 true branch) ===
+
+    #[test]
+    fn test_crash_report_write_with_server_logs_covered() {
+        // This test (without coverage(off)) exercises the true branch of
+        // `if let Some(ref logs) = self.server_logs` (line 146) and the
+        // true branch of `if !self.client_dump_paths.is_empty()` (line 154).
+        let report = CrashReport {
+            timestamp: std::time::SystemTime::now(),
+            panic_message: "covered panic".to_string(),
+            panic_location: Some("src/kernel.rs:10:1".to_string()),
+            backtrace: "backtrace text".to_string(),
+            rust_version: "1.92.0",
+            reovim_version: "0.9.0",
+            thread_name: Some("covered-thread".to_string()),
+            thread_id: Some(7),
+            server_logs: Some("INFO: boot complete\nWARN: low memory".to_string()),
+            client_dump_paths: vec![
+                PathBuf::from("/tmp/tui-dump-1.txt"),
+                PathBuf::from("/tmp/tui-dump-2.txt"),
+            ],
+        };
+
+        let result = report.write_to_file();
+        if result.is_err() {
+            // Recovery dir unavailable in this environment - skip.
+            return;
+        }
+
+        let path = result.unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+
+        // Verify server_logs branch wrote the section
+        assert!(content.contains("Server Debug Logs:"));
+        assert!(content.contains("INFO: boot complete"));
+        assert!(content.contains("WARN: low memory"));
+
+        // Verify client_dump_paths branch wrote the section
+        assert!(content.contains("Client Debug Dumps:"));
+        assert!(content.contains("/tmp/tui-dump-1.txt"));
+        assert!(content.contains("/tmp/tui-dump-2.txt"));
+
+        std::fs::remove_file(&path).ok();
+    }
 }

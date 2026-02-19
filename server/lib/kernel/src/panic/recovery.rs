@@ -291,4 +291,55 @@ mod tests {
         assert!(debug.contains("RecoverySnapshot"));
         assert!(debug.contains("UnsavedBuffer"));
     }
+
+    // === MC/DC: save_buffer_for_recovery() with original_path = Some(...) (line 89) ===
+
+    #[test]
+    fn test_save_buffer_with_original_path_exercises_some_branch() {
+        // Explicitly exercises the `if let Some(orig) = original_path` true branch
+        // (line 89) by passing Some(path). The content must contain "Original path".
+        // Uses the standard recovery dir; skips gracefully if the dir is not writable.
+        let content = "fn hello() {}";
+        let result =
+            save_buffer_for_recovery(111, Some(Path::new("/home/user/project/hello.rs")), content);
+
+        if result.is_err() {
+            // Recovery directory not writable in this environment - skip.
+            return;
+        }
+
+        let path = result.unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+
+        // True branch: "Original path" header must be present
+        assert!(saved.contains("# Original path: /home/user/project/hello.rs"));
+        assert!(saved.contains("buffer 111"));
+        assert!(saved.contains(content));
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    // === MC/DC: save_buffer_for_recovery() with original_path = None (line 89 false branch) ===
+
+    #[test]
+    fn test_save_buffer_without_original_path_exercises_none_branch() {
+        // Explicitly exercises the `if let Some(orig) = original_path` false branch
+        // (None case) so the "Original path" line is NOT written.
+        let content = "scratch content";
+        let result = save_buffer_for_recovery(222, None, content);
+
+        if result.is_err() {
+            return;
+        }
+
+        let path = result.unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+
+        // False branch: "Original path" must NOT appear
+        assert!(!saved.contains("# Original path:"));
+        assert!(saved.contains("buffer 222"));
+        assert!(saved.contains(content));
+
+        std::fs::remove_file(&path).ok();
+    }
 }

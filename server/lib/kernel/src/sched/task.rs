@@ -651,4 +651,21 @@ mod tests {
         assert!(set.contains(&TaskState::Pending));
         assert!(!set.contains(&TaskState::Running));
     }
+
+    // === MC/DC: execute() on a task that is already in Failed state ===
+
+    #[test]
+    fn test_task_execute_on_failed_task_returns_err() {
+        // mark_failed() sets state to Failed (not Pending).
+        // Calling execute() on a Failed task exercises the true branch of
+        // `if self.state != TaskState::Pending` (line 325) with a distinct
+        // non-Pending state (Failed) separate from the Completed case.
+        let mut task = Task::new(|| {});
+        task.mark_failed();
+        assert_eq!(task.state(), TaskState::Failed);
+
+        let result = task.execute();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "task already executed or cancelled");
+    }
 }

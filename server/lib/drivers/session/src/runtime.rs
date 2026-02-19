@@ -487,7 +487,6 @@ impl BufferApi for SessionRuntime<'_> {
     }
 
     #[allow(clippy::significant_drop_tightening)]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn buffer_text_range(
         &self,
         buffer: BufferId,
@@ -741,7 +740,6 @@ impl WindowApi for SessionRuntime<'_> {
 // === RegisterApi ===
 
 impl RegisterApi for SessionRuntime<'_> {
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
         match name {
             // System clipboard (+)
@@ -781,7 +779,6 @@ impl RegisterApi for SessionRuntime<'_> {
         }
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
         match name {
             // System clipboard (+)
@@ -823,8 +820,30 @@ impl RegisterApi for SessionRuntime<'_> {
 
 // === UndoApi ===
 
+impl SessionRuntime<'_> {
+    /// Apply undo/redo edits to the kernel buffer.
+    ///
+    /// Extracted from the 4 undo/redo methods to deduplicate the edit-application
+    /// loop and avoid an LLVM coverage gap-region bug on `if let` closing braces.
+    fn apply_undo_edits(&self, buffer: BufferId, edits: &[Edit]) {
+        let Some(buf) = self.kernel.buffers.get(buffer) else {
+            return;
+        };
+        let mut buf = buf.write();
+        for edit in edits {
+            match edit {
+                Edit::Insert { position, text } => {
+                    buf.insert_at(*position, text);
+                }
+                Edit::Delete { position, text } => {
+                    buf.delete_at(*position, text.chars().count());
+                }
+            }
+        }
+    }
+}
+
 impl UndoApi for SessionRuntime<'_> {
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -833,22 +852,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.undo(buffer)?;
-
-        // Apply the inverse edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Phase #471: Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -862,7 +866,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo(&mut self, buffer: BufferId) -> Option<UndoResult> {
         let undo_provider = self
             .kernel
@@ -871,22 +874,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.redo(buffer)?;
-
-        // Apply the edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-            // NOTE: Don't set kernel buffer cursor - it no longer exists (#471)
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Phase #471: Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -900,7 +888,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit(
         &mut self,
         buffer: BufferId,
@@ -933,7 +920,6 @@ impl UndoApi for SessionRuntime<'_> {
             .is_some_and(|tree| tree.can_redo())
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn undo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -945,21 +931,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.undo_for_client(buffer, client_id)?;
-
-        // Apply the inverse edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -973,7 +945,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn redo_mine(&mut self, buffer: BufferId) -> Option<UndoResult> {
         // #471: Get the client ID from the owner field
         let client_id = self.owner?.as_usize();
@@ -985,21 +956,7 @@ impl UndoApi for SessionRuntime<'_> {
             .get(&UndoKey::Buffer)?;
 
         let result = undo_provider.redo_for_client(buffer, client_id)?;
-
-        // Apply the edits to the buffer
-        if let Some(buf) = self.kernel.buffers.get(buffer) {
-            let mut buf = buf.write();
-            for edit in &result.edits {
-                match edit {
-                    Edit::Insert { position, text } => {
-                        buf.insert_at(*position, text);
-                    }
-                    Edit::Delete { position, text } => {
-                        buf.delete_at(*position, text.chars().count());
-                    }
-                }
-            }
-        }
+        self.apply_undo_edits(buffer, &result.edits);
 
         // Restore cursor to per-client active window
         if let Some(window) = self.windows_mut().active_mut() {
@@ -1013,7 +970,6 @@ impl UndoApi for SessionRuntime<'_> {
         Some(result)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn record_edit_mine(
         &mut self,
         buffer: BufferId,
@@ -1084,6 +1040,22 @@ impl ChangeTracker for SessionRuntime<'_> {
 
     fn record_cursor_move(&mut self, buffer: BufferId) {
         self.changes.record_cursor_move(buffer);
+        // #474: Centralized visual selection extension.
+        // When cursor moves and selection exists, auto-update sel.end
+        // to match cursor position. This ensures ALL commands that call
+        // record_cursor_move() automatically extend visual selection.
+        // Note: For line-wise selections, operators normalize end via
+        // expand_selection_range(), so the column+1 here is harmless.
+        if let Some(window) = self.windows.active_mut()
+            && let Some(ref mut sel) = window.selection
+        {
+            sel.end = Position::new(window.cursor.line, window.cursor.column + 1);
+            self.changes.record_selection_change(buffer);
+        }
+    }
+
+    fn record_selection_change(&mut self, buffer: BufferId) {
+        self.changes.record_selection_change(buffer);
     }
 }
 
@@ -1204,7 +1176,6 @@ impl CompositorApi for SessionRuntime<'_> {
         Ok(neighbor)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn close_others(&mut self) -> Result<(), CompositorError> {
         use reovim_driver_display::layout::Zone;
 
@@ -4272,6 +4243,33 @@ mod tests {
         assert!(runtime.changes.buffer_modified);
     }
 
+    /// `apply_undo_edits` returns early when the buffer is not in the kernel.
+    #[test]
+    fn test_apply_undo_edits_buffer_not_found() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+
+        // BufferId::new() is not registered in the kernel
+        let buf = BufferId::new();
+        let edits = vec![Edit::Insert {
+            position: Position::new(0, 0),
+            text: "X".to_string(),
+        }];
+
+        // Should return without panic (early return from let...else)
+        rt.apply_undo_edits(buf, &edits);
+    }
+
     // =========================================================================
     // CompositorApi with compositor (lines 1081-1537)
     // =========================================================================
@@ -5227,5 +5225,208 @@ mod tests {
         let result = rt.close_current_window();
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CompositorError::CannotCloseLastWindow));
+    }
+
+    // === #474: Centralized selection extension tests ===
+
+    /// When cursor moves with an active selection, `sel.end` should auto-update
+    /// and `selection_changed` should be set.
+    #[test]
+    fn test_record_cursor_move_extends_selection() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        // Add a window with selection and move cursor
+        let mut window = crate::Window::new();
+        window.cursor = Position::new(0, 5).into();
+        window.selection =
+            Some(crate::api::Selection::character(Position::new(0, 0), Position::new(0, 1)));
+        w.add(window);
+
+        let buf = BufferId::new();
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        rt.record_cursor_move(buf);
+
+        let changes = rt.take_changes();
+        assert!(changes.cursor_moved);
+        assert!(changes.selection_changed);
+
+        // sel.end should match cursor position + 1
+        let sel = rt.windows().active().unwrap().selection.as_ref().unwrap();
+        assert_eq!(sel.end, Position::new(0, 6));
+    }
+
+    /// When cursor moves without a selection, `selection_changed` should NOT be set.
+    #[test]
+    fn test_record_cursor_move_no_selection() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let mut window = crate::Window::new();
+        window.cursor = Position::new(0, 3).into();
+        // No selection
+        w.add(window);
+
+        let buf = BufferId::new();
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        rt.record_cursor_move(buf);
+
+        let changes = rt.take_changes();
+        assert!(changes.cursor_moved);
+        assert!(!changes.selection_changed);
+    }
+
+    /// When cursor moves with no active window, only `cursor_moved` is set.
+    #[test]
+    fn test_record_cursor_move_no_active_window() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty(); // No windows added
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let buf = BufferId::new();
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        rt.record_cursor_move(buf);
+
+        let changes = rt.take_changes();
+        assert!(changes.cursor_moved);
+        assert!(!changes.selection_changed);
+    }
+
+    /// Direct `record_selection_change` should set `selection_changed`.
+    #[test]
+    fn test_record_selection_change_directly() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let buf = BufferId::new();
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        rt.record_selection_change(buf);
+
+        let changes = rt.take_changes();
+        assert!(changes.selection_changed);
+        assert!(changes.affected_buffers.contains(&buf));
+    }
+
+    // =========================================================================
+    // CompositorApi: focus() with same window (line 1352 false branch)
+    // =========================================================================
+
+    /// Calling `focus()` on the already-focused window should NOT emit a layout
+    /// event (the `if previous_focus != Some(window)` branch is false).
+    #[test]
+    fn test_compositor_focus_same_window_no_layout_event() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &kernel,
+            &executor,
+        );
+
+        // MockRootCompositor starts with focus on WindowId::from_raw(1).
+        // Calling focus() on the already-focused window exercises the
+        // `previous_focus == Some(window)` path (line 1352 false branch).
+        let already_focused = WindowId::from_raw(1);
+        let result = rt.focus(already_focused);
+        assert!(result.is_ok());
+
+        // Changes should record focus even though no layout event is emitted
+        let changes = rt.take_changes();
+        assert!(changes.focus_changed);
+    }
+
+    // =========================================================================
+    // BufferApi: delete_range() with empty result (line 610 false branch)
+    // =========================================================================
+
+    /// Calling `delete_range()` where start==end produces empty deleted text.
+    /// This exercises the `if !deleted_text.is_empty()` false branch (line 610).
+    #[test]
+    fn test_delete_range_empty_result_no_undo_record() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let buffer_id = harness.with_runtime(|runtime| runtime.active_buffer().unwrap());
+
+        // Delete an empty range (start == end): nothing is deleted
+        harness.with_runtime(|runtime| {
+            runtime.delete_range(buffer_id, Position::new(0, 3), Position::new(0, 3));
+        });
+
+        // Buffer content unchanged
+        harness.assert_buffer_content("hello world");
+
+        // buffer_modified is still recorded (changes.record_buffer_modified is called
+        // unconditionally), but no undo edit is recorded for empty deletions.
+        let changes = harness.take_changes();
+        assert!(changes.buffer_modified);
+    }
+
+    // =========================================================================
+    // CompositorApi: set_screen() without compositor (line 1382 false branch)
+    // =========================================================================
+
+    /// `set_screen()` without a compositor should only update `self.screen`.
+    /// This exercises the `if let Some(compositor) = ...` false branch (line 1382).
+    #[test]
+    fn test_set_screen_without_compositor() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        // No compositor
+        let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> = None;
+
+        let mut rt =
+            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+
+        let screen = Rect::new(0, 0, 80, 24);
+        rt.set_screen(screen);
+        assert_eq!(rt.screen, screen);
     }
 }
