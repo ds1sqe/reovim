@@ -12,13 +12,14 @@ use crate::{
 #[cfg(feature = "grpc")]
 use {
     crate::grpc::{
-        AuthInterceptor, BufferServiceImpl, EditorServiceImpl, ExtensionServiceImpl,
-        InputServiceImpl, ModuleServiceImpl, NotificationServiceImpl, PresenceServiceImpl,
-        ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
+        AuthInterceptor, BufferServiceImpl, CommandServiceImpl, EditorServiceImpl,
+        ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl, NotificationServiceImpl,
+        PresenceServiceImpl, ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
     },
     reovim_driver_session::bridges::{BridgeRegistry, CmdlineBridge},
     reovim_protocol::v2::{
-        buffer_service_server::BufferServiceServer, editor_service_server::EditorServiceServer,
+        buffer_service_server::BufferServiceServer, command_service_server::CommandServiceServer,
+        editor_service_server::EditorServiceServer,
         extension_service_server::ExtensionServiceServer, input_service_server::InputServiceServer,
         module_service_server::ModuleServiceServer,
         notification_service_server::NotificationServiceServer,
@@ -301,6 +302,10 @@ impl Server {
             Arc::clone(&self.tokens),
         );
 
+        // CommandService for command completion (#453)
+        let command_service =
+            CommandServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
+
         // ExtensionService for querying extension state (#514)
         let extension_service =
             ExtensionServiceImpl::new(Arc::clone(&self.sessions), default_session_id, bridges);
@@ -338,10 +343,8 @@ impl Server {
                 ))
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
                 .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
-                .add_service(ExtensionServiceServer::with_interceptor(
-                    extension_service,
-                    i.clone(),
-                ));
+                .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
+                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -373,10 +376,8 @@ impl Server {
                 ))
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
                 .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
-                .add_service(ExtensionServiceServer::with_interceptor(
-                    extension_service,
-                    i.clone(),
-                ));
+                .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
+                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router

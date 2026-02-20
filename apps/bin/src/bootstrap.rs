@@ -38,7 +38,8 @@ use {
     },
     reovim_module_defaults::DefaultsModule,
     reovim_server::{
-        CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry, SessionState, SyntaxSessionState,
+        CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
+        SessionState, SyntaxSessionState,
     },
 };
 
@@ -79,6 +80,10 @@ pub fn create_session_state() -> SessionState {
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
         extract_registries(&services);
+
+    // Register CommandQuerySnapshot for module command queries (#453)
+    let command_query_snapshot = Arc::new(CommandQuerySnapshot::from_registry(&command_registry));
+    services.register(command_query_snapshot);
 
     // Extract ex-command handlers and create registry (#465)
     extract_ex_command_registry(&services);

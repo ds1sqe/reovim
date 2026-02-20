@@ -736,6 +736,74 @@ mod tests {
         assert!(!registry.contains(&id));
     }
 
+    // === CommandQuerySnapshot additional tests (#453) ===
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix_empty_string() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("alpha")));
+        registry.register(Arc::new(TestCommand::new("beta")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        // Empty prefix should return all commands
+        let results = snapshot.search_by_prefix("");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix_partial() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("write-file")));
+        registry.register(Arc::new(TestCommand::new("write-all")));
+        registry.register(Arc::new(TestCommand::new("quit")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let results = snapshot.search_by_prefix("write");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_ex_commands_excludes_internal() {
+        // TestCommand always has a name, so create an internal-only command
+        struct InternalCommand;
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl Command for InternalCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "internal")
+            }
+            fn description(&self) -> &'static str {
+                "Internal command"
+            }
+            fn names(&self) -> &[&'static str] {
+                &[] // No ex-names → internal only
+            }
+        }
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl CommandHandler for InternalCommand {
+            fn execute(
+                &self,
+                _runtime: &mut SessionRuntime<'_>,
+                _args: &CommandContext,
+            ) -> CommandResult {
+                CommandResult::Success
+            }
+        }
+
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("visible")));
+        registry.register(Arc::new(InternalCommand));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        // list_all includes internal
+        assert_eq!(snapshot.count(), 2);
+        // list_ex_commands excludes internal (no names)
+        let ex_cmds = snapshot.list_ex_commands();
+        assert_eq!(ex_cmds.len(), 1);
+        assert_eq!(ex_cmds[0].names[0], "visible");
+    }
+
     #[test]
     fn test_command_registry_unregister_nonexistent_module() {
         let mut registry = CommandRegistry::new();

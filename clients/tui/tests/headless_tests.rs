@@ -308,10 +308,7 @@ async fn test_cmdline_activates_on_colon() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Cmdline did not activate: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Cmdline did not activate: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -356,10 +353,7 @@ async fn test_cmdline_typing_visible() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Cmdline input not visible: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Cmdline input not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -424,10 +418,7 @@ async fn test_cmdline_deactivates_on_escape() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Cmdline did not deactivate: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Cmdline did not deactivate: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -473,10 +464,7 @@ async fn test_cmdline_search_prompt() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Search cmdline not visible: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Search cmdline not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 

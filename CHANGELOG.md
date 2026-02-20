@@ -18,6 +18,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   extensions like which-key (#468) and cmdline UI (#469) to query and receive
   updates for server-side state.
 
+- **Command query service for command completion (#453)**: Adds `ExCommandInfo`
+  struct and `ExCommandQueryService` trait to the driver layer for querying
+  ex-commands by prefix, name, and listing all commands. Implements the trait on
+  `ExCommandRegistry` with deduplication. Registers `CommandQuerySnapshot` in
+  bootstrap for keybinding command queries. Defines `CommandService` gRPC service
+  with `SearchCommands` (prefix search with source filtering: all/ex/keybinding)
+  and `CompleteArgs` (argument completion delegation) RPCs. Wires
+  `CommandServiceImpl` into the server router. Enables cmdline UI (#469) to
+  discover and complete commands via gRPC.
+
 - **Cmdline UI core rendering (#469)**: Command-line bar (`:`, `/`, `?`) for TUI
   and web clients. Server emits per-keystroke `ExtensionUpdatedPayload`
   notifications while cmdline is active (fixes toggle-only detection from #514).

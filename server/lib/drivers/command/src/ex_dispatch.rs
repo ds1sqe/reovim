@@ -283,6 +283,57 @@ impl ExCommandDispatcher for ExCommandRegistry {
     }
 }
 
+// ============================================================================
+// ExCommandQueryService implementation (#453)
+// ============================================================================
+
+impl crate::query::ExCommandQueryService for ExCommandRegistry {
+    fn search_by_prefix(&self, prefix: &str) -> Vec<crate::query::ExCommandInfo> {
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+        for (name, handler) in &self.handlers_by_name {
+            if name.starts_with(prefix) && seen.insert(handler.id()) {
+                results.push(crate::query::ExCommandInfo {
+                    id: handler.id().to_string(),
+                    names: handler.names().iter().map(|s| (*s).to_string()).collect(),
+                    help: handler.help().to_string(),
+                });
+            }
+        }
+        results
+    }
+
+    fn find_by_name(&self, name: &str) -> Option<crate::query::ExCommandInfo> {
+        self.get(name).map(|handler| crate::query::ExCommandInfo {
+            id: handler.id().to_string(),
+            names: handler.names().iter().map(|s| (*s).to_string()).collect(),
+            help: handler.help().to_string(),
+        })
+    }
+
+    fn list_all(&self) -> Vec<crate::query::ExCommandInfo> {
+        let mut seen = std::collections::HashSet::new();
+        self.handlers_by_name
+            .values()
+            .filter(|h| seen.insert(h.id()))
+            .map(|handler| crate::query::ExCommandInfo {
+                id: handler.id().to_string(),
+                names: handler.names().iter().map(|s| (*s).to_string()).collect(),
+                help: handler.help().to_string(),
+            })
+            .collect()
+    }
+
+    fn complete_args(&self, command: &str, partial: &str) -> Vec<String> {
+        self.get(command)
+            .map_or_else(Vec::new, |handler| handler.complete(partial))
+    }
+
+    fn count(&self) -> usize {
+        self.len()
+    }
+}
+
 impl std::fmt::Debug for ExCommandRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ExCommandRegistry")
@@ -869,6 +920,159 @@ mod tests {
         assert!(registry.has_command("write"));
         assert!(!registry.has_command("x"));
         assert!(!registry.has_command(""));
+    }
+
+    // === ExCommandQueryService tests (#453) ===
+
+    use crate::query::ExCommandQueryService;
+
+    /// Build a two-handler registry for query tests.
+    fn make_query_registry() -> ExCommandRegistry {
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![
+            Arc::new(TestExCommand {
+                id: "write",
+                names: &["w", "write"],
+                execute_fn: success_cmd,
+            }),
+            Arc::new(TestExCommand {
+                id: "quit",
+                names: &["q", "quit"],
+                execute_fn: success_cmd,
+            }),
+        ];
+        ExCommandRegistry::from_handlers(handlers)
+    }
+
+    #[test]
+    fn test_ex_query_search_by_prefix_found() {
+        let registry = make_query_registry();
+        let results = registry.search_by_prefix("w");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "write");
+        assert!(results[0].names.contains(&"w".to_string()));
+        assert!(results[0].names.contains(&"write".to_string()));
+    }
+
+    #[test]
+    fn test_ex_query_search_by_prefix_none() {
+        let registry = make_query_registry();
+        let results = registry.search_by_prefix("z");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_ex_query_search_by_prefix_deduplicates() {
+        let registry = make_query_registry();
+        // Both "w" and "write" match prefix "w", but same handler id "write"
+        let results = registry.search_by_prefix("w");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_ex_query_search_by_prefix_empty() {
+        let registry = make_query_registry();
+        let results = registry.search_by_prefix("");
+        // Empty prefix matches all -- should return 2 unique handlers
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_ex_query_find_by_name_found() {
+        let registry = make_query_registry();
+        let result = registry.find_by_name("write");
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.id, "write");
+    }
+
+    #[test]
+    fn test_ex_query_find_by_name_not_found() {
+        let registry = make_query_registry();
+        assert!(registry.find_by_name("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_ex_query_find_by_name_alias() {
+        let registry = make_query_registry();
+        let result = registry.find_by_name("w");
+        assert!(result.is_some());
+        let info = result.unwrap();
+        assert_eq!(info.id, "write");
+    }
+
+    #[test]
+    fn test_ex_query_list_all() {
+        let registry = make_query_registry();
+        let all = registry.list_all();
+        assert_eq!(all.len(), 2);
+        let ids: Vec<&str> = all.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&"write"));
+        assert!(ids.contains(&"quit"));
+    }
+
+    #[test]
+    fn test_ex_query_list_all_empty() {
+        let registry = ExCommandRegistry::new();
+        let all = ExCommandQueryService::list_all(&registry);
+        assert!(all.is_empty());
+    }
+
+    #[test]
+    fn test_ex_query_complete_args_delegates() {
+        // Create a handler with custom complete()
+        struct CompleteHandler;
+        impl ExCommandHandler for CompleteHandler {
+            fn id(&self) -> &'static str {
+                "colorscheme"
+            }
+            fn names(&self) -> &[&'static str] {
+                &["colorscheme"]
+            }
+            fn execute(
+                &self,
+                _ctx: &mut ExCommandContext<'_>,
+                _args: &[&str],
+            ) -> Result<(), ExCommandError> {
+                Ok(())
+            }
+            fn complete(&self, partial: &str) -> Vec<String> {
+                vec![format!("{partial}-dark"), format!("{partial}-light")]
+            }
+        }
+
+        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(CompleteHandler)];
+        let registry = ExCommandRegistry::from_handlers(handlers);
+        let completions = registry.complete_args("colorscheme", "gru");
+        assert_eq!(completions.len(), 2);
+        assert_eq!(completions[0], "gru-dark");
+        assert_eq!(completions[1], "gru-light");
+    }
+
+    #[test]
+    fn test_ex_query_complete_args_not_found() {
+        let registry = make_query_registry();
+        let completions = registry.complete_args("nonexistent", "");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_ex_query_complete_args_default_empty() {
+        let registry = make_query_registry();
+        // "write" handler uses default complete() which returns empty
+        let completions = registry.complete_args("write", "foo");
+        assert!(completions.is_empty());
+    }
+
+    #[test]
+    fn test_ex_query_count() {
+        let registry = make_query_registry();
+        assert_eq!(ExCommandQueryService::count(&registry), 2);
+    }
+
+    #[test]
+    fn test_ex_query_count_empty() {
+        let registry = ExCommandRegistry::new();
+        assert_eq!(ExCommandQueryService::count(&registry), 0);
     }
 
     /// Shared VFS-checking command for VFS dispatch tests.
