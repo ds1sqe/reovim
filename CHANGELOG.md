@@ -18,6 +18,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   extensions like which-key (#468) and cmdline UI (#469) to query and receive
   updates for server-side state.
 
+- **Cmdline UI core rendering (#469)**: Command-line bar (`:`, `/`, `?`) for TUI
+  and web clients. Server emits per-keystroke `ExtensionUpdatedPayload`
+  notifications while cmdline is active (fixes toggle-only detection from #514).
+  TUI renders cmdline bar above the statusline with yellow prompt, input text,
+  and inverse-video block cursor. Terminal hardware cursor repositioned to cmdline
+  row in interactive mode. Web client handles `extensionUpdated` notification and
+  renders cmdline using existing `.cmdline-*` CSS classes. Completions, history,
+  and wildmenu deferred to follow-up issues.
+
 ### Changed
 
 - **Explicit shared vs client extensions in resolver API (#474)**: Split the

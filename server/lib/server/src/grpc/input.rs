@@ -212,9 +212,10 @@ impl InputService for InputServiceImpl {
             );
         }
 
-        // #514: Detect CmdlineState activation/deactivation
+        // #514/#469: Detect CmdlineState changes — emit on toggle AND on
+        // every key while active (each keystroke modifies input/cursor).
         let cmdline_is_active = Self::is_cmdline_active(&session, client_id);
-        if cmdline_was_active != cmdline_is_active {
+        if cmdline_was_active != cmdline_is_active || cmdline_is_active {
             accumulated_changes.record_extension_change("cmdline".into());
         }
 

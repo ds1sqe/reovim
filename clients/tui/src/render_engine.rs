@@ -158,8 +158,9 @@ pub fn render_frame<B: RenderBackend>(
 
     let (width, height) = backend.size();
 
-    // Reserve space for statusline
-    let content_height = height.saturating_sub(1);
+    // Reserve space for statusline + cmdline bar
+    let cmdline_rows = u16::from(state.cmdline_active);
+    let content_height = height.saturating_sub(1 + cmdline_rows);
 
     // Render buffer content
     render_buffer_content(backend, state, config, content_height);
@@ -177,6 +178,11 @@ pub fn render_frame<B: RenderBackend>(
 
     // Render statusline
     render_statusline(backend, state, width, height);
+
+    // Render cmdline bar (above statusline)
+    if state.cmdline_active {
+        render_cmdline(backend, state, width, height);
+    }
 }
 
 /// Render buffer content.
@@ -569,6 +575,51 @@ fn render_self_cursor<B: RenderBackend>(
         #[allow(clippy::cast_possible_truncation)]
         let screen_y = screen_line as u16;
         backend.apply_style(screen_col, screen_y, &cursor_style);
+    }
+}
+
+/// Render the command-line bar above the statusline.
+///
+/// Shows the prompt character (`:`, `/`, `?`) in yellow, followed by the
+/// input text. A block cursor is rendered at `cmdline_cursor` position
+/// using inverse video.
+#[allow(clippy::cast_possible_truncation)]
+fn render_cmdline<B: RenderBackend>(
+    backend: &mut B,
+    state: &TuiCoreState,
+    width: u16,
+    height: u16,
+) {
+    // Cmdline row is above the statusline (which is at height-1)
+    let cmdline_y = height.saturating_sub(2);
+
+    // Prompt character in yellow
+    let prompt_style = Style::default().fg(Color::Yellow);
+    backend.write_str(0, cmdline_y, &state.cmdline_prompt, &prompt_style);
+
+    let prompt_len = state.cmdline_prompt.len() as u16;
+    let input_style = Style::default();
+
+    // Render input text
+    for (i, ch) in state.cmdline_input.chars().enumerate() {
+        let x = prompt_len + i as u16;
+        if x >= width {
+            break;
+        }
+        backend.set_cell(x, cmdline_y, ch, &input_style);
+    }
+
+    // Render block cursor at cmdline_cursor position
+    let cursor_style = Style::default().bg(Color::White).fg(Color::Black);
+    let cursor_x = prompt_len + state.cmdline_cursor as u16;
+    if cursor_x < width {
+        if state.cmdline_cursor < state.cmdline_input.len() {
+            // Cursor on an existing character — apply inverse style
+            backend.apply_style(cursor_x, cmdline_y, &cursor_style);
+        } else {
+            // Cursor at end of input — show block on a space
+            backend.set_cell(cursor_x, cmdline_y, ' ', &cursor_style);
+        }
     }
 }
 
@@ -1498,6 +1549,117 @@ mod tests {
                 assert_ne!(colors[i], colors[j], "Dimmed colors at {i} and {j} should differ");
             }
         }
+    }
+
+    // ── Cmdline Rendering Tests (#469) ──────────────────────────────
+
+    #[test]
+    fn test_render_cmdline_active() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = true;
+        state.cmdline_prompt = ":".to_string();
+        state.cmdline_input = "wq".to_string();
+        state.cmdline_cursor = 2;
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Cmdline bar at row 8 (height=10, status at 9, cmdline at 8)
+        let prompt_cell = fb.get(0, 8).unwrap();
+        assert_eq!(prompt_cell.char, ':');
+        assert_eq!(prompt_cell.style.fg, Some(Color::Yellow));
+
+        // Input characters
+        let w_cell = fb.get(1, 8).unwrap();
+        assert_eq!(w_cell.char, 'w');
+        let q_cell = fb.get(2, 8).unwrap();
+        assert_eq!(q_cell.char, 'q');
+
+        // Block cursor at end of input (space with inverse video)
+        let cursor_cell = fb.get(3, 8).unwrap();
+        assert_eq!(cursor_cell.char, ' ');
+        assert_eq!(cursor_cell.style.bg, Some(Color::White));
+        assert_eq!(cursor_cell.style.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_render_cmdline_inactive() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = false;
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Row 8 should not have cmdline content (no yellow prompt)
+        let cell = fb.get(0, 8).unwrap();
+        assert_ne!(cell.style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_render_cmdline_cursor_in_middle() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = true;
+        state.cmdline_prompt = ":".to_string();
+        state.cmdline_input = "hello".to_string();
+        state.cmdline_cursor = 2; // Cursor on 'l'
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Cursor at col 3 (prompt ":" + cursor offset 2) should have inverse style
+        // applied over the existing character 'l'
+        let cursor_cell = fb.get(3, 8).unwrap();
+        assert_eq!(cursor_cell.style.bg, Some(Color::White));
+        assert_eq!(cursor_cell.style.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_render_cmdline_search_prompt() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = true;
+        state.cmdline_prompt = "/".to_string();
+        state.cmdline_input = "foo".to_string();
+        state.cmdline_cursor = 3;
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        let prompt_cell = fb.get(0, 8).unwrap();
+        assert_eq!(prompt_cell.char, '/');
+        assert_eq!(prompt_cell.style.fg, Some(Color::Yellow));
+    }
+
+    #[test]
+    fn test_render_content_height_with_cmdline() {
+        // When cmdline is active, content height should be height - 2
+        // (1 for statusline + 1 for cmdline)
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = true;
+        state.cmdline_prompt = ":".to_string();
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+
+        // Fill buffer with 10 lines
+        state
+            .buffer_cache
+            .insert(100, (0..10).map(|i| format!("line {i}")).collect());
+
+        let config = RenderConfig::default();
+        render_frame(&mut fb, &state, &config);
+
+        // Row 8 should be cmdline (not buffer content)
+        let cell = fb.get(0, 8).unwrap();
+        assert_eq!(cell.char, ':');
+
+        // Row 7 should be buffer content (last visible content row)
+        // "line 7" starts with 'l'
+        let cell = fb.get(0, 7).unwrap();
+        assert_eq!(cell.char, 'l');
     }
 
     #[test]

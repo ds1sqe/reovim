@@ -21,6 +21,8 @@
 
 use std::{collections::HashMap, io, time::Duration};
 
+use crate::render_backend::RenderBackend as _;
+
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_driver_display::{
@@ -691,6 +693,20 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Position cursor (for interactive mode).
     fn position_cursor(&mut self) {
+        // #469: When cmdline is active, position cursor on the cmdline bar
+        if self.state.cmdline_active {
+            let (_, height) = self.frame_buffer.size();
+            let cmdline_y = height.saturating_sub(2);
+            #[allow(clippy::cast_possible_truncation)]
+            let prompt_len = self.state.cmdline_prompt.len() as u16;
+            #[allow(clippy::cast_possible_truncation)]
+            let cursor_x = prompt_len + self.state.cmdline_cursor as u16;
+            self.output.position_cursor(cursor_x, cmdline_y);
+            self.output.set_cursor_style(CursorStyleHint::Bar);
+            self.output.set_cursor_visible(true);
+            return;
+        }
+
         let Some(cursor_pos) = self.state.get_focused_cursor() else {
             return;
         };

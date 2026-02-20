@@ -703,6 +703,35 @@ export class Editor {
         break;
       }
 
+      case "extensionUpdated": {
+        // #469: Handle extension state updates (e.g., cmdline)
+        const ext = payload.value;
+        const extClientId = ext.clientId ?? 0n;
+        const isLocal = extClientId === 0n || extClientId === this.myClientId;
+
+        if (isLocal && ext.kind === "cmdline") {
+          try {
+            const data = JSON.parse(ext.data) as {
+              active?: boolean;
+              prompt?: string;
+              input?: string;
+              cursor?: number;
+            };
+            const el = document.getElementById("commandline");
+            if (!el) break;
+
+            if (data.active) {
+              this.renderWebCmdline(el, data.prompt ?? ":", data.input ?? "", data.cursor ?? 0);
+            } else {
+              el.innerHTML = "";
+            }
+          } catch (e) {
+            console.warn("[extensionUpdated] cmdline parse error:", e);
+          }
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -948,6 +977,53 @@ export class Editor {
 
     this.modeElement.textContent = modeText;
     this.modeElement.className = this.state.mode;
+  }
+
+  /**
+   * Render command-line bar in the footer element (#469).
+   *
+   * Uses the same DOM pattern as `OverlayRenderer.renderCommandLine()`:
+   * `.cmdline-container > .cmdline-prefix + .cmdline-content > (before + .cmdline-cursor + after)`
+   */
+  private renderWebCmdline(
+    el: HTMLElement,
+    prefix: string,
+    content: string,
+    cursor: number,
+  ): void {
+    el.innerHTML = "";
+
+    const container = document.createElement("div");
+    container.className = "cmdline-container";
+
+    const prefixSpan = document.createElement("span");
+    prefixSpan.className = "cmdline-prefix";
+    prefixSpan.textContent = prefix;
+    container.appendChild(prefixSpan);
+
+    const contentSpan = document.createElement("span");
+    contentSpan.className = "cmdline-content";
+
+    const beforeCursor = content.slice(0, cursor);
+    const afterCursor = content.slice(cursor);
+
+    const beforeSpan = document.createElement("span");
+    beforeSpan.textContent = beforeCursor;
+    contentSpan.appendChild(beforeSpan);
+
+    const cursorSpan = document.createElement("span");
+    cursorSpan.className = "cmdline-cursor";
+    cursorSpan.textContent = afterCursor.charAt(0) || " ";
+    contentSpan.appendChild(cursorSpan);
+
+    if (afterCursor.length > 1) {
+      const afterSpan = document.createElement("span");
+      afterSpan.textContent = afterCursor.slice(1);
+      contentSpan.appendChild(afterSpan);
+    }
+
+    container.appendChild(contentSpan);
+    el.appendChild(container);
   }
 
   /**

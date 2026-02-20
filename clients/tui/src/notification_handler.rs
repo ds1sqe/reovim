@@ -417,6 +417,37 @@ pub async fn handle_notification<C: NotificationContext>(
             Ok(NotificationResult::NoRedraw)
         }
 
+        #[allow(clippy::cast_possible_truncation)]
+        Payload::ExtensionUpdated(ext) => {
+            let state = ctx.state_mut();
+            let is_local = ext.client_id == 0 || ext.client_id == state.my_client_id;
+
+            if is_local
+                && ext.kind == "cmdline"
+                && let Ok(data) = serde_json::from_str::<serde_json::Value>(&ext.data)
+            {
+                state.cmdline_active = data
+                    .get("active")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                state.cmdline_prompt = data
+                    .get("prompt")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or(":")
+                    .to_string();
+                state.cmdline_input = data
+                    .get("input")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                state.cmdline_cursor = data
+                    .get("cursor")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0) as usize;
+            }
+            Ok(NotificationResult::Redraw)
+        }
+
         _ => {
             // Other notifications - trigger redraw
             Ok(NotificationResult::Redraw)
@@ -1188,6 +1219,125 @@ mod tests {
         assert_eq!(sel.end.line, 0);
         assert_eq!(sel.end.column, 0);
         assert!(sel.mode.is_empty()); // visual_mode was None => default
+    }
+
+    // =========================================================================
+    // ExtensionUpdated (#469) tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_cmdline_active() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true,"prompt":":","input":"wq","cursor":2}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        assert!(ctx.state.cmdline_active);
+        assert_eq!(ctx.state.cmdline_prompt, ":");
+        assert_eq!(ctx.state.cmdline_input, "wq");
+        assert_eq!(ctx.state.cmdline_cursor, 2);
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_cmdline_deactivate() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        // First activate
+        ctx.state.cmdline_active = true;
+        ctx.state.cmdline_prompt = ":".to_string();
+        ctx.state.cmdline_input = "wq".to_string();
+        ctx.state.cmdline_cursor = 2;
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":false,"prompt":":","input":"","cursor":0}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        assert!(!ctx.state.cmdline_active);
+        assert!(ctx.state.cmdline_input.is_empty());
+        assert_eq!(ctx.state.cmdline_cursor, 0);
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_remote_ignored() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true,"prompt":":","input":"w","cursor":1}"#.to_string(),
+            client_id: 99, // Different client
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // State should NOT be updated
+        assert!(!ctx.state.cmdline_active);
+        assert!(ctx.state.cmdline_prompt.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_unknown_kind() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "whichkey".to_string(),
+            data: r#"{"some":"data"}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // Cmdline state should NOT be updated
+        assert!(!ctx.state.cmdline_active);
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_invalid_json() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: "not valid json{{{".to_string(),
+            client_id: 1,
+        }));
+
+        // Should not panic
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // State should NOT be updated
+        assert!(!ctx.state.cmdline_active);
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_client_id_zero_is_local() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true,"prompt":"/","input":"foo","cursor":3}"#.to_string(),
+            client_id: 0, // 0 means local/unspecified
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        assert!(ctx.state.cmdline_active);
+        assert_eq!(ctx.state.cmdline_prompt, "/");
+        assert_eq!(ctx.state.cmdline_input, "foo");
+        assert_eq!(ctx.state.cmdline_cursor, 3);
     }
 
     #[tokio::test]

@@ -121,6 +121,7 @@ pub struct RemoteClient {
 /// This struct contains all state needed by both interactive and headless
 /// TUI modes for proper multi-client awareness and rendering.
 #[derive(Debug, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TuiCoreState {
     // =========================================================================
     // Identity
@@ -200,6 +201,21 @@ pub struct TuiCoreState {
 
     /// Last error message for statusline.
     pub last_error: Option<String>,
+
+    // =========================================================================
+    // Cmdline (#469)
+    // =========================================================================
+    /// Whether command-line is currently active.
+    pub cmdline_active: bool,
+
+    /// Command-line prompt character (":", "/", "?").
+    pub cmdline_prompt: String,
+
+    /// Command-line input text.
+    pub cmdline_input: String,
+
+    /// Command-line cursor position (char index into input).
+    pub cmdline_cursor: usize,
 
     // =========================================================================
     // Viewport (headless-specific, but kept for unification)
@@ -595,6 +611,29 @@ mod tests {
         assert!(state.last_error.is_none());
         state.last_error = Some("test error".to_string());
         assert_eq!(state.last_error.as_deref(), Some("test error"));
+    }
+
+    #[test]
+    fn test_core_state_cmdline_defaults() {
+        let state = TuiCoreState::default();
+        assert!(!state.cmdline_active);
+        assert!(state.cmdline_prompt.is_empty());
+        assert!(state.cmdline_input.is_empty());
+        assert_eq!(state.cmdline_cursor, 0);
+    }
+
+    #[test]
+    fn test_core_state_cmdline_update() {
+        let mut state = TuiCoreState::new(1);
+        state.cmdline_active = true;
+        state.cmdline_prompt = ":".to_string();
+        state.cmdline_input = "wq".to_string();
+        state.cmdline_cursor = 2;
+
+        assert!(state.cmdline_active);
+        assert_eq!(state.cmdline_prompt, ":");
+        assert_eq!(state.cmdline_input, "wq");
+        assert_eq!(state.cmdline_cursor, 2);
     }
 
     #[test]
