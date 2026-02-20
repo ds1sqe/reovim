@@ -28,6 +28,8 @@ impl ExtensionStateBridge for CmdlineBridge {
             "prompt": state.prompt().char().to_string(),
             "input": state.input(),
             "cursor": state.cursor(),
+            "completions": state.completions(),
+            "completion_index": state.completion_index(),
         }))
     }
 
@@ -114,6 +116,34 @@ mod tests {
         let state = map.get_or_insert::<CmdlineState>();
         state.enter(CmdlinePrompt::Command);
         assert!(CmdlineBridge.is_active(&map));
+    }
+
+    #[test]
+    fn test_cmdline_bridge_snapshot_with_completions() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        state.enter(CmdlinePrompt::Command);
+        state.set_completions("w".to_string(), vec!["write".to_string(), "wq".to_string()]);
+        state.complete_next(); // select index 0
+
+        let snap = CmdlineBridge.snapshot(&map).unwrap();
+        let completions = snap["completions"].as_array().unwrap();
+        assert_eq!(completions.len(), 2);
+        assert_eq!(completions[0], "write");
+        assert_eq!(completions[1], "wq");
+        assert_eq!(snap["completion_index"], 0);
+    }
+
+    #[test]
+    fn test_cmdline_bridge_snapshot_no_completions() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        state.enter(CmdlinePrompt::Command);
+
+        let snap = CmdlineBridge.snapshot(&map).unwrap();
+        let completions = snap["completions"].as_array().unwrap();
+        assert!(completions.is_empty());
+        assert!(snap["completion_index"].is_null());
     }
 
     #[test]

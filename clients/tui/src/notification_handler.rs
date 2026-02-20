@@ -444,6 +444,19 @@ pub async fn handle_notification<C: NotificationContext>(
                     .get("cursor")
                     .and_then(serde_json::Value::as_u64)
                     .unwrap_or(0) as usize;
+                state.cmdline_completions = data
+                    .get("completions")
+                    .and_then(serde_json::Value::as_array)
+                    .map_or_else(Vec::new, |arr| {
+                        arr.iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .map(String::from)
+                            .collect()
+                    });
+                state.cmdline_completion_index = data
+                    .get("completion_index")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|v| v as usize);
             }
             Ok(NotificationResult::Redraw)
         }

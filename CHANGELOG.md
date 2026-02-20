@@ -28,14 +28,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `CommandServiceImpl` into the server router. Enables cmdline UI (#469) to
   discover and complete commands via gRPC.
 
-- **Cmdline UI core rendering (#469)**: Command-line bar (`:`, `/`, `?`) for TUI
-  and web clients. Server emits per-keystroke `ExtensionUpdatedPayload`
-  notifications while cmdline is active (fixes toggle-only detection from #514).
-  TUI renders cmdline bar above the statusline with yellow prompt, input text,
-  and inverse-video block cursor. Terminal hardware cursor repositioned to cmdline
-  row in interactive mode. Web client handles `extensionUpdated` notification and
-  renders cmdline using existing `.cmdline-*` CSS classes. Completions, history,
-  and wildmenu deferred to follow-up issues.
+- **Noice-style cmdline UI (#451)**: Transforms the bottom-line cmdline bar
+  (#469) into a centered floating popup inspired by noice.nvim with rounded
+  Unicode box-drawing borders (`╭─╮│╰─╯`). Adds enhanced command-line editing
+  (`<Left>`, `<Right>`, `<Home>`/`<C-a>`, `<End>`/`<C-e>`, `<BS>`, `<Del>`,
+  `<C-w>` delete-word, `<C-u>` delete-to-start), command history navigation
+  (`<Up>`/`<C-p>`, `<Down>`/`<C-n>` with separate command/search histories,
+  deduplication, and max 100 entries), and tab-completion (`<Tab>`/`<S-Tab>`
+  cycling through `ExCommandQueryService` prefix matches with completion list
+  rendered inside the popup). 12 new CommandId constants, 12 command handlers,
+  and 19 keybindings in `vim:command` mode. `CmdlineState` extended with cursor
+  movement, editing, history, and completion methods in the driver layer.
+  `CmdlineBridge` updated to expose completions state via gRPC.
 
 ### Changed
 

@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn test_commandline_bindings_count() {
         let bindings = commandline::bindings();
-        assert_eq!(bindings.len(), 3, "Commandline mode should have 3 bindings");
+        assert_eq!(bindings.len(), 19, "Commandline mode should have 19 bindings");
     }
 
     #[test]

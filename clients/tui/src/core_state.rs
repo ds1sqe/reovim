@@ -217,6 +217,12 @@ pub struct TuiCoreState {
     /// Command-line cursor position (char index into input).
     pub cmdline_cursor: usize,
 
+    /// Command-line completion candidates (#451).
+    pub cmdline_completions: Vec<String>,
+
+    /// Currently selected completion index (#451).
+    pub cmdline_completion_index: Option<usize>,
+
     // =========================================================================
     // Viewport (headless-specific, but kept for unification)
     // =========================================================================

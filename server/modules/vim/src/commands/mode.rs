@@ -283,6 +283,9 @@ impl CommandHandler for ExitCommandLineMode {
         // Get the prompt type to determine how to handle the input
         let prompt = runtime.ext_mut::<CmdlineState>().prompt();
 
+        // Push input to history before taking it (#451)
+        runtime.ext_mut::<CmdlineState>().push_to_history();
+
         // Get the cmdline input
         let cmdline = runtime.ext_mut::<CmdlineState>().take_cmdline_input();
 
@@ -437,6 +440,299 @@ impl CommandHandler for CancelCommandLineMode {
         runtime.ext_mut::<CmdlineState>().cancel();
         runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Command-line editing commands (#451)
+// =============================================================================
+
+/// Move cursor left in command-line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCursorLeft;
+
+impl Command for CmdlineCursorLeft {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_CURSOR_LEFT
+    }
+    fn description(&self) -> &'static str {
+        "Move cursor left in command-line"
+    }
+}
+
+impl CommandHandler for CmdlineCursorLeft {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().move_cursor_left();
+        CommandResult::Success
+    }
+}
+
+/// Move cursor right in command-line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCursorRight;
+
+impl Command for CmdlineCursorRight {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_CURSOR_RIGHT
+    }
+    fn description(&self) -> &'static str {
+        "Move cursor right in command-line"
+    }
+}
+
+impl CommandHandler for CmdlineCursorRight {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().move_cursor_right();
+        CommandResult::Success
+    }
+}
+
+/// Move cursor to start of command-line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCursorHome;
+
+impl Command for CmdlineCursorHome {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_CURSOR_HOME
+    }
+    fn description(&self) -> &'static str {
+        "Move cursor to start of command-line"
+    }
+}
+
+impl CommandHandler for CmdlineCursorHome {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().move_to_start();
+        CommandResult::Success
+    }
+}
+
+/// Move cursor to end of command-line.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCursorEnd;
+
+impl Command for CmdlineCursorEnd {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_CURSOR_END
+    }
+    fn description(&self) -> &'static str {
+        "Move cursor to end of command-line"
+    }
+}
+
+impl CommandHandler for CmdlineCursorEnd {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().move_to_end();
+        CommandResult::Success
+    }
+}
+
+/// Delete character at cursor in command-line (Del key).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineDeleteChar;
+
+impl Command for CmdlineDeleteChar {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_DELETE_CHAR
+    }
+    fn description(&self) -> &'static str {
+        "Delete character at cursor in command-line"
+    }
+}
+
+impl CommandHandler for CmdlineDeleteChar {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().delete_at_cursor();
+        CommandResult::Success
+    }
+}
+
+/// Delete character before cursor in command-line (Backspace).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineBackspace;
+
+impl Command for CmdlineBackspace {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_BACKSPACE
+    }
+    fn description(&self) -> &'static str {
+        "Delete character before cursor in command-line"
+    }
+}
+
+impl CommandHandler for CmdlineBackspace {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().backspace();
+        CommandResult::Success
+    }
+}
+
+/// Delete word before cursor in command-line (Ctrl-W).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineDeleteWord;
+
+impl Command for CmdlineDeleteWord {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_DELETE_WORD
+    }
+    fn description(&self) -> &'static str {
+        "Delete word before cursor in command-line"
+    }
+}
+
+impl CommandHandler for CmdlineDeleteWord {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().delete_word_back();
+        CommandResult::Success
+    }
+}
+
+/// Delete to start of command-line (Ctrl-U).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineDeleteToStart;
+
+impl Command for CmdlineDeleteToStart {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_DELETE_TO_START
+    }
+    fn description(&self) -> &'static str {
+        "Delete to start of command-line"
+    }
+}
+
+impl CommandHandler for CmdlineDeleteToStart {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().delete_to_start();
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Command-line history commands (#451)
+// =============================================================================
+
+/// Navigate to older history entry (Up / Ctrl-P).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineHistoryUp;
+
+impl Command for CmdlineHistoryUp {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_HISTORY_UP
+    }
+    fn description(&self) -> &'static str {
+        "Navigate to older history entry"
+    }
+}
+
+impl CommandHandler for CmdlineHistoryUp {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().history_up();
+        CommandResult::Success
+    }
+}
+
+/// Navigate to newer history entry (Down / Ctrl-N).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineHistoryDown;
+
+impl Command for CmdlineHistoryDown {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_HISTORY_DOWN
+    }
+    fn description(&self) -> &'static str {
+        "Navigate to newer history entry"
+    }
+}
+
+impl CommandHandler for CmdlineHistoryDown {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        runtime.ext_mut::<CmdlineState>().history_down();
+        CommandResult::Success
+    }
+}
+
+// =============================================================================
+// Command-line completion commands (#451)
+// =============================================================================
+
+/// Cycle to next completion (Tab).
+///
+/// On first press, queries `ExCommandQueryService` for candidates matching
+/// the current input prefix. On subsequent presses, cycles forward.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCompleteNext;
+
+impl Command for CmdlineCompleteNext {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_COMPLETE_NEXT
+    }
+    fn description(&self) -> &'static str {
+        "Cycle to next command-line completion"
+    }
+}
+
+impl CommandHandler for CmdlineCompleteNext {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        populate_completions_if_needed(runtime);
+        runtime.ext_mut::<CmdlineState>().complete_next();
+        CommandResult::Success
+    }
+}
+
+/// Cycle to previous completion (Shift-Tab).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CmdlineCompletePrev;
+
+impl Command for CmdlineCompletePrev {
+    fn id(&self) -> CommandId {
+        ids::CMDLINE_COMPLETE_PREV
+    }
+    fn description(&self) -> &'static str {
+        "Cycle to previous command-line completion"
+    }
+}
+
+impl CommandHandler for CmdlineCompletePrev {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        populate_completions_if_needed(runtime);
+        runtime.ext_mut::<CmdlineState>().complete_prev();
+        CommandResult::Success
+    }
+}
+
+/// Populate completions from `ExCommandQueryService` if not already populated.
+fn populate_completions_if_needed(runtime: &mut SessionRuntime<'_>) {
+    // Only populate when completions list is empty
+    if !runtime.ext_mut::<CmdlineState>().completions().is_empty() {
+        return;
+    }
+
+    let prefix = runtime.ext_mut::<CmdlineState>().input().to_string();
+    if prefix.is_empty() {
+        return;
+    }
+
+    // Query ex-command registry for matching commands
+    let candidates = {
+        use reovim_driver_command::{ExCommandQueryService, ExCommandRegistry};
+        runtime
+            .kernel()
+            .services
+            .get::<ExCommandRegistry>()
+            .map_or_else(Vec::new, |registry| {
+                registry
+                    .search_by_prefix(&prefix)
+                    .into_iter()
+                    .flat_map(|info| info.names)
+                    .filter(|name| name.starts_with(&prefix))
+                    .collect()
+            })
+    };
+
+    if !candidates.is_empty() {
+        runtime
+            .ext_mut::<CmdlineState>()
+            .set_completions(prefix, candidates);
     }
 }
 
@@ -2222,5 +2518,465 @@ mod tests {
         // Should succeed (buffer not found for search is handled gracefully)
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
+    }
+
+    // ========================================================================
+    // Command-line editing commands (#451)
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_left_id() {
+        assert_eq!(CmdlineCursorLeft.id(), ids::CMDLINE_CURSOR_LEFT);
+        assert!(CmdlineCursorLeft.description().contains("left"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_right_id() {
+        assert_eq!(CmdlineCursorRight.id(), ids::CMDLINE_CURSOR_RIGHT);
+        assert!(CmdlineCursorRight.description().contains("right"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_home_id() {
+        assert_eq!(CmdlineCursorHome.id(), ids::CMDLINE_CURSOR_HOME);
+        assert!(CmdlineCursorHome.description().contains("start"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_end_id() {
+        assert_eq!(CmdlineCursorEnd.id(), ids::CMDLINE_CURSOR_END);
+        assert!(CmdlineCursorEnd.description().contains("end"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_char_id() {
+        assert_eq!(CmdlineDeleteChar.id(), ids::CMDLINE_DELETE_CHAR);
+        assert!(CmdlineDeleteChar.description().contains("cursor"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_backspace_id() {
+        assert_eq!(CmdlineBackspace.id(), ids::CMDLINE_BACKSPACE);
+        assert!(CmdlineBackspace.description().contains("before"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_word_id() {
+        assert_eq!(CmdlineDeleteWord.id(), ids::CMDLINE_DELETE_WORD);
+        assert!(CmdlineDeleteWord.description().contains("word"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_to_start_id() {
+        assert_eq!(CmdlineDeleteToStart.id(), ids::CMDLINE_DELETE_TO_START);
+        assert!(CmdlineDeleteToStart.description().contains("start"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_editing_debug_and_default() {
+        let _ = format!("{:?}", CmdlineCursorLeft);
+        let _ = format!("{:?}", CmdlineCursorRight);
+        let _ = format!("{:?}", CmdlineCursorHome);
+        let _ = format!("{:?}", CmdlineCursorEnd);
+        let _ = format!("{:?}", CmdlineDeleteChar);
+        let _ = format!("{:?}", CmdlineBackspace);
+        let _ = format!("{:?}", CmdlineDeleteWord);
+        let _ = format!("{:?}", CmdlineDeleteToStart);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_left_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        // Enter cmdline mode and type some chars
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+        runtime.ext_mut::<CmdlineState>().insert_char('b');
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 2);
+
+        let result = CmdlineCursorLeft.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 1);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_right_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+        runtime.ext_mut::<CmdlineState>().move_cursor_left();
+
+        let result = CmdlineCursorRight.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 1);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_home_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+
+        let result = CmdlineCursorHome.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 0);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_cursor_end_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+        runtime.ext_mut::<CmdlineState>().move_to_start();
+
+        let result = CmdlineCursorEnd.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 1);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_char_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+        runtime.ext_mut::<CmdlineState>().insert_char('b');
+        runtime.ext_mut::<CmdlineState>().move_to_start();
+
+        let result = CmdlineDeleteChar.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "b");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_backspace_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('a');
+        runtime.ext_mut::<CmdlineState>().insert_char('b');
+
+        let result = CmdlineBackspace.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "a");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_word_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "hello world".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = CmdlineDeleteWord.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "hello ");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_history_up_id() {
+        assert_eq!(CmdlineHistoryUp.id(), ids::CMDLINE_HISTORY_UP);
+        assert!(CmdlineHistoryUp.description().contains("older"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_history_down_id() {
+        assert_eq!(CmdlineHistoryDown.id(), ids::CMDLINE_HISTORY_DOWN);
+        assert!(CmdlineHistoryDown.description().contains("newer"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_history_debug_and_default() {
+        let _ = format!("{:?}", CmdlineHistoryUp);
+        let _ = format!("{:?}", CmdlineHistoryDown);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_history_up_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        // Enter and add history
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('w');
+        runtime.ext_mut::<CmdlineState>().push_to_history();
+
+        // New cmdline session
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+
+        let result = CmdlineHistoryUp.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "w");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_history_down_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        // Enter and add history
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('w');
+        runtime.ext_mut::<CmdlineState>().push_to_history();
+
+        // New cmdline, navigate up then down
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "new".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+        runtime.ext_mut::<CmdlineState>().history_up();
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "w");
+
+        let result = CmdlineHistoryDown.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "new");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_delete_to_start_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "hello".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = CmdlineDeleteToStart.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "");
+        assert_eq!(runtime.ext_mut::<CmdlineState>().cursor(), 0);
+    }
+
+    // ========================================================================
+    // Command-line completion commands (#451)
+    // ========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_next_id() {
+        assert_eq!(CmdlineCompleteNext.id(), ids::CMDLINE_COMPLETE_NEXT);
+        assert!(CmdlineCompleteNext.description().contains("next"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_prev_id() {
+        assert_eq!(CmdlineCompletePrev.id(), ids::CMDLINE_COMPLETE_PREV);
+        assert!(CmdlineCompletePrev.description().contains("previous"));
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_completion_debug_and_default() {
+        let _ = format!("{:?}", CmdlineCompleteNext);
+        let _ = format!("{:?}", CmdlineCompletePrev);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_next_with_registry() {
+        use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
+
+        struct WriteHandler;
+        impl ExCommandHandler for WriteHandler {
+            fn id(&self) -> &'static str {
+                "write"
+            }
+            fn names(&self) -> &[&'static str] {
+                &["w", "write"]
+            }
+            fn execute(
+                &self,
+                _ctx: &mut ExCommandContext<'_>,
+                _args: &[&str],
+            ) -> Result<(), ExCommandError> {
+                Ok(())
+            }
+        }
+
+        struct WqHandler;
+        impl ExCommandHandler for WqHandler {
+            fn id(&self) -> &'static str {
+                "wq"
+            }
+            fn names(&self) -> &[&'static str] {
+                &["wq"]
+            }
+            fn execute(
+                &self,
+                _ctx: &mut ExCommandContext<'_>,
+                _args: &[&str],
+            ) -> Result<(), ExCommandError> {
+                Ok(())
+            }
+        }
+
+        let registry =
+            ExCommandRegistry::from_handlers(vec![Arc::new(WriteHandler), Arc::new(WqHandler)]);
+        let ctx = create_test_context_with_ex_registry(registry);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('w');
+
+        // First Tab populates and selects
+        let result = CmdlineCompleteNext.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert!(!runtime.ext_mut::<CmdlineState>().completions().is_empty());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_next_empty_input() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        // Empty input — should not populate
+
+        let result = CmdlineCompleteNext.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        assert!(runtime.ext_mut::<CmdlineState>().completions().is_empty());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_prev_execute() {
+        let ctx = create_test_context();
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime
+            .ext_mut::<CmdlineState>()
+            .set_completions("w".to_string(), vec!["write".to_string(), "wq".to_string()]);
+
+        let result = CmdlineCompletePrev.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        // Should select last item
+        assert_eq!(runtime.ext_mut::<CmdlineState>().input(), "wq");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_cmdline_complete_no_registry() {
+        let ctx = create_test_context(); // no ExCommandRegistry
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char('w');
+
+        let result = CmdlineCompleteNext.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+        // No registry → empty completions
+        assert!(runtime.ext_mut::<CmdlineState>().completions().is_empty());
     }
 }

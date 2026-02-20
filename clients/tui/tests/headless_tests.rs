@@ -287,24 +287,25 @@ async fn test_cmdline_activates_on_colon() {
     handle.send_keys(":").await.expect("Failed to send :");
 
     // Wait for cmdline prompt to appear on the second-to-last row
+    // #451: Cmdline is now a floating popup with box-drawing borders.
+    // Look for the popup content row containing "│" and the ":" prompt.
     let result = handle
         .wait_for(Duration::from_secs(2), |frame| {
-            let lines: Vec<&str> = frame.lines().collect();
-            let row = lines.len().saturating_sub(2);
-            lines.get(row).is_some_and(|l| l.starts_with(':'))
+            frame.lines().any(|l| l.contains('│') && l.contains(':'))
         })
         .await;
 
     match result {
         Ok(frame) => {
-            let lines: Vec<&str> = frame.lines().collect();
-            let cmdline_row = lines.len().saturating_sub(2);
-            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains(':'))
+                .unwrap_or("");
             assert!(
-                cmdline_line.starts_with(':'),
-                "Cmdline row should start with ':' prompt, got: '{cmdline_line}'"
+                content_line.contains(':'),
+                "Popup content row should contain ':' prompt, got: '{content_line}'"
             );
-            eprintln!("[test] Cmdline activated. Row {cmdline_row}: '{cmdline_line}'");
+            eprintln!("[test] Cmdline popup activated: '{content_line}'");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
@@ -335,21 +336,21 @@ async fn test_cmdline_typing_visible() {
     handle.send_keys("w").await.expect("Failed to send w");
     handle.send_keys("q").await.expect("Failed to send q");
 
-    // Wait for "wq" to appear
+    // #451: Wait for "wq" to appear inside the floating popup content row.
     let result = handle
-        .wait_for(Duration::from_secs(2), |frame| frame.contains("wq"))
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame.lines().any(|l| l.contains('│') && l.contains("wq"))
+        })
         .await;
 
     match result {
         Ok(frame) => {
-            let lines: Vec<&str> = frame.lines().collect();
-            let cmdline_row = lines.len().saturating_sub(2);
-            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
-            assert!(
-                cmdline_line.contains("wq"),
-                "Cmdline should show ':wq', got: '{cmdline_line}'"
-            );
-            eprintln!("[test] Cmdline input visible. Row {cmdline_row}: '{cmdline_line}'");
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains("wq"))
+                .unwrap_or("");
+            assert!(content_line.contains("wq"), "Popup should show ':wq', got: '{content_line}'");
+            eprintln!("[test] Cmdline input visible: '{content_line}'");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
@@ -378,15 +379,13 @@ async fn test_cmdline_deactivates_on_escape() {
     handle.send_keys(":").await.expect("Failed to send :");
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Verify cmdline is active
+    // #451: Verify popup is visible (box-drawing border present)
     let frame = handle
         .capture("plain_text")
         .await
         .expect("Failed to capture");
-    let lines: Vec<&str> = frame.lines().collect();
-    let cmdline_row = lines.len().saturating_sub(2);
-    let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
-    eprintln!("[test] Before Escape - cmdline row: '{cmdline_line}'");
+    assert!(frame.contains('╭'), "Popup border should be visible before Escape");
+    eprintln!("[test] Before Escape - popup visible");
 
     // Press Escape to deactivate
     handle
@@ -394,27 +393,15 @@ async fn test_cmdline_deactivates_on_escape() {
         .await
         .expect("Failed to send Escape");
 
-    // Wait for cmdline to disappear (row should no longer start with ':')
+    // #451: Wait for popup to disappear (no more box-drawing borders)
     let result = handle
-        .wait_for(Duration::from_secs(2), |frame| {
-            let lines: Vec<&str> = frame.lines().collect();
-            let row = lines.len().saturating_sub(2);
-            let line = lines.get(row).unwrap_or(&"");
-            // After Escape, cmdline row should NOT show ':' prompt
-            !line.starts_with(':')
-        })
+        .wait_for(Duration::from_secs(2), |frame| !frame.contains('╭'))
         .await;
 
     match result {
         Ok(frame) => {
-            let lines: Vec<&str> = frame.lines().collect();
-            let cmdline_row = lines.len().saturating_sub(2);
-            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
-            eprintln!("[test] After Escape - cmdline row: '{cmdline_line}'");
-            assert!(
-                !cmdline_line.starts_with(':'),
-                "Cmdline should be gone after Escape, got: '{cmdline_line}'"
-            );
+            assert!(!frame.contains('╭'), "Popup should be gone after Escape");
+            eprintln!("[test] After Escape - popup gone");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
@@ -442,25 +429,24 @@ async fn test_cmdline_search_prompt() {
     // Send `/` for search
     handle.send_keys("/").await.expect("Failed to send /");
 
+    // #451: Search cmdline now renders as floating popup with '/' prompt.
     let result = handle
         .wait_for(Duration::from_secs(2), |frame| {
-            let lines: Vec<&str> = frame.lines().collect();
-            let row = lines.len().saturating_sub(2);
-            let line = lines.get(row).unwrap_or(&"");
-            line.starts_with('/')
+            frame.lines().any(|l| l.contains('│') && l.contains('/'))
         })
         .await;
 
     match result {
         Ok(frame) => {
-            let lines: Vec<&str> = frame.lines().collect();
-            let cmdline_row = lines.len().saturating_sub(2);
-            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains('/'))
+                .unwrap_or("");
             assert!(
-                cmdline_line.starts_with('/'),
-                "Search cmdline should start with '/', got: '{cmdline_line}'"
+                content_line.contains('/'),
+                "Popup should show '/' search prompt, got: '{content_line}'"
             );
-            eprintln!("[test] Search cmdline visible. Row {cmdline_row}: '{cmdline_line}'");
+            eprintln!("[test] Search cmdline popup visible: '{content_line}'");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();

@@ -21,7 +21,7 @@
 
 use std::{collections::HashMap, io, time::Duration};
 
-use crate::render_backend::RenderBackend as _;
+use crate::{render_backend::RenderBackend as _, render_engine};
 
 use {
     crossterm::event::{KeyCode, KeyModifiers},
@@ -693,15 +693,18 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Position cursor (for interactive mode).
     fn position_cursor(&mut self) {
-        // #469: When cmdline is active, position cursor on the cmdline bar
+        // #451: When cmdline is active, position cursor inside the floating popup
         if self.state.cmdline_active {
-            let (_, height) = self.frame_buffer.size();
-            let cmdline_y = height.saturating_sub(2);
+            let (width, _) = self.frame_buffer.size();
+            let pw = render_engine::popup_width(width);
+            let px = render_engine::popup_x(width, pw);
+            let content_x = px + 2; // border + padding
             #[allow(clippy::cast_possible_truncation)]
             let prompt_len = self.state.cmdline_prompt.len() as u16;
             #[allow(clippy::cast_possible_truncation)]
-            let cursor_x = prompt_len + self.state.cmdline_cursor as u16;
-            self.output.position_cursor(cursor_x, cmdline_y);
+            let cursor_x = content_x + prompt_len + self.state.cmdline_cursor as u16;
+            let cursor_y = 2; // popup at y=1, content row at y=2
+            self.output.position_cursor(cursor_x, cursor_y);
             self.output.set_cursor_style(CursorStyleHint::Bar);
             self.output.set_cursor_visible(true);
             return;
