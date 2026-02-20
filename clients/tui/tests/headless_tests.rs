@@ -95,7 +95,6 @@ async fn test_statusline_renders() {
 ///
 /// Requires vim module to be loaded for 'i' keybinding to work.
 #[tokio::test]
-#[ignore = "Requires module loading (#465 Phase 16)"]
 async fn test_insert_mode_indicator() {
     let harness = TestServerHarness::spawn()
         .await
@@ -196,7 +195,6 @@ async fn test_escape_returns_to_normal() {
 ///
 /// Requires vim module to be loaded for 'i' keybinding and text insertion.
 #[tokio::test]
-#[ignore = "Requires module loading (#465 Phase 16)"]
 async fn test_text_input_visible() {
     let harness = TestServerHarness::spawn()
         .await
@@ -263,6 +261,224 @@ async fn test_resize_updates_viewport() {
 
     // The frame should be non-empty (we can't easily verify dimensions in plain text)
     assert!(!frame.is_empty(), "Frame should have content after resize");
+
+    handle.stop().await;
+}
+
+// ============================================================================
+// Cmdline UI Tests (#469)
+// ============================================================================
+
+/// Test that pressing `:` activates the cmdline bar and it appears in the frame.
+#[tokio::test]
+async fn test_cmdline_activates_on_colon() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Send `:` to activate cmdline
+    handle.send_keys(":").await.expect("Failed to send :");
+
+    // Wait for cmdline prompt to appear on the second-to-last row
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            let lines: Vec<&str> = frame.lines().collect();
+            let row = lines.len().saturating_sub(2);
+            lines.get(row).is_some_and(|l| l.starts_with(':'))
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let lines: Vec<&str> = frame.lines().collect();
+            let cmdline_row = lines.len().saturating_sub(2);
+            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            assert!(
+                cmdline_line.starts_with(':'),
+                "Cmdline row should start with ':' prompt, got: '{cmdline_line}'"
+            );
+            eprintln!("[test] Cmdline activated. Row {cmdline_row}: '{cmdline_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Cmdline did not activate: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that typing in cmdline mode shows input text in real-time.
+#[tokio::test]
+async fn test_cmdline_typing_visible() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Activate cmdline and type "wq"
+    handle.send_keys(":").await.expect("Failed to send :");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    handle.send_keys("w").await.expect("Failed to send w");
+    handle.send_keys("q").await.expect("Failed to send q");
+
+    // Wait for "wq" to appear
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| frame.contains("wq"))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let lines: Vec<&str> = frame.lines().collect();
+            let cmdline_row = lines.len().saturating_sub(2);
+            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            assert!(
+                cmdline_line.contains("wq"),
+                "Cmdline should show ':wq', got: '{cmdline_line}'"
+            );
+            eprintln!("[test] Cmdline input visible. Row {cmdline_row}: '{cmdline_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Cmdline input not visible: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that Escape deactivates the cmdline bar.
+#[tokio::test]
+async fn test_cmdline_deactivates_on_escape() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Activate cmdline
+    handle.send_keys(":").await.expect("Failed to send :");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Verify cmdline is active
+    let frame = handle
+        .capture("plain_text")
+        .await
+        .expect("Failed to capture");
+    let lines: Vec<&str> = frame.lines().collect();
+    let cmdline_row = lines.len().saturating_sub(2);
+    let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+    eprintln!("[test] Before Escape - cmdline row: '{cmdline_line}'");
+
+    // Press Escape to deactivate
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Escape");
+
+    // Wait for cmdline to disappear (row should no longer start with ':')
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            let lines: Vec<&str> = frame.lines().collect();
+            let row = lines.len().saturating_sub(2);
+            let line = lines.get(row).unwrap_or(&"");
+            // After Escape, cmdline row should NOT show ':' prompt
+            !line.starts_with(':')
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let lines: Vec<&str> = frame.lines().collect();
+            let cmdline_row = lines.len().saturating_sub(2);
+            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            eprintln!("[test] After Escape - cmdline row: '{cmdline_line}'");
+            assert!(
+                !cmdline_line.starts_with(':'),
+                "Cmdline should be gone after Escape, got: '{cmdline_line}'"
+            );
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Cmdline did not deactivate: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that `/` activates search cmdline with `/` prompt.
+#[tokio::test]
+async fn test_cmdline_search_prompt() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Send `/` for search
+    handle.send_keys("/").await.expect("Failed to send /");
+
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            let lines: Vec<&str> = frame.lines().collect();
+            let row = lines.len().saturating_sub(2);
+            let line = lines.get(row).unwrap_or(&"");
+            line.starts_with('/')
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let lines: Vec<&str> = frame.lines().collect();
+            let cmdline_row = lines.len().saturating_sub(2);
+            let cmdline_line = lines.get(cmdline_row).unwrap_or(&"");
+            assert!(
+                cmdline_line.starts_with('/'),
+                "Search cmdline should start with '/', got: '{cmdline_line}'"
+            );
+            eprintln!("[test] Search cmdline visible. Row {cmdline_row}: '{cmdline_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Search cmdline not visible: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
 
     handle.stop().await;
 }
