@@ -180,6 +180,65 @@
   margin-top: 4px;
 }
 
+/* ============ Which-Key Hints ============ */
+
+.whichkey-popup {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 300px;
+  max-width: 60%;
+  max-height: 40%;
+  overflow-y: auto;
+  z-index: 150;
+}
+
+.whichkey-header {
+  padding: 6px 12px;
+  font-weight: bold;
+  color: var(--theme-text-accent);
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.whichkey-hints {
+  padding: 4px 0;
+}
+
+.whichkey-hint {
+  display: flex;
+  padding: 3px 12px;
+  gap: 12px;
+}
+
+.whichkey-key {
+  min-width: 5em;
+  font-weight: bold;
+  color: var(--theme-accent);
+}
+
+.whichkey-command {
+  color: var(--theme-text-muted);
+  font-size: 0.9em;
+}
+
+/* ============ Cmdline Completions ============ */
+
+.cmdline-completions {
+  padding: 4px 0;
+  border-top: 1px solid var(--theme-border);
+}
+
+.cmdline-completion {
+  padding: 2px 12px;
+  cursor: default;
+}
+
+.cmdline-completion.selected {
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
+}
+
 /* ============ Fallback ============ */
 
 .overlay-fallback {

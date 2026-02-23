@@ -56,6 +56,7 @@ import {
   type FrameCapture,
   type WindowState as CaptureWindowState,
 } from "../capture/index.js";
+import { createExtensions, type WebExtension } from "../extensions/index.js";
 
 /** gRPC client interface (same as browser client) */
 interface ReovimClient {
@@ -129,6 +130,7 @@ export class HeadlessWebClient {
   private client: ReovimClient;
   private state: HeadlessState;
   private captureHandler: CaptureHandler;
+  private extensions: WebExtension[];
   private notificationAbort: AbortController | null = null;
 
   private constructor(client: ReovimClient, options: HeadlessClientOptions) {
@@ -151,6 +153,8 @@ export class HeadlessWebClient {
       client: this.client,
       getState: () => this.getCaptureableState(),
     });
+
+    this.extensions = createExtensions();
   }
 
   /**
@@ -265,6 +269,17 @@ export class HeadlessWebClient {
           this.state.lines = bufferResp.lines.length > 0 ? bufferResp.lines : [""];
         } catch (error) {
           console.warn("Failed to fetch buffer content:", error);
+        }
+        break;
+      }
+
+      case "extensionUpdated": {
+        // #468: Generic extension state tracking (no DOM rendering)
+        const ext = payload.value;
+        for (const extension of this.extensions) {
+          if (extension.kind() === ext.kind) {
+            extension.applyNotification(ext.data);
+          }
         }
         break;
       }
@@ -398,6 +413,16 @@ export class HeadlessWebClient {
    */
   getBuffer(): string {
     return this.state.lines.join("\n");
+  }
+
+  /**
+   * Get extension state by kind (#468).
+   *
+   * Returns the parsed state for headless testing, or null if the extension
+   * is not active or the kind is unknown.
+   */
+  getExtensionState(kind: string): Record<string, unknown> | null {
+    return this.extensions.find(e => e.kind() === kind)?.getState() ?? null;
   }
 
   /**
