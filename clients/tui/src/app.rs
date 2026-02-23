@@ -21,7 +21,7 @@
 
 use std::{collections::HashMap, io, time::Duration};
 
-use crate::{render_backend::RenderBackend as _, render_engine};
+use crate::render_backend::{RenderBackend as _, TuiExtension};
 
 use {
     crossterm::event::{KeyCode, KeyModifiers},
@@ -131,6 +131,8 @@ pub struct TuiApp<O: TuiOutput> {
     pending_token_refresh: std::collections::HashSet<u64>,
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
+    /// TUI extensions (cmdline, whichkey, etc.) — engine has ZERO knowledge.
+    extensions: Vec<Box<dyn TuiExtension>>,
 
     // === I/O adapter (only thing that differs) ===
     /// Display output adapter (terminal for interactive, no-op for headless).
@@ -182,6 +184,7 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
+            extensions: reovim_tui_ext_defaults::create_extensions(),
             output,
         }
     }
@@ -658,7 +661,7 @@ impl<O: TuiOutput> TuiApp<O> {
         };
 
         // Always render to FrameBuffer (common output)
-        render_frame(&mut self.frame_buffer, &self.state, &config);
+        render_frame(&mut self.frame_buffer, &self.state, &config, &self.extensions);
 
         // Flush to display (terminal for interactive, no-op for headless)
         self.output.flush(&self.frame_buffer)?;
@@ -693,21 +696,17 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Position cursor (for interactive mode).
     fn position_cursor(&mut self) {
-        // #451: When cmdline is active, position cursor inside the floating popup
-        if self.state.cmdline_active {
-            let (width, _) = self.frame_buffer.size();
-            let pw = render_engine::popup_width(width);
-            let px = render_engine::popup_x(width, pw);
-            let content_x = px + 2; // border + padding
-            #[allow(clippy::cast_possible_truncation)]
-            let prompt_len = self.state.cmdline_prompt.len() as u16;
-            #[allow(clippy::cast_possible_truncation)]
-            let cursor_x = content_x + prompt_len + self.state.cmdline_cursor as u16;
-            let cursor_y = 2; // popup at y=1, content row at y=2
-            self.output.position_cursor(cursor_x, cursor_y);
-            self.output.set_cursor_style(CursorStyleHint::Bar);
-            self.output.set_cursor_visible(true);
-            return;
+        // Check if any active extension wants cursor positioning
+        let (width, height) = self.frame_buffer.size();
+        for ext in &self.extensions {
+            if ext.is_active()
+                && let Some((cx, cy)) = ext.cursor_position(width, height)
+            {
+                self.output.position_cursor(cx, cy);
+                self.output.set_cursor_style(CursorStyleHint::Bar);
+                self.output.set_cursor_visible(true);
+                return;
+            }
         }
 
         let Some(cursor_pos) = self.state.get_focused_cursor() else {
@@ -814,6 +813,10 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
     fn on_resize(&mut self, width: u16, height: u16) {
         self.frame_buffer.resize(width, height);
         self.output.invalidate();
+    }
+
+    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+        &mut self.extensions
     }
 
     fn on_capture_request(

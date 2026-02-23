@@ -2850,7 +2850,7 @@ mod tests {
         // Initially empty
         let has_cmdline = session
             .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_driver_session::CmdlineState>().is_some()
+                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
             })
             .unwrap();
         assert!(!has_cmdline);
@@ -2859,13 +2859,13 @@ mod tests {
         session.update_client_state(client_id, |state| {
             state
                 .extensions
-                .get_or_insert::<reovim_driver_session::CmdlineState>();
+                .get_or_insert::<reovim_module_cmdline::CmdlineState>();
         });
 
         // Now it exists
         let has_cmdline = session
             .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_driver_session::CmdlineState>().is_some()
+                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
             })
             .unwrap();
         assert!(has_cmdline);

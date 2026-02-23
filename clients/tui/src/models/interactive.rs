@@ -5,9 +5,12 @@
 
 use std::io;
 
-use reovim_driver_tui::{Cursor, CursorStyle, InputEvent, InputReader, Screen, Terminal};
+use reovim_driver_tui::{Cursor, CursorStyle, InputEvent, InputReader, Terminal};
 
-use crate::tui_model::{CursorStyleHint, TuiEvent, TuiInputEvent, TuiModel};
+use crate::{
+    render_backend::ScreenBackend,
+    tui_model::{CursorStyleHint, TuiEvent, TuiInputEvent, TuiModel},
+};
 
 /// Interactive TUI model with terminal I/O.
 ///
@@ -15,8 +18,8 @@ use crate::tui_model::{CursorStyleHint, TuiEvent, TuiInputEvent, TuiModel};
 pub struct InteractiveModel {
     /// Terminal session (raw mode, alternate screen).
     terminal: Terminal,
-    /// Screen buffer and renderer.
-    screen: Screen,
+    /// Screen buffer and renderer (wrapped for `RenderBackend` trait).
+    screen: ScreenBackend,
     /// Cursor manager for terminal cursor.
     cursor: Cursor,
     /// Async input event reader.
@@ -34,7 +37,7 @@ impl InteractiveModel {
     pub fn new() -> io::Result<Self> {
         let terminal = Terminal::enter()?;
         let (width, height) = Terminal::size()?;
-        let screen = Screen::new(width, height);
+        let screen = ScreenBackend::new(width, height);
         let cursor = Cursor::new();
         let input = InputReader::new();
 
@@ -53,7 +56,7 @@ impl InteractiveModel {
     /// Returns an error if terminal initialization fails.
     pub fn with_size(width: u16, height: u16) -> io::Result<Self> {
         let terminal = Terminal::enter()?;
-        let screen = Screen::new(width, height);
+        let screen = ScreenBackend::new(width, height);
         let cursor = Cursor::new();
         let input = InputReader::new();
 
@@ -79,9 +82,9 @@ impl InteractiveModel {
 }
 
 impl TuiModel for InteractiveModel {
-    type Backend = Screen;
+    type Backend = ScreenBackend;
 
-    fn backend_mut(&mut self) -> &mut Screen {
+    fn backend_mut(&mut self) -> &mut ScreenBackend {
         &mut self.screen
     }
 

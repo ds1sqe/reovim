@@ -2,9 +2,12 @@
 //!
 //! Adapts [`CmdlineState`] to JSON for gRPC transmission to clients.
 
-use crate::{CmdlineState, ExtensionMap};
+use reovim_driver_session::{
+    ExtensionMap,
+    bridges::{ExtensionScope, ExtensionStateBridge},
+};
 
-use super::{ExtensionScope, ExtensionStateBridge};
+use crate::CmdlineState;
 
 /// Bridge for command-line state.
 ///
@@ -42,9 +45,7 @@ impl ExtensionStateBridge for CmdlineBridge {
 
 #[cfg(test)]
 mod tests {
-    use crate::api::CmdlinePrompt;
-
-    use super::*;
+    use {super::*, crate::CmdlinePrompt};
 
     #[test]
     fn test_cmdline_bridge_kind() {
@@ -80,7 +81,6 @@ mod tests {
     #[test]
     fn test_cmdline_bridge_snapshot_inactive() {
         let mut map = ExtensionMap::new();
-        // get_or_insert creates default (inactive) state
         map.get_or_insert::<CmdlineState>();
 
         let snap = CmdlineBridge.snapshot(&map).unwrap();
@@ -124,7 +124,7 @@ mod tests {
         let state = map.get_or_insert::<CmdlineState>();
         state.enter(CmdlinePrompt::Command);
         state.set_completions("w".to_string(), vec!["write".to_string(), "wq".to_string()]);
-        state.complete_next(); // select index 0
+        state.complete_next();
 
         let snap = CmdlineBridge.snapshot(&map).unwrap();
         let completions = snap["completions"].as_array().unwrap();

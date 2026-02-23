@@ -17,7 +17,10 @@ use {
     },
 };
 
-use crate::{LineNumberMode, SelectionState, TuiCoreState, render_backend::RenderBackend};
+use crate::{
+    LineNumberMode, SelectionState, TuiCoreState,
+    render_backend::{RenderBackend, TuiExtension},
+};
 
 /// Render configuration for a frame.
 ///
@@ -152,6 +155,7 @@ pub fn render_frame<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
     config: &RenderConfig,
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     // Clear the backend
     backend.clear();
@@ -178,9 +182,11 @@ pub fn render_frame<B: RenderBackend>(
     // Render statusline
     render_statusline(backend, state, width, height);
 
-    // Render cmdline popup (floating, on top of everything)
-    if state.cmdline_active {
-        render_cmdline_popup(backend, state, width);
+    // Render active extensions (engine has ZERO knowledge of specific ones)
+    for ext in extensions {
+        if ext.is_active() {
+            ext.render(backend);
+        }
     }
 }
 
@@ -577,149 +583,6 @@ fn render_self_cursor<B: RenderBackend>(
     }
 }
 
-/// Render a box border using Unicode rounded box-drawing characters.
-///
-/// Draws `╭─╮`, `│ │`, `╰─╯` around the given rectangle.
-fn render_box_border<B: RenderBackend>(
-    backend: &mut B,
-    x: u16,
-    y: u16,
-    w: u16,
-    h: u16,
-    style: &Style,
-) {
-    if w < 2 || h < 2 {
-        return;
-    }
-    // Top: ╭───╮
-    backend.set_cell(x, y, '\u{256D}', style);
-    for col in 1..w.saturating_sub(1) {
-        backend.set_cell(x + col, y, '\u{2500}', style);
-    }
-    backend.set_cell(x + w - 1, y, '\u{256E}', style);
-
-    // Sides: │ ... │
-    for row in 1..h.saturating_sub(1) {
-        backend.set_cell(x, y + row, '\u{2502}', style);
-        backend.set_cell(x + w - 1, y + row, '\u{2502}', style);
-    }
-
-    // Bottom: ╰───╯
-    backend.set_cell(x, y + h - 1, '\u{2570}', style);
-    for col in 1..w.saturating_sub(1) {
-        backend.set_cell(x + col, y + h - 1, '\u{2500}', style);
-    }
-    backend.set_cell(x + w - 1, y + h - 1, '\u{256F}', style);
-}
-
-/// Calculate the popup width from the terminal width.
-///
-/// 60% of screen width, clamped to [30, width-4].
-#[allow(clippy::cast_possible_truncation)]
-pub(crate) fn popup_width(terminal_width: u16) -> u16 {
-    (terminal_width * 3 / 5)
-        .max(30)
-        .min(terminal_width.saturating_sub(4))
-}
-
-/// Calculate the popup X position (centered).
-pub(crate) const fn popup_x(terminal_width: u16, pw: u16) -> u16 {
-    terminal_width.saturating_sub(pw) / 2
-}
-
-/// Render the command-line as a floating popup near the top.
-///
-/// Shows a bordered popup with the prompt character in yellow,
-/// input text, and a block cursor. The popup is horizontally
-/// centered and positioned at row 1.
-///
-/// ```text
-/// ╭──────────────────────────╮
-/// │ :input text here█        │
-/// ╰──────────────────────────╯
-/// ```
-#[allow(clippy::cast_possible_truncation)]
-fn render_cmdline_popup<B: RenderBackend>(backend: &mut B, state: &TuiCoreState, width: u16) {
-    let pw = popup_width(width);
-    let px = popup_x(width, pw);
-    let py: u16 = 1; // Near top of screen
-
-    // Popup height: 3 (border + content + border) + completion rows
-    let completion_rows = state.cmdline_completions.len() as u16;
-    let popup_height = 3 + completion_rows;
-
-    // Draw border
-    let border_style = Style::default().fg(Color::DarkGrey);
-    render_box_border(backend, px, py, pw, popup_height, &border_style);
-
-    // Content row (inside the border)
-    let content_y = py + 1;
-    let content_x = px + 2; // border + padding
-    let content_width = pw.saturating_sub(4); // 2 padding each side
-
-    // Clear content area
-    let clear_style = Style::default();
-    for col in 0..content_width {
-        backend.set_cell(content_x + col, content_y, ' ', &clear_style);
-    }
-
-    // Prompt character in yellow
-    let prompt_style = Style::default().fg(Color::Yellow);
-    backend.write_str(content_x, content_y, &state.cmdline_prompt, &prompt_style);
-
-    let prompt_len = state.cmdline_prompt.len() as u16;
-    let input_style = Style::default();
-
-    // Render input text
-    for (i, ch) in state.cmdline_input.chars().enumerate() {
-        let x = content_x + prompt_len + i as u16;
-        if x >= content_x + content_width {
-            break;
-        }
-        backend.set_cell(x, content_y, ch, &input_style);
-    }
-
-    // Render block cursor
-    let cursor_style = Style::default().bg(Color::White).fg(Color::Black);
-    let cursor_x = content_x + prompt_len + state.cmdline_cursor as u16;
-    if cursor_x < content_x + content_width {
-        if state.cmdline_cursor < state.cmdline_input.len() {
-            backend.apply_style(cursor_x, content_y, &cursor_style);
-        } else {
-            backend.set_cell(cursor_x, content_y, ' ', &cursor_style);
-        }
-    }
-
-    // Render completions below the input line
-    for (i, completion) in state.cmdline_completions.iter().enumerate() {
-        let row_y = content_y + 1 + i as u16;
-        let is_selected = state.cmdline_completion_index == Some(i);
-
-        // Clear the row
-        for col in 0..content_width {
-            backend.set_cell(content_x + col, row_y, ' ', &clear_style);
-        }
-
-        // Indicator: ▸ for selected, space for others
-        let indicator = if is_selected { '\u{25B8}' } else { ' ' };
-        let item_style = if is_selected {
-            Style::default().bg(Color::DarkGrey).fg(Color::White)
-        } else {
-            Style::default()
-        };
-
-        backend.set_cell(content_x, row_y, indicator, &item_style);
-        // Render completion text with 2-char offset (indicator + space)
-        for (j, ch) in completion.chars().enumerate() {
-            let x = content_x + 2 + j as u16;
-            if x >= content_x + content_width {
-                break;
-            }
-            backend.set_cell(x, row_y, ch, &item_style);
-        }
-    }
-}
-
 /// Render the statusline at the bottom of the screen.
 #[allow(clippy::cast_possible_truncation)]
 fn render_statusline<B: RenderBackend>(
@@ -836,7 +699,7 @@ mod tests {
         let state = TuiCoreState::new(1);
         let config = RenderConfig::default();
 
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Should have rendered statusline
         let last_row = fb.row(23).unwrap();
@@ -896,7 +759,7 @@ mod tests {
         state.add_remote_client(remote);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Columns 2..=4 should have dimmed selection bg.
         // Column 5 is the cursor position — cursor overwrites selection bg.
@@ -930,7 +793,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(3));
 
@@ -980,7 +843,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(4));
 
@@ -1027,7 +890,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // No selection background should appear — cells should have default bg
         let wrong_bg = Some(dimmed_client_color(5));
@@ -1056,7 +919,7 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(LOCAL_SELECTION_BG);
         for col in 3..=8u16 {
@@ -1099,7 +962,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(6));
 
@@ -1153,7 +1016,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label on cursor row (3), after "hello world" (len 11) + 1 gap = col 12
         let expected_fg = Some(client_color(2));
@@ -1199,7 +1062,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label on row 0 after "fn main()" (len 9) + 1 gap = col 10
         let expected_fg = Some(client_color(3));
@@ -1238,7 +1101,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label should be truncated to MAX_LABEL_WIDTH
         let truncated_label = label_text("very-long-username-that-exceeds-limit", "NORMAL");
@@ -1280,7 +1143,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // "long content here!" is 18 chars, label_x = 19 (18+1).
         // Label " charlie [N] " is 14 chars. 19 + 14 = 33 > 20.
@@ -1315,7 +1178,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // No label should appear anywhere (client is in a different buffer)
         let label_fg = Some(client_color(6));
@@ -1422,7 +1285,7 @@ mod tests {
             .insert(100, vec!["hello world".to_string(), "second line".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // First line should contain 'h' at position (0, 0)
         let cell = fb.get(0, 0).unwrap();
@@ -1444,7 +1307,7 @@ mod tests {
         state.buffer_cache.insert(100, vec!["hello".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Row 1 should have tilde (line beyond buffer content)
         let cell = fb.get(0, 1).unwrap();
@@ -1473,7 +1336,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Content should be offset by gutter_width
         let cell = fb.get(4, 0).unwrap();
@@ -1502,7 +1365,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Should render without panicking
         let cell = fb.get(4, 0).unwrap();
@@ -1532,7 +1395,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Content at gutter offset
         let cell = fb.get(4, 0).unwrap();
@@ -1554,7 +1417,7 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Self cursor at (5, 2) should have inverse video style
         let cell = fb.get(5, 2).unwrap();
@@ -1571,7 +1434,7 @@ mod tests {
         state.update_local_cursor(1, 3, 7);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Statusline at row 9 (height - 1)
         // Should contain mode indicator
@@ -1587,7 +1450,7 @@ mod tests {
         // No cursor set - should show "?:?"
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Statusline should be rendered (row 9)
         let last_row = fb.row(9).unwrap();
@@ -1601,7 +1464,7 @@ mod tests {
         let config = RenderConfig::default();
 
         // Should not panic with no windows
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
     }
 
     #[test]
@@ -1618,7 +1481,7 @@ mod tests {
         };
 
         // Should not panic (skips cursor rendering when no data)
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
     }
 
     #[test]
@@ -1648,230 +1511,6 @@ mod tests {
         }
     }
 
-    // ── Cmdline Floating Popup Tests (#451) ──────────────────────────
-
-    // Helper: popup layout for 40-wide terminal
-    // popup_width(40) = max(24, 30).min(36) = 30
-    // popup_x(40, 30) = 5
-    // content_x = 5 + 2 = 7 (border + padding)
-    // content_y = 2 (popup at y=1, content row at y=1+1)
-
-    #[test]
-    fn test_render_cmdline_active() {
-        let mut fb = FrameBuffer::new(40, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = ":".to_string();
-        state.cmdline_input = "wq".to_string();
-        state.cmdline_cursor = 2;
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // Popup border top-left at (5, 1) = ╭
-        let border_cell = fb.get(5, 1).unwrap();
-        assert_eq!(border_cell.char, '\u{256D}');
-
-        // Prompt at content_x=7, content_y=2
-        let prompt_cell = fb.get(7, 2).unwrap();
-        assert_eq!(prompt_cell.char, ':');
-        assert_eq!(prompt_cell.style.fg, Some(Color::Yellow));
-
-        // Input characters at (8, 2) and (9, 2)
-        let w_cell = fb.get(8, 2).unwrap();
-        assert_eq!(w_cell.char, 'w');
-        let q_cell = fb.get(9, 2).unwrap();
-        assert_eq!(q_cell.char, 'q');
-
-        // Block cursor at end of input (10, 2)
-        let cursor_cell = fb.get(10, 2).unwrap();
-        assert_eq!(cursor_cell.char, ' ');
-        assert_eq!(cursor_cell.style.bg, Some(Color::White));
-        assert_eq!(cursor_cell.style.fg, Some(Color::Black));
-    }
-
-    #[test]
-    fn test_render_cmdline_inactive() {
-        let mut fb = FrameBuffer::new(40, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = false;
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // No popup border should exist at (5, 1)
-        let cell = fb.get(5, 1).unwrap();
-        assert_ne!(cell.char, '\u{256D}');
-    }
-
-    #[test]
-    fn test_render_cmdline_cursor_in_middle() {
-        let mut fb = FrameBuffer::new(40, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = ":".to_string();
-        state.cmdline_input = "hello".to_string();
-        state.cmdline_cursor = 2; // Cursor on 'l'
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // Cursor at content_x(7) + prompt(1) + offset(2) = 10
-        let cursor_cell = fb.get(10, 2).unwrap();
-        assert_eq!(cursor_cell.style.bg, Some(Color::White));
-        assert_eq!(cursor_cell.style.fg, Some(Color::Black));
-    }
-
-    #[test]
-    fn test_render_cmdline_search_prompt() {
-        let mut fb = FrameBuffer::new(40, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = "/".to_string();
-        state.cmdline_input = "foo".to_string();
-        state.cmdline_cursor = 3;
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // Prompt '/' at content_x=7, content_y=2
-        let prompt_cell = fb.get(7, 2).unwrap();
-        assert_eq!(prompt_cell.char, '/');
-        assert_eq!(prompt_cell.style.fg, Some(Color::Yellow));
-    }
-
-    #[test]
-    fn test_render_content_height_with_cmdline() {
-        // When cmdline is active, content height is height-1 (only statusline)
-        // because the popup floats on top — no content rows are stolen
-        let mut fb = FrameBuffer::new(40, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = ":".to_string();
-        state.windows.push(window(1, 100));
-        state.focused_window_id = 1;
-
-        // Fill buffer with 10 lines
-        state
-            .buffer_cache
-            .insert(100, (0..10).map(|i| format!("line {i}")).collect());
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // Row 8 is now buffer content (not cmdline) since popup floats on top
-        // Content uses height-1 = 9 rows (0..8), statusline at row 9
-        let cell = fb.get(0, 8).unwrap();
-        assert_eq!(cell.char, 'l'); // "line 8"
-
-        // Row 7 is also buffer content
-        let cell = fb.get(0, 7).unwrap();
-        assert_eq!(cell.char, 'l'); // "line 7"
-    }
-
-    #[test]
-    fn test_render_box_border() {
-        let mut fb = FrameBuffer::new(20, 10);
-        let style = Style::default();
-        render_box_border(&mut fb, 2, 3, 10, 4, &style);
-
-        // Top corners
-        assert_eq!(fb.get(2, 3).unwrap().char, '\u{256D}'); // ╭
-        assert_eq!(fb.get(11, 3).unwrap().char, '\u{256E}'); // ╮
-        // Top edge
-        assert_eq!(fb.get(3, 3).unwrap().char, '\u{2500}'); // ─
-        // Side
-        assert_eq!(fb.get(2, 4).unwrap().char, '\u{2502}'); // │
-        assert_eq!(fb.get(11, 4).unwrap().char, '\u{2502}'); // │
-        // Bottom corners
-        assert_eq!(fb.get(2, 6).unwrap().char, '\u{2570}'); // ╰
-        assert_eq!(fb.get(11, 6).unwrap().char, '\u{256F}'); // ╯
-    }
-
-    #[test]
-    fn test_render_box_border_too_small() {
-        let mut fb = FrameBuffer::new(10, 10);
-        let style = Style::default();
-        // Width=1 is too small — should be a no-op
-        render_box_border(&mut fb, 0, 0, 1, 3, &style);
-        assert_eq!(fb.get(0, 0).unwrap().char, ' '); // unchanged
-    }
-
-    #[test]
-    fn test_popup_width_and_position() {
-        // 40 wide: pw = max(24, 30).min(36) = 30
-        assert_eq!(popup_width(40), 30);
-        assert_eq!(popup_x(40, 30), 5);
-
-        // 100 wide: pw = max(60, 30).min(96) = 60
-        assert_eq!(popup_width(100), 60);
-        assert_eq!(popup_x(100, 60), 20);
-
-        // 32 wide (narrow): pw = max(19, 30).min(28) = 28
-        // but 32*3/5=19, max(19,30)=30, min(30,28)=28
-        assert_eq!(popup_width(32), 28);
-    }
-
-    #[test]
-    fn test_render_cmdline_popup_with_completions() {
-        let mut fb = FrameBuffer::new(40, 15);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = ":".to_string();
-        state.cmdline_input = "write".to_string();
-        state.cmdline_cursor = 5;
-        state.cmdline_completions = vec!["write".to_string(), "wq".to_string()];
-        state.cmdline_completion_index = Some(0);
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // popup_width(40) = 30, popup_x(40,30) = 5
-        // content_x = 7, content_y = 2
-        // Completion rows at y=3 and y=4
-
-        // Selected item at y=3 should have ▸ indicator
-        let indicator_cell = fb.get(7, 3).unwrap();
-        assert_eq!(indicator_cell.char, '\u{25B8}');
-
-        // "write" text starts at content_x + 2 = 9
-        let w_cell = fb.get(9, 3).unwrap();
-        assert_eq!(w_cell.char, 'w');
-
-        // Unselected item at y=4 should have space indicator
-        let indicator2 = fb.get(7, 4).unwrap();
-        assert_eq!(indicator2.char, ' ');
-
-        // Border should extend to include completions
-        // popup_height = 3 + 2 = 5
-        // Bottom border at y = 1 + 5 - 1 = 5
-        let bottom_left = fb.get(5, 5).unwrap();
-        assert_eq!(bottom_left.char, '\u{2570}'); // ╰
-    }
-
-    #[test]
-    fn test_render_cmdline_popup_narrow_terminal() {
-        // Terminal width=34 → popup should still render
-        let mut fb = FrameBuffer::new(34, 10);
-        let mut state = TuiCoreState::new(1);
-        state.cmdline_active = true;
-        state.cmdline_prompt = ":".to_string();
-        state.cmdline_input = "w".to_string();
-        state.cmdline_cursor = 1;
-
-        let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
-
-        // popup_width(34) = max(20,30).min(30) = 30
-        // popup_x(34,30) = 2
-        let border_cell = fb.get(2, 1).unwrap();
-        assert_eq!(border_cell.char, '\u{256D}');
-
-        // Content at (4, 2)
-        let prompt_cell = fb.get(4, 2).unwrap();
-        assert_eq!(prompt_cell.char, ':');
-    }
-
     #[test]
     fn test_render_line_content_truncation() {
         let mut fb = FrameBuffer::new(10, 5);
@@ -1885,7 +1524,7 @@ mod tests {
             .insert(100, vec!["abcdefghijklmnop".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // First character should be 'a'
         let cell = fb.get(0, 0).unwrap();

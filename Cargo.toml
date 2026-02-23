@@ -43,12 +43,19 @@ members = [
     "server/modules/window-ops",
     "server/modules/defaults",
     "server/modules/treesitter-rust",
+    "server/modules/cmdline",
+    "server/modules/whichkey",
     "server/modules/treesitter-markdown",
 
     # Client layer - TUI
     "clients/tui",
     "clients/tui/lib/drivers/tui",
     "clients/tui/lib/drivers/display",
+
+    # Client extensions - TUI
+    "clients/tui/extensions/which-key",
+    "clients/tui/extensions/cmdline",
+    "clients/tui/extensions/defaults",
 
     # Client layer - CLI
     "clients/cli",
@@ -187,6 +194,8 @@ reovim-module-vfs-local = { path = "./server/modules/vfs-local", version = "0.9.
 reovim-module-window-ops = { path = "./server/modules/window-ops", version = "0.9.5-dev" }
 reovim-module-defaults = { path = "./server/modules/defaults", version = "0.9.5-dev" }
 reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.9.5-dev" }
+reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.9.5-dev" }
+reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
 
 # CLI

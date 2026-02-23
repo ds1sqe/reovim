@@ -6,26 +6,21 @@ use std::fmt::Write;
 
 use crate::{GrpcClient, GrpcClientError, OutputFormat};
 
-/// Send keys to the editor.
+/// Send keys to a target client via `DebugService`.
 ///
-/// # Arguments
-///
-/// * `client` - The gRPC client
-/// * `keys` - Keys in vim notation
-/// * `client_id` - Optional client ID for multi-client testing (#471)
-/// * `format` - Output format
+/// CLI is stateless — no join, no token. Targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn keys(
     client: &mut GrpcClient,
     keys: &str,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    // Identity resolved from session token (#483)
-    let response = client.send_keys(keys).await?;
+    let response = client.debug_send_keys(keys, target_client_id).await?;
 
     let status_str = match response.status {
         1 => "executed",
@@ -52,17 +47,20 @@ pub async fn keys(
     }
 }
 
-/// Get current editor mode.
+/// Get a specific client's editor mode via `DebugService`.
+///
+/// CLI is stateless — targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn mode(
     client: &mut GrpcClient,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_mode().await?;
+    let response = client.debug_get_mode(target_client_id).await?;
 
     match format {
         OutputFormat::Plain => Ok(format!(
@@ -82,17 +80,20 @@ pub async fn mode(
     }
 }
 
-/// Get cursor position.
+/// Get a specific client's cursor position via `DebugService`.
+///
+/// CLI is stateless — targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn cursor(
     client: &mut GrpcClient,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_cursor().await?;
+    let response = client.debug_get_cursor(target_client_id).await?;
 
     let (line, column) = response
         .position
@@ -296,26 +297,23 @@ pub async fn registers(
     }
 }
 
-/// Capture TUI screen content.
+/// Capture TUI screen content via `DebugService`.
 ///
-/// Requests a screen capture from a specific TUI client via the server relay.
-///
-/// # Arguments
-///
-/// * `client_id` - Target client ID to capture from
-/// * `capture_format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
+/// CLI is stateless — targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+/// Returns an error if the gRPC call fails, client doesn't exist, or capture times out.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn capture(
     client: &mut GrpcClient,
-    client_id: u64,
+    target_client_id: u64,
     capture_format: &str,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_screen_content(client_id, capture_format).await?;
+    let response = client
+        .debug_capture(target_client_id, capture_format)
+        .await?;
 
     match format {
         OutputFormat::Plain => {
@@ -328,6 +326,96 @@ pub async fn capture(
                 "height": response.height,
                 "format": response.format,
                 "content": response.content,
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+// =============================================================================
+// Extension Queries (#474)
+// =============================================================================
+
+/// Query extension state for a specific client via `DebugService`.
+///
+/// Returns JSON-serialized extension state (e.g., which-key pending bindings,
+/// cmdline input state).
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails or extension kind is unknown.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn extension_state(
+    client: &mut GrpcClient,
+    kind: &str,
+    target_client_id: u64,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client
+        .debug_get_extension_state(kind, target_client_id)
+        .await?;
+
+    match format {
+        OutputFormat::Plain => {
+            let status = if response.active {
+                "active"
+            } else {
+                "inactive"
+            };
+            if response.data.is_empty() {
+                Ok(format!("{kind} ({status}): no data"))
+            } else {
+                // Pretty-print the JSON data
+                let pretty = serde_json::from_str::<serde_json::Value>(&response.data).map_or_else(
+                    |_| response.data.clone(),
+                    |v| serde_json::to_string_pretty(&v).unwrap_or_else(|_| response.data.clone()),
+                );
+                Ok(format!("{kind} ({status}):\n{pretty}"))
+            }
+        }
+        OutputFormat::Json => {
+            let data_value = serde_json::from_str::<serde_json::Value>(&response.data)
+                .unwrap_or(serde_json::Value::Null);
+            let json = serde_json::json!({
+                "kind": kind,
+                "active": response.active,
+                "data": data_value,
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+/// List all registered extensions via `DebugService`.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn extensions(
+    client: &mut GrpcClient,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.debug_list_extensions().await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.extensions.is_empty() {
+                return Ok("No extensions registered".to_string());
+            }
+
+            let mut output = String::from("Registered extensions:\n");
+            for ext in &response.extensions {
+                let _ = writeln!(output, "  {} ({})", ext.kind, ext.scope);
+            }
+            Ok(output.trim_end().to_string())
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "extensions": response.extensions.iter().map(|e| serde_json::json!({
+                    "kind": e.kind,
+                    "scope": e.scope,
+                })).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -392,6 +480,70 @@ pub async fn log_tail(
                     "target": e.target,
                     "message": e.message,
                 })).collect::<Vec<_>>(),
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+/// List connected clients via `DebugService`.
+///
+/// Read-only debug query — no auth required.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn clients(
+    client: &mut GrpcClient,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.debug_list_clients().await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.clients.is_empty() {
+                return Ok("No clients connected".to_string());
+            }
+
+            let mut output = format!("Connected clients: {}\n", response.clients.len());
+            for c in &response.clients {
+                let display_name = c.metadata.as_ref().map_or("?", |m| m.display_name.as_str());
+                let client_type = c.metadata.as_ref().map_or("?", |m| m.client_type.as_str());
+                let relation_str = c.relation.as_ref().map_or_else(
+                    || "independent".to_string(),
+                    |r| match r.r#type {
+                        0 => format!("following #{}", r.target_id),
+                        1 => format!("sharing #{}", r.target_id),
+                        _ => "unknown relation".to_string(),
+                    },
+                );
+                let _ = writeln!(
+                    output,
+                    "  {} ({}) - {} [{}]",
+                    c.id, display_name, client_type, relation_str
+                );
+            }
+            Ok(output.trim_end().to_string())
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "clients": response.clients.iter().map(|c| {
+                    let meta = c.metadata.as_ref();
+                    let view = c.view.as_ref();
+                    serde_json::json!({
+                        "id": c.id,
+                        "client_type": meta.map_or("", |m| m.client_type.as_str()),
+                        "display_name": meta.map_or("", |m| m.display_name.as_str()),
+                        "joined_at_ms": meta.map_or(0, |m| m.joined_at_ms),
+                        "mode": view.map_or("", |v| v.mode.as_str()),
+                        "buffer_id": view.and_then(|v| v.buffer_id),
+                        "relation": c.relation.as_ref().map(|r| serde_json::json!({
+                            "type": r.r#type,
+                            "target_id": r.target_id,
+                        })),
+                    })
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }

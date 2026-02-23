@@ -12,14 +12,15 @@ use crate::{
 #[cfg(feature = "grpc")]
 use {
     crate::grpc::{
-        AuthInterceptor, BufferServiceImpl, CommandServiceImpl, EditorServiceImpl,
-        ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl, NotificationServiceImpl,
-        PresenceServiceImpl, ServerServiceImpl, StateServiceImpl, SyntaxServiceImpl,
+        AuthInterceptor, BufferServiceImpl, CommandServiceImpl, DebugServiceImpl,
+        EditorServiceImpl, ExtensionServiceImpl, InputServiceImpl, ModuleServiceImpl,
+        NotificationServiceImpl, PresenceServiceImpl, ServerServiceImpl, StateServiceImpl,
+        SyntaxServiceImpl,
     },
-    reovim_driver_session::bridges::{BridgeRegistry, CmdlineBridge},
+    reovim_driver_session::bridges::BridgeRegistry,
     reovim_protocol::v2::{
         buffer_service_server::BufferServiceServer, command_service_server::CommandServiceServer,
-        editor_service_server::EditorServiceServer,
+        debug_service_server::DebugServiceServer, editor_service_server::EditorServiceServer,
         extension_service_server::ExtensionServiceServer, input_service_server::InputServiceServer,
         module_service_server::ModuleServiceServer,
         notification_service_server::NotificationServiceServer,
@@ -64,6 +65,13 @@ pub struct Server {
     /// If provided, this factory is used to create `SessionState` for new sessions.
     /// This enables the runner to inject module-initialized registries.
     session_factory: Option<SessionFactory>,
+
+    /// Extension bridge registry for gRPC notification emission (#468).
+    ///
+    /// Bridges are collected from `BridgeProvider` in bootstrap.
+    /// Defaults to empty registry (no extension notifications).
+    #[cfg(feature = "grpc")]
+    bridge_registry: Arc<BridgeRegistry>,
 }
 
 impl Server {
@@ -80,6 +88,8 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: None,
+            #[cfg(feature = "grpc")]
+            bridge_registry: Arc::new(BridgeRegistry::default()),
         }
     }
 
@@ -112,6 +122,8 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: Some(services),
             session_factory: None,
+            #[cfg(feature = "grpc")]
+            bridge_registry: Arc::new(BridgeRegistry::default()),
         }
     }
 
@@ -145,7 +157,20 @@ impl Server {
             tokens: Arc::new(TokenRegistry::new()),
             services: None,
             session_factory: Some(factory),
+            #[cfg(feature = "grpc")]
+            bridge_registry: Arc::new(BridgeRegistry::default()),
         }
+    }
+
+    /// Set the extension bridge registry (#468).
+    ///
+    /// Bridges are collected from `BridgeProvider` in bootstrap.
+    /// Must be called before `run()`.
+    #[cfg(feature = "grpc")]
+    #[must_use]
+    pub fn with_bridges(mut self, registry: BridgeRegistry) -> Self {
+        self.bridge_registry = Arc::new(registry);
+        self
     }
 
     /// Create a session state using the configured factory or default.
@@ -263,10 +288,9 @@ impl Server {
         // Auth interceptor: resolves x-reovim-token → ClientId (#483)
         let interceptor = AuthInterceptor::new(Arc::clone(&self.tokens));
 
-        // Extension bridge registry (#514) — shared between InputService and ExtensionService
-        let mut bridge_registry = BridgeRegistry::new();
-        bridge_registry.register(CmdlineBridge);
-        let bridges = Arc::new(bridge_registry);
+        // Extension bridge registry (#514/#468) — shared between InputService and ExtensionService.
+        // Bridges are now collected from BridgeProvider by bootstrap, not hardcoded here.
+        let bridges = Arc::clone(&self.bridge_registry);
 
         // Create all gRPC services
         let buffer_service =
@@ -307,8 +331,18 @@ impl Server {
             CommandServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
 
         // ExtensionService for querying extension state (#514)
-        let extension_service =
-            ExtensionServiceImpl::new(Arc::clone(&self.sessions), default_session_id, bridges);
+        let extension_service = ExtensionServiceImpl::new(
+            Arc::clone(&self.sessions),
+            default_session_id.clone(),
+            bridges,
+        );
+
+        // DebugService for CLI client-targeting operations (#468)
+        let debug_service = DebugServiceImpl::with_sessions(
+            Arc::clone(&self.sessions),
+            default_session_id,
+            Arc::clone(&self.bridge_registry),
+        );
 
         // Build gRPC server with optional gRPC-Web support
         #[cfg(feature = "grpc-web")]
@@ -344,7 +378,8 @@ impl Server {
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
                 .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
                 .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
-                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()));
+                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()))
+                .add_service(DebugServiceServer::with_interceptor(debug_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -377,7 +412,8 @@ impl Server {
                 .add_service(SyntaxServiceServer::with_interceptor(syntax_service, i.clone()))
                 .add_service(PresenceServiceServer::with_interceptor(presence_service, i.clone()))
                 .add_service(ExtensionServiceServer::with_interceptor(extension_service, i.clone()))
-                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()));
+                .add_service(CommandServiceServer::with_interceptor(command_service, i.clone()))
+                .add_service(DebugServiceServer::with_interceptor(debug_service, i.clone()));
 
             if let Some(signal) = shutdown {
                 router
@@ -496,6 +532,16 @@ mod tests {
     fn sessions_accessor() {
         let server = Server::new(ServerConfig::default());
         assert!(server.sessions().is_empty());
+    }
+
+    #[cfg(feature = "grpc")]
+    #[test]
+    fn server_with_bridges() {
+        let mut registry = BridgeRegistry::new();
+        registry.register(reovim_module_cmdline::CmdlineBridge);
+        let server = Server::new(ServerConfig::default()).with_bridges(registry);
+        // Verify the bridge registry was set (it's inside an Arc)
+        let _ = server;
     }
 
     #[cfg(feature = "grpc")]

@@ -8,8 +8,8 @@ use {
         KeyCode, KeyEvent, KeyLookupState, KeySequence, ModeKeyResolver, ModeState, Modifiers,
         ResolveContext, ResolveInput, ResolveResult,
     },
-    reovim_driver_session::CmdlineState,
     reovim_kernel::api::v1::ModeId,
+    reovim_module_cmdline::CmdlineState,
 };
 
 use crate::modes::VimMode;

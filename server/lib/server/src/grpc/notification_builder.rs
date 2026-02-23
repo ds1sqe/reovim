@@ -1797,7 +1797,10 @@ mod tests {
 
     #[test]
     fn test_extension_changed_with_cmdline_bridge() {
-        use reovim_driver_session::bridges::{BridgeRegistry, CmdlineBridge};
+        use {
+            reovim_driver_session::bridges::BridgeRegistry,
+            reovim_module_cmdline::{CmdlineBridge, CmdlinePrompt, CmdlineState},
+        };
 
         let mut changes = StateChanges::new();
         changes.record_extension_change("cmdline".into());
@@ -1808,10 +1811,8 @@ mod tests {
         session.add_client(client_id);
         // Initialize CmdlineState in client extensions
         session.update_client_state(client_id, |state| {
-            let cmdline = state
-                .extensions
-                .get_or_insert::<reovim_driver_session::CmdlineState>();
-            cmdline.enter(reovim_driver_session::CmdlinePrompt::Command);
+            let cmdline = state.extensions.get_or_insert::<CmdlineState>();
+            cmdline.enter(CmdlinePrompt::Command);
             cmdline.insert_char('w');
         });
 
@@ -1837,7 +1838,9 @@ mod tests {
 
     #[test]
     fn test_extension_not_changed_no_notification() {
-        use reovim_driver_session::bridges::{BridgeRegistry, CmdlineBridge};
+        use {
+            reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
+        };
 
         let changes = StateChanges::new(); // No extension changes
 

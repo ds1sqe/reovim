@@ -6,6 +6,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Stateless CLI with DebugService (#468)**: CLI no longer joins as a client.
+  All client-targeting operations (SendKeys, Capture, GetMode, GetCursor,
+  ListClients, GetExtensionState, ListExtensions) moved to `DebugService`
+  (no auth required). `InputService.target_client_id` field reverted and
+  reserved. CLI commands `clients`, `extension-state`, `extensions` added.
+  `Presence` subcommand replaced with `Clients`.
+
+- **Which-key hints for operator modes (#468)**: Pressing `d`, `y`, or `c` now
+  shows which-key popup with available continuations (motions, text objects).
+  `ModeTransition::Push` populates `PendingBindings` with all bindings for the
+  target mode + parent (inherited motions). Operator resolvers (`delete.rs`,
+  `yank.rs`, `change.rs`) expose `pending_keys()` returning accumulated keys.
+  `WhichKeyBridge` snapshot combines `mode_prefix` + `pending_keys` for display.
+  Pressing `di` narrows hints to inner text objects (`iw`, `i(`, `i"`, etc.).
+
 - **Extension state bridge foundation (#514)**: Server-side infrastructure for
   exposing session extension state to clients via gRPC. Introduces
   `ExtensionStateBridge` trait and `BridgeRegistry` in the driver layer,
@@ -27,6 +42,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   and `CompleteArgs` (argument completion delegation) RPCs. Wires
   `CommandServiceImpl` into the server router. Enables cmdline UI (#469) to
   discover and complete commands via gRPC.
+
+- **Cmdline popup rendering and headless E2E tests (#469)**: TUI-side cmdline
+  extension crate with floating popup rendering, completion display, and search
+  prompt visualization. Headless E2E tests verify cmdline activation, typing,
+  escape, and search prompt display against a real server.
 
 - **Noice-style cmdline UI (#451)**: Transforms the bottom-line cmdline bar
   (#469) into a centered floating popup inspired by noice.nvim with rounded

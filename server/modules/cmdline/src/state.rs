@@ -1,16 +1,20 @@
-//! Command-line mode extension for session.
+#![allow(clippy::doc_markdown)] // Session extensions use CamelCase in docs
+//! Command-line mode state - POLICY layer.
 //!
-//! Provides a shared prompt type that commands can set and the runner can read.
-//! This enables the runner to activate cmdline with the correct prompt type
-//! without depending on policy modules.
+//! `CmdlineState` stores all command-line mode data: input buffer, cursor,
+//! prompt type, history, and completion state.
+//!
+//! # Architecture (#468)
+//!
+//! CmdlineState is a per-client `SessionExtension`. It lives in the module
+//! layer (POLICY) because it defines HOW command-line mode behaves.
+//! The driver layer only provides the `SessionExtension` trait (MECHANISM).
 
-use crate::{SessionExtension, TextInputSink};
+use reovim_driver_session::{SessionExtension, TextInputSink};
 
 /// Command-line prompt type for session extensions.
 ///
-/// This is a minimal extension that stores the pending prompt type.
-/// Commands set this when entering command-line mode, and the runner
-/// reads it to determine the display prompt character.
+/// Determines the display prompt character and history pool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CmdlinePrompt {
     /// Ex command prompt (`:`)
@@ -567,14 +571,11 @@ mod tests {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);
 
-        // Insert characters normally
         state.insert_char('b');
         state.insert_char('c');
         assert_eq!(state.input(), "bc");
         assert_eq!(state.cursor(), 2);
 
-        // Move cursor to beginning by manual manipulation
-        // (In real usage, a cursor-move command would do this)
         state.cursor = 0;
         state.insert_char('a');
         assert_eq!(state.input(), "abc");
@@ -589,7 +590,6 @@ mod tests {
         state.insert_char('c');
         assert_eq!(state.input(), "ac");
 
-        // Move cursor to position 1 (between 'a' and 'c')
         state.cursor = 1;
         state.insert_char('b');
         assert_eq!(state.input(), "abc");
@@ -650,12 +650,11 @@ mod tests {
     #[test]
     fn test_as_text_input_sink_returns_some() {
         let mut state = CmdlineState::default();
-        // CmdlineState should return Some from as_text_input_sink
         let sink = SessionExtension::as_text_input_sink(&mut state);
         assert!(sink.is_some());
     }
 
-    // ── Enhanced editing tests (#451) ────────────────────────────────
+    // -- Enhanced editing tests (#451) --
 
     #[test]
     fn test_move_cursor_left() {
@@ -674,7 +673,7 @@ mod tests {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);
         state.move_cursor_left();
-        assert_eq!(state.cursor(), 0); // stays at 0
+        assert_eq!(state.cursor(), 0);
     }
 
     #[test]
@@ -697,7 +696,7 @@ mod tests {
         assert_eq!(state.cursor(), 1);
 
         state.move_cursor_right();
-        assert_eq!(state.cursor(), 1); // stays at end
+        assert_eq!(state.cursor(), 1);
     }
 
     #[test]
@@ -747,7 +746,7 @@ mod tests {
         assert_eq!(state.cursor(), 1);
 
         state.delete_at_cursor();
-        assert_eq!(state.input(), "a"); // no change — cursor at end
+        assert_eq!(state.input(), "a");
     }
 
     #[test]
@@ -771,7 +770,7 @@ mod tests {
         state.cursor = 0;
 
         state.delete_word_back();
-        assert_eq!(state.cursor(), 0); // no-op
+        assert_eq!(state.cursor(), 0);
     }
 
     #[test]
@@ -810,17 +809,17 @@ mod tests {
         state.cursor = 0;
 
         state.delete_to_start();
-        assert_eq!(state.input(), "a"); // no-op
+        assert_eq!(state.input(), "a");
         assert_eq!(state.cursor(), 0);
     }
 
-    // ── History tests (#451) ─────────────────────────────────────────
+    // -- History tests (#451) --
 
     #[test]
     fn test_history_up_empty() {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);
-        state.history_up(); // no-op on empty history
+        state.history_up();
         assert!(state.input().is_empty());
         assert!(state.history_index.is_none());
     }
@@ -834,7 +833,6 @@ mod tests {
         }
         state.push_to_history();
 
-        // Start new cmdline
         state.enter(CmdlinePrompt::Command);
         for ch in "current".chars() {
             state.insert_char(ch);
@@ -848,7 +846,6 @@ mod tests {
     #[test]
     fn test_history_up_multiple() {
         let mut state = CmdlineState::default();
-        // Add 3 history entries
         state.enter(CmdlinePrompt::Command);
         state.insert_char('a');
         state.push_to_history();
@@ -861,7 +858,6 @@ mod tests {
         state.insert_char('c');
         state.push_to_history();
 
-        // Navigate up through all
         state.enter(CmdlinePrompt::Command);
         state.history_up();
         assert_eq!(state.input(), "c");
@@ -882,7 +878,6 @@ mod tests {
         state.history_up();
         assert_eq!(state.input(), "a");
 
-        // Already at oldest — should stay
         state.history_up();
         assert_eq!(state.input(), "a");
     }
@@ -899,9 +894,9 @@ mod tests {
         state.push_to_history();
 
         state.enter(CmdlinePrompt::Command);
-        state.history_up(); // b
-        state.history_up(); // a
-        state.history_down(); // b
+        state.history_up();
+        state.history_up();
+        state.history_down();
         assert_eq!(state.input(), "b");
     }
 
@@ -917,8 +912,8 @@ mod tests {
             state.insert_char(ch);
         }
 
-        state.history_up(); // shows "w", saves "new"
-        state.history_down(); // restores "new"
+        state.history_up();
+        state.history_down();
         assert_eq!(state.input(), "new");
         assert!(state.history_index.is_none());
     }
@@ -928,7 +923,7 @@ mod tests {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);
         state.insert_char('x');
-        state.history_down(); // no-op
+        state.history_down();
         assert_eq!(state.input(), "x");
     }
 
@@ -948,7 +943,7 @@ mod tests {
     fn test_push_to_history_empty() {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);
-        state.push_to_history(); // no-op for empty
+        state.push_to_history();
         assert!(state.command_history.is_empty());
     }
 
@@ -966,7 +961,7 @@ mod tests {
 
         state.enter(CmdlinePrompt::Command);
         state.insert_char('w');
-        state.push_to_history(); // "w" already in history → moved to end
+        state.push_to_history();
 
         assert_eq!(state.command_history.len(), 2);
         assert_eq!(state.command_history[0], "q");
@@ -976,14 +971,12 @@ mod tests {
     #[test]
     fn test_push_to_history_max() {
         let mut state = CmdlineState::default();
-        // Fill past max
         for i in 0..=MAX_HISTORY {
             state.enter(CmdlinePrompt::Command);
             state.input = format!("cmd{i}");
             state.push_to_history();
         }
         assert_eq!(state.command_history.len(), MAX_HISTORY);
-        // First entry should have been evicted
         assert_eq!(state.command_history[0], "cmd1");
     }
 
@@ -991,12 +984,10 @@ mod tests {
     fn test_separate_command_search_history() {
         let mut state = CmdlineState::default();
 
-        // Add command history
         state.enter(CmdlinePrompt::Command);
         state.insert_char('w');
         state.push_to_history();
 
-        // Add search history
         state.enter(CmdlinePrompt::SearchForward);
         for ch in "foo".chars() {
             state.insert_char(ch);
@@ -1009,7 +1000,7 @@ mod tests {
         assert_eq!(state.search_history[0], "foo");
     }
 
-    // ── Completion tests (#451) ────────────────────────────────────
+    // -- Completion tests (#451) --
 
     #[test]
     fn test_set_completions() {
@@ -1051,9 +1042,9 @@ mod tests {
         state.enter(CmdlinePrompt::Command);
         state.set_completions("w".to_string(), vec!["write".to_string(), "wq".to_string()]);
 
-        state.complete_next(); // 0
-        state.complete_next(); // 1
-        state.complete_next(); // wraps to 0
+        state.complete_next();
+        state.complete_next();
+        state.complete_next();
         assert_eq!(state.input(), "write");
         assert_eq!(state.completion_index(), Some(0));
     }
@@ -1067,12 +1058,10 @@ mod tests {
             vec!["write".to_string(), "wq".to_string(), "wall".to_string()],
         );
 
-        // First prev → last item
         assert!(state.complete_prev());
         assert_eq!(state.input(), "wall");
         assert_eq!(state.completion_index(), Some(2));
 
-        // Prev again → middle
         assert!(state.complete_prev());
         assert_eq!(state.input(), "wq");
         assert_eq!(state.completion_index(), Some(1));
@@ -1084,8 +1073,8 @@ mod tests {
         state.enter(CmdlinePrompt::Command);
         state.set_completions("w".to_string(), vec!["write".to_string(), "wq".to_string()]);
 
-        state.complete_next(); // 0 = "write"
-        state.complete_prev(); // wraps to 1 = "wq"
+        state.complete_next();
+        state.complete_prev();
         assert_eq!(state.input(), "wq");
     }
 
@@ -1143,7 +1132,7 @@ mod tests {
         state.push_to_history();
 
         state.enter(CmdlinePrompt::Command);
-        state.history_up(); // navigating
+        state.history_up();
         assert!(state.history_index.is_some());
 
         state.enter(CmdlinePrompt::Command);

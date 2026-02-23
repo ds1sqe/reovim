@@ -21,7 +21,7 @@ use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
-    reovim_driver_input::{FallbackContext, ResolverRegistry},
+    reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack},
@@ -539,6 +539,67 @@ impl SessionState {
             &mut self.app.extensions,
             client_extensions,
         );
+
+        // Generic PendingBindings population for bridge consumers (#468).
+        // After resolution, populate PendingBindings so bridges (e.g., WhichKeyBridge)
+        // can produce UI hints without knowing about specific resolvers.
+        match &result {
+            Some(reovim_driver_input::ResolveResult::Pending) => {
+                let pending = self.resolver_registry.pending_keys_for(&mode);
+                if !pending.is_empty() {
+                    let mut continuations =
+                        self.keymap_registry.bindings_with_prefix(&mode, &pending);
+                    // Include parent mode bindings (consistent with Push arm)
+                    if let Some(resolver) = self.resolver_registry.get(&mode)
+                        && let Some(parent) = resolver.inherits_from()
+                    {
+                        let parent_bindings =
+                            self.keymap_registry.bindings_with_prefix(parent, &pending);
+                        continuations.extend(parent_bindings);
+                    }
+                    let pb = client_extensions.get_or_insert::<PendingBindings>();
+                    // Preserve mode_prefix from Push (e.g., "d" for DELETE mode)
+                    pb.pending_keys = pending;
+                    pb.mode = mode;
+                    pb.continuations = continuations;
+                }
+            }
+            Some(reovim_driver_input::ResolveResult::ModeTransition(
+                reovim_driver_input::ModeTransition::Push {
+                    mode: target_mode, ..
+                },
+            )) => {
+                // On mode push (e.g., "d" → DELETE, "y" → YANK, "c" → CHANGE),
+                // populate PendingBindings with the new mode's available bindings
+                // so which-key can show hints immediately on mode entry.
+                let trigger_key = reovim_driver_input::KeySequence::from_keys(&[*key]);
+                let empty = reovim_driver_input::KeySequence::new();
+                let mut continuations = self
+                    .keymap_registry
+                    .bindings_with_prefix(target_mode, &empty);
+                // Include parent mode bindings (operator modes inherit motions)
+                if let Some(resolver) = self.resolver_registry.get(target_mode)
+                    && let Some(parent) = resolver.inherits_from()
+                {
+                    let parent_bindings = self.keymap_registry.bindings_with_prefix(parent, &empty);
+                    continuations.extend(parent_bindings);
+                }
+                if !continuations.is_empty() {
+                    let pb = client_extensions.get_or_insert::<PendingBindings>();
+                    pb.mode_prefix = trigger_key;
+                    pb.pending_keys = reovim_driver_input::KeySequence::new();
+                    pb.mode = target_mode.clone();
+                    pb.continuations = continuations;
+                }
+            }
+            Some(_) => {
+                // Non-pending, non-push: clear any previous pending bindings
+                if let Some(pb) = client_extensions.get_mut::<PendingBindings>() {
+                    pb.clear();
+                }
+            }
+            None => {}
+        }
 
         // Take accumulated changes
         let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);

@@ -21,6 +21,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-session = { workspace = true }
+reovim-module-cmdline = { workspace = true }
 reovim-module-editor = { workspace = true }
 reovim-module-motions = { workspace = true }
 # Note: operators module merged into vim (Epic #385)

@@ -99,9 +99,10 @@ impl InputService for InputServiceImpl {
         let req = request.into_inner();
         let session = self.get_session()?;
 
+        // #483 Phase 5: caller identity from token
         let client_id = require_client_id(token_client_id)?;
 
-        // #483: Client must exist (created via Join()); auto-join removed
+        // Client must exist (created via Join())
         if !session.has_client(client_id) {
             return Err(Status::failed_precondition(format!(
                 "Client {client_id} not found — call Join() before sending keys"
@@ -128,8 +129,9 @@ impl InputService for InputServiceImpl {
             Status::invalid_argument(format!("Invalid key notation: {}", req.keys))
         })?;
 
-        // #514: Snapshot extension active state before key resolution
-        let cmdline_was_active = Self::is_cmdline_active(&session, client_id);
+        // #514/#468: Snapshot ALL bridge active states before key resolution.
+        // Generic detection replaces hardcoded cmdline check.
+        let bridge_states_before = Self::snapshot_bridge_states(&session, client_id, &self.bridges);
 
         // Process each key through the resolver system
         let mut any_handled = false;
@@ -212,12 +214,15 @@ impl InputService for InputServiceImpl {
             );
         }
 
-        // #514/#469: Detect CmdlineState changes — emit on toggle AND on
-        // every key while active (each keystroke modifies input/cursor).
-        let cmdline_is_active = Self::is_cmdline_active(&session, client_id);
-        if cmdline_was_active != cmdline_is_active || cmdline_is_active {
-            accumulated_changes.record_extension_change("cmdline".into());
-        }
+        // #514/#468/#469: Generic bridge change detection — emit on toggle AND on
+        // every key while active (each keystroke may modify extension state).
+        Self::detect_bridge_changes(
+            &session,
+            client_id,
+            &self.bridges,
+            &bridge_states_before,
+            &mut accumulated_changes,
+        );
 
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
@@ -240,14 +245,60 @@ impl InputService for InputServiceImpl {
 }
 
 impl InputServiceImpl {
-    /// Check if `CmdlineState` is currently active for a client (#514).
-    fn is_cmdline_active(session: &Session, client_id: ClientId) -> bool {
-        session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_driver_session::CmdlineState>()
-                    .is_some_and(reovim_driver_session::CmdlineState::is_active)
+    /// Check bridge `is_active()` for the appropriate scope.
+    fn bridge_is_active(
+        bridge: &dyn reovim_driver_session::bridges::ExtensionStateBridge,
+        session: &Session,
+        client_id: ClientId,
+    ) -> bool {
+        match bridge.scope() {
+            reovim_driver_session::bridges::ExtensionScope::Client => session
+                .with_client_extensions(client_id, |ext| bridge.is_active(ext))
+                .unwrap_or(false),
+            reovim_driver_session::bridges::ExtensionScope::Shared => {
+                session.with_state_sync(|state| bridge.is_active(&state.app.extensions))
+            }
+        }
+    }
+
+    /// Snapshot the `is_active()` state of all registered bridges for a client.
+    ///
+    /// Called BEFORE key resolution to detect changes afterwards (#468).
+    fn snapshot_bridge_states(
+        session: &Session,
+        client_id: ClientId,
+        bridges: &BridgeRegistry,
+    ) -> Vec<(&'static str, bool)> {
+        bridges
+            .kinds()
+            .into_iter()
+            .map(|kind| {
+                let bridge = bridges.get(kind).expect("bridge kind from kinds()");
+                let active = Self::bridge_is_active(bridge, session, client_id);
+                (kind, active)
             })
-            .unwrap_or(false)
+            .collect()
+    }
+
+    /// Detect bridge state changes after key resolution (#468).
+    ///
+    /// For each bridge, emit a change notification if:
+    /// - The active state toggled (was inactive, now active, or vice versa)
+    /// - The bridge is currently active (content may have changed)
+    fn detect_bridge_changes(
+        session: &Session,
+        client_id: ClientId,
+        bridges: &BridgeRegistry,
+        before: &[(&str, bool)],
+        changes: &mut StateChanges,
+    ) {
+        for &(kind, was_active) in before {
+            let bridge = bridges.get(kind).expect("bridge kind from snapshot");
+            let is_active = Self::bridge_is_active(bridge, session, client_id);
+            if was_active != is_active || is_active {
+                changes.record_extension_change(kind.into());
+            }
+        }
     }
 
     /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
@@ -2814,5 +2865,167 @@ mod tests {
         InputServiceImpl::ensure_selection_change_recorded(&mut changes, &windows, Some(buffer_id));
 
         assert!(!changes.selection_changed);
+    }
+
+    // ========================================================================
+    // Generic bridge helper tests (#468)
+    // ========================================================================
+
+    /// Minimal bridge for testing generic bridge detection.
+    struct TestBridge {
+        kind_str: &'static str,
+        scope: reovim_driver_session::bridges::ExtensionScope,
+    }
+
+    impl TestBridge {
+        const fn client(kind: &'static str) -> Self {
+            Self {
+                kind_str: kind,
+                scope: reovim_driver_session::bridges::ExtensionScope::Client,
+            }
+        }
+        const fn shared(kind: &'static str) -> Self {
+            Self {
+                kind_str: kind,
+                scope: reovim_driver_session::bridges::ExtensionScope::Shared,
+            }
+        }
+    }
+
+    impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+        fn kind(&self) -> &'static str {
+            self.kind_str
+        }
+        fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
+            self.scope
+        }
+        fn snapshot(
+            &self,
+            _extensions: &reovim_driver_session::ExtensionMap,
+        ) -> Option<serde_json::Value> {
+            None
+        }
+        fn is_active(&self, _extensions: &reovim_driver_session::ExtensionMap) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn test_bridge_is_active_client_scope_no_client() {
+        let session = Session::new(SessionId::new("bridge-test"));
+        let bridge = TestBridge::client("test");
+        // Client 99 doesn't exist — should return false (unwrap_or(false))
+        let result = InputServiceImpl::bridge_is_active(&bridge, &session, ClientId::new(99));
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_bridge_is_active_client_scope_with_client() {
+        let session = Session::new(SessionId::new("bridge-test-2"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let bridge = TestBridge::client("test");
+        // TestBridge always returns false from is_active
+        let result = InputServiceImpl::bridge_is_active(&bridge, &session, client_id);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_bridge_is_active_shared_scope() {
+        let session = Session::new(SessionId::new("bridge-test-3"));
+        let bridge = TestBridge::shared("test");
+        // TestBridge always returns false from is_active (shared scope)
+        let result = InputServiceImpl::bridge_is_active(&bridge, &session, ClientId::new(1));
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_snapshot_bridge_states_empty_registry() {
+        let session = Session::new(SessionId::new("snap-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let bridges = BridgeRegistry::new();
+        let states = InputServiceImpl::snapshot_bridge_states(&session, client_id, &bridges);
+        assert!(states.is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_bridge_states_with_bridges() {
+        let session = Session::new(SessionId::new("snap-test-2"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(TestBridge::client("alpha"));
+        bridges.register(TestBridge::shared("beta"));
+
+        let states = InputServiceImpl::snapshot_bridge_states(&session, client_id, &bridges);
+        assert_eq!(states.len(), 2);
+        // Both TestBridge impls return false from is_active
+        for &(_, active) in &states {
+            assert!(!active);
+        }
+    }
+
+    #[test]
+    fn test_detect_bridge_changes_no_change() {
+        let session = Session::new(SessionId::new("detect-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(TestBridge::client("test"));
+
+        // Before: inactive, After: inactive (TestBridge always false)
+        let before = vec![("test", false)];
+        let mut changes = StateChanges::new();
+        InputServiceImpl::detect_bridge_changes(
+            &session,
+            client_id,
+            &bridges,
+            &before,
+            &mut changes,
+        );
+        // No toggle and not active → no change recorded
+        assert!(!changes.extension_changed);
+    }
+
+    #[test]
+    fn test_detect_bridge_changes_was_active_now_inactive() {
+        let session = Session::new(SessionId::new("detect-test-2"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(TestBridge::client("test"));
+
+        // Before: active, After: inactive (TestBridge returns false)
+        // was_active != is_active → should record change
+        let before = vec![("test", true)];
+        let mut changes = StateChanges::new();
+        InputServiceImpl::detect_bridge_changes(
+            &session,
+            client_id,
+            &bridges,
+            &before,
+            &mut changes,
+        );
+        assert!(changes.extension_changed);
+        assert!(changes.extensions_updated.contains(&"test".into()));
+    }
+
+    #[test]
+    fn test_detect_bridge_changes_empty_before() {
+        let session = Session::new(SessionId::new("detect-test-3"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        let bridges = BridgeRegistry::new();
+        let before: Vec<(&str, bool)> = vec![];
+        let mut changes = StateChanges::new();
+        InputServiceImpl::detect_bridge_changes(
+            &session,
+            client_id,
+            &bridges,
+            &before,
+            &mut changes,
+        );
+        assert!(!changes.extension_changed);
     }
 }

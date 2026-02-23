@@ -590,6 +590,20 @@ pub trait ModeKeyResolver: Send + Sync {
     /// - Escape is pressed
     /// - An error occurs
     fn reset(&mut self) {}
+
+    /// Get the accumulated pending keys for this resolver.
+    ///
+    /// Used by the session layer to populate `PendingBindings` generically
+    /// after a `Pending` result, enabling bridges (e.g., which-key) to
+    /// display available continuations without knowing about specific resolvers.
+    ///
+    /// # Default
+    ///
+    /// Returns an empty `KeySequence`. Resolvers that track pending keys
+    /// (e.g., `VimNormalResolver`) should override this.
+    fn pending_keys(&self) -> KeySequence {
+        KeySequence::new()
+    }
 }
 
 // ============================================================================
@@ -614,7 +628,7 @@ pub trait ModeKeyResolver: Send + Sync {
 ///
 /// ```ignore
 /// use reovim_driver_input::{ResolveResult, InputTarget};
-/// use reovim_driver_session::api::CmdlineState;
+/// use reovim_module_cmdline::CmdlineState;
 ///
 /// // Insert into buffer (default for insert mode)
 /// ResolveResult::insert_char('x');
@@ -650,7 +664,7 @@ impl InputTarget {
     /// # Example
     ///
     /// ```ignore
-    /// use reovim_driver_session::api::CmdlineState;
+    /// use reovim_module_cmdline::CmdlineState;
     ///
     /// let target = InputTarget::extension::<CmdlineState>();
     /// ```
@@ -710,7 +724,7 @@ pub enum ResolveResult {
     ///
     /// ```ignore
     /// use reovim_driver_input::ResolveResult;
-    /// use reovim_driver_session::api::CmdlineState;
+    /// use reovim_module_cmdline::CmdlineState;
     ///
     /// // Insert mode → buffer
     /// ResolveResult::insert_char('x');
@@ -819,7 +833,7 @@ impl ResolveResult {
     ///
     /// ```ignore
     /// use reovim_driver_input::ResolveResult;
-    /// use reovim_driver_session::api::CmdlineState;
+    /// use reovim_module_cmdline::CmdlineState;
     ///
     /// // In command-line resolver
     /// ResolveResult::insert_char_to::<CmdlineState>(':')
@@ -1224,7 +1238,7 @@ mod tests {
         // Test that insert_char_to creates an Extension target with correct TypeId
         // We need a type that implements both SessionExtension and TextInputSink
         // Use CmdlineState from the session driver
-        use reovim_driver_session::CmdlineState;
+        use reovim_module_cmdline::CmdlineState;
 
         let result = ResolveResult::insert_char_to::<CmdlineState>('x');
         if let ResolveResult::InsertChar { char: c, target } = result {
@@ -1240,7 +1254,7 @@ mod tests {
     #[test]
     fn test_input_target_extension_creates_correct_type_id() {
         // Test that InputTarget::extension::<T>() creates correct TypeId
-        use reovim_driver_session::CmdlineState;
+        use reovim_module_cmdline::CmdlineState;
 
         let target = InputTarget::extension::<CmdlineState>();
         let expected_type_id = std::any::TypeId::of::<CmdlineState>();
@@ -1879,6 +1893,23 @@ mod tests {
         let mut resolver = TestResolver { mode };
         // Should not panic
         resolver.reset();
+    }
+
+    #[test]
+    fn test_resolver_pending_keys_default_empty() {
+        struct TestResolver {
+            mode: ModeId,
+        }
+
+        impl ModeKeyResolver for TestResolver {
+            fn mode_id(&self) -> &ModeId {
+                &self.mode
+            }
+        }
+
+        let resolver = TestResolver { mode: test_mode() };
+        let keys = resolver.pending_keys();
+        assert!(keys.is_empty());
     }
 
     // ========================================================================

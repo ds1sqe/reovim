@@ -132,17 +132,26 @@ enum CliOutputFormat {
 /// CLI subcommands.
 #[derive(Debug, Subcommand)]
 enum CliSubcommand {
-    /// Send keys to the editor.
-    ///
-    /// Identity resolved from session token (#483).
+    /// Send keys to a specific client.
     Keys {
         /// Keys in vim notation.
         keys: String,
+        /// Target client ID to send keys to (required).
+        #[arg(long, short)]
+        client: u64,
     },
-    /// Get current editor mode.
-    Mode,
-    /// Get cursor position.
-    Cursor,
+    /// Get a specific client's editor mode.
+    Mode {
+        /// Target client ID to query mode from (required).
+        #[arg(long, short)]
+        client: u64,
+    },
+    /// Get a specific client's cursor position.
+    Cursor {
+        /// Target client ID to query cursor from (required).
+        #[arg(long, short)]
+        client: u64,
+    },
     /// List open buffers.
     Buffers,
     /// Get buffer content.
@@ -180,58 +189,18 @@ enum CliSubcommand {
         #[arg(long)]
         grep: Option<String>,
     },
-    /// Presence operations for multi-client awareness.
-    Presence {
-        #[command(subcommand)]
-        action: PresenceAction,
+    /// List connected clients (read-only debug query).
+    Clients,
+    /// Query extension state (e.g., which-key, cmdline).
+    ExtensionState {
+        /// Extension kind to query (e.g., "whichkey", "cmdline").
+        kind: String,
+        /// Target client ID.
+        #[arg(long, short)]
+        client: u64,
     },
-}
-
-/// Presence subcommands.
-#[derive(Debug, Subcommand)]
-enum PresenceAction {
-    /// Join the session with a display name.
-    Join {
-        /// Display name for this client.
-        name: String,
-        /// Client type identifier.
-        #[arg(long, default_value = "cli")]
-        client_type: String,
-    },
-    /// Leave the session.
-    ///
-    /// Identity resolved from session token (#483).
-    Leave,
-    /// List all connected clients.
-    List,
-    /// Update presence state.
-    ///
-    /// Note: cursor line/column removed (Phase 14, #471).
-    /// Cursor is now tracked via `CursorMoved` notifications.
-    /// Identity resolved from session token (#483).
-    Update {
-        /// Buffer ID to switch to.
-        #[arg(long)]
-        buffer: Option<u64>,
-        /// Mode name.
-        #[arg(long)]
-        mode: Option<String>,
-    },
-    /// Set sync mode to follow another client.
-    ///
-    /// Identity resolved from session token (#483).
-    Follow {
-        /// Target client ID to follow.
-        target: u64,
-    },
-    /// Set sync mode to present (others can follow you).
-    ///
-    /// Identity resolved from session token (#483).
-    Present,
-    /// Set sync mode to independent.
-    ///
-    /// Identity resolved from session token (#483).
-    Independent,
+    /// List registered extensions.
+    Extensions,
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -331,9 +300,11 @@ async fn run(cli: Cli) -> std::io::Result<()> {
 
             tracing::info!("Starting reovim server (new architecture with modules)");
 
-            // Create server with module-initialized session factory
+            // Create server with module-initialized session factory and bridges
+            let bridges = bootstrap::create_bridge_registry();
             let server =
-                Server::with_session_factory(config, Box::new(bootstrap::create_session_state));
+                Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
+                    .with_bridges(bridges);
             server.run().await
         }
 
@@ -379,9 +350,16 @@ async fn run_cli(
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
 
     let result: Result<String, GrpcClientError> = match command {
-        CliSubcommand::Keys { keys } => commands::keys(&mut client, &keys, output_format).await,
-        CliSubcommand::Mode => commands::mode(&mut client, output_format).await,
-        CliSubcommand::Cursor => commands::cursor(&mut client, output_format).await,
+        CliSubcommand::Keys {
+            keys,
+            client: target,
+        } => commands::keys(&mut client, &keys, target, output_format).await,
+        CliSubcommand::Mode { client: target } => {
+            commands::mode(&mut client, target, output_format).await
+        }
+        CliSubcommand::Cursor { client: target } => {
+            commands::cursor(&mut client, target, output_format).await
+        }
         CliSubcommand::Buffers => commands::buffers(&mut client, output_format).await,
         CliSubcommand::Buffer { id } => commands::buffer(&mut client, id, output_format).await,
         CliSubcommand::Registers { name } => {
@@ -399,25 +377,12 @@ async fn run_cli(
             target,
             grep,
         } => commands::log_tail(&mut client, count, level, target, grep, output_format).await,
-        CliSubcommand::Presence { action } => match action {
-            PresenceAction::Join { name, client_type } => {
-                commands::presence_join(&mut client, &client_type, &name, output_format).await
-            }
-            PresenceAction::Leave => commands::presence_leave(&mut client, output_format).await,
-            PresenceAction::List => commands::presence_list(&mut client, output_format).await,
-            PresenceAction::Update { buffer, mode } => {
-                commands::presence_update(&mut client, buffer, mode, output_format).await
-            }
-            PresenceAction::Follow { target } => {
-                commands::presence_set_sync_mode(&mut client, 1, Some(target), output_format).await
-            }
-            PresenceAction::Present => {
-                commands::presence_set_sync_mode(&mut client, 2, None, output_format).await
-            }
-            PresenceAction::Independent => {
-                commands::presence_set_sync_mode(&mut client, 0, None, output_format).await
-            }
-        },
+        CliSubcommand::Clients => commands::clients(&mut client, output_format).await,
+        CliSubcommand::ExtensionState {
+            kind,
+            client: target,
+        } => commands::extension_state(&mut client, &kind, target, output_format).await,
+        CliSubcommand::Extensions => commands::extensions(&mut client, output_format).await,
     };
     drop(client); // Release gRPC connection early
 
@@ -492,7 +457,9 @@ async fn run_integrated() -> std::io::Result<()> {
         instance_name: "default".to_string(),
         default_session_name: "main".to_string(),
     };
-    let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state));
+    let bridges = bootstrap::create_bridge_registry();
+    let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
+        .with_bridges(bridges);
 
     // Spawn server task
     let server_task = tokio::spawn(async move {
@@ -646,5 +613,37 @@ mod tests {
         let a = CliOutputFormat::Plain;
         let b = a;
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_cli_extension_state_parse() {
+        let cli = Cli::parse_from([
+            "reovim",
+            "cli",
+            "extension-state",
+            "whichkey",
+            "--client",
+            "1",
+        ]);
+        match cli.command {
+            Some(Commands::Cli { command, .. }) => {
+                assert!(matches!(
+                    command,
+                    CliSubcommand::ExtensionState { ref kind, client: 1 } if kind == "whichkey"
+                ));
+            }
+            _ => panic!("Expected Cli command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_extensions_parse() {
+        let cli = Cli::parse_from(["reovim", "cli", "extensions"]);
+        match cli.command {
+            Some(Commands::Cli { command, .. }) => {
+                assert!(matches!(command, CliSubcommand::Extensions));
+            }
+            _ => panic!("Expected Cli command"),
+        }
     }
 }

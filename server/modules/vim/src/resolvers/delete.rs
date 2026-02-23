@@ -22,8 +22,8 @@ use std::sync::RwLock;
 
 use {
     reovim_driver_input::{
-        ExtensionMap, KeyEvent, ModeKeyResolver, ModeState, ModeTransition, ResolveContext,
-        ResolveInput, ResolveResult, SessionApiDyn,
+        ExtensionMap, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
+        ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::{ModeId, Position},
@@ -471,6 +471,10 @@ impl ModeKeyResolver for VimDeleteResolver {
 
     fn inherits_from(&self) -> Option<&ModeId> {
         Some(&self.parent_mode_id)
+    }
+
+    fn pending_keys(&self) -> KeySequence {
+        self.state.read().expect("lock poisoned").keys()
     }
 
     fn reset(&mut self) {
@@ -1478,6 +1482,55 @@ mod tests {
         ));
         assert_eq!(lc.count, Some(2));
         assert_eq!(lc.register, Some('a'));
+    }
+
+    // ========================================================================
+    // pending_keys() tests (#468 which-key for operator modes)
+    // ========================================================================
+
+    #[test]
+    fn test_pending_keys_empty_initially() {
+        let resolver = VimDeleteResolver::new();
+        let keys = resolver.pending_keys();
+        assert!(keys.is_empty(), "fresh resolver should have no pending keys");
+    }
+
+    #[test]
+    fn test_pending_keys_returns_accumulated_keys() {
+        let resolver = VimDeleteResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap {
+            response: KeyLookupState::PrefixOnly,
+        };
+        let input = resolve_input(&keymap);
+
+        // Type 'g' - keymap returns PrefixOnly → Pending
+        let result = resolver.resolve_with_keymap(&key('g'), &mut state, &input);
+        assert!(matches!(result, ResolveResult::Pending));
+
+        let keys = resolver.pending_keys();
+        assert_eq!(keys.len(), 1, "should have 1 pending key after pressing 'g'");
+    }
+
+    #[test]
+    fn test_pending_keys_cleared_after_cancel() {
+        let resolver = VimDeleteResolver::new();
+        let mut state = test_state();
+        let keymap = MockKeymap {
+            response: KeyLookupState::PrefixOnly,
+        };
+        let input = resolve_input(&keymap);
+
+        // Accumulate a pending key
+        let _ = resolver.resolve_with_keymap(&key('g'), &mut state, &input);
+        assert!(!resolver.pending_keys().is_empty());
+
+        // Escape clears state
+        let _ = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+        assert!(
+            resolver.pending_keys().is_empty(),
+            "pending keys should be cleared after escape"
+        );
     }
 
     // ========================================================================

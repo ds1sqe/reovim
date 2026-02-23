@@ -14,8 +14,8 @@ message SendKeysRequest {
 
   // #483 Phase 5: client_id removed — caller identity comes from
   // x-reovim-token header (resolved by AuthInterceptor).
-  reserved 2;
-  reserved "client_id";
+  reserved 2, 3;
+  reserved "client_id", "target_client_id";
 }
 
 message SendKeysResponse {

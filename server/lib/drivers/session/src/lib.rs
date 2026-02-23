@@ -19,7 +19,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │ SESSION DRIVER (server/lib/drivers/session/) - PURE MECHANISM          │
+//! │ SESSION DRIVER (server/lib/drivers/session/) - PURE MECHANISM   │
 //! │                                                                 │
 //! │ SHARED INFRASTRUCTURE:                                          │
 //! │   Session { id, shared: SessionShared }                         │
@@ -133,10 +133,10 @@ pub use runtime::SessionRuntime;
 
 // Session API traits (re-export for convenience)
 pub use api::{
-    BufferApi, BufferError, ChangeTracker, CmdlinePrompt, CmdlineState, CommandApi,
-    CommandExecutor, CompositorApi, CompositorError, ExtensionApi, ModeApi,
-    ModeError as ApiModeError, RegisterApi, RegisterContent, Selection, SelectionMode, SessionApi,
-    SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
+    BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, CompositorApi,
+    CompositorError, ExtensionApi, ModeApi, ModeError as ApiModeError, RegisterApi,
+    RegisterContent, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges, WindowApi,
+    WindowError, YankType,
 };
 
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)

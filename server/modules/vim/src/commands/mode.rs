@@ -21,11 +21,12 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::Direction,
     reovim_driver_session::{
-        BufferApi, CmdlinePrompt, CmdlineState, SessionRuntime, TransitionContext,
+        BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ExtensionApi, ModeApi, SearchState},
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
+    reovim_module_cmdline::{CmdlinePrompt, CmdlineState},
 };
 
 /// Helper to get cursor position from the active window.

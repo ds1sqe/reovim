@@ -43,6 +43,28 @@ use {
     },
 };
 
+/// Create an extension bridge registry for gRPC notification emission (#468).
+///
+/// Bridges adapt session extension state to JSON for gRPC transmission.
+/// Each bridge adapts a module's `SessionExtension` state to JSON.
+///
+/// Currently registers bridges directly from module crates. Full
+/// `BridgeProvider`-based collection (where modules register during `init()`
+/// and bootstrap collects) requires refactoring the session factory pattern.
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
+    use {
+        reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
+        reovim_module_whichkey::WhichKeyBridge,
+    };
+
+    let mut registry = BridgeRegistry::new();
+    registry.register(CmdlineBridge);
+    registry.register(WhichKeyBridge);
+    registry
+}
+
 /// Create a session state with fully-initialized module registries.
 ///
 /// This is the entry point for module loading. It:
