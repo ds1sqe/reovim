@@ -10,7 +10,7 @@
  * The fixture automatically spawns a reovim server for each test.
  */
 
-import { test, expect, waitForConnection, getMode, sendKeys, navigateWithPort } from "./fixtures";
+import { test, expect, waitForConnection, getMode, sendKeys, navigateToServer } from "./fixtures";
 
 test.describe("reovim Web Client", () => {
   test.beforeEach(async ({ page, serverPort }) => {
@@ -70,7 +70,7 @@ test.describe("reovim Connected Tests", () => {
 
   test.beforeEach(async ({ page, serverPort }) => {
     // Navigate with the dynamically assigned server port
-    await navigateWithPort(page, serverPort);
+    await navigateToServer(page, serverPort);
   });
 
   test("should connect to server", async ({ page }) => {

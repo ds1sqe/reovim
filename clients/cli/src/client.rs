@@ -68,6 +68,10 @@ pub enum GrpcClientError {
     ConnectionFailed(String),
     /// gRPC call failed.
     GrpcError(tonic::Status),
+    /// Invalid CLI argument combination.
+    InvalidArgument(String),
+    /// Web capture script failed.
+    CaptureError(String),
 }
 
 impl std::fmt::Display for GrpcClientError {
@@ -75,6 +79,8 @@ impl std::fmt::Display for GrpcClientError {
         match self {
             Self::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
             Self::GrpcError(status) => write!(f, "gRPC error: {status}"),
+            Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
+            Self::CaptureError(msg) => write!(f, "Capture error: {msg}"),
         }
     }
 }
@@ -256,7 +262,7 @@ impl GrpcClient {
     ///
     /// # Arguments
     ///
-    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `keys` - Keys in vim notation (e.g., `iHello<Esc>`).
     ///
     /// # Returns
     ///
@@ -762,5 +768,13 @@ mod tests {
         let status = tonic::Status::not_found("test");
         let err = GrpcClientError::GrpcError(status);
         assert!(err.to_string().contains("gRPC error"));
+
+        let err = GrpcClientError::InvalidArgument("bad arg".to_string());
+        assert!(err.to_string().contains("Invalid argument"));
+        assert!(err.to_string().contains("bad arg"));
+
+        let err = GrpcClientError::CaptureError("script failed".to_string());
+        assert!(err.to_string().contains("Capture error"));
+        assert!(err.to_string().contains("script failed"));
     }
 }

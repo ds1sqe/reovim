@@ -161,14 +161,29 @@ enum CliSubcommand {
     },
     /// Get register contents.
     Registers { name: Option<String> },
-    /// Capture TUI screen content.
+    /// Capture screen content.
     Capture {
-        /// Target client ID to capture from (required).
+        /// Target client ID (required for text capture, ignored for web capture).
         #[arg(long, short)]
-        client: u64,
-        /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
+        client: Option<u64>,
+        /// Capture format: `raw_ansi`, `plain_text`, `cell_grid`, `png`, `html`.
         #[arg(long, short = 'f', default_value = "raw_ansi")]
         capture_format: String,
+        /// Web client URL for visual capture (required for png/html formats).
+        #[arg(long)]
+        web_url: Option<String>,
+        /// Viewport width in pixels (web capture only).
+        #[arg(long, default_value = "1920")]
+        width: u32,
+        /// Viewport height in pixels (web capture only).
+        #[arg(long, default_value = "1080")]
+        height: u32,
+        /// Device pixel ratio (web capture only).
+        #[arg(long, default_value = "1")]
+        dpr: u32,
+        /// Output file path (web capture only; stdout if omitted).
+        #[arg(long, short)]
+        output: Option<String>,
     },
     /// Ping the server.
     Ping,
@@ -368,7 +383,26 @@ async fn run_cli(
         CliSubcommand::Capture {
             client: client_id,
             capture_format,
-        } => commands::capture(&mut client, client_id, &capture_format, output_format).await,
+            web_url,
+            width,
+            height,
+            dpr,
+            output,
+        } => {
+            commands::capture(
+                &mut client,
+                client_id,
+                &capture_format,
+                web_url.as_deref(),
+                addr,
+                width,
+                height,
+                dpr,
+                output.as_deref(),
+                output_format,
+            )
+            .await
+        }
         CliSubcommand::Ping => commands::ping(&mut client, output_format).await,
         CliSubcommand::Version => commands::version(&mut client, output_format).await,
         CliSubcommand::LogTail {

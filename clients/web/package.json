@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "reovim-web": "./dist/cli/capture.js"
+  },
   "scripts": {
+    "build:cli": "npx tsc -p tsconfig.cli.json",
     "build:wasm": "cd ../../shared/clients/model && wasm-pack build --target web --features wasm && rm -rf ../../../clients/web/pkg && mv pkg ../../../clients/web/",
     "prebuild": "npm run build:wasm",
     "predev": "npm run build:wasm",
@@ -22,6 +26,14 @@
     "@bufbuild/protobuf": "^1.10.0",
     "@connectrpc/connect": "^1.7.0",
     "@connectrpc/connect-web": "^1.7.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.49.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.47.0",

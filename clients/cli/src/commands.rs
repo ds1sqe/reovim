@@ -297,38 +297,167 @@ pub async fn registers(
     }
 }
 
-/// Capture TUI screen content via `DebugService`.
+/// Capture screen content.
 ///
-/// CLI is stateless — targets the client by ID.
+/// Routes to either:
+/// - **gRPC relay** (text formats: `plain_text`, `raw_ansi`, `cell_grid`) via `DebugService`
+/// - **Playwright web capture** (visual formats: `png`, `html`) via Node.js script
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails, client doesn't exist, or capture times out.
+/// Returns an error if arguments are invalid, the gRPC call fails, or the capture script fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::too_many_arguments)]
 pub async fn capture(
     client: &mut GrpcClient,
-    target_client_id: u64,
+    client_id: Option<u64>,
     capture_format: &str,
+    web_url: Option<&str>,
+    address: &str,
+    width: u32,
+    height: u32,
+    dpr: u32,
+    output: Option<&str>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client
-        .debug_capture(target_client_id, capture_format)
-        .await?;
+    match capture_format {
+        "png" | "html" => {
+            let url = web_url.ok_or_else(|| {
+                GrpcClientError::InvalidArgument(
+                    "--web-url is required for png/html capture".into(),
+                )
+            })?;
+            web_capture(url, address, capture_format, width, height, dpr, output)
+        }
+        _ if web_url.is_some() => Err(GrpcClientError::InvalidArgument(format!(
+            "format '{capture_format}' not supported with --web-url. Use 'png' or 'html'."
+        ))),
+        _ => {
+            let target = client_id.ok_or_else(|| {
+                GrpcClientError::InvalidArgument("--client required for text capture".into())
+            })?;
+            let response = client.debug_capture(target, capture_format).await?;
 
-    match format {
-        OutputFormat::Plain => {
-            // For plain output, just return the raw content
-            Ok(response.content)
+            match format {
+                OutputFormat::Plain => Ok(response.content),
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "width": response.width,
+                        "height": response.height,
+                        "format": response.format,
+                        "content": response.content,
+                    });
+                    Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+                }
+            }
         }
-        OutputFormat::Json => {
-            let json = serde_json::json!({
-                "width": response.width,
-                "height": response.height,
-                "format": response.format,
-                "content": response.content,
-            });
-            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+    }
+}
+
+/// Locate the `capture.js` script from the web client build.
+///
+/// Resolution order:
+/// 1. `REOVIM_WEB_CLI` env var (explicit path to `capture.js`)
+/// 2. Relative to binary: `<binary>/../../clients/web/dist/cli/capture.js`
+///    (works for `target/release/reovim` and `target/debug/reovim`)
+/// 3. Relative to cwd: `clients/web/dist/cli/capture.js`
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn find_capture_script() -> Option<std::path::PathBuf> {
+    // 1. Explicit env override
+    if let Ok(path) = std::env::var("REOVIM_WEB_CLI") {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
         }
+    }
+
+    // 2. Relative to the binary location
+    //    Binary: <project>/target/{release,debug}/reovim
+    //    Script: <project>/clients/web/dist/cli/capture.js
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(target_dir) = exe.parent()
+    {
+        // target_dir = <project>/target/{release,debug}
+        let project_root = target_dir.join("../..").canonicalize().ok();
+        if let Some(root) = project_root {
+            let script = root.join("clients/web/dist/cli/capture.js");
+            if script.exists() {
+                return Some(script);
+            }
+        }
+    }
+
+    // 3. Relative to cwd
+    let cwd_script = std::path::PathBuf::from("clients/web/dist/cli/capture.js");
+    if cwd_script.exists() {
+        return Some(cwd_script);
+    }
+
+    None
+}
+
+/// Run Playwright-based web capture via the `capture.js` Node.js script.
+///
+/// Locates the built capture script, then spawns `node capture.js` with the
+/// appropriate arguments.
+///
+/// # Errors
+///
+/// Returns an error if the script is not found or fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::result_large_err)]
+fn web_capture(
+    web_url: &str,
+    address: &str,
+    format: &str,
+    width: u32,
+    height: u32,
+    dpr: u32,
+    output: Option<&str>,
+) -> Result<String, GrpcClientError> {
+    let script = find_capture_script().ok_or_else(|| {
+        GrpcClientError::CaptureError(
+            "capture.js not found. Build it first:\n\
+             cd clients/web && npm install && npm run build:cli\n\
+             Then: npx playwright install chromium"
+                .into(),
+        )
+    })?;
+
+    let mut cmd = std::process::Command::new("node");
+    cmd.arg(&script)
+        .args(["--grpc", address])
+        .args(["--web-url", web_url])
+        .args(["--format", format])
+        .args(["--width", &width.to_string()])
+        .args(["--height", &height.to_string()])
+        .args(["--dpr", &dpr.to_string()]);
+
+    if let Some(out) = output {
+        cmd.args(["--output", out]);
+    }
+
+    let result = cmd.output().map_err(|e| {
+        GrpcClientError::CaptureError(format!(
+            "Failed to run capture script: {e}.\n\
+             Ensure Node.js is installed and capture.js is built:\n\
+             cd clients/web && npm install && npm run build:cli"
+        ))
+    })?;
+
+    if !result.status.success() {
+        return Err(GrpcClientError::CaptureError(
+            String::from_utf8_lossy(&result.stderr).to_string(),
+        ));
+    }
+
+    if let Some(out) = output {
+        Ok(format!("Captured {format} to {out}"))
+    } else {
+        // Pass binary output (PNG) or text (HTML) through to stdout
+        use std::io::Write;
+        std::io::stdout().write_all(&result.stdout).ok();
+        Ok(String::new())
     }
 }
 

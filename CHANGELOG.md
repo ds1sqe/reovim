@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Headless web capture via Playwright (#516)**: `reovim cli capture --format png
+  --web-url URL` produces pixel-perfect screenshots by running the real web client
+  in headless Chromium via Playwright. Adds a Node.js capture script
+  (`clients/web/src/cli/capture.ts`) supporting PNG and HTML output with
+  configurable viewport, DPR, and timeout. Rust CLI routes `png`/`html` formats to
+  the Playwright script while `plain_text`/`raw_ansi`/`cell_grid` continue through
+  the existing gRPC relay. Web client server address now uses a 3-tier resolution
+  chain: `window.__REOVIM_SERVER` (Playwright/test injection), `VITE_GRPC_ADDRESS`
+  (build-time env), or default (`hostname:12521`). E2E test fixtures updated to use
+  `addInitScript` injection, removing the `?port=` query parameter.
+
 - **Stateless CLI with DebugService (#468)**: CLI no longer joins as a client.
   All client-targeting operations (SendKeys, Capture, GetMode, GetCursor,
   ListClients, GetExtensionState, ListExtensions) moved to `DebugService`

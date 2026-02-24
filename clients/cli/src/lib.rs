@@ -73,7 +73,7 @@ pub enum OutputFormat {
 pub enum CliCommand {
     /// Send keys to a specific client.
     Keys {
-        /// Keys in vim notation (e.g., "iHello<Esc>").
+        /// Keys in vim notation (e.g., `iHello<Esc>`).
         keys: String,
 
         /// Target client ID to send keys to (required).
@@ -114,18 +114,41 @@ pub enum CliCommand {
         name: Option<String>,
     },
 
-    /// Capture TUI screen content.
+    /// Capture screen content.
     ///
-    /// Requests a screen capture from a specific TUI client.
-    /// Requires a headless TUI to be connected to the server.
+    /// For text formats (`plain_text`, `raw_ansi`, `cell_grid`): captures via gRPC relay
+    /// from a connected TUI client (requires `--client`).
+    ///
+    /// For visual formats (`png`, `html`): captures via Playwright headless browser
+    /// running the real web client (requires `--web-url`).
     Capture {
-        /// Target client ID to capture from (required).
+        /// Target client ID (required for text capture, ignored for web capture).
         #[arg(long, short)]
-        client: u64,
+        client: Option<u64>,
 
-        /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
+        /// Capture format: `raw_ansi`, `plain_text`, `cell_grid`, `png`, `html`.
         #[arg(long, short = 'f', default_value = "raw_ansi")]
         capture_format: String,
+
+        /// Web client URL for visual capture (required for png/html formats).
+        #[arg(long)]
+        web_url: Option<String>,
+
+        /// Viewport width in pixels (web capture only).
+        #[arg(long, default_value = "1920")]
+        width: u32,
+
+        /// Viewport height in pixels (web capture only).
+        #[arg(long, default_value = "1080")]
+        height: u32,
+
+        /// Device pixel ratio (web capture only).
+        #[arg(long, default_value = "1")]
+        dpr: u32,
+
+        /// Output file path (web capture only; stdout if omitted).
+        #[arg(long, short)]
+        output: Option<String>,
     },
 
     /// Ping the server (health check).
@@ -180,7 +203,27 @@ impl CliArgs {
             CliCommand::Capture {
                 client: client_id,
                 capture_format,
-            } => commands::capture(&mut client, *client_id, capture_format, self.format).await,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+            } => {
+                let address = &self.grpc;
+                commands::capture(
+                    &mut client,
+                    *client_id,
+                    capture_format,
+                    web_url.as_deref(),
+                    address,
+                    *width,
+                    *height,
+                    *dpr,
+                    output.as_deref(),
+                    self.format,
+                )
+                .await
+            }
             CliCommand::Ping => commands::ping(&mut client, self.format).await,
             CliCommand::Version => commands::version(&mut client, self.format).await,
             CliCommand::Clients => commands::clients(&mut client, self.format).await,
@@ -266,5 +309,120 @@ mod tests {
     fn test_cli_args_extensions() {
         let args = CliArgs::parse_from(["reovim-cli", "extensions"]);
         assert!(matches!(args.command, CliCommand::Extensions));
+    }
+
+    #[test]
+    fn test_cli_args_capture_text_format() {
+        let args =
+            CliArgs::parse_from(["reovim-cli", "capture", "--client", "1", "-f", "plain_text"]);
+        match &args.command {
+            CliCommand::Capture {
+                client,
+                capture_format,
+                web_url,
+                ..
+            } => {
+                assert_eq!(*client, Some(1));
+                assert_eq!(capture_format, "plain_text");
+                assert!(web_url.is_none());
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_default_format() {
+        let args = CliArgs::parse_from(["reovim-cli", "capture", "--client", "1"]);
+        match &args.command {
+            CliCommand::Capture { capture_format, .. } => {
+                assert_eq!(capture_format, "raw_ansi");
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_web_png() {
+        let args = CliArgs::parse_from([
+            "reovim-cli",
+            "capture",
+            "-f",
+            "png",
+            "--web-url",
+            "http://localhost:5173",
+            "--width",
+            "800",
+            "--height",
+            "600",
+            "--dpr",
+            "2",
+            "-o",
+            "out.png",
+        ]);
+        match &args.command {
+            CliCommand::Capture {
+                client,
+                capture_format,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+            } => {
+                assert!(client.is_none());
+                assert_eq!(capture_format, "png");
+                assert_eq!(web_url.as_deref(), Some("http://localhost:5173"));
+                assert_eq!(*width, 800);
+                assert_eq!(*height, 600);
+                assert_eq!(*dpr, 2);
+                assert_eq!(output.as_deref(), Some("out.png"));
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_web_html() {
+        let args = CliArgs::parse_from([
+            "reovim-cli",
+            "capture",
+            "-f",
+            "html",
+            "--web-url",
+            "http://localhost:5173",
+        ]);
+        match &args.command {
+            CliCommand::Capture {
+                capture_format,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+                ..
+            } => {
+                assert_eq!(capture_format, "html");
+                assert!(web_url.is_some());
+                assert_eq!(*width, 1920);
+                assert_eq!(*height, 1080);
+                assert_eq!(*dpr, 1);
+                assert!(output.is_none());
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_no_client_no_web_url() {
+        let args = CliArgs::parse_from(["reovim-cli", "capture"]);
+        match &args.command {
+            CliCommand::Capture {
+                client, web_url, ..
+            } => {
+                assert!(client.is_none());
+                assert!(web_url.is_none());
+            }
+            _ => panic!("Expected Capture command"),
+        }
     }
 }
