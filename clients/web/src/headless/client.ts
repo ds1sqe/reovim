@@ -40,7 +40,10 @@
  * ```
  */
 
-import { createClient as createConnectClient } from "@connectrpc/connect";
+import {
+  createClient as createConnectClient,
+  type Interceptor,
+} from "@connectrpc/connect";
 import { createGrpcTransport } from "@connectrpc/connect-node";
 import type { Notification } from "../gen/reovim/v2/notification_pb.js";
 import { InputService } from "../gen/reovim/v2/input_connect.js";
@@ -66,15 +69,31 @@ interface ReovimClient {
   notification: ReturnType<typeof createConnectClient<typeof NotificationService>>;
   server: ReturnType<typeof createConnectClient<typeof ServerService>>;
   presence: ReturnType<typeof createConnectClient<typeof PresenceService>>;
+  /** Store a session token received from Join() for subsequent requests. */
+  setSessionToken(token: string): void;
 }
 
 /**
  * Create a Node.js gRPC client (uses HTTP/2 native transport).
+ *
+ * Mirrors `createClient()` in `src/client.ts` but uses native gRPC
+ * transport instead of gRPC-Web. Includes the auth interceptor for
+ * `x-reovim-token` header injection (#483).
  */
 function createNodeClient(baseUrl: string): ReovimClient {
+  const tokenState = { value: "" };
+
+  const authInterceptor: Interceptor = (next) => async (req) => {
+    if (tokenState.value) {
+      req.header.set("x-reovim-token", tokenState.value);
+    }
+    return next(req);
+  };
+
   const transport = createGrpcTransport({
     baseUrl,
     httpVersion: "2",
+    interceptors: [authInterceptor],
   });
 
   return {
@@ -84,6 +103,9 @@ function createNodeClient(baseUrl: string): ReovimClient {
     notification: createConnectClient(NotificationService, transport),
     server: createConnectClient(ServerService, transport),
     presence: createConnectClient(PresenceService, transport),
+    setSessionToken(token: string) {
+      tokenState.value = token;
+    },
   };
 }
 
@@ -176,9 +198,17 @@ export class HeadlessWebClient {
   }
 
   /**
-   * Start the client: fetch initial state and begin notification subscription.
+   * Start the client: join session, fetch initial state, and begin notification subscription.
    */
   private async start(): Promise<void> {
+    // Join presence session to get a session token (#483)
+    // Without this, all subsequent requests are rejected with "unauthenticated"
+    const joinResponse = await this.client.presence.join({
+      clientType: "headless",
+      displayName: "Headless Test Client",
+    });
+    this.client.setSessionToken(joinResponse.sessionToken);
+
     // Fetch initial state from server
     const [modeResp, cursorResp, bufferResp] = await Promise.all([
       this.client.state.getMode({}),
