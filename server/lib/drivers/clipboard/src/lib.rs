@@ -1,42 +1,26 @@
 //! Clipboard provider driver for reovim.
 //!
-//! This driver defines the interface for system clipboard access and yank history.
+//! This driver defines the interface for OS clipboard access.
 //! Following the mechanism/policy separation:
 //!
 //! - **Mechanism** (this driver): `ClipboardProvider` trait, `ClipboardKey`, registry
 //! - **Policy** (modules): Implementations with actual OS clipboard integration
 //!
-//! # Architecture
-//!
-//! This driver complements the kernel's `RegisterBank`:
+//! # Architecture (#515 Phase 4)
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────┐
-//! │  Kernel RegisterBank                                        │
-//! │  - Unnamed register ("")                                    │
-//! │  - Named registers (a-z)                                    │
+//! │  Per-client RegisterBank                                     │
+//! │  - Unnamed register ("")                                     │
+//! │  - Named registers (a-z)                                     │
 //! ├─────────────────────────────────────────────────────────────┤
-//! │  Clipboard Driver (this crate)                              │
-//! │  - System clipboard (+)                                     │
-//! │  - Selection clipboard (*)                                  │
-//! │  - History registers (0-9)                                  │
+//! │  Per-client HistoryRing                                      │
+//! │  - Numbered registers (0-9, yank history)                    │
+//! ├─────────────────────────────────────────────────────────────┤
+//! │  Clipboard Driver (this crate)                               │
+//! │  - System clipboard (+)                                      │
+//! │  - Selection clipboard (*)                                   │
 //! └─────────────────────────────────────────────────────────────┘
-//! ```
-//!
-//! # Usage Flow
-//!
-//! ```text
-//! Yank/Delete Operation:
-//! 1. Check register name
-//! 2. If +/* → ClipboardProvider.copy_to_clipboard/selection()
-//! 3. If a-z/unnamed → RegisterBank.set_by_name()
-//! 4. Always → ClipboardProvider.push_history() (for 0-9 access)
-//!
-//! Paste Operation:
-//! 1. Check register name
-//! 2. If +/* → ClipboardProvider.paste_from_clipboard/selection()
-//! 3. If 0-9 → ClipboardProvider.history_entry()
-//! 4. If a-z/unnamed → RegisterBank.get_by_name()
 //! ```
 //!
 //! # Example
@@ -52,7 +36,6 @@
 //! // In operator execute():
 //! if let Some(registry) = ctx.services.get::<ClipboardProviderRegistry>() {
 //!     if let Some(provider) = registry.get(&ClipboardKey::Default) {
-//!         provider.push_history(content.clone());
 //!         if register == Some('+') {
 //!             let _ = provider.copy_to_clipboard(&content.text);
 //!         }

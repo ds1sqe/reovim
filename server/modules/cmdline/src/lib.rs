@@ -139,8 +139,7 @@ mod tests {
         use {
             parking_lot::RwLock,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -150,7 +149,6 @@ mod tests {
             Arc::new(reovim_driver_buffer::TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             services.clone(),

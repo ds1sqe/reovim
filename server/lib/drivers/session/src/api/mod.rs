@@ -62,6 +62,7 @@
 
 mod buffer;
 mod changes;
+mod clipboard;
 mod command;
 mod compositor;
 mod extension;
@@ -73,6 +74,9 @@ mod window;
 
 // Buffer API
 pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
+
+// Clipboard API (#515)
+pub use clipboard::ClipboardApi;
 
 // Search state extension
 pub use search::SearchState;

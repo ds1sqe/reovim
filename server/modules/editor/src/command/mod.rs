@@ -171,8 +171,9 @@ mod tests {
             ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, Position, RegisterBank, RegisterContent, RwLock, TextObjectEngine,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+                MotionEngine, OptionRegistry, Position, RegisterBank, RegisterContent, RwLock,
+                TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -257,7 +258,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -276,6 +276,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -288,6 +291,9 @@ mod tests {
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -311,6 +317,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 executor,
             )
@@ -334,12 +343,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             kernel,
             &executor,
         );
@@ -892,10 +907,9 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Check register content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line one\n");
     }
@@ -913,10 +927,9 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Check register content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line one\nline two\n");
     }
@@ -940,10 +953,9 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Should only yank the last line
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Should only yank the last line (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line three\n");
     }
@@ -1016,18 +1028,9 @@ mod tests {
     fn test_paste_after_linewise() {
         let (kernel, buffer_id) = setup_buffer_context();
 
-        // First yank a line
-        {
-            let mut state = TestState::with_window(buffer_id);
-            let executor = StubExecutor;
-            let mut runtime = state.runtime(&kernel, &executor);
-            let mut args = CommandContext::new();
-            args.set_buffer_id(buffer_id);
-            YankLine.execute(&mut runtime, &args);
-        }
-
-        // Then paste after
+        // Set linewise register content directly (per-client registers, #515)
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("line one\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1049,18 +1052,9 @@ mod tests {
     fn test_paste_before_linewise() {
         let (kernel, buffer_id) = setup_buffer_context();
 
-        // First yank a line
-        {
-            let mut state = TestState::with_window(buffer_id);
-            let executor = StubExecutor;
-            let mut runtime = state.runtime(&kernel, &executor);
-            let mut args = CommandContext::new();
-            args.set_buffer_id(buffer_id);
-            YankLine.execute(&mut runtime, &args);
-        }
-
-        // Then paste before
+        // Set linewise register content directly (per-client registers, #515)
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("line one\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1084,13 +1078,9 @@ mod tests {
         let buffer = Buffer::from_string("hello world");
         let buffer_id = kernel.buffers.register(buffer);
 
-        // Set characterwise content in register
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("XYZ"));
-
+        // Set characterwise content in per-client register (#515)
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("XYZ"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1112,13 +1102,9 @@ mod tests {
         let buffer = Buffer::from_string("hello world");
         let buffer_id = kernel.buffers.register(buffer);
 
-        // Set characterwise content in register
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("XYZ"));
-
+        // Set characterwise content in per-client register (#515)
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("XYZ"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1140,13 +1126,9 @@ mod tests {
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
 
-        // Set characterwise content in register
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X"));
-
+        // Set characterwise content in per-client register (#515)
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("X"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();

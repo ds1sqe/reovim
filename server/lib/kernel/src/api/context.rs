@@ -7,7 +7,7 @@ use std::{fmt, path::PathBuf, sync::Arc};
 use reovim_arch::sync::RwLock;
 
 use crate::{
-    core::{MarkBank, MotionEngine, OptionRegistry, RegisterBank, TextObjectEngine},
+    core::{MarkBank, MotionEngine, OptionRegistry, TextObjectEngine},
     ipc::EventBus,
 };
 
@@ -48,10 +48,10 @@ pub struct KernelContext {
     pub motion: Arc<MotionEngine>,
     /// Text object calculation engine.
     pub text_objects: Arc<TextObjectEngine>,
-    /// Register storage for yank/paste operations.
-    pub registers: Arc<RwLock<RegisterBank>>,
-    /// Mark storage for bookmark operations.
-    pub marks: Arc<RwLock<MarkBank>>,
+    /// Global mark storage (A-Z, shared special marks) (#515).
+    ///
+    /// Per-client local marks (a-z) are stored in `EditingState.local_marks`.
+    pub global_marks: Arc<RwLock<MarkBank>>,
     /// Option registry for editor settings.
     pub options: Arc<OptionRegistry>,
     /// Service registry for cross-module service discovery.
@@ -69,8 +69,7 @@ impl KernelContext {
         buffers: Arc<dyn BufferManager>,
         motion: Arc<MotionEngine>,
         text_objects: Arc<TextObjectEngine>,
-        registers: Arc<RwLock<RegisterBank>>,
-        marks: Arc<RwLock<MarkBank>>,
+        global_marks: Arc<RwLock<MarkBank>>,
         options: Arc<OptionRegistry>,
         services: Arc<ServiceRegistry>,
     ) -> Self {
@@ -79,8 +78,7 @@ impl KernelContext {
             buffers,
             motion,
             text_objects,
-            registers,
-            marks,
+            global_marks,
             options,
             services,
         }
@@ -94,8 +92,7 @@ impl fmt::Debug for KernelContext {
             .field("buffers", &"Arc<dyn BufferManager>")
             .field("motion", &"Arc<MotionEngine>")
             .field("text_objects", &"Arc<TextObjectEngine>")
-            .field("registers", &"Arc<RwLock<RegisterBank>>")
-            .field("marks", &"Arc<RwLock<MarkBank>>")
+            .field("global_marks", &"Arc<RwLock<MarkBank>>")
             .field("options", &"Arc<OptionRegistry>")
             .field("services", &"Arc<ServiceRegistry>")
             .finish()
@@ -304,15 +301,14 @@ impl KernelContext {
         services: Arc<ServiceRegistry>,
         options: Arc<OptionRegistry>,
     ) -> Self {
-        use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
+        use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
 
         Self {
             event_bus,
             buffers: Arc::new(StubBufferManager),
             motion: Arc::new(MotionEngine),
             text_objects: Arc::new(TextObjectEngine),
-            registers: Arc::new(RwLock::new(RegisterBank::new())),
-            marks: Arc::new(RwLock::new(MarkBank::new())),
+            global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options,
             services,
         }
@@ -324,15 +320,14 @@ impl Default for KernelContext {
     ///
     /// Uses stub implementations. Should only be used in tests.
     fn default() -> Self {
-        use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
+        use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
 
         Self {
             event_bus: Arc::new(crate::ipc::EventBus::new()),
             buffers: Arc::new(StubBufferManager),
             motion: Arc::new(MotionEngine),
             text_objects: Arc::new(TextObjectEngine),
-            registers: Arc::new(RwLock::new(RegisterBank::new())),
-            marks: Arc::new(RwLock::new(MarkBank::new())),
+            global_marks: Arc::new(RwLock::new(MarkBank::new())),
             options: Arc::new(OptionRegistry::new()),
             services: Arc::new(ServiceRegistry::new()),
         }
@@ -409,7 +404,7 @@ mod tests {
         assert!(debug_str.contains("Arc<dyn BufferManager>"));
         assert!(debug_str.contains("Arc<MotionEngine>"));
         assert!(debug_str.contains("Arc<TextObjectEngine>"));
-        assert!(debug_str.contains("Arc<RwLock<RegisterBank>>"));
+        assert!(debug_str.contains("global_marks"));
         assert!(debug_str.contains("Arc<RwLock<MarkBank>>"));
         assert!(debug_str.contains("Arc<OptionRegistry>"));
         assert!(debug_str.contains("Arc<ServiceRegistry>"));
@@ -417,14 +412,13 @@ mod tests {
 
     #[test]
     fn test_kernel_context_new() {
-        use crate::core::{MarkBank, MotionEngine, RegisterBank, TextObjectEngine};
+        use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
 
         let event_bus = Arc::new(EventBus::new());
         let buffers: Arc<dyn BufferManager> = Arc::new(StubBufferManager);
         let motion = Arc::new(MotionEngine);
         let text_objects = Arc::new(TextObjectEngine);
-        let registers = Arc::new(RwLock::new(RegisterBank::new()));
-        let marks = Arc::new(RwLock::new(MarkBank::new()));
+        let global_marks = Arc::new(RwLock::new(MarkBank::new()));
         let options = Arc::new(OptionRegistry::new());
         let services = Arc::new(ServiceRegistry::new());
 
@@ -433,8 +427,7 @@ mod tests {
             buffers,
             motion,
             text_objects,
-            registers,
-            marks,
+            global_marks,
             options,
             services,
         );

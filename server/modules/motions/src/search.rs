@@ -453,8 +453,8 @@ mod tests {
             KernelContext, ModeStack, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank,
-                RwLock, TextObjectEngine,
+                EventBus, HistoryRing, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
+                RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -539,7 +539,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -561,6 +560,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -568,6 +570,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &ctx,
             &executor,
         );
@@ -668,6 +673,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -675,6 +683,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -696,6 +707,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -703,6 +717,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -729,6 +746,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -736,6 +756,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -760,6 +783,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -767,6 +793,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -791,6 +820,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -798,6 +830,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -829,6 +864,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -836,6 +874,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -867,6 +908,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -874,6 +918,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -921,6 +968,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -928,6 +978,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -951,6 +1004,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -958,6 +1014,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -985,6 +1044,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -992,6 +1054,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1032,6 +1097,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1039,6 +1107,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1065,6 +1136,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1072,6 +1146,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1193,7 +1270,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -1216,6 +1292,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1223,6 +1302,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1253,6 +1335,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1260,6 +1345,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1292,6 +1380,9 @@ mod tests {
         win.cursor.column = 12; // position past the second hello
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1299,6 +1390,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1333,6 +1427,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1340,6 +1437,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1366,6 +1466,9 @@ mod tests {
         win.cursor.column = 12; // At second 'hello'
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1373,6 +1476,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1400,6 +1506,9 @@ mod tests {
         win.cursor.column = 5; // On space between hello and world
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1407,6 +1516,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1434,6 +1546,9 @@ mod tests {
         win.cursor.column = 100; // way past end
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1441,6 +1556,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1467,6 +1585,9 @@ mod tests {
         win.cursor.column = 5; // On space
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1474,6 +1595,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1501,6 +1625,9 @@ mod tests {
         win.cursor.column = 12;
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1508,6 +1635,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1538,6 +1668,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1545,6 +1678,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1577,6 +1713,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1584,6 +1723,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1615,6 +1757,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1622,6 +1767,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1650,6 +1798,9 @@ mod tests {
         win.cursor.column = 0; // At 'h' of hello
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1657,6 +1808,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1684,6 +1838,9 @@ mod tests {
         win.cursor.column = 6; // At 'w' of world
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1691,6 +1848,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1743,6 +1903,9 @@ mod tests {
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1750,6 +1913,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1769,6 +1935,9 @@ mod tests {
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1776,6 +1945,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1796,6 +1968,9 @@ mod tests {
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1803,6 +1978,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1825,6 +2003,9 @@ mod tests {
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1832,6 +2013,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1860,6 +2044,9 @@ mod tests {
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1867,6 +2054,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1890,6 +2080,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::with_buffer(buffer_id));
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1897,6 +2090,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1920,6 +2116,9 @@ mod tests {
         let mut compositor = None;
         windows.add(Window::new());
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1927,6 +2126,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1959,6 +2161,9 @@ mod tests {
         win.cursor.column = 2; // 'l' in hello (middle of word)
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1966,6 +2171,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1992,6 +2200,9 @@ mod tests {
         win.cursor.column = 14; // 'l' in second hello
         windows.add(win);
 
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1999,6 +2210,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );

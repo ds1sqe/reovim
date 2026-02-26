@@ -1,13 +1,12 @@
-//! Register storage for yank/paste operations.
+//! Register storage and addressing for yank/paste operations.
 //!
-//! This module provides pure register storage without any clipboard integration.
+//! This module provides:
+//! - **`Register`** - Type-safe register addressing (mechanism names, not vim terms)
+//! - **`RegisterBank`** - Pure register storage without clipboard integration
+//! - **`RegisterContent`** - Content stored in a register (text + yank type)
+//!
 //! System clipboard access is a driver-level concern.
-//!
-//! # Vim Register Types
-//!
-//! - `""` - Unnamed register (default for yank/delete)
-//! - `"a` to `"z` - Named registers
-//! - `"+` and `"*` - System clipboard (handled by drivers, not here)
+//! Session-scoped registers are stored at the session level, not here.
 
 use std::collections::HashMap;
 
@@ -96,6 +95,94 @@ impl Default for RegisterContent {
             text: String::new(),
             yank_type: YankType::Characterwise,
         }
+    }
+}
+
+// ============================================================================
+// Register Addressing
+// ============================================================================
+
+/// Register addressing for the kernel register subsystem.
+///
+/// Represents storage locations using mechanism names (not editor-specific
+/// terminology). The kernel provides WHAT registers exist; modules decide
+/// HOW they map to user-facing keys.
+///
+/// # Storage Routing
+///
+/// Different variants are stored in different subsystems:
+///
+/// | Variant | Storage | Mutability |
+/// |---------|---------|------------|
+/// | `Default` | Per-client `RegisterBank` | Read/Write |
+/// | `Slot(char)` | Per-client `RegisterBank` | Read/Write |
+/// | `History(u8)` | Per-client `HistoryRing` | Read-only |
+/// | `System` | OS clipboard (driver) | Read/Write |
+/// | `Session(char)` | Session-level shared storage | Read/Write |
+/// | `PeerHistory` | Another client's `HistoryRing` | Read-only |
+///
+/// # Example
+///
+/// ```
+/// use reovim_kernel::api::v1::Register;
+///
+/// let default = Register::Default;
+/// assert!(default.is_bank_register());
+/// assert!(!default.is_read_only());
+///
+/// let slot = Register::Slot('a');
+/// assert!(slot.is_bank_register());
+///
+/// let history = Register::History(0);
+/// assert!(history.is_read_only());
+///
+/// let session = Register::Session('A');
+/// assert!(session.is_session_scoped());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Register {
+    /// The default/fallback register.
+    Default,
+    /// A keyed storage slot (a-z, 26 per-client slots).
+    Slot(char),
+    /// Index into the per-client history ring (0-255).
+    History(u8),
+    /// System clipboard (OS-level).
+    System,
+    /// Session-scoped shared register (A-Z, shared across all clients).
+    Session(char),
+    /// Read another client's history ring entry.
+    PeerHistory {
+        /// Target client identifier.
+        client: usize,
+        /// History ring index (0-255).
+        index: u8,
+    },
+}
+
+impl Register {
+    /// Whether this register is stored in per-client `RegisterBank`.
+    #[must_use]
+    pub const fn is_bank_register(&self) -> bool {
+        matches!(self, Self::Default | Self::Slot(_))
+    }
+
+    /// Whether this register is read-only.
+    ///
+    /// History and peer history registers cannot be written to directly.
+    /// They are populated as side effects of other operations.
+    #[must_use]
+    pub const fn is_read_only(&self) -> bool {
+        matches!(self, Self::History(_) | Self::PeerHistory { .. })
+    }
+
+    /// Whether this register requires session-level access.
+    ///
+    /// Session registers and peer history both need access to shared
+    /// session state rather than per-client state.
+    #[must_use]
+    pub const fn is_session_scoped(&self) -> bool {
+        matches!(self, Self::Session(_) | Self::PeerHistory { .. })
     }
 }
 
@@ -249,6 +336,79 @@ impl RegisterBank {
                 .filter(|(_, content)| !content.is_empty())
                 .map(|(name, content)| (*name, content)),
         )
+    }
+
+    // ========================================================================
+    // Register-typed accessors (#515 Phase 5)
+    // ========================================================================
+
+    /// Get register content by typed `Register`.
+    ///
+    /// Returns `None` for `History`, `System`, `Session`, and `PeerHistory`
+    /// variants (not stored in the per-client bank).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    ///
+    /// let mut bank = RegisterBank::new();
+    /// bank.set(RegisterContent::characterwise("hello"));
+    ///
+    /// assert_eq!(bank.get_register(&Register::Default).map(|r| r.text.as_str()), Some("hello"));
+    /// assert!(bank.get_register(&Register::System).is_none());
+    /// ```
+    #[must_use]
+    pub fn get_register(&self, reg: &Register) -> Option<&RegisterContent> {
+        match reg {
+            Register::Default => Some(&self.unnamed),
+            Register::Slot(c) if c.is_ascii_lowercase() => self.named.get(c),
+            _ => None,
+        }
+    }
+
+    /// Set register content by typed `Register`.
+    ///
+    /// Returns `false` for read-only or non-bank registers.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use reovim_kernel::api::v1::*;
+    ///
+    /// let mut bank = RegisterBank::new();
+    /// assert!(bank.set_register(&Register::Slot('a'), RegisterContent::characterwise("alpha")));
+    /// assert!(!bank.set_register(&Register::System, RegisterContent::characterwise("nope")));
+    /// ```
+    pub fn set_register(&mut self, reg: &Register, content: RegisterContent) -> bool {
+        match reg {
+            Register::Default => {
+                self.unnamed = content;
+                true
+            }
+            Register::Slot(c) if c.is_ascii_lowercase() => {
+                self.named.insert(*c, content);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Append content to a slot register (lowercase a-z).
+    ///
+    /// If the slot doesn't exist, it is created with the given content.
+    /// Returns `false` if the slot character is not lowercase a-z.
+    pub fn append_slot(&mut self, slot: char, content: &str) -> bool {
+        if !slot.is_ascii_lowercase() {
+            return false;
+        }
+        if let Some(existing) = self.named.get_mut(&slot) {
+            existing.text.push_str(content);
+        } else {
+            self.named
+                .insert(slot, RegisterContent::characterwise(content.to_string()));
+        }
+        true
     }
 
     /// Set register by name.
@@ -486,5 +646,321 @@ mod tests {
     fn test_register_bank_default() {
         let bank = RegisterBank::default();
         assert!(bank.get().is_empty());
+    }
+
+    // ========================================================================
+    // Register enum tests (#515 Phase 5)
+    // ========================================================================
+
+    #[test]
+    fn test_register_default_is_bank() {
+        assert!(Register::Default.is_bank_register());
+        assert!(!Register::Default.is_read_only());
+        assert!(!Register::Default.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_slot_is_bank() {
+        let slot = Register::Slot('a');
+        assert!(slot.is_bank_register());
+        assert!(!slot.is_read_only());
+        assert!(!slot.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_history_is_read_only() {
+        let history = Register::History(0);
+        assert!(!history.is_bank_register());
+        assert!(history.is_read_only());
+        assert!(!history.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_history_max() {
+        let history = Register::History(255);
+        assert!(history.is_read_only());
+    }
+
+    #[test]
+    fn test_register_system() {
+        let sys = Register::System;
+        assert!(!sys.is_bank_register());
+        assert!(!sys.is_read_only());
+        assert!(!sys.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_session_is_session_scoped() {
+        let session = Register::Session('A');
+        assert!(!session.is_bank_register());
+        assert!(!session.is_read_only());
+        assert!(session.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_peer_history() {
+        let peer = Register::PeerHistory {
+            client: 1,
+            index: 5,
+        };
+        assert!(!peer.is_bank_register());
+        assert!(peer.is_read_only());
+        assert!(peer.is_session_scoped());
+    }
+
+    #[test]
+    fn test_register_eq() {
+        assert_eq!(Register::Default, Register::Default);
+        assert_eq!(Register::Slot('a'), Register::Slot('a'));
+        assert_ne!(Register::Slot('a'), Register::Slot('b'));
+        assert_eq!(Register::History(5), Register::History(5));
+        assert_ne!(Register::History(0), Register::History(1));
+        assert_eq!(Register::System, Register::System);
+        assert_eq!(Register::Session('A'), Register::Session('A'));
+        assert_ne!(Register::Session('A'), Register::Session('B'));
+        assert_eq!(
+            Register::PeerHistory {
+                client: 1,
+                index: 0
+            },
+            Register::PeerHistory {
+                client: 1,
+                index: 0
+            }
+        );
+        assert_ne!(
+            Register::PeerHistory {
+                client: 1,
+                index: 0
+            },
+            Register::PeerHistory {
+                client: 2,
+                index: 0
+            }
+        );
+    }
+
+    #[test]
+    fn test_register_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Register::Default);
+        set.insert(Register::Slot('a'));
+        set.insert(Register::System);
+        set.insert(Register::Session('A'));
+        set.insert(Register::History(0));
+        set.insert(Register::PeerHistory {
+            client: 1,
+            index: 0,
+        });
+        assert_eq!(set.len(), 6);
+        // Duplicate should not increase count
+        set.insert(Register::Default);
+        assert_eq!(set.len(), 6);
+    }
+
+    #[test]
+    fn test_register_debug() {
+        let debug = format!("{:?}", Register::Default);
+        assert!(debug.contains("Default"));
+
+        let debug = format!("{:?}", Register::Slot('z'));
+        assert!(debug.contains("Slot"));
+        assert!(debug.contains('z'));
+
+        let debug = format!(
+            "{:?}",
+            Register::PeerHistory {
+                client: 42,
+                index: 7
+            }
+        );
+        assert!(debug.contains("PeerHistory"));
+    }
+
+    #[test]
+    fn test_register_clone_copy() {
+        let reg = Register::Slot('m');
+        let cloned = reg;
+        assert_eq!(cloned, reg);
+    }
+
+    #[test]
+    fn test_register_all_variants_predicates() {
+        // Exhaustive predicate coverage for all variants
+        let variants = [
+            Register::Default,
+            Register::Slot('a'),
+            Register::History(0),
+            Register::System,
+            Register::Session('A'),
+            Register::PeerHistory {
+                client: 0,
+                index: 0,
+            },
+        ];
+
+        let expected_bank = [true, true, false, false, false, false];
+        let expected_readonly = [false, false, true, false, false, true];
+        let expected_session = [false, false, false, false, true, true];
+
+        for (i, variant) in variants.iter().enumerate() {
+            assert_eq!(
+                variant.is_bank_register(),
+                expected_bank[i],
+                "is_bank_register mismatch for {variant:?}"
+            );
+            assert_eq!(
+                variant.is_read_only(),
+                expected_readonly[i],
+                "is_read_only mismatch for {variant:?}"
+            );
+            assert_eq!(
+                variant.is_session_scoped(),
+                expected_session[i],
+                "is_session_scoped mismatch for {variant:?}"
+            );
+        }
+    }
+
+    // ========================================================================
+    // RegisterBank get_register/set_register/append_slot tests (#515 Phase 5)
+    // ========================================================================
+
+    #[test]
+    fn test_get_register_default() {
+        let mut bank = RegisterBank::new();
+        bank.set(RegisterContent::characterwise("hello"));
+        assert_eq!(
+            bank.get_register(&Register::Default)
+                .map(|r| r.text.as_str()),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn test_get_register_slot() {
+        let mut bank = RegisterBank::new();
+        bank.set_named('a', RegisterContent::characterwise("alpha"));
+        assert_eq!(
+            bank.get_register(&Register::Slot('a'))
+                .map(|r| r.text.as_str()),
+            Some("alpha")
+        );
+    }
+
+    #[test]
+    fn test_get_register_slot_empty() {
+        let bank = RegisterBank::new();
+        assert!(bank.get_register(&Register::Slot('z')).is_none());
+    }
+
+    #[test]
+    fn test_get_register_slot_uppercase_returns_none() {
+        let mut bank = RegisterBank::new();
+        bank.set_named('a', RegisterContent::characterwise("val"));
+        // Uppercase slots are not bank registers
+        assert!(bank.get_register(&Register::Slot('A')).is_none());
+    }
+
+    #[test]
+    fn test_get_register_non_bank_variants_return_none() {
+        let bank = RegisterBank::new();
+        assert!(bank.get_register(&Register::History(0)).is_none());
+        assert!(bank.get_register(&Register::System).is_none());
+        assert!(bank.get_register(&Register::Session('A')).is_none());
+        assert!(
+            bank.get_register(&Register::PeerHistory {
+                client: 0,
+                index: 0
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn test_set_register_default() {
+        let mut bank = RegisterBank::new();
+        assert!(bank.set_register(&Register::Default, RegisterContent::characterwise("set")));
+        assert_eq!(bank.get().text, "set");
+    }
+
+    #[test]
+    fn test_set_register_slot() {
+        let mut bank = RegisterBank::new();
+        assert!(bank.set_register(&Register::Slot('b'), RegisterContent::characterwise("bravo")));
+        assert_eq!(bank.get_named('b').map(|r| r.text.as_str()), Some("bravo"));
+    }
+
+    #[test]
+    fn test_set_register_slot_uppercase_fails() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.set_register(&Register::Slot('A'), RegisterContent::characterwise("nope")));
+    }
+
+    #[test]
+    fn test_set_register_non_bank_variants_fail() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.set_register(&Register::History(0), RegisterContent::characterwise("nope")));
+        assert!(!bank.set_register(&Register::System, RegisterContent::characterwise("nope")));
+        assert!(
+            !bank.set_register(&Register::Session('A'), RegisterContent::characterwise("nope"))
+        );
+        assert!(!bank.set_register(
+            &Register::PeerHistory {
+                client: 0,
+                index: 0
+            },
+            RegisterContent::characterwise("nope")
+        ));
+    }
+
+    #[test]
+    fn test_set_register_overwrites() {
+        let mut bank = RegisterBank::new();
+        bank.set_register(&Register::Slot('a'), RegisterContent::characterwise("first"));
+        bank.set_register(&Register::Slot('a'), RegisterContent::characterwise("second"));
+        assert_eq!(
+            bank.get_register(&Register::Slot('a'))
+                .map(|r| r.text.as_str()),
+            Some("second")
+        );
+    }
+
+    #[test]
+    fn test_append_slot_existing() {
+        let mut bank = RegisterBank::new();
+        bank.set_named('a', RegisterContent::characterwise("hello"));
+        assert!(bank.append_slot('a', " world"));
+        assert_eq!(bank.get_named('a').map(|r| r.text.as_str()), Some("hello world"));
+    }
+
+    #[test]
+    fn test_append_slot_new() {
+        let mut bank = RegisterBank::new();
+        assert!(bank.append_slot('b', "created"));
+        assert_eq!(bank.get_named('b').map(|r| r.text.as_str()), Some("created"));
+    }
+
+    #[test]
+    fn test_append_slot_invalid_uppercase() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.append_slot('A', "nope"));
+    }
+
+    #[test]
+    fn test_append_slot_invalid_digit() {
+        let mut bank = RegisterBank::new();
+        assert!(!bank.append_slot('1', "nope"));
+    }
+
+    #[test]
+    fn test_append_slot_all_lowercase() {
+        let mut bank = RegisterBank::new();
+        for c in 'a'..='z' {
+            assert!(bank.append_slot(c, &format!("val-{c}")));
+        }
+        assert_eq!(bank.get_named('a').map(|r| r.text.as_str()), Some("val-a"));
+        assert_eq!(bank.get_named('z').map(|r| r.text.as_str()), Some("val-z"));
     }
 }

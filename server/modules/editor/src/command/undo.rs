@@ -152,8 +152,9 @@ mod tests {
             ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, Edit,
-                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine, UndoResult,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+                MotionEngine, OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
+                UndoResult,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -236,7 +237,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -249,6 +249,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -261,6 +264,9 @@ mod tests {
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             };
             let mut window = Window::new();
             window.buffer_id = Some(buffer_id);
@@ -280,6 +286,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 executor,
             )
@@ -326,12 +335,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -407,12 +422,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -467,12 +488,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -491,12 +518,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -682,7 +715,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,

@@ -11,7 +11,7 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
         BufferApi, SessionRuntime, TransitionContext,
-        api::{ChangeTracker, ModeApi, RegisterApi, RegisterContent, Selection, SelectionMode},
+        api::{ChangeTracker, ModeApi, RegisterContent, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position},
 };
@@ -97,14 +97,14 @@ impl CommandHandler for DeleteSelection {
             expand_selection_range(&selection, end_line_len, total_lines);
         let cursor_pos = start;
 
-        // Extract text for register
+        // Extract text for register with clipboard sync (#515)
         if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
             let content = if is_linewise {
                 RegisterContent::linewise(&text)
             } else {
                 RegisterContent::characterwise(&text)
             };
-            runtime.set_register(args.register(), content);
+            runtime.store_register_with_sync(args.register(), content);
         }
 
         // Delete the range
@@ -163,14 +163,14 @@ impl CommandHandler for YankSelection {
         let (start, end, is_linewise) =
             expand_selection_range(&selection, end_line_len, total_lines);
 
-        // Extract text for register
+        // Extract text for register with clipboard sync (#515)
         if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
             let content = if is_linewise {
                 RegisterContent::linewise(&text)
             } else {
                 RegisterContent::characterwise(&text)
             };
-            runtime.set_register(args.register(), content);
+            runtime.store_register_with_sync(args.register(), content);
         }
 
         // Clear selection (yank doesn't delete text or move cursor)
@@ -225,14 +225,14 @@ impl CommandHandler for ChangeSelection {
             expand_selection_range(&selection, end_line_len, total_lines);
         let cursor_pos = start;
 
-        // Extract text for register (change stores deleted text like delete)
+        // Extract text for register with clipboard sync (#515)
         if let Some(text) = runtime.buffer_text_range(buffer_id, start, end) {
             let content = if is_linewise {
                 RegisterContent::linewise(&text)
             } else {
                 RegisterContent::characterwise(&text)
             };
-            runtime.set_register(args.register(), content);
+            runtime.store_register_with_sync(args.register(), content);
         }
 
         // Delete the range
@@ -566,8 +566,8 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
-                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                Buffer, BufferError, BufferId, BufferManager, EventBus, HistoryRing, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
                 ServiceRegistry, TextObjectEngine,
             },
         },
@@ -645,6 +645,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -667,6 +670,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -677,6 +683,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 &StubExecutor,
             )
@@ -689,7 +698,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),

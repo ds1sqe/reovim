@@ -158,8 +158,8 @@ mod tests {
             ModeStack, ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry,
-                Position, RegisterBank, RwLock, TextObjectEngine,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine,
+                OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -244,7 +244,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -262,6 +261,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -277,6 +279,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -292,6 +297,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -307,6 +315,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -321,6 +332,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 executor,
             )
@@ -821,6 +835,9 @@ mod tests {
             windows,
             extensions,
             compositor: None,
+            registers: RegisterBank::new(),
+            clipboard_history: HistoryRing::new(),
+            local_marks: MarkBank::new(),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -846,6 +863,9 @@ mod tests {
             windows,
             extensions,
             compositor: None,
+            registers: RegisterBank::new(),
+            clipboard_history: HistoryRing::new(),
+            local_marks: MarkBank::new(),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);

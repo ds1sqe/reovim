@@ -55,9 +55,9 @@ use {
 use crate::{
     Session, SessionExtension, Window,
     api::{
-        BufferApi, BufferError, ChangeTracker, CommandApi, CommandExecutor, CompositorApi,
-        CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi, RegisterContent,
-        StateChanges, UndoApi, WindowApi, WindowError,
+        BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
+        CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,
+        RegisterContent, StateChanges, UndoApi, WindowApi, WindowError,
     },
     transition::{PopResult, TransitionContext},
 };
@@ -124,7 +124,20 @@ pub struct SessionRuntime<'a> {
     /// `CompositorApi` methods use this instead of `session.shared.compositor`.
     /// `None` when compositor is not set (tests, headless mode).
     compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-    /// Kernel context (buffers, registers, marks).
+    /// Per-client register storage (#515).
+    ///
+    /// Each client owns their own registers (unnamed, named a-z/A-Z).
+    /// System clipboard (+, *) remains shared via `ClipboardProvider`.
+    registers: &'a mut reovim_kernel::api::v1::RegisterBank,
+    /// Per-client clipboard history ring (#515).
+    ///
+    /// Tracks yank/delete history for numbered registers 0-9.
+    clipboard_history: &'a mut reovim_kernel::api::v1::HistoryRing,
+    /// Per-client local marks (a-z, per-client special marks) (#515).
+    ///
+    /// Global marks (A-Z) remain shared in `kernel.global_marks`.
+    local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
+    /// Kernel context (buffers, registers, global marks).
     kernel: &'a KernelContext,
     /// Command executor for looking up and running commands.
     executor: &'a dyn CommandExecutor,
@@ -184,6 +197,9 @@ impl<'a> SessionRuntime<'a> {
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
         compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: &'a mut reovim_kernel::api::v1::RegisterBank,
+        clipboard_history: &'a mut reovim_kernel::api::v1::HistoryRing,
+        local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -198,6 +214,9 @@ impl<'a> SessionRuntime<'a> {
             windows,
             extensions,
             compositor,
+            registers,
+            clipboard_history,
+            local_marks,
             kernel,
             executor,
             screen,
@@ -217,7 +236,7 @@ impl<'a> SessionRuntime<'a> {
     /// * `mode_stack` - Per-client mode stack
     /// * `windows` - Per-client window layout with cursors
     /// * `extensions` - Per-client module extensions
-    /// * `kernel` - Kernel context (buffers, registers, marks)
+    /// * `kernel` - Kernel context (buffers, global marks)
     /// * `executor` - Command executor
     ///
     /// # Example
@@ -247,6 +266,9 @@ impl<'a> SessionRuntime<'a> {
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
         compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: &'a mut reovim_kernel::api::v1::RegisterBank,
+        clipboard_history: &'a mut reovim_kernel::api::v1::HistoryRing,
+        local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -261,6 +283,9 @@ impl<'a> SessionRuntime<'a> {
             windows,
             extensions,
             compositor,
+            registers,
+            clipboard_history,
+            local_marks,
             kernel,
             executor,
             screen,
@@ -408,6 +433,57 @@ impl<'a> SessionRuntime<'a> {
     #[allow(clippy::missing_const_for_fn)] // &mut self in const fn requires nightly
     pub fn windows_mut(&mut self) -> &mut crate::WindowLayout {
         self.windows
+    }
+
+    /// Get per-client registers (#515).
+    #[must_use]
+    pub const fn registers(&self) -> &reovim_kernel::api::v1::RegisterBank {
+        self.registers
+    }
+
+    /// Get per-client registers mutably (#515).
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn registers_mut(&mut self) -> &mut reovim_kernel::api::v1::RegisterBank {
+        self.registers
+    }
+
+    /// Get per-client clipboard history (#515).
+    #[must_use]
+    pub const fn clipboard_history(&self) -> &reovim_kernel::api::v1::HistoryRing {
+        self.clipboard_history
+    }
+
+    /// Get per-client clipboard history mutably (#515).
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn clipboard_history_mut(&mut self) -> &mut reovim_kernel::api::v1::HistoryRing {
+        self.clipboard_history
+    }
+
+    /// Get kernel, registers, and clipboard history together (#515).
+    ///
+    /// Splits the borrow so the caller can hold `&KernelContext` and
+    /// `&mut RegisterBank` / `&mut HistoryRing` simultaneously, which
+    /// isn't possible through separate accessor calls.
+    pub const fn kernel_and_registers(
+        &mut self,
+    ) -> (
+        &KernelContext,
+        &mut reovim_kernel::api::v1::RegisterBank,
+        &mut reovim_kernel::api::v1::HistoryRing,
+    ) {
+        (self.kernel, self.registers, self.clipboard_history)
+    }
+
+    /// Get per-client local marks (#515).
+    #[must_use]
+    pub const fn local_marks(&self) -> &reovim_kernel::api::v1::MarkBank {
+        self.local_marks
+    }
+
+    /// Get per-client local marks mutably (#515).
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn local_marks_mut(&mut self) -> &mut reovim_kernel::api::v1::MarkBank {
+        self.local_marks
     }
 }
 
@@ -742,78 +818,128 @@ impl WindowApi for SessionRuntime<'_> {
 impl RegisterApi for SessionRuntime<'_> {
     fn get_register(&self, name: Option<char>) -> Option<RegisterContent> {
         match name {
-            // System clipboard (+)
-            Some('+') => {
-                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
-                    && let Some(provider) = registry.get(&ClipboardKey::Default)
-                    && let Ok(Some(text)) = provider.paste_from_clipboard()
-                {
-                    return Some(RegisterContent::characterwise(text));
-                }
-                None
-            }
+            // Numbered registers (0-9) - per-client yank history (#515)
+            Some(n) if n.is_ascii_digit() => self.clipboard_history.get_numbered(n),
 
-            // Selection clipboard (*)
-            Some('*') => {
-                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
-                    && let Some(provider) = registry.get(&ClipboardKey::Default)
-                    && let Ok(Some(text)) = provider.paste_from_selection()
-                {
-                    return Some(RegisterContent::characterwise(text));
-                }
-                None
-            }
-
-            // Numbered registers (0-9) - yank history
-            Some(n) if n.is_ascii_digit() => {
-                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
-                    && let Some(provider) = registry.get(&ClipboardKey::Default)
-                {
-                    return provider.get_numbered(n);
-                }
-                None
-            }
-
-            // Named registers (a-z, A-Z) and unnamed - use kernel's RegisterBank
-            _ => self.kernel.registers.read().get_by_name(name).cloned(),
+            // All other registers (a-z, A-Z, +, *, "", None) - per-client RegisterBank (#515)
+            //
+            // Note: +/* are stored locally. Callers that need OS clipboard sync
+            // must explicitly use ClipboardApi (#515 Phase 4).
+            _ => self.registers.get_by_name(name).cloned(),
         }
     }
 
     fn set_register(&mut self, name: Option<char>, content: RegisterContent) {
         match name {
-            // System clipboard (+)
-            Some('+') => {
-                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
-                    && let Some(provider) = registry.get(&ClipboardKey::Default)
-                {
-                    let _ = provider.copy_to_clipboard(&content.text);
-                    return;
-                }
-                // Fallback: store in kernel's registers
-                self.kernel.registers.write().set_by_name(name, content);
-            }
-
-            // Selection clipboard (*)
-            Some('*') => {
-                if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
-                    && let Some(provider) = registry.get(&ClipboardKey::Default)
-                {
-                    let _ = provider.copy_to_selection(&content.text);
-                    return;
-                }
-                // Fallback: store in kernel's registers
-                self.kernel.registers.write().set_by_name(name, content);
-            }
-
             // Numbered registers (0-9) are read-only (populated by history)
             Some(n) if n.is_ascii_digit() => {
                 // Ignore writes to numbered registers - they're managed by history
             }
 
-            // Named registers (a-z, A-Z) and unnamed - use kernel's RegisterBank
+            // All other registers - per-client RegisterBank (#515)
             _ => {
-                self.kernel.registers.write().set_by_name(name, content);
+                self.registers.set_by_name(name, content);
             }
+        }
+    }
+}
+
+// === ClipboardApi (#515) ===
+
+impl ClipboardApi for SessionRuntime<'_> {
+    fn copy_to_clipboard(&self, text: &str) -> bool {
+        if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+            && let Some(provider) = registry.get(&ClipboardKey::Default)
+        {
+            provider.copy_to_clipboard(text).is_ok()
+        } else {
+            false
+        }
+    }
+
+    fn paste_from_clipboard(&self) -> Option<String> {
+        if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+            && let Some(provider) = registry.get(&ClipboardKey::Default)
+        {
+            provider.paste_from_clipboard().ok().flatten()
+        } else {
+            None
+        }
+    }
+
+    fn copy_to_selection(&self, text: &str) -> bool {
+        if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+            && let Some(provider) = registry.get(&ClipboardKey::Default)
+        {
+            provider.copy_to_selection(text).is_ok()
+        } else {
+            false
+        }
+    }
+
+    fn paste_from_selection(&self) -> Option<String> {
+        if let Some(registry) = self.kernel.services.get::<ClipboardProviderRegistry>()
+            && let Some(provider) = registry.get(&ClipboardKey::Default)
+        {
+            provider.paste_from_selection().ok().flatten()
+        } else {
+            None
+        }
+    }
+}
+
+impl SessionRuntime<'_> {
+    /// Push content to the per-client clipboard history (#515).
+    ///
+    /// Should be called after every yank/delete operation to populate
+    /// numbered registers (0-9). This is an inherent method because
+    /// history is per-client state, not a shared service.
+    pub fn push_to_clipboard_history(&mut self, content: RegisterContent) {
+        self.clipboard_history.push(content);
+    }
+
+    /// Store content to register with clipboard sync (#515 Phase 4).
+    ///
+    /// Coordinates `RegisterApi` and `ClipboardApi`:
+    /// 1. Stores content in per-client register via `RegisterApi`
+    /// 2. Syncs to OS clipboard for `+`/`*` registers via `ClipboardApi`
+    /// 3. Pushes to clipboard history for numbered register rotation
+    ///
+    /// Use this from commands that operate on `SessionRuntime` directly
+    /// (visual mode operators, editor commands). Vim operators that hold
+    /// separate borrows via `OperatorContext` use `registers::store_and_sync`
+    /// instead.
+    pub fn store_register_with_sync(&mut self, register: Option<char>, content: RegisterContent) {
+        self.set_register(register, content.clone());
+        match register {
+            Some('+') => {
+                self.copy_to_clipboard(&content.text);
+            }
+            Some('*') => {
+                self.copy_to_selection(&content.text);
+            }
+            _ => {}
+        }
+        self.push_to_clipboard_history(content);
+    }
+
+    /// Get register content with clipboard fallback for `+`/`*` (#515 Phase 4).
+    ///
+    /// For system clipboard registers:
+    /// - `+`: reads from OS clipboard, falls back to per-client register
+    /// - `*`: reads from OS selection, falls back to per-client register
+    /// - All others: reads directly from per-client `RegisterBank`
+    pub fn get_register_with_clipboard(&self, register: Option<char>) -> Option<RegisterContent> {
+        match register {
+            Some('+') => self
+                .paste_from_clipboard()
+                .map(RegisterContent::characterwise)
+                .or_else(|| self.get_register(register)),
+            Some('*') => self
+                .paste_from_selection()
+                .map(RegisterContent::characterwise)
+                .or_else(|| self.get_register(register)),
+            _ => self.get_register(register),
         }
     }
 }
@@ -1495,7 +1621,11 @@ impl CompositorApi for SessionRuntime<'_> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::types::ClientId, reovim_kernel::api::v1::ModuleId};
+    use {
+        super::*,
+        crate::types::ClientId,
+        reovim_kernel::api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
+    };
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "normal")
@@ -1532,6 +1662,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1539,6 +1672,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1586,6 +1722,9 @@ mod tests {
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut client_registers = RegisterBank::new();
+        let mut client_clipboard_history = HistoryRing::new();
+        let mut client_local_marks = MarkBank::new();
 
         // #491: Session no longer has mode_stack field - use home_mode() from shared
         let session_home_mode = session.shared.home_mode().clone();
@@ -1599,6 +1738,9 @@ mod tests {
                 &mut client_windows,
                 &mut client_extensions,
                 &mut client_compositor,
+                &mut client_registers,
+                &mut client_clipboard_history,
+                &mut client_local_marks,
                 &kernel,
                 &executor,
             );
@@ -1634,6 +1776,9 @@ mod tests {
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut client_registers = RegisterBank::new();
+        let mut client_clipboard_history = HistoryRing::new();
+        let mut client_local_marks = MarkBank::new();
 
         // Runtime created with new() has no owner
         {
@@ -1643,6 +1788,9 @@ mod tests {
                 &mut client_windows,
                 &mut client_extensions,
                 &mut client_compositor,
+                &mut client_registers,
+                &mut client_clipboard_history,
+                &mut client_local_marks,
                 &kernel,
                 &executor,
             );
@@ -1659,6 +1807,9 @@ mod tests {
                 &mut client_windows,
                 &mut client_extensions,
                 &mut client_compositor,
+                &mut client_registers,
+                &mut client_clipboard_history,
+                &mut client_local_marks,
                 &kernel,
                 &executor,
             );
@@ -1680,10 +1831,16 @@ mod tests {
         let mut client1_windows = crate::WindowLayout::empty();
         let mut client1_extensions = crate::ExtensionMap::new();
         let mut client1_compositor = None;
+        let mut client1_registers = RegisterBank::new();
+        let mut client1_clipboard_history = HistoryRing::new();
+        let mut client1_local_marks = MarkBank::new();
         let mut client2_stack = ModeStack::new(test_mode());
         let mut client2_windows = crate::WindowLayout::empty();
         let mut client2_extensions = crate::ExtensionMap::new();
         let mut client2_compositor = None;
+        let mut client2_registers = RegisterBank::new();
+        let mut client2_clipboard_history = HistoryRing::new();
+        let mut client2_local_marks = MarkBank::new();
 
         // Client 1 enters insert mode (#471 Phase 0: use new())
         {
@@ -1693,6 +1850,9 @@ mod tests {
                 &mut client1_windows,
                 &mut client1_extensions,
                 &mut client1_compositor,
+                &mut client1_registers,
+                &mut client1_clipboard_history,
+                &mut client1_local_marks,
                 &kernel,
                 &executor,
             );
@@ -1707,6 +1867,9 @@ mod tests {
                 &mut client2_windows,
                 &mut client2_extensions,
                 &mut client2_compositor,
+                &mut client2_registers,
+                &mut client2_clipboard_history,
+                &mut client2_local_marks,
                 &kernel,
                 &executor,
             );
@@ -1733,6 +1896,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1740,6 +1906,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1797,6 +1966,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1804,6 +1976,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1833,6 +2008,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1840,6 +2018,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2395,6 +2576,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -2402,6 +2586,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2419,6 +2606,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -2426,6 +2616,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2443,6 +2636,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2450,6 +2646,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2468,6 +2667,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -2475,6 +2677,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2493,6 +2698,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -2500,6 +2708,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -2517,6 +2728,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2524,6 +2738,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3075,6 +3292,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3082,6 +3302,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3280,7 +3503,7 @@ mod tests {
         services: std::sync::Arc<reovim_kernel::api::v1::ServiceRegistry>,
     ) -> KernelContext {
         use reovim_kernel::api::v1::{
-            EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, TextObjectEngine,
+            EventBus, MarkBank, MotionEngine, OptionRegistry, TextObjectEngine,
         };
 
         KernelContext::new(
@@ -3288,7 +3511,6 @@ mod tests {
             std::sync::Arc::new(InMemoryBufferManager::new()),
             std::sync::Arc::new(MotionEngine),
             std::sync::Arc::new(TextObjectEngine),
-            std::sync::Arc::new(reovim_arch::sync::RwLock::new(RegisterBank::new())),
             std::sync::Arc::new(reovim_arch::sync::RwLock::new(MarkBank::new())),
             std::sync::Arc::new(OptionRegistry::new()),
             services,
@@ -3312,6 +3534,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3319,6 +3544,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3346,6 +3574,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3353,6 +3584,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3370,7 +3604,6 @@ mod tests {
     struct MockClipboard {
         clipboard: std::sync::Mutex<Option<String>>,
         selection: std::sync::Mutex<Option<String>>,
-        history: std::sync::Mutex<Vec<RegisterContent>>,
     }
 
     impl MockClipboard {
@@ -3378,7 +3611,6 @@ mod tests {
             Self {
                 clipboard: std::sync::Mutex::new(None),
                 selection: std::sync::Mutex::new(None),
-                history: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -3386,7 +3618,6 @@ mod tests {
             Self {
                 clipboard: std::sync::Mutex::new(Some(text.to_string())),
                 selection: std::sync::Mutex::new(None),
-                history: std::sync::Mutex::new(Vec::new()),
             }
         }
 
@@ -3394,33 +3625,12 @@ mod tests {
             Self {
                 clipboard: std::sync::Mutex::new(None),
                 selection: std::sync::Mutex::new(Some(text.to_string())),
-                history: std::sync::Mutex::new(Vec::new()),
-            }
-        }
-
-        fn with_history(entries: Vec<RegisterContent>) -> Self {
-            Self {
-                clipboard: std::sync::Mutex::new(None),
-                selection: std::sync::Mutex::new(None),
-                history: std::sync::Mutex::new(entries),
             }
         }
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
-        fn history(&self) -> Vec<RegisterContent> {
-            self.history.lock().unwrap().clone()
-        }
-        fn history_entry(&self, index: usize) -> Option<RegisterContent> {
-            self.history.lock().unwrap().get(index).cloned()
-        }
-        fn push_history(&self, content: RegisterContent) {
-            self.history.lock().unwrap().insert(0, content);
-        }
-        fn history_len(&self) -> usize {
-            self.history.lock().unwrap().len()
-        }
         fn clipboard_available(&self) -> bool {
             true
         }
@@ -3461,8 +3671,10 @@ mod tests {
         make_kernel_with_services(services)
     }
 
+    /// Raw `get_register(Some('+'))` returns `None` since `RegisterBank`
+    /// doesn't handle `+`. Use `get_register_with_clipboard` instead (#515).
     #[test]
-    fn test_get_register_clipboard_plus_with_provider() {
+    fn test_get_register_raw_clipboard_plus_returns_none() {
         use reovim_kernel::api::v1::ModeStack;
 
         let kernel = kernel_with_clipboard(MockClipboard::with_clipboard("from-clipboard"));
@@ -3472,6 +3684,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -3479,17 +3694,26 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
 
-        let content = runtime.get_register(Some('+'));
+        // Raw RegisterApi does NOT route + to clipboard
+        assert!(runtime.get_register(Some('+')).is_none());
+
+        // get_register_with_clipboard reads from OS clipboard
+        let content = runtime.get_register_with_clipboard(Some('+'));
         assert!(content.is_some());
         assert_eq!(content.unwrap().text, "from-clipboard");
     }
 
+    /// Raw `get_register(Some('*'))` returns `None`. Use
+    /// `get_register_with_clipboard` to read from OS selection (#515).
     #[test]
-    fn test_get_register_selection_star_with_provider() {
+    fn test_get_register_raw_selection_star_returns_none() {
         use reovim_kernel::api::v1::ModeStack;
 
         let kernel = kernel_with_clipboard(MockClipboard::with_selection("from-selection"));
@@ -3499,6 +3723,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -3506,11 +3733,18 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
 
-        let content = runtime.get_register(Some('*'));
+        // Raw RegisterApi does NOT route * to selection
+        assert!(runtime.get_register(Some('*')).is_none());
+
+        // get_register_with_clipboard reads from OS selection
+        let content = runtime.get_register_with_clipboard(Some('*'));
         assert!(content.is_some());
         assert_eq!(content.unwrap().text, "from-selection");
     }
@@ -3519,17 +3753,20 @@ mod tests {
     fn test_get_register_numbered_with_provider() {
         use reovim_kernel::api::v1::ModeStack;
 
-        let entries = vec![
-            RegisterContent::characterwise("yank-0"),
-            RegisterContent::characterwise("yank-1"),
-        ];
-        let kernel = kernel_with_clipboard(MockClipboard::with_history(entries));
+        let kernel = kernel_with_clipboard(MockClipboard::new());
         let mut session = Session::new(ClientId::new(1), test_mode());
         let executor = StubExecutor;
         let mut mode_stack = ModeStack::new(test_mode());
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        // Pre-populate per-client clipboard history (#515):
+        // push "yank-1" first so it becomes index 1, then "yank-0" so it becomes index 0
+        let mut clipboard_history = HistoryRing::new();
+        clipboard_history.push(RegisterContent::characterwise("yank-1"));
+        clipboard_history.push(RegisterContent::characterwise("yank-0"));
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -3537,6 +3774,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3550,8 +3790,11 @@ mod tests {
         assert_eq!(c1.unwrap().text, "yank-1");
     }
 
+    /// `set_register` for `+` does NOT store in `RegisterBank` (which only
+    /// handles a-z/A-Z/unnamed). Callers must use `store_register_with_sync`
+    /// for clipboard sync (#515 Phase 4).
     #[test]
-    fn test_set_register_clipboard_plus_with_provider() {
+    fn test_set_register_clipboard_plus_not_stored_in_register_bank() {
         use reovim_kernel::api::v1::ModeStack;
 
         let kernel = kernel_with_clipboard(MockClipboard::new());
@@ -3561,6 +3804,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3568,19 +3814,22 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
 
+        // Raw set_register does NOT store + in RegisterBank
         runtime.set_register(Some('+'), RegisterContent::characterwise("to-clipboard"));
-
-        let content = runtime.get_register(Some('+'));
-        assert!(content.is_some());
-        assert_eq!(content.unwrap().text, "to-clipboard");
+        assert!(runtime.get_register(Some('+')).is_none());
     }
 
+    /// `store_register_with_sync` for `+` syncs to clipboard and is readable
+    /// via `get_register_with_clipboard` (#515 Phase 4).
     #[test]
-    fn test_set_register_selection_star_with_provider() {
+    fn test_store_register_with_sync_clipboard_plus() {
         use reovim_kernel::api::v1::ModeStack;
 
         let kernel = kernel_with_clipboard(MockClipboard::new());
@@ -3590,6 +3839,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3597,13 +3849,86 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
+            &kernel,
+            &executor,
+        );
+
+        runtime.store_register_with_sync(Some('+'), RegisterContent::characterwise("to-clipboard"));
+
+        let content = runtime.get_register_with_clipboard(Some('+'));
+        assert!(content.is_some());
+        assert_eq!(content.unwrap().text, "to-clipboard");
+    }
+
+    /// Same as above but for `*` (selection).
+    #[test]
+    fn test_set_register_selection_star_not_stored_in_register_bank() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
 
         runtime.set_register(Some('*'), RegisterContent::characterwise("to-selection"));
+        assert!(runtime.get_register(Some('*')).is_none());
+    }
 
-        let content = runtime.get_register(Some('*'));
+    /// `store_register_with_sync` for `*` syncs to selection and is readable
+    /// via `get_register_with_clipboard` (#515 Phase 4).
+    #[test]
+    fn test_store_register_with_sync_selection_star() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        let kernel = kernel_with_clipboard(MockClipboard::new());
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            &mut mode_stack,
+            &mut windows,
+            &mut extensions,
+            &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
+            &kernel,
+            &executor,
+        );
+
+        runtime.store_register_with_sync(Some('*'), RegisterContent::characterwise("to-selection"));
+
+        let content = runtime.get_register_with_clipboard(Some('*'));
         assert!(content.is_some());
         assert_eq!(content.unwrap().text, "to-selection");
     }
@@ -3769,6 +4094,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3776,6 +4104,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3805,6 +4136,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -3812,6 +4146,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3834,6 +4171,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let runtime = SessionRuntime::new(
             &mut session,
@@ -3841,6 +4181,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3868,6 +4211,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3876,6 +4222,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3906,6 +4255,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3914,6 +4266,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -3939,6 +4294,9 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -3947,6 +4305,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -4106,6 +4467,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -4113,6 +4477,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -4144,6 +4511,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -4151,6 +4521,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -4183,6 +4556,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -4191,6 +4567,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -4223,6 +4602,9 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::with_owner(
             client_id,
@@ -4231,6 +4613,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -4255,9 +4640,22 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
-        let rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
 
         // BufferId::new() is not registered in the kernel
         let buf = BufferId::new();
@@ -4509,17 +4907,32 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn make_compositor_runtime<'a>(
         session: &'a mut Session,
         mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
         windows: &'a mut crate::WindowLayout,
         extensions: &'a mut crate::ExtensionMap,
         compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: &'a mut RegisterBank,
+        clipboard_history: &'a mut HistoryRing,
+        local_marks: &'a mut MarkBank,
         kernel: &'a KernelContext,
         executor: &'a StubExecutor,
     ) -> SessionRuntime<'a> {
         *compositor = Some(Box::new(MockRootCompositor::new()));
-        SessionRuntime::new(session, mode_stack, windows, extensions, compositor, kernel, executor)
+        SessionRuntime::new(
+            session,
+            mode_stack,
+            windows,
+            extensions,
+            compositor,
+            registers,
+            clipboard_history,
+            local_marks,
+            kernel,
+            executor,
+        )
     }
 
     #[test]
@@ -4532,6 +4945,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -4539,6 +4955,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4557,6 +4976,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4564,6 +4986,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4582,6 +5007,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4589,6 +5017,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4607,6 +5038,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4614,6 +5048,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4632,6 +5069,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4639,6 +5079,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4657,6 +5100,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4664,6 +5110,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4682,6 +5131,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -4689,6 +5141,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4707,6 +5162,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4714,6 +5172,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4732,6 +5193,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4739,6 +5203,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4758,6 +5225,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -4765,6 +5235,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4781,6 +5254,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -4788,6 +5264,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4804,6 +5283,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -4811,6 +5293,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4827,6 +5312,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4834,6 +5322,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4851,6 +5342,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4858,6 +5352,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4874,6 +5371,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4881,6 +5381,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4897,6 +5400,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4904,6 +5410,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4923,6 +5432,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4930,6 +5442,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4946,6 +5461,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4953,6 +5471,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4969,6 +5490,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4976,6 +5500,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -4992,6 +5519,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -4999,6 +5529,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -5015,6 +5548,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -5022,6 +5558,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -5038,6 +5577,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let rt = make_compositor_runtime(
             &mut session,
@@ -5045,6 +5587,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -5219,8 +5764,21 @@ mod tests {
         let mut e = crate::ExtensionMap::new();
         let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> =
             Some(Box::new(SingleWindowRootCompositor::new()));
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
 
         let result = rt.close_current_window();
         assert!(result.is_err());
@@ -5242,6 +5800,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         // Add a window with selection and move cursor
         let mut window = crate::Window::new();
@@ -5251,8 +5812,18 @@ mod tests {
         w.add(window);
 
         let buf = BufferId::new();
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
         rt.record_cursor_move(buf);
 
         let changes = rt.take_changes();
@@ -5276,6 +5847,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut window = crate::Window::new();
         window.cursor = Position::new(0, 3).into();
@@ -5283,8 +5857,18 @@ mod tests {
         w.add(window);
 
         let buf = BufferId::new();
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
         rt.record_cursor_move(buf);
 
         let changes = rt.take_changes();
@@ -5304,10 +5888,23 @@ mod tests {
         let mut w = crate::WindowLayout::empty(); // No windows added
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let buf = BufferId::new();
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
         rt.record_cursor_move(buf);
 
         let changes = rt.take_changes();
@@ -5327,10 +5924,23 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let buf = BufferId::new();
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
         rt.record_selection_change(buf);
 
         let changes = rt.take_changes();
@@ -5354,6 +5964,9 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
         let mut rt = make_compositor_runtime(
             &mut session,
@@ -5361,6 +5974,9 @@ mod tests {
             &mut w,
             &mut e,
             &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
             &kernel,
             &executor,
         );
@@ -5421,12 +6037,144 @@ mod tests {
         let mut e = crate::ExtensionMap::new();
         // No compositor
         let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> = None;
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
 
-        let mut rt =
-            SessionRuntime::new(&mut session, &mut ms, &mut w, &mut e, &mut c, &kernel, &executor);
+        let mut rt = SessionRuntime::new(
+            &mut session,
+            &mut ms,
+            &mut w,
+            &mut e,
+            &mut c,
+            &mut r,
+            &mut ch,
+            &mut lm,
+            &kernel,
+            &executor,
+        );
 
         let screen = Rect::new(0, 0, 80, 24);
         rt.set_screen(screen);
         assert_eq!(rt.screen, screen);
+    }
+
+    // =========================================================================
+    // Per-client accessor coverage (#515)
+    // =========================================================================
+
+    #[test]
+    fn test_registers_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let bank = runtime.registers();
+            assert!(bank.get().is_empty());
+        });
+    }
+
+    #[test]
+    fn test_registers_mut_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let bank = runtime.registers_mut();
+            bank.set_by_name(Some('a'), crate::api::RegisterContent::characterwise("test"));
+            assert_eq!(bank.get_named('a').map(|r| r.text.as_str()), Some("test"));
+        });
+    }
+
+    #[test]
+    fn test_clipboard_history_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let history = runtime.clipboard_history();
+            assert!(history.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_clipboard_history_mut_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let history = runtime.clipboard_history_mut();
+            history.push(crate::api::RegisterContent::characterwise("entry"));
+            assert_eq!(history.len(), 1);
+        });
+    }
+
+    #[test]
+    fn test_local_marks_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let marks = runtime.local_marks();
+            assert!(marks.get_local('a').is_none());
+        });
+    }
+
+    #[test]
+    fn test_local_marks_mut_accessor() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            let marks = runtime.local_marks_mut();
+            marks.set_local('a', reovim_kernel::api::v1::Position::new(0, 5));
+            assert!(marks.get_local('a').is_some());
+        });
+    }
+
+    // =========================================================================
+    // ClipboardApi else-branch coverage (#515)
+    // =========================================================================
+
+    #[test]
+    fn test_clipboard_api_no_provider_copy_to_clipboard() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            // No clipboard provider registered → returns false
+            assert!(!runtime.copy_to_clipboard("test"));
+        });
+    }
+
+    #[test]
+    fn test_clipboard_api_no_provider_paste_from_clipboard() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            // No clipboard provider registered → returns None
+            assert!(runtime.paste_from_clipboard().is_none());
+        });
+    }
+
+    #[test]
+    fn test_clipboard_api_no_provider_copy_to_selection() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            assert!(!runtime.copy_to_selection("test"));
+        });
+    }
+
+    #[test]
+    fn test_clipboard_api_no_provider_paste_from_selection() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            assert!(runtime.paste_from_selection().is_none());
+        });
     }
 }

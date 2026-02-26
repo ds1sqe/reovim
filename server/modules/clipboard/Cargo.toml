@@ -31,6 +31,10 @@ arboard.workspace = true
 # Logging
 tracing.workspace = true
 
+[dev-dependencies]
+reovim-testing = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
+
 [features]
 # Enable for building as standalone dynamic library
 dynamic = []

@@ -817,9 +817,9 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-                MarkBank, MotionEngine, OptionRegistry, RegisterBank, RwLock, ServiceRegistry,
-                TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
+                KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -903,6 +903,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -925,6 +928,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -935,6 +941,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 &StubExecutor,
             )
@@ -947,7 +956,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -1655,7 +1663,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -2079,7 +2086,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -2255,6 +2261,9 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2262,6 +2271,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &ctx,
             &StubExecutor,
         );
@@ -2298,7 +2310,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -2457,7 +2468,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,

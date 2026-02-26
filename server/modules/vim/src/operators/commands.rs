@@ -204,9 +204,9 @@ fn execute_operator(
         Range::new(start, end)
     };
 
-    // Get count and register
+    // Get count and register (#515: convert Option<char> → Register)
     let count = args.count().unwrap_or(1);
-    let register = args.register();
+    let register = super::registers::option_char_to_register(args.register());
 
     // Get cursor position from window (for undo tracking)
     let cursor_position = runtime
@@ -214,9 +214,13 @@ fn execute_operator(
         .active()
         .map_or_else(Position::origin, |w| Position::new(w.cursor.line, w.cursor.column));
 
-    // Build operator context using runtime's kernel (uses interior mutability)
+    // Build operator context using runtime's kernel and per-client registers (#515)
+    // Use split-borrow helper to avoid conflicting borrows on runtime
+    let (kernel, registers, clipboard_history) = runtime.kernel_and_registers();
     let mut op_ctx = OperatorContext {
-        kernel: runtime.kernel(),
+        kernel,
+        registers,
+        clipboard_history,
         buffer_id,
         register,
         count,
@@ -273,8 +277,8 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
-                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                Buffer, BufferError, BufferId, BufferManager, EventBus, HistoryRing, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
                 ServiceRegistry, TextObjectEngine,
             },
         },
@@ -358,6 +362,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -380,6 +387,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -390,6 +400,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 &StubExecutor,
             )
@@ -402,7 +415,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -559,8 +571,8 @@ mod tests {
         assert_eq!(buf.lines(), &["hello world"]);
 
         // Register should have yanked text
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello");
+        drop(runtime);
+        assert_eq!(state.registers.get().text, "hello");
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -671,8 +683,8 @@ mod tests {
         assert_eq!(buf.lines(), &["line1", "line2", "line3"]);
 
         // Register should contain yanked line
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line1\n");
+        drop(runtime);
+        assert_eq!(state.registers.get().text, "line1\n");
     }
 
     #[test]
@@ -713,8 +725,8 @@ mod tests {
         let result = DeleteCommand.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("hello"));
+        drop(runtime);
+        assert_eq!(state.registers.get_named('a').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -863,7 +875,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -973,8 +984,8 @@ mod tests {
         let result = YankCommand.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('z').map(|r| r.text.as_str()), Some("hello"));
+        drop(runtime);
+        assert_eq!(state.registers.get_named('z').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -998,6 +1009,9 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         // Add a window without buffer to have an active window
         let window = reovim_driver_session::Window::new();
@@ -1009,6 +1023,9 @@ mod tests {
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &ctx,
             &StubExecutor,
         );

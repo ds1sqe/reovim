@@ -20,7 +20,7 @@ use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
 use super::CaptureTracker;
 #[cfg(feature = "grpc")]
 use super::PresenceMap;
-use reovim_driver_session::ExtensionMap;
+use {reovim_driver_session::ExtensionMap, reovim_kernel::api::v1::RegisterContent};
 
 use super::{Client, ClientId, SessionId, SessionState};
 
@@ -669,11 +669,22 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions, compositor) = (
+        let (
+            mode_stack,
+            windows,
+            extensions,
+            compositor,
+            registers,
+            clipboard_history,
+            local_marks,
+        ) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
             &mut editing_state.compositor,
+            &mut editing_state.registers,
+            &mut editing_state.clipboard_history,
+            &mut editing_state.local_marks,
         );
 
         // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
@@ -683,6 +694,9 @@ impl Session {
             windows,
             extensions,
             compositor,
+            registers,
+            clipboard_history,
+            local_marks,
             key,
         )
     }
@@ -709,11 +723,22 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions, compositor) = (
+        let (
+            mode_stack,
+            windows,
+            extensions,
+            compositor,
+            registers,
+            clipboard_history,
+            local_marks,
+        ) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
             &mut editing_state.compositor,
+            &mut editing_state.registers,
+            &mut editing_state.clipboard_history,
+            &mut editing_state.local_marks,
         );
 
         state.try_on_command_complete_for_client(
@@ -722,6 +747,9 @@ impl Session {
             windows,
             extensions,
             compositor,
+            registers,
+            clipboard_history,
+            local_marks,
         )
     }
 
@@ -768,20 +796,34 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (mode_stack, windows, extensions, compositor) = (
+        let (
+            mode_stack,
+            windows,
+            extensions,
+            compositor,
+            registers,
+            clipboard_history,
+            local_marks,
+        ) = (
             &mut editing_state.mode_stack,
             &mut editing_state.windows,
             &mut editing_state.extensions,
             &mut editing_state.compositor,
+            &mut editing_state.registers,
+            &mut editing_state.clipboard_history,
+            &mut editing_state.local_marks,
         );
 
-        // Execute command with per-client state, passing client_id for per-client undo (#471)
+        // Execute command with per-client state, passing client_id for per-client undo (#471, #515)
         state.execute_command_for_client(
             target_id.as_usize(),
             mode_stack,
             windows,
             extensions,
             compositor,
+            registers,
+            clipboard_history,
+            local_marks,
             cmd_id,
             args,
         )
@@ -956,6 +998,51 @@ impl Session {
     pub fn dump_client_ring_buffer(&self, client_id: ClientId) -> Option<String> {
         self.with_client_ring_buffer(client_id, super::ring_buffer::ClientRingBuffer::dump)
     }
+
+    // ========================================================================
+    // Session-scoped registers (#515 Phase 5)
+    // ========================================================================
+
+    /// Get a session-shared register.
+    ///
+    /// Returns `None` if the register has not been set. Session registers
+    /// are shared across all clients in this session.
+    #[must_use]
+    pub fn get_session_register(&self, key: char) -> Option<RegisterContent> {
+        let state = self.state.read();
+        state.session_registers.get(&key).cloned()
+    }
+
+    /// Set a session-shared register.
+    ///
+    /// The content is immediately visible to all clients in this session.
+    pub fn set_session_register(&self, key: char, content: RegisterContent) {
+        let mut state = self.state.write();
+        state.session_registers.insert(key, content);
+    }
+
+    /// Read another client's history ring entry (`PeerHistory`).
+    ///
+    /// Returns `None` if the client doesn't exist or the index is out of range.
+    /// This is a read-only operation - you cannot modify another client's history.
+    #[must_use]
+    pub fn get_peer_history(&self, client_id: ClientId, index: u8) -> Option<RegisterContent> {
+        let clients = self.clients.read();
+        clients
+            .get(&client_id)
+            .and_then(|client| client.state.clipboard_history.get_by_index(index))
+            .cloned()
+    }
+
+    /// List connected client IDs (for peer history navigation).
+    ///
+    /// Returns a sorted list of client IDs currently in this session.
+    #[must_use]
+    pub fn connected_client_ids(&self) -> Vec<ClientId> {
+        let mut ids: Vec<_> = self.clients.read().keys().copied().collect();
+        ids.sort_unstable_by_key(ClientId::as_usize);
+        ids
+    }
 }
 
 #[cfg(test)]
@@ -1085,8 +1172,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
         };
 
@@ -1096,7 +1183,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1373,8 +1459,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -1384,7 +1470,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1850,8 +1935,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -1861,7 +1946,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1893,8 +1977,8 @@ mod tests {
             reovim_driver_buffer::TestBufferManager,
             reovim_driver_input::InputTarget,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -1904,7 +1988,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1942,8 +2025,8 @@ mod tests {
             reovim_driver_buffer::TestBufferManager,
             reovim_driver_input::InputTarget,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -1953,7 +2036,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -2027,8 +2109,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -2038,7 +2120,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -2203,7 +2284,7 @@ mod tests {
             reovim_driver_vfs::VfsDriver,
             reovim_kernel::api::v1::{
                 BufferId, Edit, EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry,
-                Position, RegisterBank, ServiceRegistry, TextObjectEngine, UndoResult, UndoTree,
+                Position, ServiceRegistry, TextObjectEngine, UndoResult, UndoTree,
             },
             std::sync::{Arc, Mutex},
         };
@@ -2305,7 +2386,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             services,
@@ -2468,8 +2548,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -2479,7 +2559,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -2718,8 +2797,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -2729,7 +2808,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -2772,8 +2850,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -2783,7 +2861,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -2869,5 +2946,142 @@ mod tests {
             })
             .unwrap();
         assert!(has_cmdline);
+    }
+
+    // ========================================================================
+    // Session register tests (#515 Phase 5)
+    // ========================================================================
+
+    #[test]
+    fn test_session_register_get_empty() {
+        let session = Session::new(SessionId::new("reg-test"));
+        assert!(session.get_session_register('A').is_none());
+    }
+
+    #[test]
+    fn test_session_register_set_and_get() {
+        let session = Session::new(SessionId::new("reg-test"));
+        session.set_session_register('A', RegisterContent::characterwise("shared"));
+        let content = session.get_session_register('A');
+        assert_eq!(content.as_ref().map(|c| c.text.as_str()), Some("shared"));
+    }
+
+    #[test]
+    fn test_session_register_overwrite() {
+        let session = Session::new(SessionId::new("reg-test"));
+        session.set_session_register('B', RegisterContent::characterwise("first"));
+        session.set_session_register('B', RegisterContent::characterwise("second"));
+        assert_eq!(session.get_session_register('B').map(|c| c.text), Some("second".to_string()));
+    }
+
+    #[test]
+    fn test_session_register_multiple_keys() {
+        let session = Session::new(SessionId::new("reg-test"));
+        session.set_session_register('A', RegisterContent::characterwise("alpha"));
+        session.set_session_register('Z', RegisterContent::linewise("zulu\n"));
+
+        assert_eq!(session.get_session_register('A').map(|c| c.text), Some("alpha".to_string()));
+        assert_eq!(session.get_session_register('Z').map(|c| c.text), Some("zulu\n".to_string()));
+        assert!(session.get_session_register('M').is_none());
+    }
+
+    // ========================================================================
+    // Peer history tests (#515 Phase 5)
+    // ========================================================================
+
+    #[test]
+    fn test_peer_history_client_not_found() {
+        let session = Session::new(SessionId::new("peer-test"));
+        assert!(session.get_peer_history(ClientId::new(99), 0).is_none());
+    }
+
+    #[test]
+    fn test_peer_history_empty_ring() {
+        let session = Session::new(SessionId::new("peer-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        // Client exists but history is empty
+        assert!(session.get_peer_history(client_id, 0).is_none());
+    }
+
+    #[test]
+    fn test_peer_history_with_entries() {
+        let session = Session::new(SessionId::new("peer-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Push to the client's history ring
+        session.update_client_state(client_id, |state| {
+            state
+                .clipboard_history
+                .push(RegisterContent::characterwise("first"));
+            state
+                .clipboard_history
+                .push(RegisterContent::characterwise("second"));
+        });
+
+        // Read peer history
+        assert_eq!(
+            session.get_peer_history(client_id, 0).map(|c| c.text),
+            Some("second".to_string())
+        );
+        assert_eq!(
+            session.get_peer_history(client_id, 1).map(|c| c.text),
+            Some("first".to_string())
+        );
+        assert!(session.get_peer_history(client_id, 2).is_none());
+    }
+
+    #[test]
+    fn test_peer_history_index_out_of_range() {
+        let session = Session::new(SessionId::new("peer-test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        session.update_client_state(client_id, |state| {
+            state
+                .clipboard_history
+                .push(RegisterContent::characterwise("only"));
+        });
+
+        assert!(session.get_peer_history(client_id, 0).is_some());
+        assert!(session.get_peer_history(client_id, 1).is_none());
+        assert!(session.get_peer_history(client_id, 255).is_none());
+    }
+
+    // ========================================================================
+    // connected_client_ids tests (#515 Phase 5)
+    // ========================================================================
+
+    #[test]
+    fn test_connected_client_ids_empty() {
+        let session = Session::new(SessionId::new("ids-test"));
+        assert!(session.connected_client_ids().is_empty());
+    }
+
+    #[test]
+    fn test_connected_client_ids_sorted() {
+        let session = Session::new(SessionId::new("ids-test"));
+        session.add_client(ClientId::new(5));
+        session.add_client(ClientId::new(1));
+        session.add_client(ClientId::new(3));
+
+        let ids = session.connected_client_ids();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids[0].as_usize(), 1);
+        assert_eq!(ids[1].as_usize(), 3);
+        assert_eq!(ids[2].as_usize(), 5);
+    }
+
+    #[test]
+    fn test_connected_client_ids_after_remove() {
+        let session = Session::new(SessionId::new("ids-test"));
+        session.add_client(ClientId::new(1));
+        session.add_client(ClientId::new(2));
+        session.remove_client(ClientId::new(1));
+
+        let ids = session.connected_client_ids();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].as_usize(), 2);
     }
 }

@@ -139,6 +139,9 @@ impl CommandRegistry {
         client_windows: &mut reovim_driver_session::WindowLayout,
         client_extensions: &mut reovim_driver_session::ExtensionMap,
         client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        client_registers: &mut reovim_kernel::api::v1::RegisterBank,
+        client_clipboard_history: &mut reovim_kernel::api::v1::HistoryRing,
+        client_local_marks: &mut reovim_kernel::api::v1::MarkBank,
         app: &AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
@@ -154,7 +157,7 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Create SessionRuntime with per-client state and owner (#471, #477)
+            // Create SessionRuntime with per-client state and owner (#471, #477, #515)
             // The owner enables undo_mine()/redo_mine() for per-client undo
             let stub_executor = StubCommandExecutor;
             let driver_client_id = DriverClientId::new(client_id);
@@ -165,6 +168,9 @@ impl CommandRegistry {
                 client_windows,
                 client_extensions,
                 client_compositor,
+                client_registers,
+                client_clipboard_history,
+                client_local_marks,
                 &app.kernel,
                 &stub_executor,
             );
@@ -322,7 +328,7 @@ mod tests {
         reovim_driver_command::{ArgSpec, Command},
         reovim_driver_session::ClientId,
         reovim_driver_vfs::MockVfs,
-        reovim_kernel::api::v1::ModuleId,
+        reovim_kernel::api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
     };
 
     fn test_vfs() -> Arc<dyn VfsDriver> {
@@ -427,6 +433,9 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1, // test client_id for per-client undo (#471)
@@ -436,6 +445,9 @@ mod tests {
             &mut client_windows,
             &mut client_extensions,
             &mut client_compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &app,
             &vfs,
             &args,
@@ -620,6 +632,9 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1,
@@ -629,6 +644,9 @@ mod tests {
             &mut client_windows,
             &mut client_extensions,
             &mut client_compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &app,
             &vfs,
             &args,
@@ -706,6 +724,9 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1,
@@ -715,6 +736,9 @@ mod tests {
             &mut client_windows,
             &mut client_extensions,
             &mut client_compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &app,
             &vfs,
             &args,

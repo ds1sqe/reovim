@@ -6,6 +6,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Per-client register isolation and type-safe Register enum (#515)**: Refactors
+  shared state to an explicit local/shared model. Registers (`RegisterBank`),
+  clipboard history (`HistoryRing`), and local marks (`MarkBank`) move from
+  shared `KernelContext` to per-client `EditingState`, fixing multi-client
+  isolation. Introduces kernel-level `Register` enum with six variants
+  (`Default`, `Slot`, `History`, `System`, `Session`, `PeerHistory`) for
+  compile-time register addressing. Decouples `ClipboardProvider` from register
+  routing into a standalone `ClipboardApi` trait. Adds session-scoped shared
+  registers (A-Z) via `SessionState.session_registers`. Expands `HistoryRing`
+  capacity from 10 to 256 entries. Updates gRPC `GetRegistersRequest` with
+  `client_id` field. Vim module operators use type-safe `Register` in
+  `OperatorContext` with `char_to_register`/`option_char_to_register` bridge
+  functions. E2E register and clipboard tests relocated to their policy module
+  crates (`reovim-module-vim`, `reovim-module-clipboard`).
+
 - **Headless web capture via Playwright (#516)**: `reovim cli capture --format png
   --web-url URL` produces pixel-perfect screenshots by running the real web client
   in headless Chromium via Playwright. Adds a Node.js capture script

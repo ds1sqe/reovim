@@ -524,7 +524,7 @@ impl StateService for StateServiceImpl {
         Ok(Response::new(SubmitCaptureResponseReply { ok }))
     }
 
-    /// Get register contents.
+    /// Get register contents from per-client state (#515).
     ///
     /// If names are specified, returns only those registers.
     /// If names is empty, returns all non-empty registers.
@@ -534,54 +534,57 @@ impl StateService for StateServiceImpl {
     ) -> Result<Response<GetRegistersResponse>, Status> {
         use reovim_kernel::api::v1::YankType;
 
+        let token_client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
-        let registers = session
-            .with_state(|state| {
-                let bank = state.app.kernel.registers.read();
+        let client_id = resolve_target_client_id(token_client_id, req.client_id)?;
 
-                if req.names.is_empty() {
-                    // Return all non-empty registers
-                    bank.iter_non_empty()
-                        .map(|(name, content)| {
-                            let yank_type_str = match content.yank_type {
-                                YankType::Characterwise => "char",
-                                YankType::Linewise => "line",
-                            };
-                            RegisterEntry {
-                                name: name.to_string(),
-                                content_type: "text".to_string(),
-                                content: content.text.clone(),
-                                yank_type: yank_type_str.to_string(),
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                } else {
-                    // Return only requested registers
-                    req.names
-                        .iter()
-                        .filter_map(|name| {
-                            let name_char = name.chars().next()?;
-                            let content = bank.get_by_name(Some(name_char))?;
-                            if content.is_empty() {
-                                return None;
-                            }
-                            let yank_type_str = match content.yank_type {
-                                YankType::Characterwise => "char",
-                                YankType::Linewise => "line",
-                            };
-                            Some(RegisterEntry {
-                                name: name_char.to_string(),
-                                content_type: "text".to_string(),
-                                content: content.text.clone(),
-                                yank_type: yank_type_str.to_string(),
-                            })
-                        })
-                        .collect()
-                }
-            })
-            .await;
+        let client_state = session.client_state(client_id).ok_or_else(|| {
+            Status::not_found(format!("Client {} not found", client_id.as_usize()))
+        })?;
+
+        let bank = &client_state.registers;
+
+        let registers = if req.names.is_empty() {
+            // Return all non-empty registers
+            bank.iter_non_empty()
+                .map(|(name, content)| {
+                    let yank_type_str = match content.yank_type {
+                        YankType::Characterwise => "char",
+                        YankType::Linewise => "line",
+                    };
+                    RegisterEntry {
+                        name: name.to_string(),
+                        content_type: "text".to_string(),
+                        content: content.text.clone(),
+                        yank_type: yank_type_str.to_string(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            // Return only requested registers
+            req.names
+                .iter()
+                .filter_map(|name| {
+                    let name_char = name.chars().next()?;
+                    let content = bank.get_by_name(Some(name_char))?;
+                    if content.is_empty() {
+                        return None;
+                    }
+                    let yank_type_str = match content.yank_type {
+                        YankType::Characterwise => "char",
+                        YankType::Linewise => "line",
+                    };
+                    Some(RegisterEntry {
+                        name: name_char.to_string(),
+                        content_type: "text".to_string(),
+                        content: content.text.clone(),
+                        yank_type: yank_type_str.to_string(),
+                    })
+                })
+                .collect()
+        };
 
         Ok(Response::new(GetRegistersResponse { registers }))
     }
@@ -611,8 +614,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
         };
 
@@ -622,7 +625,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -973,10 +975,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_registers_empty() {
-        let registry = test_registry();
+        let (registry, session) = test_registry_with_session();
+        session.add_client(ClientId::new(1));
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest { names: vec![] });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec![],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -990,22 +999,22 @@ mod tests {
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        // Set a register
-        session
-            .with_state_mut(|state| {
-                state
-                    .app
-                    .kernel
-                    .registers
-                    .write()
-                    .set(RegisterContent::characterwise("hello"));
-            })
-            .await;
+        // Set a register on the per-client state (#515)
+        session.update_client_state(ClientId::new(1), |state| {
+            state.registers.set(RegisterContent::characterwise("hello"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest { names: vec![] });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec![],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -1021,23 +1030,31 @@ mod tests {
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        // Set multiple registers
-        session
-            .with_state_mut(|state| {
-                let mut bank = state.app.kernel.registers.write();
-                bank.set(RegisterContent::characterwise("unnamed"));
-                bank.set_named('a', RegisterContent::linewise("alpha"));
-                bank.set_named('b', RegisterContent::characterwise("beta"));
-            })
-            .await;
+        // Set multiple registers on per-client state (#515)
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set(RegisterContent::characterwise("unnamed"));
+            state
+                .registers
+                .set_named('a', RegisterContent::linewise("alpha"));
+            state
+                .registers
+                .set_named('b', RegisterContent::characterwise("beta"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query only register 'a'
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["a".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["a".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -1667,12 +1684,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_registers_specific_nonexistent_register() {
-        let registry = test_registry();
+        let (registry, session) = test_registry_with_session();
+        session.add_client(ClientId::new(1));
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["z".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["z".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -1686,21 +1708,24 @@ mod tests {
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        session
-            .with_state_mut(|state| {
-                state
-                    .app
-                    .kernel
-                    .registers
-                    .write()
-                    .set(RegisterContent::linewise("line content\n"));
-            })
-            .await;
+        // Set register on per-client state (#515)
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set(RegisterContent::linewise("line content\n"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest { names: vec![] });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec![],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -1968,26 +1993,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_registers_specific_register_with_content() {
-        // Test the specific register lookup path (lines 557-576) where
+        // Test the specific register lookup path where
         // the register exists and has content.
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        // Set a named register
-        session
-            .with_state_mut(|state| {
-                let mut bank = state.app.kernel.registers.write();
-                bank.set_named('a', RegisterContent::characterwise("hello world"));
-            })
-            .await;
+        // Set a named register on per-client state (#515)
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('a', RegisterContent::characterwise("hello world"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         // Query register 'a' by name
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["a".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["a".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -2000,23 +2029,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_registers_specific_linewise_register() {
-        // Test the linewise yank_type path in specific register lookup (line 566).
+        // Test the linewise yank_type path in specific register lookup.
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        session
-            .with_state_mut(|state| {
-                let mut bank = state.app.kernel.registers.write();
-                bank.set_named('b', RegisterContent::linewise("a full line\n"));
-            })
-            .await;
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('b', RegisterContent::linewise("a full line\n"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["b".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["b".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -2031,21 +2064,27 @@ mod tests {
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        session
-            .with_state_mut(|state| {
-                let mut bank = state.app.kernel.registers.write();
-                bank.set_named('a', RegisterContent::characterwise("alpha"));
-                bank.set_named('b', RegisterContent::linewise("beta\n"));
-                // 'c' not set
-            })
-            .await;
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('a', RegisterContent::characterwise("alpha"));
+            state
+                .registers
+                .set_named('b', RegisterContent::linewise("beta\n"));
+            // 'c' not set
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["a".to_string(), "b".to_string(), "c".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());
@@ -2056,24 +2095,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_registers_specific_empty_register_filtered_out() {
-        // Test that a register with empty content is filtered out (line 562-563).
+        // Test that a register with empty content is filtered out.
         use reovim_kernel::api::v1::RegisterContent;
 
         let (registry, session) = test_registry_with_buffer_manager();
+        session.add_client(ClientId::new(1));
 
-        session
-            .with_state_mut(|state| {
-                let mut bank = state.app.kernel.registers.write();
-                bank.set_named('x', RegisterContent::characterwise(""));
-                bank.set_named('y', RegisterContent::characterwise("visible"));
-            })
-            .await;
+        session.update_client_state(ClientId::new(1), |state| {
+            state
+                .registers
+                .set_named('x', RegisterContent::characterwise(""));
+            state
+                .registers
+                .set_named('y', RegisterContent::characterwise("visible"));
+        });
 
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetRegistersRequest {
-            names: vec!["x".to_string(), "y".to_string()],
-        });
+        let request = authed_request(
+            GetRegistersRequest {
+                names: vec!["x".to_string(), "y".to_string()],
+                client_id: 1,
+            },
+            ClientId::new(1),
+        );
         let response = service.get_registers(request).await;
 
         assert!(response.is_ok());

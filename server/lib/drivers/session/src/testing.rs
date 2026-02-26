@@ -36,8 +36,8 @@ use {
     reovim_arch::sync::RwLock,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_kernel::api::v1::{
-        Buffer, BufferError, BufferId, BufferManager, CommandId, KernelContext, ModeId, ModeStack,
-        ModuleId, Position,
+        Buffer, BufferError, BufferId, BufferManager, CommandId, HistoryRing, KernelContext,
+        MarkBank, ModeId, ModeStack, ModuleId, Position, RegisterBank,
     },
     std::{collections::HashMap, sync::Arc},
 };
@@ -89,6 +89,12 @@ pub struct TestSessionRuntime {
     ///
     /// `None` for tests that don't need compositor. Matches `EditingState.compositor`.
     compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+    /// Per-client register storage (#515).
+    registers: RegisterBank,
+    /// Per-client clipboard history ring (#515).
+    clipboard_history: HistoryRing,
+    /// Per-client local marks (#515).
+    local_marks: MarkBank,
     kernel: KernelContext,
     executor: StubExecutor,
     /// Accumulated changes from operations.
@@ -105,8 +111,7 @@ impl TestSessionRuntime {
     /// Create a `KernelContext` that uses a real buffer manager for testing.
     fn make_test_kernel() -> KernelContext {
         use reovim_kernel::api::v1::{
-            EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, ServiceRegistry,
-            TextObjectEngine,
+            EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
         };
 
         KernelContext::new(
@@ -114,7 +119,6 @@ impl TestSessionRuntime {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -131,6 +135,9 @@ impl TestSessionRuntime {
             windows: WindowLayout::empty(),                             // Per-client state
             extensions: ExtensionMap::new(),                            // Per-client state
             compositor: None,                                           // Per-client (#474)
+            registers: RegisterBank::new(),                             // Per-client (#515)
+            clipboard_history: HistoryRing::new(),                      // Per-client (#515)
+            local_marks: MarkBank::new(),                               // Per-client (#515)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -146,6 +153,9 @@ impl TestSessionRuntime {
             windows: WindowLayout::empty(),                        // Per-client state
             extensions: ExtensionMap::new(),                       // Per-client state
             compositor: None,                                      // Per-client (#474)
+            registers: RegisterBank::new(),                        // Per-client (#515)
+            clipboard_history: HistoryRing::new(),                 // Per-client (#515)
+            local_marks: MarkBank::new(),                          // Per-client (#515)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -200,11 +210,14 @@ impl TestSessionRuntime {
         // Phase #471 Phase 0: Use new() with per-client state from SEPARATE fields
         // (not from session, which would cause double mutable borrow)
         let mut runtime = SessionRuntime::new(
-            &mut self.session,    // Shared infra (no conflict)
-            &mut self.mode_stack, // Separate field (no conflict)
-            &mut self.windows,    // Separate field (no conflict)
-            &mut self.extensions, // Separate field (no conflict)
-            &mut self.compositor, // Per-client compositor (#474)
+            &mut self.session,           // Shared infra (no conflict)
+            &mut self.mode_stack,        // Separate field (no conflict)
+            &mut self.windows,           // Separate field (no conflict)
+            &mut self.extensions,        // Separate field (no conflict)
+            &mut self.compositor,        // Per-client compositor (#474)
+            &mut self.registers,         // Per-client registers (#515)
+            &mut self.clipboard_history, // Per-client clipboard history (#515)
+            &mut self.local_marks,       // Per-client local marks (#515)
             &self.kernel,
             &self.executor,
         );
@@ -230,6 +243,9 @@ impl TestSessionRuntime {
             &mut self.windows,
             &mut self.extensions,
             &mut self.compositor,
+            &mut self.registers,
+            &mut self.clipboard_history,
+            &mut self.local_marks,
             &self.kernel,
             &self.executor,
         )

@@ -161,8 +161,8 @@ impl Operator for ChangeOperator {
             RegisterContent::characterwise(deleted_text)
         };
 
-        registers::store_to_register(ctx.kernel, ctx.register, &content);
-        registers::push_to_history(ctx.kernel, &content);
+        registers::store_and_sync(ctx.kernel, ctx.registers, ctx.register, &content);
+        registers::push_to_history(ctx.clipboard_history, &content);
 
         // Note: Insert mode transition is handled by the caller
         // The server/display driver should check operator id and enter insert mode
@@ -180,7 +180,11 @@ impl Operator for ChangeOperator {
 }
 
 #[cfg(test)]
-#[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
+#[allow(
+    clippy::significant_drop_tightening,
+    clippy::uninlined_format_args,
+    clippy::drop_non_drop
+)]
 mod tests {
     use {
         super::*,
@@ -191,9 +195,9 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
-                RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
+                Register, RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -223,12 +227,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             ctx,
             &executor,
         );
@@ -294,7 +304,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -327,10 +336,14 @@ mod tests {
     fn test_change_buffer_not_found() {
         let ctx = create_test_context();
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id: BufferId::from_raw(999),
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -346,10 +359,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -362,8 +379,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &[" world"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello");
     }
 
     #[test]
@@ -373,10 +390,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -385,8 +406,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "lo\nwor");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "lo\nwor");
     }
 
     #[test]
@@ -396,10 +417,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -408,8 +433,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello\n");
     }
 
     #[test]
@@ -419,10 +444,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -431,8 +460,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "world\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "world\n");
     }
 
     #[test]
@@ -442,10 +471,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('b'),
+            register: Register::Slot('b'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -453,8 +486,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('b').map(|r| r.text.as_str()), Some("hello"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('b').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -464,10 +497,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -489,10 +526,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -501,8 +542,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line1\nline2\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "line1\nline2\n");
     }
 
     #[test]
@@ -512,10 +553,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
         };
@@ -524,8 +569,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "aa\nbbb\ncc");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "aa\nbbb\ncc");
     }
 
     #[test]
@@ -535,10 +580,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -551,8 +600,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["ello"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "h");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "h");
     }
 
     #[test]
@@ -562,10 +611,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -574,8 +627,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "b\nc\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "b\nc\n");
     }
 
     #[test]
@@ -605,10 +658,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -617,8 +674,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hi");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hi");
     }
 
     #[test]
@@ -628,10 +685,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -639,8 +700,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "only\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "only\n");
     }
 
     #[test]
@@ -650,10 +711,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
         };
@@ -662,8 +727,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "llo\nwor");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "llo\nwor");
     }
 
     #[test]
@@ -673,10 +738,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('z'),
+            register: Register::Slot('z'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -684,8 +753,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('z').map(|r| r.text.as_str()), Some("world"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('z').map(|r| r.text.as_str()), Some("world"));
     }
 
     // ========================================================================
@@ -768,7 +837,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -784,10 +852,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -813,10 +885,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -835,10 +911,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -861,10 +941,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -873,8 +957,8 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "world\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "world\n");
     }
 
     #[test]
@@ -885,10 +969,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
         };
@@ -945,10 +1033,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -957,10 +1049,10 @@ mod tests {
         let result = change.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
+        drop(op_ctx);
         // All lines should be in register as linewise
-        assert_eq!(regs.get().text, "a\nb\nc\n");
-        assert!(regs.get().is_linewise());
+        assert_eq!(registers.get().text, "a\nb\nc\n");
+        assert!(registers.get().is_linewise());
     }
 
     #[test]
@@ -970,18 +1062,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         change.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_characterwise());
+        drop(op_ctx);
+        assert!(registers.get().is_characterwise());
     }
 
     #[test]
@@ -991,18 +1087,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         change.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_linewise());
+        drop(op_ctx);
+        assert!(registers.get().is_linewise());
     }
 
     #[test]
@@ -1013,10 +1113,14 @@ mod tests {
 
         let change = ChangeOperator;
         let cursor_before = Position::new(0, 3);
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
         };

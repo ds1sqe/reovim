@@ -193,6 +193,10 @@ message GetScreenContentResponse {
 
 message GetRegistersRequest {
   repeated string names = 1;  // Register names to query (empty = all non-empty)
+  // Per-client state (#515): Per-client register isolation.
+  // If client_id > 0, returns the registers for that specific client.
+  // If client_id == 0 (default), returns the authenticated client's registers.
+  uint64 client_id = 2;
 }
 
 message GetRegistersResponse {

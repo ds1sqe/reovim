@@ -43,6 +43,7 @@
 
 mod config;
 mod direction;
+mod history;
 mod jumplist;
 mod mark;
 mod mode;
@@ -54,6 +55,9 @@ mod textobj;
 // Re-export direction types
 pub use direction::{Direction, LinePosition, WordBoundary};
 
+// Re-export history types
+pub use history::HistoryRing;
+
 // Re-export jumplist types
 pub use jumplist::{JumpEntry, Jumplist, MAX_JUMPLIST_SIZE};
 
@@ -64,7 +68,7 @@ pub use mark::{Mark, MarkBank, MarkResult, SpecialMark};
 pub use motion::{Motion, MotionEngine};
 
 // Re-export register types
-pub use register::{RegisterBank, RegisterContent, YankType};
+pub use register::{Register, RegisterBank, RegisterContent, YankType};
 
 // Re-export text object types
 pub use textobj::{TextObject, TextObjectEngine};

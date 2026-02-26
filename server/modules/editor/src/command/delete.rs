@@ -13,7 +13,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{BufferApi, SessionRuntime, api::RegisterApi},
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
@@ -198,10 +198,10 @@ impl CommandHandler for DeleteLine {
             }
         }
 
-        // Store in register via RegisterApi
+        // Store in register with clipboard sync (#515)
         let content = RegisterContent::linewise(deleted_text);
         let register = args.register();
-        runtime.set_register(register, content);
+        runtime.store_register_with_sync(register, content);
 
         // Calculate delete range
         let end_line = start_line + lines_to_delete;
@@ -296,10 +296,10 @@ impl CommandHandler for DeleteToEndOfLine {
             .map(|line| line[pos.column..].to_string())
             .unwrap_or_default();
 
-        // Store in register via RegisterApi
+        // Store in register with clipboard sync (#515)
         let content = RegisterContent::characterwise(deleted_text);
         let register = args.register();
-        runtime.set_register(register, content);
+        runtime.store_register_with_sync(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let end = Position::new(pos.line, line_len);
@@ -322,8 +322,8 @@ mod tests {
             ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+                MotionEngine, OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -406,7 +406,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -419,6 +418,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -431,6 +433,9 @@ mod tests {
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             };
             let mut window = Window::new();
             window.buffer_id = Some(buffer_id);
@@ -450,6 +455,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 executor,
             )
@@ -491,12 +499,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -517,12 +531,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -664,12 +684,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -690,12 +716,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -872,12 +904,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -915,10 +953,9 @@ mod tests {
         let result = DeleteLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Check register has deleted content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register has deleted content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "only line\n");
     }
@@ -997,10 +1034,9 @@ mod tests {
         assert_eq!(buf_read.line(1), Some("line 4"));
         drop(buf_read);
 
-        // Check register content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 1\nline 2\n");
     }
@@ -1061,12 +1097,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1087,12 +1129,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -1120,10 +1168,9 @@ mod tests {
         let content = buf.read().line(0).map(str::to_owned);
         assert_eq!(content.as_deref(), Some(""));
 
-        // Check register content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(!content.is_linewise());
         assert_eq!(content.text, "hello world");
     }
@@ -1194,10 +1241,9 @@ mod tests {
         let result = DeleteLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Check register has the deleted content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // Check register has the deleted content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "only line here\n");
     }
@@ -1218,10 +1264,9 @@ mod tests {
         let result = DeleteLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // All lines should be deleted
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        // All lines should be deleted (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "first\nsecond\nthird\n");
     }

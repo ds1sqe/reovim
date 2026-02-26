@@ -8,7 +8,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{RegisterApi, SessionRuntime, api::BufferApi},
+    reovim_driver_session::{SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -48,8 +48,8 @@ impl CommandHandler for PasteAfter {
         let count = args.count().unwrap_or(1);
         let register = args.register();
 
-        // Get register content via RegisterApi
-        let content = runtime.get_register(register);
+        // Get register content with clipboard fallback for +/* (#515)
+        let content = runtime.get_register_with_clipboard(register);
 
         let Some(content) = content else {
             return CommandResult::Success; // Empty register
@@ -176,8 +176,8 @@ impl CommandHandler for PasteBefore {
         let count = args.count().unwrap_or(1);
         let register = args.register();
 
-        // Get register content via RegisterApi
-        let content = runtime.get_register(register);
+        // Get register content with clipboard fallback for +/* (#515)
+        let content = runtime.get_register_with_clipboard(register);
 
         let Some(content) = content else {
             return CommandResult::Success; // Empty register
@@ -257,8 +257,8 @@ mod tests {
             ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+                MotionEngine, OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -341,7 +341,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -354,6 +353,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -366,6 +368,9 @@ mod tests {
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             };
             let mut window = Window::new();
             window.buffer_id = Some(buffer_id);
@@ -385,6 +390,9 @@ mod tests {
                 &mut self.windows,
                 &mut self.extensions,
                 &mut self.compositor,
+                &mut self.registers,
+                &mut self.clipboard_history,
+                &mut self.local_marks,
                 kernel,
                 executor,
             )
@@ -425,12 +433,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -458,11 +472,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise(""));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise(""));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -476,10 +487,6 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X"));
         let mode = test_mode();
         let mut session = Session::new(ClientId::new(1), mode.clone());
         let executor = StubExecutor;
@@ -487,12 +494,19 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        registers.set(RegisterContent::characterwise("X"));
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -507,11 +521,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line one\nline two");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("pasted\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -538,11 +549,10 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::new();
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted line\n"));
         let mut state = TestState::with_window(buffer_id);
+        state
+            .registers
+            .set(RegisterContent::linewise("pasted line\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -561,11 +571,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("XYZ"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("XYZ"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -587,11 +594,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("AB"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("AB"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -609,11 +613,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X\nY"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("X\nY"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -631,11 +632,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("X"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -654,11 +652,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line one");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("pasted\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -709,12 +704,18 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -742,11 +743,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise(""));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise(""));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -760,10 +758,6 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X"));
         let mode = test_mode();
         let mut session = Session::new(ClientId::new(1), mode.clone());
         let executor = StubExecutor;
@@ -771,12 +765,19 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        registers.set(RegisterContent::characterwise("X"));
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
             &mut mode_stack,
             &mut windows,
             &mut extensions,
             &mut compositor,
+            &mut registers,
+            &mut clipboard_history,
+            &mut local_marks,
             &kernel,
             &executor,
         );
@@ -791,11 +792,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line one\nline two");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("pasted\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -822,11 +820,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("XYZ"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("XYZ"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -848,11 +843,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("A\nB"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("A\nB"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -870,11 +862,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("X"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -895,11 +884,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("test"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("test"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -918,11 +904,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line one");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("A\nB\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("A\nB\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -968,11 +951,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("A\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("A\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -993,11 +973,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("A\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("A\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1021,11 +998,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("X\nY"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("X\nY"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1050,11 +1024,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("AB"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("AB"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1083,11 +1054,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("pasted\n"));
         if let Some(window) = state.windows.active_mut() {
             window.cursor = Position::new(1, 0).into();
         }
@@ -1122,11 +1090,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("line 1\nline 2\nline 3");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::linewise("pasted\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::linewise("pasted\n"));
         if let Some(window) = state.windows.active_mut() {
             window.cursor = Position::new(1, 0).into();
         }
@@ -1161,11 +1126,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("A\n\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("A\n\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1187,11 +1149,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("A\n\n"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("A\n\n"));
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
         let mut args = CommandContext::new();
@@ -1257,11 +1216,8 @@ mod tests {
         let kernel = create_test_context();
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-        kernel
-            .registers
-            .write()
-            .set(RegisterContent::characterwise("XY"));
         let mut state = TestState::with_window(buffer_id);
+        state.registers.set(RegisterContent::characterwise("XY"));
         if let Some(window) = state.windows.active_mut() {
             window.cursor = Position::new(0, 4).into(); // last char 'o'
         }

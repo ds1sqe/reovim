@@ -837,8 +837,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
         };
 
@@ -847,7 +847,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1103,8 +1102,8 @@ mod tests {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
         };
 
@@ -1113,7 +1112,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),

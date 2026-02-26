@@ -34,7 +34,7 @@ use {
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
-        OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
+        OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
     reovim_server::{
@@ -320,7 +320,6 @@ fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
         Arc::new(reovim_driver_buffer::TestBufferManager::new()),
         Arc::new(MotionEngine),
         Arc::new(TextObjectEngine),
-        Arc::new(RwLock::new(RegisterBank::new())),
         Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,

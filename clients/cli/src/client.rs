@@ -437,7 +437,10 @@ impl GrpcClient {
         &mut self,
         names: Vec<String>,
     ) -> Result<GetRegistersResponse, GrpcClientError> {
-        let request = self.make_request(GetRegistersRequest { names });
+        let request = self.make_request(GetRegistersRequest {
+            names,
+            client_id: 0, // 0 = self (authenticated client)
+        });
         let response = self.state.get_registers(request).await?;
         Ok(response.into_inner())
     }

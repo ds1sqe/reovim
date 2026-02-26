@@ -47,7 +47,7 @@ use {
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, Viewport, Window,
         WindowLayout,
     },
-    reovim_kernel::api::v1::ModeStack,
+    reovim_kernel::api::v1::{HistoryRing, MarkBank, ModeStack, RegisterBank},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};
@@ -606,6 +606,26 @@ pub struct EditingState {
     /// independent ID namespaces, causing cross-namespace mismatches in
     /// notifications and state queries.
     pub compositor: Option<Box<dyn RootCompositor>>,
+
+    /// Per-client register storage (#515).
+    ///
+    /// Each client owns their own registers (unnamed `""`, named `a-z`/`A-Z`).
+    /// System clipboard (`+`, `*`) remains shared via `ClipboardProvider`.
+    /// This prevents Client A's `"ayy` from overwriting Client B's register 'a'.
+    pub registers: RegisterBank,
+
+    /// Per-client clipboard history ring (#515).
+    ///
+    /// Tracks yank/delete history for numbered registers `0-9`.
+    /// Each client has independent history so Client A's deletes don't
+    /// shift Client B's numbered registers.
+    pub clipboard_history: HistoryRing,
+
+    /// Per-client local marks (a-z, per-client special marks) (#515).
+    ///
+    /// Each client owns their own local marks. Global marks (A-Z) remain
+    /// shared in `KernelContext.global_marks`.
+    pub local_marks: MarkBank,
 }
 
 impl std::fmt::Debug for EditingState {
@@ -618,6 +638,9 @@ impl std::fmt::Debug for EditingState {
             .field("selection", &self.selection)
             .field("extensions", &self.extensions)
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .field("registers", &self.registers)
+            .field("clipboard_history", &self.clipboard_history)
+            .field("local_marks", &self.local_marks)
             .finish()
     }
 }
@@ -637,6 +660,9 @@ impl Clone for EditingState {
             selection: self.selection.clone(),
             extensions: ExtensionMap::new(), // Fresh extensions for cloned state
             compositor: self.compositor.as_ref().map(|c| c.boxed_clone()), // #474
+            registers: self.registers.clone(), // #515
+            clipboard_history: self.clipboard_history.clone(), // #515
+            local_marks: self.local_marks.clone(), // #515
         }
     }
 }
@@ -656,6 +682,9 @@ impl Default for EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            registers: RegisterBank::new(),
+            clipboard_history: HistoryRing::new(),
+            local_marks: MarkBank::new(),
         }
     }
 }
@@ -672,6 +701,9 @@ impl EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            registers: RegisterBank::new(),
+            clipboard_history: HistoryRing::new(),
+            local_marks: MarkBank::new(),
         }
     }
 
@@ -690,6 +722,9 @@ impl EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            registers: RegisterBank::new(),
+            clipboard_history: HistoryRing::new(),
+            local_marks: MarkBank::new(),
         }
     }
 
