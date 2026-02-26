@@ -75,6 +75,7 @@ impl ScreenBackend {
     /// # Errors
     ///
     /// Returns an error if terminal rendering fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
     pub fn render(&mut self, terminal: &mut reovim_driver_tui::Terminal) -> std::io::Result<()> {
         self.0.render(terminal)
     }

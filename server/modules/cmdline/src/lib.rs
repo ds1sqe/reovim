@@ -102,8 +102,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
     fn test_module_default() {
-        let module = CmdlineModule;
+        let module = CmdlineModule::default();
         assert_eq!(module.id().as_str(), "cmdline");
     }
 

@@ -376,6 +376,20 @@ mod tests {
     }
 
     #[test]
+    fn test_render_overflow_narrow_popup() {
+        let mut ext = CmdlineExtension::new();
+        // Long input + completions that exceed popup content width
+        ext.apply_notification(
+            r#"{"active":true,"prompt":":","input":"this_is_a_very_long_command_that_overflows","cursor":42,"completions":["this_is_a_very_long_completion_candidate"],"completion_index":0}"#,
+        );
+
+        // Very narrow terminal — content overflows trigger break branches
+        let mut fb = FrameBuffer::new(16, 24);
+        ext.render(&mut fb);
+        // Should render without panic — overflow branches hit
+    }
+
+    #[test]
     fn test_trait_object() {
         let ext: Box<dyn TuiExtension> = Box::new(CmdlineExtension::new());
         assert_eq!(ext.kind(), "cmdline");

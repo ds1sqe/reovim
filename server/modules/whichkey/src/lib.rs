@@ -96,8 +96,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
     fn test_module_default() {
-        let module = WhichKeyModule;
+        let module = WhichKeyModule::default();
         assert_eq!(module.id().as_str(), "whichkey");
     }
 

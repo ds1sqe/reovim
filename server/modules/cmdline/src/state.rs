@@ -1125,6 +1125,31 @@ mod tests {
     }
 
     #[test]
+    fn test_search_history_navigation() {
+        let mut state = CmdlineState::default();
+
+        // Build search history
+        state.enter(CmdlinePrompt::SearchForward);
+        for ch in "foo".chars() {
+            state.insert_char(ch);
+        }
+        state.push_to_history();
+
+        state.enter(CmdlinePrompt::SearchForward);
+        for ch in "bar".chars() {
+            state.insert_char(ch);
+        }
+        state.push_to_history();
+
+        // Navigate search history (exercises current_history with search prompt)
+        state.enter(CmdlinePrompt::SearchForward);
+        state.history_up();
+        assert_eq!(state.input(), "bar");
+        state.history_up();
+        assert_eq!(state.input(), "foo");
+    }
+
+    #[test]
     fn test_enter_resets_history_navigation() {
         let mut state = CmdlineState::default();
         state.enter(CmdlinePrompt::Command);

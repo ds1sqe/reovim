@@ -315,6 +315,16 @@ mod tests {
     }
 
     #[test]
+    fn test_extension_default_cursor_position() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        // Default cursor_position returns None
+        assert!(ext.cursor_position(80, 24).is_none());
+    }
+
+    #[test]
     fn test_extension_trait_object() {
         let ext: Box<dyn TuiExtension> = Box::new(MockExtension {
             active: true,
