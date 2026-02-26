@@ -2129,6 +2129,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_registers_client_not_found() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        // Non-existent client should return NotFound
+        let request = authed_request(
+            GetRegistersRequest {
+                client_id: 999,
+                names: vec![],
+            },
+            ClientId::new(999),
+        );
+        let response = service.get_registers(request).await;
+
+        assert!(response.is_err());
+        assert_eq!(response.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
     async fn test_selection_isolation_per_client() {
         use {
             reovim_driver_session::{Viewport, api::Selection},

@@ -227,6 +227,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   State-query RPCs (`get_mode`, `get_cursor`, `get_layout`) use the token for
   caller authentication while the body `client_id` selects the target (0 = self).
 
+- **Vim-specific comments in mechanism layer (#515)**: Replaced 5 Vim-leaking
+  comments in `session/state.rs` (operator interception, mode push, command
+  complete flow) with generic mechanism descriptions that reference modes and
+  resolvers without naming specific keys (`d`, `y`, `c`) or Vim types
+  (`VimSessionState`).
+
+- **Server crate patch coverage restored to 100% (#515)**: Added 25 tests
+  across 6 server crate files covering 97 previously uncovered lines:
+  `PendingBindings` population on Pending/Push/Completed results with parent
+  mode inheritance (state.rs), debug service session paths (debug.rs), extension
+  service get/list (extension.rs), keybinding snapshot search (command.rs),
+  register client-not-found (state.rs), shared scope notification (notification_builder.rs).
+
 ### Removed
 
 - **Dead `CmdlineBuffer` from `AppState` (#452)**: Removed unused `CmdlineBuffer`

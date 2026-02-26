@@ -960,4 +960,210 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().code(), tonic::Code::Unavailable);
     }
+
+    // ── Tests with real sessions (covers `with_sessions()` paths) ────────
+
+    use reovim_driver_session::{
+        ExtensionMap,
+        bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
+    };
+
+    struct TestBridge {
+        kind_str: &'static str,
+        bridge_scope: ExtensionScope,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ExtensionStateBridge for TestBridge {
+        fn kind(&self) -> &'static str {
+            self.kind_str
+        }
+        fn scope(&self) -> ExtensionScope {
+            self.bridge_scope
+        }
+        fn snapshot(&self, _: &ExtensionMap) -> Option<serde_json::Value> {
+            Some(serde_json::json!({"test": true}))
+        }
+        fn is_active(&self, _: &ExtensionMap) -> bool {
+            true
+        }
+    }
+
+    fn test_debug_service_with_session() -> (DebugServiceImpl, Arc<crate::session::Session>) {
+        let session_id = crate::session::SessionId::new("test");
+        let session = Arc::new(crate::session::Session::new(session_id.clone()));
+        let sessions = Arc::new(crate::session::SessionRegistry::new());
+        sessions.insert(&session);
+
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(TestBridge {
+            kind_str: "test-ext",
+            bridge_scope: ExtensionScope::Client,
+        });
+        bridges.register(TestBridge {
+            kind_str: "shared-ext",
+            bridge_scope: ExtensionScope::Shared,
+        });
+
+        let service = DebugServiceImpl::with_sessions(sessions, session_id, Arc::new(bridges));
+        (service, session)
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_mode_with_session() {
+        let (service, session) = test_debug_service_with_session();
+        session.add_client(crate::session::ClientId::new(1));
+
+        let request = Request::new(DebugGetModeRequest {
+            target_client_id: 1,
+        });
+        let response = service.debug_get_mode(request).await.unwrap().into_inner();
+        // Default mode is "normal" (from session home mode)
+        assert_eq!(response.name, "normal");
+        assert!(!response.is_insert);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_mode_client_not_found() {
+        let (service, _) = test_debug_service_with_session();
+
+        let request = Request::new(DebugGetModeRequest {
+            target_client_id: 999,
+        });
+        let result = service.debug_get_mode(request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_cursor_client_not_found() {
+        let (service, _) = test_debug_service_with_session();
+
+        let request = Request::new(DebugGetCursorRequest {
+            target_client_id: 999,
+        });
+        let result = service.debug_get_cursor(request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_cursor_no_active_window() {
+        let (service, session) = test_debug_service_with_session();
+        session.add_client(crate::session::ClientId::new(1));
+
+        let request = Request::new(DebugGetCursorRequest {
+            target_client_id: 1,
+        });
+        let result = service.debug_get_cursor(request).await;
+        // Client exists but has no active window (empty WindowLayout)
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_debug_list_clients_with_session() {
+        let (service, session) = test_debug_service_with_session();
+        session.add_client(crate::session::ClientId::new(1));
+        session.add_client(crate::session::ClientId::new(2));
+
+        let request = Request::new(DebugListClientsRequest {});
+        let response = service
+            .debug_list_clients(request)
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(response.clients.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_extension_state_no_bridges_configured() {
+        // Construct with sessions but bridges=None
+        let session_id = crate::session::SessionId::new("test");
+        let session = Arc::new(crate::session::Session::new(session_id.clone()));
+        let sessions = Arc::new(crate::session::SessionRegistry::new());
+        sessions.insert(&session);
+        let service = DebugServiceImpl {
+            sessions: Some(sessions),
+            default_session_id: Some(session_id),
+            bridges: None,
+        };
+
+        let request = Request::new(DebugGetExtensionStateRequest {
+            kind: "test-ext".to_string(),
+            target_client_id: 1,
+        });
+        let result = service.debug_get_extension_state(request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_extension_state_unknown_kind() {
+        let (service, _) = test_debug_service_with_session();
+
+        let request = Request::new(DebugGetExtensionStateRequest {
+            kind: "nonexistent".to_string(),
+            target_client_id: 1,
+        });
+        let result = service.debug_get_extension_state(request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::NotFound);
+    }
+
+    #[tokio::test]
+    async fn test_debug_get_extension_state_client_scope() {
+        let (service, session) = test_debug_service_with_session();
+        session.add_client(crate::session::ClientId::new(1));
+
+        let request = Request::new(DebugGetExtensionStateRequest {
+            kind: "test-ext".to_string(),
+            target_client_id: 1,
+        });
+        let response = service
+            .debug_get_extension_state(request)
+            .await
+            .unwrap()
+            .into_inner();
+        assert!(response.active);
+        assert!(response.data.contains("test"));
+    }
+
+    #[tokio::test]
+    async fn test_debug_list_extensions_with_bridges() {
+        let (service, _) = test_debug_service_with_session();
+
+        let request = Request::new(DebugListExtensionsRequest {});
+        let response = service
+            .debug_list_extensions(request)
+            .await
+            .unwrap()
+            .into_inner();
+        assert_eq!(response.extensions.len(), 2);
+        let scopes: Vec<&str> = response
+            .extensions
+            .iter()
+            .map(|e| e.scope.as_str())
+            .collect();
+        assert!(scopes.contains(&"client"));
+        assert!(scopes.contains(&"shared"));
+    }
+
+    #[tokio::test]
+    async fn test_debug_list_extensions_no_bridges_configured() {
+        let session_id = crate::session::SessionId::new("test");
+        let session = Arc::new(crate::session::Session::new(session_id.clone()));
+        let sessions = Arc::new(crate::session::SessionRegistry::new());
+        sessions.insert(&session);
+        let service = DebugServiceImpl {
+            sessions: Some(sessions),
+            default_session_id: Some(session_id),
+            bridges: None,
+        };
+
+        let request = Request::new(DebugListExtensionsRequest {});
+        let result = service.debug_list_extensions(request).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), tonic::Code::Unavailable);
+    }
 }

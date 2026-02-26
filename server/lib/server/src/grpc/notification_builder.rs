@@ -1850,4 +1850,36 @@ mod tests {
         let notifications = build_notifications(&changes, &session, 0, Some(&registry));
         assert!(notifications.is_empty());
     }
+
+    #[test]
+    fn test_build_extension_notification_shared_scope_returns_none() {
+        use reovim_driver_session::{
+            ExtensionMap,
+            bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
+        };
+
+        struct SharedBridge;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl ExtensionStateBridge for SharedBridge {
+            fn kind(&self) -> &'static str {
+                "shared-test"
+            }
+            fn scope(&self) -> ExtensionScope {
+                ExtensionScope::Shared
+            }
+            fn snapshot(&self, _: &ExtensionMap) -> Option<serde_json::Value> {
+                Some(serde_json::json!({"shared": true}))
+            }
+            fn is_active(&self, _: &ExtensionMap) -> bool {
+                true
+            }
+        }
+
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(SharedBridge);
+
+        let session = Session::new(SessionId::new("shared-test"));
+        let result = build_extension_notification("shared-test", &session, 12345, 1, &bridges);
+        assert!(result.is_none());
+    }
 }
