@@ -738,6 +738,22 @@ impl EditingState {
     pub fn clear_pending_keys(&mut self) {
         self.pending_keys.clear();
     }
+
+    /// Borrow the 7 per-client mutable fields as a [`ClientContext`].
+    ///
+    /// This bundles the fields that `SessionRuntime` needs, avoiding
+    /// 7-argument parameter lists throughout the session execution chain.
+    pub fn client_context(&mut self) -> reovim_driver_session::ClientContext<'_> {
+        reovim_driver_session::ClientContext {
+            mode_stack: &mut self.mode_stack,
+            windows: &mut self.windows,
+            extensions: &mut self.extensions,
+            compositor: &mut self.compositor,
+            registers: &mut self.registers,
+            clipboard_history: &mut self.clipboard_history,
+            local_marks: &mut self.local_marks,
+        }
+    }
 }
 
 // ============================================================================

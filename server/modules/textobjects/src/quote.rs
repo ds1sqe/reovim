@@ -524,13 +524,15 @@ mod tests {
         ) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
-                &mut self.registers,
-                &mut self.clipboard_history,
-                &mut self.local_marks,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 kernel,
                 executor,
             )

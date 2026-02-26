@@ -52,6 +52,25 @@ impl TabInfo {
     }
 }
 
+/// Styles for tabline rendering.
+#[derive(Debug, Clone)]
+pub struct TablineStyles<'a> {
+    /// Style for inactive tabs.
+    pub tab: &'a Style,
+    /// Style for the active tab.
+    pub active: &'a Style,
+    /// Style for the remaining (fill) space.
+    pub fill: &'a Style,
+}
+
+impl<'a> TablineStyles<'a> {
+    /// Create a new tabline styles descriptor.
+    #[must_use]
+    pub const fn new(tab: &'a Style, active: &'a Style, fill: &'a Style) -> Self {
+        Self { tab, active, fill }
+    }
+}
+
 /// Render the tab line at the top of the screen.
 ///
 /// # Arguments
@@ -61,19 +80,14 @@ impl TabInfo {
 /// * `active` - Index of the active tab
 /// * `y` - Y position to render at
 /// * `width` - Width of the tab line
-/// * `tab_style` - Style for inactive tabs
-/// * `active_style` - Style for the active tab
-/// * `fill_style` - Style for the remaining space
-#[allow(clippy::too_many_arguments)]
+/// * `styles` - Styles for inactive tabs, active tab, and fill space
 pub fn render_tabline(
     buffer: &mut FrameBuffer,
     tabs: &[TabInfo],
     active: usize,
     y: u16,
     width: u16,
-    tab_style: &Style,
-    active_style: &Style,
-    fill_style: &Style,
+    styles: &TablineStyles<'_>,
 ) {
     let mut x: u16 = 0;
 
@@ -84,9 +98,9 @@ pub fn render_tabline(
 
         let text = tab.display_text();
         let style = if idx == active {
-            active_style
+            styles.active
         } else {
-            tab_style
+            styles.tab
         };
 
         for ch in text.chars() {
@@ -100,7 +114,7 @@ pub fn render_tabline(
 
     // Fill remaining space
     while x < width {
-        buffer.put_char(x, y, ' ', fill_style);
+        buffer.put_char(x, y, ' ', styles.fill);
         x += 1;
     }
 }
@@ -228,16 +242,9 @@ mod tests {
             TabInfo::new("file2.rs").modified(true),
         ];
 
-        render_tabline(
-            &mut buffer,
-            &tabs,
-            0,
-            0,
-            80,
-            &Style::default(),
-            &Style::default(),
-            &Style::default(),
-        );
+        let default = Style::default();
+        let styles = TablineStyles::new(&default, &default, &default);
+        render_tabline(&mut buffer, &tabs, 0, 0, 80, &styles);
 
         // Check first tab content
         assert_eq!(buffer.get(1, 0).unwrap().char, 'f');
@@ -248,16 +255,9 @@ mod tests {
     fn test_render_tabline_empty() {
         let mut buffer = FrameBuffer::new(80, 24);
 
-        render_tabline(
-            &mut buffer,
-            &[],
-            0,
-            0,
-            80,
-            &Style::default(),
-            &Style::default(),
-            &Style::default(),
-        );
+        let default = Style::default();
+        let styles = TablineStyles::new(&default, &default, &default);
+        render_tabline(&mut buffer, &[], 0, 0, 80, &styles);
 
         // Should be filled with spaces
         assert_eq!(buffer.get(0, 0).unwrap().char, ' ');
@@ -296,16 +296,9 @@ mod tests {
 
         // First tab " longname1.rs " is 14 chars wide, so second tab
         // starts at x=14 which is >= width(5). The loop should break at line 82.
-        render_tabline(
-            &mut buffer,
-            &tabs,
-            0,
-            0,
-            5,
-            &Style::default(),
-            &Style::default(),
-            &Style::default(),
-        );
+        let default = Style::default();
+        let styles = TablineStyles::new(&default, &default, &default);
+        render_tabline(&mut buffer, &tabs, 0, 0, 5, &styles);
 
         // First tab partially rendered, second tab not rendered at all
         assert_eq!(buffer.get(1, 0).unwrap().char, 'l');
@@ -319,16 +312,9 @@ mod tests {
 
         // Tab text is " abcdefgh " (10 chars). Width is 4, so chars after x=3
         // should trigger the inner break at line 94.
-        render_tabline(
-            &mut buffer,
-            &tabs,
-            0,
-            0,
-            4,
-            &Style::default(),
-            &Style::default(),
-            &Style::default(),
-        );
+        let default = Style::default();
+        let styles = TablineStyles::new(&default, &default, &default);
+        render_tabline(&mut buffer, &tabs, 0, 0, 4, &styles);
 
         // Only first 4 characters of " abcdefgh " should be rendered
         assert_eq!(buffer.get(0, 0).unwrap().char, ' ');

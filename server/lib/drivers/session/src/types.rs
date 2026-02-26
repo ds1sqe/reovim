@@ -21,7 +21,9 @@
 
 use {
     reovim_driver_display::layout::RootCompositor,
-    reovim_kernel::api::v1::{BufferId, ModeId, ModeStack, Position, WindowId},
+    reovim_kernel::api::v1::{
+        BufferId, HistoryRing, MarkBank, ModeId, ModeStack, Position, RegisterBank, WindowId,
+    },
 };
 
 use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
@@ -248,6 +250,44 @@ impl BootstrapState {
         state.windows.add(Window::with_buffer(buffer_id));
         state
     }
+}
+
+// ============================================================================
+// ClientContext - Borrowed Per-Client State Bundle (#515)
+// ============================================================================
+
+/// Borrowed per-client state bundle for session operations.
+///
+/// Groups the 7 mutable references to per-client state that [`SessionRuntime`]
+/// and command execution require. This replaces passing 7 individual `&mut`
+/// parameters through function signatures.
+///
+/// # Ownership
+///
+/// `ClientContext` does NOT own the data -- it borrows from `server::EditingState`
+/// (or from test fixtures). The owned counterpart is `server::EditingState`.
+///
+/// # Convention
+///
+/// Follows the `*Context<'a>` naming convention used throughout the codebase
+/// (`OperatorContext`, `HandlerContext`, `ExCommandContext`, etc.).
+///
+/// [`SessionRuntime`]: crate::SessionRuntime
+pub struct ClientContext<'a> {
+    /// Per-client mode stack (current mode on top).
+    pub mode_stack: &'a mut ModeStack,
+    /// Per-client window layout with independent cursors.
+    pub windows: &'a mut WindowLayout,
+    /// Per-client module extensions (type-erased state).
+    pub extensions: &'a mut ExtensionMap,
+    /// Per-client compositor for window layout geometry.
+    pub compositor: &'a mut Option<Box<dyn RootCompositor>>,
+    /// Per-client register storage (unnamed, named a-z/A-Z).
+    pub registers: &'a mut RegisterBank,
+    /// Per-client clipboard history ring (numbered registers 0-9).
+    pub clipboard_history: &'a mut HistoryRing,
+    /// Per-client local marks (a-z).
+    pub local_marks: &'a mut MarkBank,
 }
 
 // ============================================================================

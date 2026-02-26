@@ -652,36 +652,8 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
-        ) = (
-            &mut editing_state.mode_stack,
-            &mut editing_state.windows,
-            &mut editing_state.extensions,
-            &mut editing_state.compositor,
-            &mut editing_state.registers,
-            &mut editing_state.clipboard_history,
-            &mut editing_state.local_marks,
-        );
-
         // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
-        state.resolve_key_for_client(
-            target_id.as_usize(),
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
-            key,
-        )
+        state.resolve_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
     }
 
     /// Try `on_command_complete` with per-client state (#471, #477).
@@ -706,33 +678,9 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
-        ) = (
-            &mut editing_state.mode_stack,
-            &mut editing_state.windows,
-            &mut editing_state.extensions,
-            &mut editing_state.compositor,
-            &mut editing_state.registers,
-            &mut editing_state.clipboard_history,
-            &mut editing_state.local_marks,
-        );
-
         state.try_on_command_complete_for_client(
             target_id.as_usize(),
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
+            editing_state.client_context(),
         )
     }
 
@@ -779,34 +727,10 @@ impl Session {
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
         Self::ensure_client_has_window(editing_state, &state);
 
-        let (
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
-        ) = (
-            &mut editing_state.mode_stack,
-            &mut editing_state.windows,
-            &mut editing_state.extensions,
-            &mut editing_state.compositor,
-            &mut editing_state.registers,
-            &mut editing_state.clipboard_history,
-            &mut editing_state.local_marks,
-        );
-
         // Execute command with per-client state, passing client_id for per-client undo (#471, #515)
         state.execute_command_for_client(
             target_id.as_usize(),
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
+            editing_state.client_context(),
             cmd_id,
             args,
         )

@@ -226,7 +226,7 @@ impl<O: TuiOutput> TuiApp<O> {
         self.fetch_initial_state().await?;
 
         // Initial render
-        self.state.needs_redraw = true;
+        self.state.set_needs_redraw(true);
         self.render()?;
 
         // Event loop
@@ -245,7 +245,7 @@ impl<O: TuiOutput> TuiApp<O> {
         let mode_resp = self.client.get_mode_or_panic(client_id).await;
         self.state.mode_name = mode_resp.name;
         self.state.mode_display = mode_resp.display;
-        self.state.is_insert_mode = mode_resp.is_insert;
+        self.state.set_insert_mode(mode_resp.is_insert);
 
         // Get cursor
         let cursor_resp = self.client.get_cursor_or_panic(None, client_id).await;
@@ -259,7 +259,7 @@ impl<O: TuiOutput> TuiApp<O> {
         self.apply_layout(&layout_resp);
 
         // Handle empty layout - create default local window
-        if self.state.needs_default_window
+        if self.state.needs_default_window()
             && let Ok(active_buffer_resp) = self.client.get_active_buffer().await
             && let Some(buffer_id) = active_buffer_resp.buffer_id
         {
@@ -336,7 +336,8 @@ impl<O: TuiOutput> TuiApp<O> {
             self.collect_windows(root);
         }
 
-        self.state.needs_default_window = self.state.windows.is_empty();
+        self.state
+            .set_needs_default_window(self.state.windows.is_empty());
 
         // Update layout mirror
         self.layout_mirror
@@ -362,7 +363,7 @@ impl<O: TuiOutput> TuiApp<O> {
 
         self.state.windows.push(window);
         self.state.focused_window_id = 1;
-        self.state.needs_default_window = false;
+        self.state.set_needs_default_window(false);
 
         // Update layout mirror
         self.layout_mirror
@@ -507,9 +508,9 @@ impl<O: TuiOutput> TuiApp<O> {
 
                 // Redraw timer (both modes)
                 _ = redraw_timer.tick() => {
-                    if self.state.needs_redraw {
+                    if self.state.needs_redraw() {
                         self.render()?;
-                        self.state.needs_redraw = false;
+                        self.state.set_needs_redraw(false);
                     }
                 }
             }
@@ -601,7 +602,7 @@ impl<O: TuiOutput> TuiApp<O> {
             self.state.last_error = Some(format!("Resize failed: {e}"));
         }
 
-        self.state.needs_redraw = true;
+        self.state.set_needs_redraw(true);
         self.render()?;
         Ok(())
     }
@@ -614,7 +615,7 @@ impl<O: TuiOutput> TuiApp<O> {
     async fn handle_server_notification(&mut self, notif: Notification) -> Result<(), TuiAppError> {
         match handle_notification(self, notif).await {
             Ok(NotificationResult::Redraw) => {
-                self.state.needs_redraw = true;
+                self.state.set_needs_redraw(true);
             }
             Ok(NotificationResult::NoRedraw) => {}
             Ok(NotificationResult::Stop) => {

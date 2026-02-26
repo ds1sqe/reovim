@@ -272,17 +272,10 @@ impl SessionState {
     /// * `id` - The command ID to execute
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn execute_command_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        client_registers: &mut reovim_kernel::api::v1::RegisterBank,
-        client_clipboard_history: &mut reovim_kernel::api::v1::HistoryRing,
-        client_local_marks: &mut reovim_kernel::api::v1::MarkBank,
+        client: reovim_driver_session::ClientContext<'_>,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
@@ -294,13 +287,7 @@ impl SessionState {
             client_id,
             id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            client_extensions,
-            client_compositor,
-            client_registers,
-            client_clipboard_history,
-            client_local_marks,
+            client,
             &self.app,
             &self.vfs,
             args,
@@ -437,13 +424,15 @@ impl SessionState {
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
-            &mut temp_mode_stack,
-            &mut temp_windows,
-            &mut runtime_ext,
-            &mut temp_compositor,
-            &mut temp_registers,
-            &mut temp_clipboard_history,
-            &mut temp_local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut temp_mode_stack,
+                windows: &mut temp_windows,
+                extensions: &mut runtime_ext,
+                compositor: &mut temp_compositor,
+                registers: &mut temp_registers,
+                clipboard_history: &mut temp_clipboard_history,
+                local_marks: &mut temp_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -491,25 +480,14 @@ impl SessionState {
     /// let editing_state = session.client_state_mut(client_id)?;
     ///
     /// // Resolve key with per-client state
-    /// let result = session_state.resolve_key_for_client(
-    ///     client_id,
-    ///     &mut editing_state.mode_stack,
-    ///     &mut editing_state.windows,
-    ///     &mut editing_state.extensions,
-    ///     &key,
-    /// );
+    /// let client = editing_state.client_context();
+    /// let result = session_state.resolve_key_for_client(client_id, client, &key);
     /// ```
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)] // PendingBindings population requires match arms
     pub fn resolve_key_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        client_registers: &mut reovim_kernel::api::v1::RegisterBank,
-        client_clipboard_history: &mut reovim_kernel::api::v1::HistoryRing,
-        client_local_marks: &mut reovim_kernel::api::v1::MarkBank,
+        client: reovim_driver_session::ClientContext<'_>,
         key: &reovim_driver_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
@@ -533,6 +511,16 @@ impl SessionState {
             }
         }
 
+        let reovim_driver_session::ClientContext {
+            mode_stack: client_mode_stack,
+            windows: client_windows,
+            extensions: client_extensions,
+            compositor: client_compositor,
+            registers: client_registers,
+            clipboard_history: client_clipboard_history,
+            local_marks: client_local_marks,
+        } = client;
+
         // Phase #471, #477: Use per-client state for resolution
         let mode = client_mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
@@ -548,13 +536,15 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            &mut runtime_ext,
-            client_compositor,
-            client_registers,
-            client_clipboard_history,
-            client_local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: client_mode_stack,
+                windows: client_windows,
+                extensions: &mut runtime_ext,
+                compositor: client_compositor,
+                registers: client_registers,
+                clipboard_history: client_clipboard_history,
+                local_marks: client_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -684,13 +674,15 @@ impl SessionState {
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
-            &mut temp_mode_stack,
-            &mut temp_windows,
-            &mut runtime_ext,
-            &mut temp_compositor,
-            &mut temp_registers,
-            &mut temp_clipboard_history,
-            &mut temp_local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut temp_mode_stack,
+                windows: &mut temp_windows,
+                extensions: &mut runtime_ext,
+                compositor: &mut temp_compositor,
+                registers: &mut temp_registers,
+                clipboard_history: &mut temp_clipboard_history,
+                local_marks: &mut temp_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -709,24 +701,15 @@ impl SessionState {
     ///
     /// # Arguments
     ///
-    /// * `client_mode_stack` - Per-client mode stack (from server-level `EditingState`)
-    /// * `client_windows` - Per-client window layout (from server-level `EditingState`)
-    /// * `client_extensions` - Per-client module extensions (#477)
+    /// * `client` - Per-client state bundle (from server-level `EditingState`)
     ///
     /// # Returns
     ///
     /// A `ModeTransition` if the resolver wants to change modes.
-    #[allow(clippy::too_many_arguments)]
     pub fn try_on_command_complete_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        client_registers: &mut reovim_kernel::api::v1::RegisterBank,
-        client_clipboard_history: &mut reovim_kernel::api::v1::HistoryRing,
-        client_local_marks: &mut reovim_kernel::api::v1::MarkBank,
+        client: reovim_driver_session::ClientContext<'_>,
     ) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{
             ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
@@ -744,6 +727,16 @@ impl SessionState {
             }
         }
 
+        let reovim_driver_session::ClientContext {
+            mode_stack: client_mode_stack,
+            windows: client_windows,
+            extensions: client_extensions,
+            compositor: client_compositor,
+            registers: client_registers,
+            clipboard_history: client_clipboard_history,
+            local_marks: client_local_marks,
+        } = client;
+
         // Phase #471, #477, #515: Use per-client state with owner for per-client undo
         //
         // Use placeholder extensions in runtime - resolvers access session only
@@ -756,13 +749,15 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            &mut runtime_ext,
-            client_compositor,
-            client_registers,
-            client_clipboard_history,
-            client_local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: client_mode_stack,
+                windows: client_windows,
+                extensions: &mut runtime_ext,
+                compositor: client_compositor,
+                registers: client_registers,
+                clipboard_history: client_clipboard_history,
+                local_marks: client_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -920,13 +915,15 @@ mod tests {
         // but the important thing is it uses per-client state
         let _result = state.resolve_key_for_client(
             1, // test client_id for per-client undo (#471)
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1150,13 +1147,15 @@ mod tests {
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_none());
@@ -1185,13 +1184,15 @@ mod tests {
 
         let result = state.execute_command_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &cmd_id,
             &ctx,
         );
@@ -1348,13 +1349,15 @@ mod tests {
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('x'));
         let result = state.resolve_key_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1616,13 +1619,15 @@ mod tests {
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
             1,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1682,13 +1687,15 @@ mod tests {
         let ctx = reovim_driver_command::CommandContext::new();
         let result = state.execute_command_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &cmd_id,
             &ctx,
         );
@@ -2128,13 +2135,15 @@ mod tests {
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_some(), "Should return ModeTransition from resolver");
@@ -2228,13 +2237,15 @@ mod tests {
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_some());
@@ -2335,13 +2346,15 @@ mod tests {
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -2513,13 +2526,15 @@ mod tests {
 
         state.resolve_key_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             key,
         )
     }

@@ -119,8 +119,8 @@ pub use mode::{ModeError, SessionMode};
 
 // Session types
 pub use types::{
-    BootstrapState, ClientId, CursorPosition, KeySequence, Session, SessionShared, TextObjRange,
-    Viewport, Window, WindowLayout,
+    BootstrapState, ClientContext, ClientId, CursorPosition, KeySequence, Session, SessionShared,
+    TextObjRange, Viewport, Window, WindowLayout,
 };
 
 // SessionContext removed in #491 - use SessionRuntime instead

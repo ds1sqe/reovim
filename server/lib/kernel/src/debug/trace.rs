@@ -304,10 +304,10 @@ mod tests {
     // === Coverage: emit_trace with sink set ===
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_emit_trace_with_sink_set() {
         // Try setting the global sink (may already be set by another test)
         struct CountingSink;
+        #[cfg_attr(coverage_nightly, coverage(off))]
         impl TraceSink for CountingSink {
             fn emit(&self, _event: TraceEvent) {}
         }

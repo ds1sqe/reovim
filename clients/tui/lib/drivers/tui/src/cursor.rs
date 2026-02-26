@@ -42,11 +42,69 @@ impl CursorStyle {
     }
 }
 
+/// Dirty flags tracking which cursor attributes need terminal update.
+#[derive(Debug, Clone, Copy)]
+struct DirtyFlags(u8);
+
+impl DirtyFlags {
+    const POSITION: u8 = 1 << 0;
+    const VISIBILITY: u8 = 1 << 1;
+    const STYLE: u8 = 1 << 2;
+    const ALL: u8 = Self::POSITION | Self::VISIBILITY | Self::STYLE;
+
+    const fn all() -> Self {
+        Self(Self::ALL)
+    }
+
+    const fn any(self) -> bool {
+        self.0 != 0
+    }
+
+    const fn position(self) -> bool {
+        self.0 & Self::POSITION != 0
+    }
+
+    const fn visibility(self) -> bool {
+        self.0 & Self::VISIBILITY != 0
+    }
+
+    const fn style(self) -> bool {
+        self.0 & Self::STYLE != 0
+    }
+
+    const fn set_position(&mut self) {
+        self.0 |= Self::POSITION;
+    }
+
+    const fn set_visibility(&mut self) {
+        self.0 |= Self::VISIBILITY;
+    }
+
+    const fn set_style(&mut self) {
+        self.0 |= Self::STYLE;
+    }
+
+    const fn set_all(&mut self) {
+        self.0 = Self::ALL;
+    }
+
+    const fn clear_position(&mut self) {
+        self.0 &= !Self::POSITION;
+    }
+
+    const fn clear_visibility(&mut self) {
+        self.0 &= !Self::VISIBILITY;
+    }
+
+    const fn clear_style(&mut self) {
+        self.0 &= !Self::STYLE;
+    }
+}
+
 /// Cursor state manager.
 ///
 /// Tracks cursor position, visibility, and style.
 /// Provides efficient updates by tracking dirty state.
-#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct Cursor {
     /// Cursor X position (0-indexed column).
@@ -57,12 +115,8 @@ pub struct Cursor {
     visible: bool,
     /// Cursor style.
     style: CursorStyle,
-    /// Whether position needs update.
-    position_dirty: bool,
-    /// Whether visibility needs update.
-    visibility_dirty: bool,
-    /// Whether style needs update.
-    style_dirty: bool,
+    /// Dirty flags tracking which attributes need update.
+    dirty: DirtyFlags,
 }
 
 impl Cursor {
@@ -74,9 +128,7 @@ impl Cursor {
             y: 0,
             visible: true,
             style: CursorStyle::Default,
-            position_dirty: true,
-            visibility_dirty: true,
-            style_dirty: true,
+            dirty: DirtyFlags::all(),
         }
     }
 
@@ -88,9 +140,7 @@ impl Cursor {
             y,
             visible: true,
             style: CursorStyle::Default,
-            position_dirty: true,
-            visibility_dirty: true,
-            style_dirty: true,
+            dirty: DirtyFlags::all(),
         }
     }
 
@@ -130,7 +180,7 @@ impl Cursor {
         if self.x != x || self.y != y {
             self.x = x;
             self.y = y;
-            self.position_dirty = true;
+            self.dirty.set_position();
         }
     }
 
@@ -153,7 +203,7 @@ impl Cursor {
     pub const fn show(&mut self) {
         if !self.visible {
             self.visible = true;
-            self.visibility_dirty = true;
+            self.dirty.set_visibility();
         }
     }
 
@@ -161,7 +211,7 @@ impl Cursor {
     pub const fn hide(&mut self) {
         if self.visible {
             self.visible = false;
-            self.visibility_dirty = true;
+            self.dirty.set_visibility();
         }
     }
 
@@ -178,7 +228,7 @@ impl Cursor {
     pub fn set_style(&mut self, style: CursorStyle) {
         if self.style != style {
             self.style = style;
-            self.style_dirty = true;
+            self.dirty.set_style();
         }
     }
 
@@ -203,25 +253,25 @@ impl Cursor {
     /// Returns an error if write operations fail.
     pub fn apply_to<W: Write>(&mut self, writer: &mut W) -> io::Result<()> {
         // Apply visibility
-        if self.visibility_dirty {
+        if self.dirty.visibility() {
             if self.visible {
                 execute!(writer, cursor::Show)?;
             } else {
                 execute!(writer, cursor::Hide)?;
             }
-            self.visibility_dirty = false;
+            self.dirty.clear_visibility();
         }
 
         // Apply style
-        if self.style_dirty {
+        if self.dirty.style() {
             execute!(writer, self.style.to_crossterm())?;
-            self.style_dirty = false;
+            self.dirty.clear_style();
         }
 
         // Apply position (only if visible)
-        if self.position_dirty && self.visible {
+        if self.dirty.position() && self.visible {
             execute!(writer, cursor::MoveTo(self.x, self.y))?;
-            self.position_dirty = false;
+            self.dirty.clear_position();
         }
 
         Ok(())
@@ -232,21 +282,19 @@ impl Cursor {
     /// Call after operations that move the terminal cursor unpredictably
     /// (e.g., `Screen::render()` leaves cursor at last updated cell).
     pub const fn invalidate_position(&mut self) {
-        self.position_dirty = true;
+        self.dirty.set_position();
     }
 
     /// Force full update on next apply.
     pub const fn invalidate(&mut self) {
-        self.position_dirty = true;
-        self.visibility_dirty = true;
-        self.style_dirty = true;
+        self.dirty.set_all();
     }
 
     /// Check if cursor needs update.
     #[must_use]
     #[cfg_attr(coverage_nightly, coverage(off))]
     pub const fn is_dirty(&self) -> bool {
-        self.position_dirty || self.visibility_dirty || self.style_dirty
+        self.dirty.any()
     }
 }
 

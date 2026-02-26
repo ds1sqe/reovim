@@ -110,8 +110,8 @@ pub use border::{
 // Render pipeline (Phase 6 - Composable rendering)
 pub use render::{
     GutterDecoration, InlineDecoration, RenderContext, RenderData, RenderStage, SeparatorChars,
-    TabInfo, execute_pipeline, execute_pipeline_sorted, render_grid_separators, render_hseparator,
-    render_intersection, render_line, render_line_simple, render_statusline,
+    TabInfo, TablineStyles, execute_pipeline, execute_pipeline_sorted, render_grid_separators,
+    render_hseparator, render_intersection, render_line, render_line_simple, render_statusline,
     render_statusline_simple, render_tabline, render_vseparator,
 };
 

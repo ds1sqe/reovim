@@ -489,21 +489,25 @@ impl PyCommandRegistration {
     /// program's lifetime.
     #[must_use]
     pub fn to_kernel(&self) -> v1::CommandRegistration {
-        v1::CommandRegistration {
-            id: Box::leak(self.id.clone().into_boxed_str()),
-            name: Box::leak(self.name.clone().into_boxed_str()),
-            description: Box::leak(self.description.clone().into_boxed_str()),
-            category: self
-                .category
-                .as_ref()
-                .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str),
-            accepts_count: self.accepts_count,
-            accepts_motion: self.accepts_motion,
-            is_jump: self.is_jump,
-            is_text_modifying: self.is_text_modifying,
-            depends_on: &[],
-            flags: v1::RegistrationFlags::new(),
+        let mut reg = v1::CommandRegistration::new(Box::leak(self.id.clone().into_boxed_str()))
+            .with_name(Box::leak(self.name.clone().into_boxed_str()))
+            .with_description(Box::leak(self.description.clone().into_boxed_str()));
+        if let Some(cat) = &self.category {
+            reg = reg.with_category(Box::leak(cat.clone().into_boxed_str()));
         }
+        if self.accepts_count {
+            reg = reg.with_count();
+        }
+        if self.accepts_motion {
+            reg = reg.with_motion();
+        }
+        if self.is_jump {
+            reg = reg.with_jump();
+        }
+        if self.is_text_modifying {
+            reg = reg.with_text_modifying();
+        }
+        reg
     }
 }
 
@@ -995,10 +999,10 @@ mod tests {
         assert_eq!(kernel_reg.name, "Yank");
         assert_eq!(kernel_reg.description, "Copy text");
         assert_eq!(kernel_reg.category, Some("edit"));
-        assert!(kernel_reg.accepts_count);
-        assert!(kernel_reg.accepts_motion);
-        assert!(!kernel_reg.is_jump);
-        assert!(!kernel_reg.is_text_modifying);
+        assert!(kernel_reg.accepts_count());
+        assert!(kernel_reg.accepts_motion());
+        assert!(!kernel_reg.is_jump());
+        assert!(!kernel_reg.is_text_modifying());
     }
 
     // ========================================================================

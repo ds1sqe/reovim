@@ -72,7 +72,7 @@ pub fn apply_layout(state: &mut TuiCoreState, layout: &GetLayoutResponse) {
     }
 
     // Mark if we need to create a default window
-    state.needs_default_window = state.windows.is_empty();
+    state.set_needs_default_window(state.windows.is_empty());
 }
 
 /// Apply a layout changed notification to the core state.
@@ -147,7 +147,7 @@ pub fn create_default_window(state: &mut TuiCoreState, buffer_id: u64, width: u1
 
     state.windows.push(window);
     state.focused_window_id = 1;
-    state.needs_default_window = false;
+    state.set_needs_default_window(false);
 
     tracing::debug!(buffer_id, "Created default window for empty layout");
 }
@@ -287,7 +287,7 @@ mod tests {
 
         assert_eq!(state.focused_window_id, 0);
         assert!(state.windows.is_empty());
-        assert!(state.needs_default_window);
+        assert!(state.needs_default_window());
     }
 
     #[test]
@@ -302,13 +302,13 @@ mod tests {
 
         assert_eq!(state.focused_window_id, 5);
         assert_eq!(state.windows.len(), 1);
-        assert!(!state.needs_default_window);
+        assert!(!state.needs_default_window());
     }
 
     #[test]
     fn test_create_default_window() {
         let mut state = TuiCoreState::new(1);
-        state.needs_default_window = true;
+        state.set_needs_default_window(true);
 
         create_default_window(&mut state, 42, 80, 24);
 
@@ -316,7 +316,7 @@ mod tests {
         assert_eq!(state.windows[0].window_id, 1);
         assert_eq!(state.windows[0].buffer_id, Some(42));
         assert_eq!(state.focused_window_id, 1);
-        assert!(!state.needs_default_window);
+        assert!(!state.needs_default_window());
     }
 
     #[test]
@@ -476,7 +476,7 @@ mod tests {
     #[test]
     fn test_create_default_window_reserves_statusline() {
         let mut state = TuiCoreState::new(1);
-        state.needs_default_window = true;
+        state.set_needs_default_window(true);
 
         create_default_window(&mut state, 42, 80, 24);
 
@@ -490,7 +490,7 @@ mod tests {
     #[test]
     fn test_create_default_window_small_height() {
         let mut state = TuiCoreState::new(1);
-        state.needs_default_window = true;
+        state.set_needs_default_window(true);
 
         create_default_window(&mut state, 1, 40, 1);
 

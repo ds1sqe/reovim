@@ -547,13 +547,15 @@ mod tests {
             let executor = StubExecutor;
             let mut runtime = SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
-                &mut self.registers,
-                &mut self.clipboard_history,
-                &mut self.local_marks,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 &self.ctx,
                 &executor,
             );
@@ -583,13 +585,15 @@ mod tests {
         let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &ctx,
             &executor,
         );
@@ -1153,13 +1157,15 @@ mod tests {
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &ctx,
             &executor,
         );
@@ -1185,13 +1191,15 @@ mod tests {
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &ctx,
             &executor,
         );

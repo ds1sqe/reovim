@@ -175,12 +175,11 @@ impl<'a> SessionRuntime<'a> {
     /// // From server level, get per-client EditingState
     /// let editing_state = session.client_state_mut(client_id)?;
     ///
-    /// // Create runtime with per-client state
+    /// // Create runtime with per-client state bundle
+    /// let client = editing_state.client_context();
     /// let mut runtime = SessionRuntime::new(
     ///     &mut driver_session,
-    ///     &mut editing_state.mode_stack,
-    ///     &mut editing_state.windows,
-    ///     &mut editing_state.extensions,
+    ///     client,
     ///     &kernel,
     ///     &executor,
     /// );
@@ -190,16 +189,10 @@ impl<'a> SessionRuntime<'a> {
     /// runtime.windows().active();              // This client's active window
     /// runtime.ext_mut::<VimSessionState>();    // This client's vim state
     /// ```
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
+    #[allow(clippy::needless_pass_by_value)] // ClientContext fields are moved into Self
     pub fn new(
         session: &'a mut Session,
-        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
-        windows: &'a mut crate::WindowLayout,
-        extensions: &'a mut crate::ExtensionMap,
-        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        registers: &'a mut reovim_kernel::api::v1::RegisterBank,
-        clipboard_history: &'a mut reovim_kernel::api::v1::HistoryRing,
-        local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
+        client: crate::ClientContext<'a>,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -210,13 +203,13 @@ impl<'a> SessionRuntime<'a> {
         Self {
             owner: None,
             session,
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
+            mode_stack: client.mode_stack,
+            windows: client.windows,
+            extensions: client.extensions,
+            compositor: client.compositor,
+            registers: client.registers,
+            clipboard_history: client.clipboard_history,
+            local_marks: client.local_marks,
             kernel,
             executor,
             screen,
@@ -233,21 +226,18 @@ impl<'a> SessionRuntime<'a> {
     ///
     /// * `owner` - The `ClientId` this runtime is bound to
     /// * `session` - Shared session infrastructure
-    /// * `mode_stack` - Per-client mode stack
-    /// * `windows` - Per-client window layout with cursors
-    /// * `extensions` - Per-client module extensions
+    /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
     /// * `kernel` - Kernel context (buffers, global marks)
     /// * `executor` - Command executor
     ///
     /// # Example
     ///
     /// ```ignore
+    /// let client = editing_state.client_context();
     /// let mut runtime = SessionRuntime::with_owner(
     ///     client_id,
     ///     &mut driver_session,
-    ///     &mut editing_state.mode_stack,
-    ///     &mut editing_state.windows,
-    ///     &mut editing_state.extensions,
+    ///     client,
     ///     &kernel,
     ///     &executor,
     /// );
@@ -258,17 +248,11 @@ impl<'a> SessionRuntime<'a> {
     ///
     /// [`new`]: Self::new
     /// [`owner()`]: Self::owner
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
+    #[allow(clippy::needless_pass_by_value)] // ClientContext fields are moved into Self
     pub fn with_owner(
         owner: crate::ClientId,
         session: &'a mut Session,
-        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
-        windows: &'a mut crate::WindowLayout,
-        extensions: &'a mut crate::ExtensionMap,
-        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        registers: &'a mut reovim_kernel::api::v1::RegisterBank,
-        clipboard_history: &'a mut reovim_kernel::api::v1::HistoryRing,
-        local_marks: &'a mut reovim_kernel::api::v1::MarkBank,
+        client: crate::ClientContext<'a>,
         kernel: &'a KernelContext,
         executor: &'a dyn CommandExecutor,
     ) -> Self {
@@ -279,13 +263,13 @@ impl<'a> SessionRuntime<'a> {
         Self {
             owner: Some(owner),
             session,
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
+            mode_stack: client.mode_stack,
+            windows: client.windows,
+            extensions: client.extensions,
+            compositor: client.compositor,
+            registers: client.registers,
+            clipboard_history: client.clipboard_history,
+            local_marks: client.local_marks,
             kernel,
             executor,
             screen,
@@ -1668,13 +1652,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -1734,13 +1720,15 @@ mod tests {
             // Create runtime with per-client state (#471 Phase 0)
             let mut runtime = SessionRuntime::new(
                 &mut session,
-                &mut client_mode_stack,
-                &mut client_windows,
-                &mut client_extensions,
-                &mut client_compositor,
-                &mut client_registers,
-                &mut client_clipboard_history,
-                &mut client_local_marks,
+                crate::ClientContext {
+                    mode_stack: &mut client_mode_stack,
+                    windows: &mut client_windows,
+                    extensions: &mut client_extensions,
+                    compositor: &mut client_compositor,
+                    registers: &mut client_registers,
+                    clipboard_history: &mut client_clipboard_history,
+                    local_marks: &mut client_local_marks,
+                },
                 &kernel,
                 &executor,
             );
@@ -1784,13 +1772,15 @@ mod tests {
         {
             let runtime = SessionRuntime::new(
                 &mut session,
-                &mut client_stack,
-                &mut client_windows,
-                &mut client_extensions,
-                &mut client_compositor,
-                &mut client_registers,
-                &mut client_clipboard_history,
-                &mut client_local_marks,
+                crate::ClientContext {
+                    mode_stack: &mut client_stack,
+                    windows: &mut client_windows,
+                    extensions: &mut client_extensions,
+                    compositor: &mut client_compositor,
+                    registers: &mut client_registers,
+                    clipboard_history: &mut client_clipboard_history,
+                    local_marks: &mut client_local_marks,
+                },
                 &kernel,
                 &executor,
             );
@@ -1803,13 +1793,15 @@ mod tests {
             let runtime = SessionRuntime::with_owner(
                 client_id,
                 &mut session,
-                &mut client_stack,
-                &mut client_windows,
-                &mut client_extensions,
-                &mut client_compositor,
-                &mut client_registers,
-                &mut client_clipboard_history,
-                &mut client_local_marks,
+                crate::ClientContext {
+                    mode_stack: &mut client_stack,
+                    windows: &mut client_windows,
+                    extensions: &mut client_extensions,
+                    compositor: &mut client_compositor,
+                    registers: &mut client_registers,
+                    clipboard_history: &mut client_clipboard_history,
+                    local_marks: &mut client_local_marks,
+                },
                 &kernel,
                 &executor,
             );
@@ -1846,13 +1838,15 @@ mod tests {
         {
             let mut runtime1 = SessionRuntime::new(
                 &mut session,
-                &mut client1_stack,
-                &mut client1_windows,
-                &mut client1_extensions,
-                &mut client1_compositor,
-                &mut client1_registers,
-                &mut client1_clipboard_history,
-                &mut client1_local_marks,
+                crate::ClientContext {
+                    mode_stack: &mut client1_stack,
+                    windows: &mut client1_windows,
+                    extensions: &mut client1_extensions,
+                    compositor: &mut client1_compositor,
+                    registers: &mut client1_registers,
+                    clipboard_history: &mut client1_clipboard_history,
+                    local_marks: &mut client1_local_marks,
+                },
                 &kernel,
                 &executor,
             );
@@ -1863,13 +1857,15 @@ mod tests {
         {
             let runtime2 = SessionRuntime::new(
                 &mut session,
-                &mut client2_stack,
-                &mut client2_windows,
-                &mut client2_extensions,
-                &mut client2_compositor,
-                &mut client2_registers,
-                &mut client2_clipboard_history,
-                &mut client2_local_marks,
+                crate::ClientContext {
+                    mode_stack: &mut client2_stack,
+                    windows: &mut client2_windows,
+                    extensions: &mut client2_extensions,
+                    compositor: &mut client2_compositor,
+                    registers: &mut client2_registers,
+                    clipboard_history: &mut client2_clipboard_history,
+                    local_marks: &mut client2_local_marks,
+                },
                 &kernel,
                 &executor,
             );
@@ -1902,13 +1898,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -1972,13 +1970,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2014,13 +2014,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2582,13 +2584,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2612,13 +2616,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2642,13 +2648,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2673,13 +2681,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2704,13 +2714,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -2734,13 +2746,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3298,13 +3312,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3540,13 +3556,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3580,13 +3598,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3690,13 +3710,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3729,13 +3751,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3770,13 +3794,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3810,13 +3836,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3845,13 +3873,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3881,13 +3911,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3915,13 +3947,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -3937,9 +3971,8 @@ mod tests {
     // UndoApi with provider (lines 817-993)
     // =========================================================================
 
-    #[allow(clippy::type_complexity)]
     struct MockUndoProvider {
-        edits: std::sync::Mutex<Vec<(BufferId, Vec<Edit>, Position, Position)>>,
+        edits: std::sync::Mutex<Vec<reovim_driver_undo::UndoRecord>>,
     }
 
     impl MockUndoProvider {
@@ -3986,7 +4019,12 @@ mod tests {
             self.edits
                 .lock()
                 .unwrap()
-                .push((buffer_id, edits, cursor_before, cursor_after));
+                .push(reovim_driver_undo::UndoRecord {
+                    buffer_id,
+                    edits,
+                    cursor_before,
+                    cursor_after,
+                });
         }
 
         fn has_history(&self, _buffer_id: BufferId) -> bool {
@@ -4100,13 +4138,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4142,13 +4182,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4177,13 +4219,15 @@ mod tests {
 
         let runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4218,13 +4262,15 @@ mod tests {
         let mut runtime = SessionRuntime::with_owner(
             client_id,
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4262,13 +4308,15 @@ mod tests {
         let mut runtime = SessionRuntime::with_owner(
             client_id,
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4301,13 +4349,15 @@ mod tests {
         let mut runtime = SessionRuntime::with_owner(
             client_id,
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4473,13 +4523,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4517,13 +4569,15 @@ mod tests {
 
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4563,13 +4617,15 @@ mod tests {
         let mut runtime = SessionRuntime::with_owner(
             client_id,
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4609,13 +4665,15 @@ mod tests {
         let mut runtime = SessionRuntime::with_owner(
             client_id,
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -4646,13 +4704,15 @@ mod tests {
 
         let rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -4907,32 +4967,14 @@ mod tests {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn make_compositor_runtime<'a>(
         session: &'a mut Session,
-        mode_stack: &'a mut reovim_kernel::api::v1::ModeStack,
-        windows: &'a mut crate::WindowLayout,
-        extensions: &'a mut crate::ExtensionMap,
-        compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        registers: &'a mut RegisterBank,
-        clipboard_history: &'a mut HistoryRing,
-        local_marks: &'a mut MarkBank,
+        client: crate::ClientContext<'a>,
         kernel: &'a KernelContext,
         executor: &'a StubExecutor,
     ) -> SessionRuntime<'a> {
-        *compositor = Some(Box::new(MockRootCompositor::new()));
-        SessionRuntime::new(
-            session,
-            mode_stack,
-            windows,
-            extensions,
-            compositor,
-            registers,
-            clipboard_history,
-            local_marks,
-            kernel,
-            executor,
-        )
+        *client.compositor = Some(Box::new(MockRootCompositor::new()));
+        SessionRuntime::new(session, client, kernel, executor)
     }
 
     #[test]
@@ -4951,13 +4993,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -4982,13 +5026,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5013,13 +5059,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5044,13 +5092,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5075,13 +5125,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5106,13 +5158,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5137,13 +5191,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5168,13 +5224,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5199,13 +5257,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5231,13 +5291,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5260,13 +5322,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5289,13 +5353,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5318,13 +5384,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5348,13 +5416,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5377,13 +5447,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5406,13 +5478,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5438,13 +5512,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5467,13 +5543,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5496,13 +5574,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5525,13 +5605,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5554,13 +5636,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5583,13 +5667,15 @@ mod tests {
 
         let rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5769,13 +5855,15 @@ mod tests {
         let mut lm = MarkBank::new();
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5814,13 +5902,15 @@ mod tests {
         let buf = BufferId::new();
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5859,13 +5949,15 @@ mod tests {
         let buf = BufferId::new();
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5895,13 +5987,15 @@ mod tests {
         let buf = BufferId::new();
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5931,13 +6025,15 @@ mod tests {
         let buf = BufferId::new();
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -5970,13 +6066,15 @@ mod tests {
 
         let mut rt = make_compositor_runtime(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );
@@ -6043,13 +6141,15 @@ mod tests {
 
         let mut rt = SessionRuntime::new(
             &mut session,
-            &mut ms,
-            &mut w,
-            &mut e,
-            &mut c,
-            &mut r,
-            &mut ch,
-            &mut lm,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
             &kernel,
             &executor,
         );

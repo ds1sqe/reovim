@@ -122,26 +122,18 @@ impl CommandRegistry {
     ///
     /// * `id` - The command ID to execute
     /// * `driver_session` - Driver session (for shared state like buffers)
-    /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
-    /// * `client_windows` - Per-client window layout (source of truth for cursor)
-    /// * `client_extensions` - Per-client module extensions (#477)
+    /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
     /// * `app` - Application state (contains `KernelContext`)
     /// * `vfs` - VFS driver for file operations
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
+    #[allow(clippy::too_many_arguments)] // bundled via ClientContext, remaining are distinct concerns
     pub fn execute_for_client(
         &self,
         client_id: usize,
         id: &CommandId,
         driver_session: &mut DriverSession,
-        client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
-        client_registers: &mut reovim_kernel::api::v1::RegisterBank,
-        client_clipboard_history: &mut reovim_kernel::api::v1::HistoryRing,
-        client_local_marks: &mut reovim_kernel::api::v1::MarkBank,
+        client: reovim_driver_session::ClientContext<'_>,
         app: &AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
@@ -164,13 +156,7 @@ impl CommandRegistry {
             let mut runtime = SessionRuntime::with_owner(
                 driver_client_id,
                 driver_session,
-                client_mode_stack,
-                client_windows,
-                client_extensions,
-                client_compositor,
-                client_registers,
-                client_clipboard_history,
-                client_local_marks,
+                client,
                 &app.kernel,
                 &stub_executor,
             );
@@ -441,13 +427,15 @@ mod tests {
             1, // test client_id for per-client undo (#471)
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,
@@ -640,13 +628,15 @@ mod tests {
             1,
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,
@@ -732,13 +722,15 @@ mod tests {
             1,
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,

@@ -232,13 +232,15 @@ mod tests {
         let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
-            &mut registers,
-            &mut clipboard_history,
-            &mut local_marks,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             ctx,
             &executor,
         );
@@ -762,14 +764,15 @@ mod tests {
     // ========================================================================
 
     use {
-        reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
+        reovim_driver_undo::{
+            UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
+        },
         reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
     };
 
-    #[allow(clippy::type_complexity)]
     struct MockUndoProvider {
-        records: RwLock<Vec<(BufferId, Vec<Edit>, Position, Position)>>,
+        records: RwLock<Vec<UndoRecord>>,
     }
 
     impl MockUndoProvider {
@@ -798,9 +801,12 @@ mod tests {
             cursor_before: Position,
             cursor_after: Position,
         ) {
-            self.records
-                .write()
-                .push((buffer_id, edits, cursor_before, cursor_after));
+            self.records.write().push(UndoRecord {
+                buffer_id,
+                edits,
+                cursor_before,
+                cursor_after,
+            });
         }
         fn has_history(&self, _: BufferId) -> bool {
             false
@@ -869,8 +875,8 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].0, buffer_id);
-        if let Edit::Delete { position, text } = &records[0].1[0] {
+        assert_eq!(records[0].buffer_id, buffer_id);
+        if let Edit::Delete { position, text } = &records[0].edits[0] {
             assert_eq!(*position, Position::new(0, 0));
             assert_eq!(text, "hello");
         } else {
@@ -986,7 +992,7 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        if let Edit::Delete { text, .. } = &records[0].1[0] {
+        if let Edit::Delete { text, .. } = &records[0].edits[0] {
             assert_eq!(text, "aa\nbbb\ncc");
         } else {
             panic!("Expected Delete edit");
@@ -1130,8 +1136,8 @@ mod tests {
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
         // cursor_before should be what we passed in
-        assert_eq!(records[0].2, cursor_before);
+        assert_eq!(records[0].cursor_before, cursor_before);
         // cursor_after should be at delete_pos (start of range)
-        assert_eq!(records[0].3, Position::new(0, 3));
+        assert_eq!(records[0].cursor_after, Position::new(0, 3));
     }
 }

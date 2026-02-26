@@ -209,18 +209,17 @@ impl TestSessionRuntime {
 
         // Phase #471 Phase 0: Use new() with per-client state from SEPARATE fields
         // (not from session, which would cause double mutable borrow)
-        let mut runtime = SessionRuntime::new(
-            &mut self.session,           // Shared infra (no conflict)
-            &mut self.mode_stack,        // Separate field (no conflict)
-            &mut self.windows,           // Separate field (no conflict)
-            &mut self.extensions,        // Separate field (no conflict)
-            &mut self.compositor,        // Per-client compositor (#474)
-            &mut self.registers,         // Per-client registers (#515)
-            &mut self.clipboard_history, // Per-client clipboard history (#515)
-            &mut self.local_marks,       // Per-client local marks (#515)
-            &self.kernel,
-            &self.executor,
-        );
+        let client = crate::ClientContext {
+            mode_stack: &mut self.mode_stack,
+            windows: &mut self.windows,
+            extensions: &mut self.extensions,
+            compositor: &mut self.compositor,
+            registers: &mut self.registers,
+            clipboard_history: &mut self.clipboard_history,
+            local_marks: &mut self.local_marks,
+        };
+        let mut runtime =
+            SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor);
         let result = f(&mut runtime);
         let changes = ChangeTracker::take_changes(&mut runtime);
         self.changes.merge(changes);
@@ -237,18 +236,16 @@ impl TestSessionRuntime {
     ///
     /// Uses `SessionRuntime::new()` with per-client state from separate fields.
     pub fn runtime(&mut self) -> SessionRuntime<'_> {
-        SessionRuntime::new(
-            &mut self.session,
-            &mut self.mode_stack,
-            &mut self.windows,
-            &mut self.extensions,
-            &mut self.compositor,
-            &mut self.registers,
-            &mut self.clipboard_history,
-            &mut self.local_marks,
-            &self.kernel,
-            &self.executor,
-        )
+        let client = crate::ClientContext {
+            mode_stack: &mut self.mode_stack,
+            windows: &mut self.windows,
+            extensions: &mut self.extensions,
+            compositor: &mut self.compositor,
+            registers: &mut self.registers,
+            clipboard_history: &mut self.clipboard_history,
+            local_marks: &mut self.local_marks,
+        };
+        SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor)
     }
 
     /// Take accumulated changes and reset the tracker.

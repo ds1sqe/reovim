@@ -133,7 +133,7 @@ pub async fn handle_notification<C: NotificationContext>(
             if is_local {
                 state.mode_name = mode.name;
                 state.mode_display = mode.display;
-                state.is_insert_mode = mode.is_insert;
+                state.set_insert_mode(mode.is_insert);
             } else {
                 // Remote mode update
                 if let Some(remote) = state.other_clients.get_mut(&mode.client_id) {
@@ -596,7 +596,7 @@ mod tests {
         assert!(matches!(result, NotificationResult::Redraw));
         assert_eq!(ctx.state.mode_name, "insert");
         assert_eq!(ctx.state.mode_display, "INSERT");
-        assert!(ctx.state.is_insert_mode);
+        assert!(ctx.state.is_insert_mode());
     }
 
     #[tokio::test]

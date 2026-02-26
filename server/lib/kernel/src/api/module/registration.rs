@@ -2,13 +2,24 @@
 
 use {super::RegistrationFlags, crate::core::CommandId};
 
+/// Bit position for "accepts count" capability.
+const CAP_ACCEPTS_COUNT: u8 = 1 << 0;
+/// Bit position for "accepts motion" capability.
+const CAP_ACCEPTS_MOTION: u8 = 1 << 1;
+/// Bit position for "is jump" capability.
+const CAP_IS_JUMP: u8 = 1 << 2;
+/// Bit position for "is text-modifying" capability.
+const CAP_IS_TEXT_MODIFYING: u8 = 1 << 3;
+
 /// Command registration descriptor.
 ///
 /// Linux equivalent: Like `struct file_operations` - declares command capabilities.
 ///
 /// Fields align with `CommandTrait` from the original design (see `archive/pre_kernel/lib/core/src/command/traits.rs`).
+///
+/// Command capabilities (accepts count, accepts motion, is jump, is text-modifying)
+/// are stored as a `u8` bitfield to preserve kernel purity (zero external deps).
 #[derive(Debug, Clone)]
-#[allow(clippy::struct_excessive_bools)] // Command capabilities use multiple bool flags
 pub struct CommandRegistration {
     /// Unique command identifier (e.g., "delete", "yank", "motion:word").
     pub id: &'static str,
@@ -18,14 +29,8 @@ pub struct CommandRegistration {
     pub description: &'static str,
     /// Category for help grouping (e.g., "motion", "operator", "edit").
     pub category: Option<&'static str>,
-    /// Whether command accepts a count prefix (e.g., 5j).
-    pub accepts_count: bool,
-    /// Whether command accepts a motion (e.g., dw, c$).
-    pub accepts_motion: bool,
-    /// Whether command is a "jump" (recorded in jump list).
-    pub is_jump: bool,
-    /// Whether command modifies buffer text (for undo grouping).
-    pub is_text_modifying: bool,
+    /// Command capability flags (`accepts_count`, `accepts_motion`, `is_jump`, `is_text_modifying`).
+    capabilities: u8,
     /// Dependencies on other commands (Linux: module dependencies).
     pub depends_on: &'static [&'static str],
     /// Registration flags.
@@ -41,10 +46,7 @@ impl CommandRegistration {
             name: "",
             description: "",
             category: None,
-            accepts_count: false,
-            accepts_motion: false,
-            is_jump: false,
-            is_text_modifying: false,
+            capabilities: 0,
             depends_on: &[],
             flags: RegistrationFlags::new(),
         }
@@ -74,28 +76,28 @@ impl CommandRegistration {
     /// Mark command as accepting a count.
     #[must_use]
     pub const fn with_count(mut self) -> Self {
-        self.accepts_count = true;
+        self.capabilities |= CAP_ACCEPTS_COUNT;
         self
     }
 
     /// Mark command as accepting a motion.
     #[must_use]
     pub const fn with_motion(mut self) -> Self {
-        self.accepts_motion = true;
+        self.capabilities |= CAP_ACCEPTS_MOTION;
         self
     }
 
     /// Mark command as a jump.
     #[must_use]
     pub const fn with_jump(mut self) -> Self {
-        self.is_jump = true;
+        self.capabilities |= CAP_IS_JUMP;
         self
     }
 
     /// Mark command as text-modifying.
     #[must_use]
     pub const fn with_text_modifying(mut self) -> Self {
-        self.is_text_modifying = true;
+        self.capabilities |= CAP_IS_TEXT_MODIFYING;
         self
     }
 
@@ -111,6 +113,34 @@ impl CommandRegistration {
     pub const fn with_flags(mut self, flags: RegistrationFlags) -> Self {
         self.flags = flags;
         self
+    }
+
+    // ========================================================================
+    // Query Methods
+    // ========================================================================
+
+    /// Check if this command accepts a count prefix (e.g., 5j).
+    #[must_use]
+    pub const fn accepts_count(&self) -> bool {
+        self.capabilities & CAP_ACCEPTS_COUNT != 0
+    }
+
+    /// Check if this command accepts a motion (e.g., dw, c$).
+    #[must_use]
+    pub const fn accepts_motion(&self) -> bool {
+        self.capabilities & CAP_ACCEPTS_MOTION != 0
+    }
+
+    /// Check if this command is a "jump" (recorded in jump list).
+    #[must_use]
+    pub const fn is_jump(&self) -> bool {
+        self.capabilities & CAP_IS_JUMP != 0
+    }
+
+    /// Check if this command modifies buffer text (for undo grouping).
+    #[must_use]
+    pub const fn is_text_modifying(&self) -> bool {
+        self.capabilities & CAP_IS_TEXT_MODIFYING != 0
     }
 }
 
@@ -320,10 +350,10 @@ mod tests {
         assert_eq!(reg.name, "");
         assert_eq!(reg.description, "");
         assert!(reg.category.is_none());
-        assert!(!reg.accepts_count);
-        assert!(!reg.accepts_motion);
-        assert!(!reg.is_jump);
-        assert!(!reg.is_text_modifying);
+        assert!(!reg.accepts_count());
+        assert!(!reg.accepts_motion());
+        assert!(!reg.is_jump());
+        assert!(!reg.is_text_modifying());
         assert!(reg.depends_on.is_empty());
     }
 
@@ -343,18 +373,18 @@ mod tests {
         assert_eq!(reg.name, "Delete");
         assert_eq!(reg.description, "Delete text");
         assert_eq!(reg.category, Some("operator"));
-        assert!(reg.accepts_count);
-        assert!(reg.accepts_motion);
-        assert!(!reg.is_jump);
-        assert!(reg.is_text_modifying);
+        assert!(reg.accepts_count());
+        assert!(reg.accepts_motion());
+        assert!(!reg.is_jump());
+        assert!(reg.is_text_modifying());
         assert_eq!(reg.depends_on, &["yank"]);
-        assert!(reg.flags.required);
+        assert!(reg.flags.is_required());
     }
 
     #[test]
     fn test_command_registration_jump() {
         let reg = CommandRegistration::new("goto-definition").with_jump();
-        assert!(reg.is_jump);
+        assert!(reg.is_jump());
     }
 
     #[test]
@@ -388,7 +418,7 @@ mod tests {
         assert!(reg.enabled);
         assert_eq!(reg.priority, 50);
         assert_eq!(reg.depends_on, &["window-split"]);
-        assert!(reg.flags.deferrable);
+        assert!(reg.flags.is_deferrable());
     }
 
     #[test]
@@ -423,7 +453,7 @@ mod tests {
         assert!(!reg.once);
         assert_eq!(reg.target_component, Some("treesitter"));
         assert_eq!(reg.depends_on, &["syntax-highlight"]);
-        assert!(reg.flags.deferrable);
+        assert!(reg.flags.is_deferrable());
     }
 
     #[test]
