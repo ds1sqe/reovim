@@ -138,14 +138,6 @@ impl Session {
         }
     }
 
-    /// Create a new session with a custom state (for testing).
-    #[cfg(test)]
-    #[must_use]
-    #[deprecated(since = "0.9.0", note = "Use Session::from_state instead")]
-    pub fn new_with_state(id: SessionId, state: SessionState) -> Self {
-        Self::from_state(id, state)
-    }
-
     /// Subscribe to notifications (gRPC only).
     ///
     /// Returns a receiver for the notification broadcast channel.
@@ -420,15 +412,6 @@ impl Session {
 
         drop(clients);
         result
-    }
-
-    /// Set a client's role (deprecated).
-    ///
-    /// **DEPRECATED**: Use `set_client_relation()` instead.
-    #[deprecated(since = "0.10.0", note = "Use set_client_relation() instead")]
-    pub fn set_client_role(&self, client_id: ClientId, role: Client) {
-        let mut clients = self.clients.write();
-        clients.insert(client_id, role);
     }
 
     /// Get the effective editing state for a client.
@@ -1189,8 +1172,7 @@ mod tests {
         );
 
         let state = SessionState::with_kernel(kernel);
-        #[allow(deprecated)]
-        let session = Session::new_with_state(SessionId::default(), state);
+        let session = Session::from_state(SessionId::default(), state);
 
         // Create a buffer
         session
@@ -2205,36 +2187,6 @@ mod tests {
         let result =
             session.sync_and_set_relation(id1, id2, Some(ClientRelation::Sharing { with: id2 }));
         assert!(result.is_err());
-    }
-
-    // =========================================================================
-    // Coverage: deprecated set_client_role (#497)
-    // =========================================================================
-
-    #[test]
-    fn test_deprecated_set_client_role() {
-        // Test the deprecated set_client_role method (lines 398-401).
-        use {
-            crate::session::ClientMetadata,
-            reovim_kernel::api::v1::{ModeId, ModeStack, ModuleId},
-        };
-
-        let session = Session::new(SessionId::new("test"));
-        let client_id = ClientId::new(1);
-
-        session.add_client(client_id);
-
-        // Create a replacement client
-        let mode = ModeId::new(ModuleId::new("test"), "insert");
-        let mode_stack = ModeStack::new(mode);
-        let replacement = Client::with_mode_stack(client_id, ClientMetadata::default(), mode_stack);
-
-        #[allow(deprecated)]
-        session.set_client_role(client_id, replacement);
-
-        // Verify the client was replaced
-        let client = session.get_client(client_id).unwrap();
-        assert_eq!(client.state.mode_stack.current().name(), "insert");
     }
 
     // =========================================================================

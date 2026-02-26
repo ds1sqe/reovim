@@ -782,85 +782,6 @@ impl ClientSelection {
 }
 
 // ============================================================================
-// Backward Compatibility - Old enum API
-// ============================================================================
-
-/// Old Client enum variants for backward compatibility during migration.
-///
-/// **DEPRECATED**: Use `Client` struct with `relation` field instead.
-///
-/// This module provides conversion from old `Client` enum patterns to new struct.
-#[deprecated(since = "0.10.0", note = "Use Client struct with relation field")]
-#[allow(dead_code)]
-pub mod compat {
-    use reovim_kernel::api::v1::ModeStack;
-
-    use super::{Client, ClientId, ClientMetadata, ClientRelation, EditingState};
-
-    /// Create an Owner-style client (independent with state).
-    ///
-    /// **DEPRECATED**: Use `Client::new()` or `Client::with_mode_stack()` instead.
-    #[must_use]
-    pub fn new_owner() -> Client {
-        Client::new(ClientId::new(0), ClientMetadata::default())
-    }
-
-    /// Create an Owner-style client with mode stack.
-    ///
-    /// **DEPRECATED**: Use `Client::with_mode_stack()` instead.
-    #[must_use]
-    pub fn owner_with_mode(mode_stack: ModeStack) -> Client {
-        Client::with_mode_stack(ClientId::new(0), ClientMetadata::default(), mode_stack)
-    }
-
-    /// Create a Follow-style client.
-    ///
-    /// **DEPRECATED**: Use `Client::new()` then set `relation = Some(ClientRelation::Following { target })`.
-    #[must_use]
-    pub fn follow(target: ClientId) -> Client {
-        Client {
-            id: ClientId::new(0),
-            relation: Some(ClientRelation::Following { target }),
-            state: EditingState::default(),
-            metadata: ClientMetadata::default(),
-            ring_buffer: super::ClientRingBuffer::new(),
-        }
-    }
-
-    /// Create a Share-style client.
-    ///
-    /// **DEPRECATED**: Use `Client::new()` then set `relation = Some(ClientRelation::Sharing { with })`.
-    #[must_use]
-    pub fn share(owner: ClientId) -> Client {
-        Client {
-            id: ClientId::new(0),
-            relation: Some(ClientRelation::Sharing { with: owner }),
-            state: EditingState::default(),
-            metadata: ClientMetadata::default(),
-            ring_buffer: super::ClientRingBuffer::new(),
-        }
-    }
-
-    /// Check if client is an "owner" (independent).
-    #[must_use]
-    pub const fn is_owner(client: &Client) -> bool {
-        client.is_independent()
-    }
-
-    /// Check if client is a "follower".
-    #[must_use]
-    pub const fn is_follower(client: &Client) -> bool {
-        client.is_following()
-    }
-
-    /// Check if client is "sharing".
-    #[must_use]
-    pub const fn is_sharing(client: &Client) -> bool {
-        client.is_sharing()
-    }
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1563,51 +1484,6 @@ mod tests {
         assert_eq!(metadata.client_type, "android");
         assert_eq!(metadata.display_name, "phone");
         assert_eq!(metadata.joined_at_ms, 1_700_000_000_000);
-    }
-
-    // =========================================================================
-    // Coverage: compat module
-    // =========================================================================
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_compat_new_owner() {
-        let client = super::compat::new_owner();
-        assert!(super::compat::is_owner(&client));
-        assert!(!super::compat::is_follower(&client));
-        assert!(!super::compat::is_sharing(&client));
-        assert!(client.is_independent());
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_compat_owner_with_mode() {
-        let mode_stack = test_mode_stack();
-        let client = super::compat::owner_with_mode(mode_stack.clone());
-        assert!(super::compat::is_owner(&client));
-        assert_eq!(client.state.mode_stack.current().name(), mode_stack.current().name());
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_compat_follow() {
-        let target = ClientId::new(42);
-        let client = super::compat::follow(target);
-        assert!(super::compat::is_follower(&client));
-        assert!(!super::compat::is_owner(&client));
-        assert!(client.is_following());
-        assert_eq!(client.target_id(), Some(target));
-    }
-
-    #[test]
-    #[allow(deprecated)]
-    fn test_compat_share() {
-        let owner = ClientId::new(10);
-        let client = super::compat::share(owner);
-        assert!(super::compat::is_sharing(&client));
-        assert!(!super::compat::is_owner(&client));
-        assert!(client.is_sharing());
-        assert_eq!(client.target_id(), Some(owner));
     }
 
     // =========================================================================
