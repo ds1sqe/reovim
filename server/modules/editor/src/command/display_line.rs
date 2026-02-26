@@ -111,7 +111,7 @@ impl CommandHandler for CursorDisplayDown {
             );
             // Clamp to line length
             let line_len = current_line.chars().count();
-            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            let clamped_col = new_col.min(line_len.saturating_sub(1));
             Position::new(old_pos.line, clamped_col)
         } else {
             // Need to move to next buffer line(s)
@@ -133,7 +133,7 @@ impl CommandHandler for CursorDisplayDown {
                         tabstop,
                     );
                     let line_len = line.chars().count();
-                    let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                    let clamped_col = new_col.min(line_len.saturating_sub(1));
                     let target_pos = Position::new(new_line, clamped_col);
                     // Update cursor via per-client Window (#471)
                     if let Some(window) = runtime.windows_mut().active_mut() {
@@ -163,7 +163,7 @@ impl CommandHandler for CursorDisplayDown {
                 tabstop,
             );
             let line_len = last_content.chars().count();
-            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            let clamped_col = new_col.min(line_len.saturating_sub(1));
             Position::new(last_line, clamped_col)
         };
 
@@ -250,7 +250,7 @@ impl CommandHandler for CursorDisplayUp {
             );
             // Clamp to line length
             let line_len = current_line.chars().count();
-            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            let clamped_col = new_col.min(line_len.saturating_sub(1));
             Position::new(old_pos.line, clamped_col)
         } else {
             // Need to move to previous buffer line(s)
@@ -273,7 +273,7 @@ impl CommandHandler for CursorDisplayUp {
                         tabstop,
                     );
                     let line_len = line.chars().count();
-                    let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+                    let clamped_col = new_col.min(line_len.saturating_sub(1));
                     let target_pos = Position::new(new_line, clamped_col);
                     // Update cursor via per-client Window (#471)
                     if let Some(window) = runtime.windows_mut().active_mut() {
@@ -295,7 +295,7 @@ impl CommandHandler for CursorDisplayUp {
                 tabstop,
             );
             let line_len = first_content.chars().count();
-            let clamped_col = new_col.min(line_len.saturating_sub(1).max(0));
+            let clamped_col = new_col.min(line_len.saturating_sub(1));
             Position::new(0, clamped_col)
         };
 
