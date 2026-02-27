@@ -19,7 +19,7 @@
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────┐
-//! │ SESSION DRIVER (server/lib/drivers/session/) - PURE MECHANISM          │
+//! │ SESSION DRIVER (server/lib/drivers/session/) - PURE MECHANISM   │
 //! │                                                                 │
 //! │ SHARED INFRASTRUCTURE:                                          │
 //! │   Session { id, shared: SessionShared }                         │
@@ -93,6 +93,7 @@
 //! ```
 
 pub mod api;
+pub mod bridges;
 mod empty_handler;
 mod extension;
 mod handler_key;
@@ -118,8 +119,8 @@ pub use mode::{ModeError, SessionMode};
 
 // Session types
 pub use types::{
-    BootstrapState, ClientId, CursorPosition, KeySequence, Session, SessionShared, TextObjRange,
-    Viewport, Window, WindowLayout,
+    BootstrapState, ClientContext, ClientId, CursorPosition, KeySequence, Session, SessionShared,
+    TextObjRange, Viewport, Window, WindowLayout,
 };
 
 // SessionContext removed in #491 - use SessionRuntime instead
@@ -132,10 +133,10 @@ pub use runtime::SessionRuntime;
 
 // Session API traits (re-export for convenience)
 pub use api::{
-    BufferApi, BufferError, ChangeTracker, CmdlinePrompt, CmdlineState, CommandApi,
-    CommandExecutor, CompositorApi, CompositorError, ExtensionApi, ModeApi,
-    ModeError as ApiModeError, RegisterApi, RegisterContent, Selection, SelectionMode, SessionApi,
-    SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
+    BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
+    CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError as ApiModeError, RegisterApi,
+    RegisterContent, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges, WindowApi,
+    WindowError, YankType,
 };
 
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)

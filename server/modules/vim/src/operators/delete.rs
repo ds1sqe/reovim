@@ -134,8 +134,8 @@ impl Operator for DeleteOperator {
 
             // Store in register as linewise (handles +/* via ClipboardProvider)
             let content = RegisterContent::linewise(register_text);
-            registers::store_to_register(ctx.kernel, ctx.register, &content);
-            registers::push_to_history(ctx.kernel, &content);
+            registers::store_and_sync(ctx.kernel, ctx.registers, ctx.register, &content);
+            registers::push_to_history(ctx.clipboard_history, &content);
 
             // Use cursor position from context (passed from caller who has window access)
             let cursor_before = ctx.cursor_position;
@@ -215,8 +215,8 @@ impl Operator for DeleteOperator {
 
             // Store in register as characterwise (handles +/* via ClipboardProvider)
             let content = RegisterContent::characterwise(deleted_text.clone());
-            registers::store_to_register(ctx.kernel, ctx.register, &content);
-            registers::push_to_history(ctx.kernel, &content);
+            registers::store_and_sync(ctx.kernel, ctx.registers, ctx.register, &content);
+            registers::push_to_history(ctx.clipboard_history, &content);
 
             // Use cursor position from context (passed from caller who has window access)
             let cursor_before = ctx.cursor_position;
@@ -253,7 +253,11 @@ impl Operator for DeleteOperator {
 }
 
 #[cfg(test)]
-#[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
+#[allow(
+    clippy::significant_drop_tightening,
+    clippy::uninlined_format_args,
+    clippy::drop_non_drop
+)]
 mod tests {
     use {
         super::*,
@@ -264,9 +268,9 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
-                RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
+                Register, RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -296,12 +300,20 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             ctx,
             &executor,
         );
@@ -367,7 +379,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -400,10 +411,14 @@ mod tests {
     fn test_delete_buffer_not_found() {
         let ctx = create_test_context();
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id: BufferId::from_raw(999),
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -419,10 +434,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -437,8 +456,8 @@ mod tests {
         assert_eq!(buf.lines(), &[" world"]);
 
         // Check register has deleted text
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello");
     }
 
     #[test]
@@ -448,10 +467,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 6),
         };
@@ -464,8 +487,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["hello "]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "world");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "world");
     }
 
     #[test]
@@ -475,10 +498,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -487,8 +514,8 @@ mod tests {
         let result = delete.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "lo\nwor");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "lo\nwor");
     }
 
     #[test]
@@ -498,10 +525,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -514,8 +545,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["line2", "line3"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line1\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "line1\n");
     }
 
     #[test]
@@ -525,10 +556,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -541,8 +576,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["line1"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line2\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "line2\n");
     }
 
     #[test]
@@ -552,10 +587,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -569,8 +608,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &[""]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "only line\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "only line\n");
     }
 
     #[test]
@@ -580,10 +619,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -596,8 +639,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["a", "d"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "b\nc\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "b\nc\n");
     }
 
     #[test]
@@ -607,10 +650,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('a'),
+            register: Register::Slot('a'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -618,8 +665,8 @@ mod tests {
         let result = delete.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("hello"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('a').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -629,10 +676,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -655,10 +706,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -680,10 +735,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -704,10 +763,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
         };
@@ -716,8 +779,8 @@ mod tests {
         let result = delete.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "aa\nbbb\ncc");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "aa\nbbb\ncc");
     }
 
     #[test]
@@ -727,10 +790,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -743,8 +810,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["first", "third"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "second\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "second\n");
     }
 
     #[test]
@@ -754,10 +821,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -770,8 +841,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &["ello"]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "h");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "h");
     }
 
     #[test]
@@ -781,10 +852,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('b'),
+            register: Register::Slot('b'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -792,8 +867,8 @@ mod tests {
         let result = delete.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('b').map(|r| r.text.as_str()), Some("hello"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('b').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -803,10 +878,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -819,8 +898,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &[""]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "a\nb\nc\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "a\nb\nc\n");
     }
 
     #[test]
@@ -850,10 +929,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -866,8 +949,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &[""]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello");
     }
 
     #[test]
@@ -877,10 +960,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -893,8 +980,8 @@ mod tests {
         let buf = buf.read();
         assert_eq!(buf.lines(), &[""]);
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hi");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hi");
     }
 
     // ========================================================================
@@ -902,14 +989,15 @@ mod tests {
     // ========================================================================
 
     use {
-        reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
+        reovim_driver_undo::{
+            UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry, UndoRecord,
+        },
         reovim_driver_vfs::VfsDriver,
         reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
     };
 
-    #[allow(clippy::type_complexity)]
     struct MockUndoProvider {
-        records: RwLock<Vec<(BufferId, Vec<Edit>, Position, Position)>>,
+        records: RwLock<Vec<UndoRecord>>,
     }
 
     impl MockUndoProvider {
@@ -938,9 +1026,12 @@ mod tests {
             cursor_before: Position,
             cursor_after: Position,
         ) {
-            self.records
-                .write()
-                .push((buffer_id, edits, cursor_before, cursor_after));
+            self.records.write().push(UndoRecord {
+                buffer_id,
+                edits,
+                cursor_before,
+                cursor_after,
+            });
         }
         fn has_history(&self, _: BufferId) -> bool {
             false
@@ -977,7 +1068,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             services,
@@ -992,10 +1082,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -1005,9 +1099,9 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].0, buffer_id);
+        assert_eq!(records[0].buffer_id, buffer_id);
         // Should be a Delete edit
-        assert!(matches!(&records[0].1[0], Edit::Delete { .. }));
+        assert!(matches!(&records[0].edits[0], Edit::Delete { .. }));
     }
 
     #[test]
@@ -1018,10 +1112,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -1031,8 +1129,8 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].0, buffer_id);
-        if let Edit::Delete { position, text } = &records[0].1[0] {
+        assert_eq!(records[0].buffer_id, buffer_id);
+        if let Edit::Delete { position, text } = &records[0].edits[0] {
             assert_eq!(*position, Position::new(0, 0));
             assert_eq!(text, "hello");
         } else {
@@ -1048,10 +1146,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -1069,10 +1171,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -1083,7 +1189,7 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        if let Edit::Delete { text, .. } = &records[0].1[0] {
+        if let Edit::Delete { text, .. } = &records[0].edits[0] {
             // Deleted text should be "\nsecond" (preceding newline + content)
             assert_eq!(text, "\nsecond");
         } else {
@@ -1123,18 +1229,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         delete.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_characterwise());
+        drop(op_ctx);
+        assert!(registers.get().is_characterwise());
     }
 
     #[test]
@@ -1144,18 +1254,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         delete.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_linewise());
+        drop(op_ctx);
+        assert!(registers.get().is_linewise());
     }
 
     #[test]
@@ -1166,10 +1280,14 @@ mod tests {
 
         let delete = DeleteOperator;
         let cursor_before = Position::new(0, 3);
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
         };
@@ -1179,9 +1297,9 @@ mod tests {
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
         // cursor_before should be what we passed in
-        assert_eq!(records[0].2, cursor_before);
+        assert_eq!(records[0].cursor_before, cursor_before);
         // cursor_after should be at start of range for characterwise delete
-        assert_eq!(records[0].3, Position::new(0, 3));
+        assert_eq!(records[0].cursor_after, Position::new(0, 3));
     }
 
     #[test]
@@ -1192,10 +1310,14 @@ mod tests {
 
         let delete = DeleteOperator;
         let cursor_before = Position::new(1, 2);
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
         };
@@ -1205,9 +1327,9 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].2, cursor_before);
+        assert_eq!(records[0].cursor_before, cursor_before);
         // cursor_after for Case 1: final_line=1, final_col=0 (column 0 for non-last line delete)
-        assert_eq!(records[0].3, Position::new(1, 0));
+        assert_eq!(records[0].cursor_after, Position::new(1, 0));
     }
 
     #[test]
@@ -1218,10 +1340,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
         };
@@ -1231,7 +1357,7 @@ mod tests {
 
         let records = mock_undo.records.read();
         assert_eq!(records.len(), 1);
-        if let Edit::Delete { text, .. } = &records[0].1[0] {
+        if let Edit::Delete { text, .. } = &records[0].edits[0] {
             assert_eq!(text, "lo\nwor");
         } else {
             panic!("Expected Delete edit");

@@ -183,6 +183,33 @@ pub const CANCEL_COMMANDLINE: CommandId = CommandId::new(MODULE, "cancel-command
 /// Execute command-line and exit (Enter).
 pub const EXIT_COMMANDLINE: CommandId = CommandId::new(MODULE, "exit-commandline");
 
+// Command-line editing commands (#451)
+
+/// Move cursor left in command-line.
+pub const CMDLINE_CURSOR_LEFT: CommandId = CommandId::new(MODULE, "cmdline-cursor-left");
+/// Move cursor right in command-line.
+pub const CMDLINE_CURSOR_RIGHT: CommandId = CommandId::new(MODULE, "cmdline-cursor-right");
+/// Move cursor to start of command-line.
+pub const CMDLINE_CURSOR_HOME: CommandId = CommandId::new(MODULE, "cmdline-cursor-home");
+/// Move cursor to end of command-line.
+pub const CMDLINE_CURSOR_END: CommandId = CommandId::new(MODULE, "cmdline-cursor-end");
+/// Delete character at cursor in command-line.
+pub const CMDLINE_DELETE_CHAR: CommandId = CommandId::new(MODULE, "cmdline-delete-char");
+/// Delete character before cursor in command-line.
+pub const CMDLINE_BACKSPACE: CommandId = CommandId::new(MODULE, "cmdline-backspace");
+/// Delete word before cursor in command-line.
+pub const CMDLINE_DELETE_WORD: CommandId = CommandId::new(MODULE, "cmdline-delete-word");
+/// Delete to start of command-line.
+pub const CMDLINE_DELETE_TO_START: CommandId = CommandId::new(MODULE, "cmdline-delete-to-start");
+/// Navigate to older history entry.
+pub const CMDLINE_HISTORY_UP: CommandId = CommandId::new(MODULE, "cmdline-history-up");
+/// Navigate to newer history entry.
+pub const CMDLINE_HISTORY_DOWN: CommandId = CommandId::new(MODULE, "cmdline-history-down");
+/// Cycle to next completion.
+pub const CMDLINE_COMPLETE_NEXT: CommandId = CommandId::new(MODULE, "cmdline-complete-next");
+/// Cycle to previous completion.
+pub const CMDLINE_COMPLETE_PREV: CommandId = CommandId::new(MODULE, "cmdline-complete-prev");
+
 /// Enter window mode (Ctrl-w).
 pub const ENTER_WINDOW_MODE: CommandId = CommandId::new(MODULE, "enter-window-mode");
 

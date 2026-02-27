@@ -13,9 +13,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
-        BufferApi, RegisterApi, SessionRuntime, TransitionContext, api::ModeApi,
-    },
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::{CommandId, Position, RegisterContent},
 };
 
@@ -97,10 +95,10 @@ impl CommandHandler for ChangeLine {
         }
         deleted_text.push('\n'); // Linewise content ends with newline
 
-        // Store in register via RegisterApi
+        // Store in register with clipboard sync (#515)
         let content = RegisterContent::linewise(deleted_text);
         let register = args.register();
-        runtime.set_register(register, content);
+        runtime.store_register_with_sync(register, content);
 
         // For cc: if changing multiple lines, delete all but first, then clear first
         // Single line: just clear the content
@@ -189,10 +187,10 @@ impl CommandHandler for ChangeToEndOfLine {
             .map(|line| line[pos.column..].to_string())
             .unwrap_or_default();
 
-        // Store in register via RegisterApi
+        // Store in register with clipboard sync (#515)
         let content = RegisterContent::characterwise(deleted_text);
         let register = args.register();
-        runtime.set_register(register, content);
+        runtime.store_register_with_sync(register, content);
 
         // Delete from cursor to end of line (not including newline)
         let delete_end = Position::new(pos.line, line_len);
@@ -216,8 +214,8 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank,
-                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                Buffer, BufferError, BufferId, BufferManager, EventBus, HistoryRing, KernelContext,
+                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
                 ServiceRegistry, TextObjectEngine,
             },
         },
@@ -297,6 +295,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -319,16 +320,24 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
         fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 kernel,
                 &StubExecutor,
             )
@@ -341,7 +350,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -945,10 +953,10 @@ mod tests {
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
         ChangeLine.execute(&mut runtime, &args);
+        drop(runtime);
 
         // Check the register has the deleted text
-        let regs = ctx.registers.read();
-        let reg = regs.get();
+        let reg = state.registers.get();
         assert!(reg.text.contains("hello"));
         assert!(reg.text.contains("world"));
     }

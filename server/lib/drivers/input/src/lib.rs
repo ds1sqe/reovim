@@ -61,6 +61,7 @@ mod mode_registry;
 mod mode_store;
 mod module_ext;
 mod mouse;
+mod pending;
 mod provider;
 mod resolver;
 mod resolver_registry;
@@ -125,3 +126,6 @@ pub use mode_store::{ModeInfo, ModeInfoStore};
 
 // Re-export keybinding store (Epic #417 Part 3 - module self-registration)
 pub use keybinding_store::KeybindingStore;
+
+// Re-export pending bindings extension (#468 - Which-Key bridge)
+pub use pending::PendingBindings;

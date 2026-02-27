@@ -84,6 +84,7 @@ pub trait CommandQueryService: Service + Send + Sync {
     ///
     /// Returns commands where any alias starts with `prefix`.
     /// The search is case-sensitive.
+    /// An empty prefix returns all commands (every string starts with `""`).
     ///
     /// # Example
     ///
@@ -115,6 +116,54 @@ pub trait CommandQueryService: Service + Send + Sync {
     fn list_all(&self) -> Vec<CommandInfo>;
 
     /// Get total command count.
+    fn count(&self) -> usize;
+}
+
+// ============================================================================
+// Ex-command query types (#453)
+// ============================================================================
+
+/// Ex-command metadata for queries.
+///
+/// Lighter than [`CommandInfo`] since ex-commands use `&'static str` identifiers
+/// rather than [`CommandId`](reovim_kernel::api::v1::CommandId).
+#[derive(Debug, Clone)]
+pub struct ExCommandInfo {
+    /// Handler identifier (e.g., `"write"`, `"quit"`).
+    pub id: String,
+    /// Command aliases (e.g., `["w", "write"]`).
+    pub names: Vec<String>,
+    /// Help text from [`ExCommandHandler::help()`](crate::ExCommandHandler::help).
+    pub help: String,
+}
+
+/// Query service for ex-command discovery and completion.
+///
+/// Parallel to [`CommandQueryService`] but for ex-commands (`:w`, `:q`, `:e`).
+///
+/// # Thread Safety
+///
+/// Implementations must be thread-safe (`Send + Sync`).
+pub trait ExCommandQueryService: Service + Send + Sync {
+    /// Search ex-commands by name prefix (for tab completion).
+    ///
+    /// Returns commands where any alias starts with `prefix`.
+    /// Results are deduplicated by handler id.
+    /// An empty prefix returns all commands (every string starts with `""`).
+    fn search_by_prefix(&self, prefix: &str) -> Vec<ExCommandInfo>;
+
+    /// Find ex-command by exact name or alias.
+    fn find_by_name(&self, name: &str) -> Option<ExCommandInfo>;
+
+    /// List all ex-commands.
+    fn list_all(&self) -> Vec<ExCommandInfo>;
+
+    /// Get argument completions for a specific command.
+    ///
+    /// Delegates to the handler's `complete()` method.
+    fn complete_args(&self, command: &str, partial: &str) -> Vec<String>;
+
+    /// Get total ex-command count (unique handlers, not aliases).
     fn count(&self) -> usize;
 }
 
@@ -268,5 +317,54 @@ mod tests {
     fn test_command_query_service_box_object_safe() {
         // Inner fn verifies compilation only, never called
         fn _accepts_box(_: Box<dyn CommandQueryService>) {}
+    }
+
+    // === ExCommandInfo tests (#453) ===
+
+    #[test]
+    fn test_ex_command_info_clone() {
+        let info = ExCommandInfo {
+            id: "write".to_string(),
+            names: vec!["w".to_string(), "write".to_string()],
+            help: "Write buffer".to_string(),
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.id, info.id);
+        assert_eq!(cloned.names, info.names);
+        assert_eq!(cloned.help, info.help);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_ex_command_info_debug() {
+        let info = ExCommandInfo {
+            id: "quit".to_string(),
+            names: vec!["q".to_string()],
+            help: "Quit".to_string(),
+        };
+        let debug_str = format!("{info:?}");
+        assert!(debug_str.contains("ExCommandInfo"));
+        assert!(debug_str.contains("quit"));
+    }
+
+    #[test]
+    fn test_ex_command_info_fields() {
+        let info = ExCommandInfo {
+            id: "edit".to_string(),
+            names: vec!["e".to_string(), "edit".to_string()],
+            help: "Edit a file".to_string(),
+        };
+        assert_eq!(info.id, "edit");
+        assert_eq!(info.names.len(), 2);
+        assert_eq!(info.names[0], "e");
+        assert_eq!(info.names[1], "edit");
+        assert_eq!(info.help, "Edit a file");
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_ex_command_query_service_object_safe() {
+        fn _accepts_dyn(_: &dyn ExCommandQueryService) {}
+        fn _accepts_box(_: Box<dyn ExCommandQueryService>) {}
     }
 }

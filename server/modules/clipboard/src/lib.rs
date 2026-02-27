@@ -1,54 +1,30 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Clipboard module for reovim.
 //!
-//! Provides system clipboard access and yank history.
+//! Provides system clipboard access via `arboard`.
 //!
-//! # Architecture
+//! # Architecture (#515 Phase 4)
 //!
 //! Following the mechanism/policy separation:
 //! - **Mechanism**: `ClipboardProvider` trait (in `reovim-driver-clipboard`)
-//! - **Policy**: `ClipboardService` (this module) provides implementation
+//! - **Policy**: `ClipboardService` (this module) provides OS clipboard implementation
+//!
+//! History (numbered registers 0-9) has been moved to per-client `HistoryRing`
+//! in `EditingState`, managed by `SessionRuntime::push_to_clipboard_history`.
 //!
 //! # Register Mapping
 //!
 //! | Register | Source | Description |
 //! |----------|--------|-------------|
-//! | `""` | Kernel `RegisterBank` | Unnamed (default) |
-//! | `a-z` | Kernel `RegisterBank` | Named registers |
-//! | `+` | This module | System clipboard |
-//! | `*` | This module | Selection (X11 primary) |
-//! | `0-9` | This module | Yank history |
-//!
-//! # Usage in Operators
-//!
-//! ```ignore
-//! // After yanking/deleting:
-//! let clipboard = ctx.services.get::<ClipboardProviderRegistry>();
-//! if let Some(provider) = clipboard.and_then(|r| r.get(&ClipboardKey::Default)) {
-//!     // Always push to history for 0-9 access
-//!     provider.push_history(content.clone());
-//!
-//!     // Handle + and * registers
-//!     match register {
-//!         Some('+') => { provider.copy_to_clipboard(&content.text)?; }
-//!         Some('*') => { provider.copy_to_selection(&content.text)?; }
-//!         _ => {}
-//!     }
-//! }
-//!
-//! // For pasting from + or *:
-//! match register {
-//!     Some('+') => provider.paste_from_clipboard()?,
-//!     Some('*') => provider.paste_from_selection()?,
-//!     Some(n @ '0'..='9') => provider.get_numbered(n),
-//!     _ => kernel.registers.read().get_by_name(register),
-//! }
-//! ```
+//! | `""` | Per-client `RegisterBank` | Unnamed (default) |
+//! | `a-z` | Per-client `RegisterBank` | Named registers |
+//! | `+` | This module (OS clipboard) | System clipboard |
+//! | `*` | This module (OS selection) | Selection (X11 primary) |
+//! | `0-9` | Per-client `HistoryRing` | Yank history |
 
-mod history;
 mod service;
 
-pub use {history::HistoryRing, service::ClipboardService};
+pub use service::ClipboardService;
 
 use std::sync::Arc;
 

@@ -21,6 +21,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-session = { workspace = true }
+reovim-module-cmdline = { workspace = true }
 reovim-module-editor = { workspace = true }
 reovim-module-motions = { workspace = true }
 # Note: operators module merged into vim (Epic #385)
@@ -35,7 +36,9 @@ reovim-module-window-ops = { workspace = true }
 reovim-driver-display = { workspace = true }
 tracing = { workspace = true }
 
-# [dev-dependencies] removed - tests to be rewritten with new infrastructure
+[dev-dependencies]
+reovim-testing = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros", "time"] }
 
 [lints]
 workspace = true

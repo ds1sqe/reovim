@@ -17,7 +17,10 @@ use {
     },
 };
 
-use crate::{LineNumberMode, SelectionState, TuiCoreState, render_backend::RenderBackend};
+use crate::{
+    LineNumberMode, SelectionState, TuiCoreState,
+    render_backend::{RenderBackend, TuiExtension},
+};
 
 /// Render configuration for a frame.
 ///
@@ -152,13 +155,14 @@ pub fn render_frame<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
     config: &RenderConfig,
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     // Clear the backend
     backend.clear();
 
     let (width, height) = backend.size();
 
-    // Reserve space for statusline
+    // Reserve space for statusline only (cmdline floats on top)
     let content_height = height.saturating_sub(1);
 
     // Render buffer content
@@ -177,6 +181,13 @@ pub fn render_frame<B: RenderBackend>(
 
     // Render statusline
     render_statusline(backend, state, width, height);
+
+    // Render active extensions (engine has ZERO knowledge of specific ones)
+    for ext in extensions {
+        if ext.is_active() {
+            ext.render(backend);
+        }
+    }
 }
 
 /// Render buffer content.
@@ -688,7 +699,7 @@ mod tests {
         let state = TuiCoreState::new(1);
         let config = RenderConfig::default();
 
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Should have rendered statusline
         let last_row = fb.row(23).unwrap();
@@ -748,7 +759,7 @@ mod tests {
         state.add_remote_client(remote);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Columns 2..=4 should have dimmed selection bg.
         // Column 5 is the cursor position — cursor overwrites selection bg.
@@ -782,7 +793,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(3));
 
@@ -832,7 +843,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(4));
 
@@ -879,7 +890,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // No selection background should appear — cells should have default bg
         let wrong_bg = Some(dimmed_client_color(5));
@@ -908,7 +919,7 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(LOCAL_SELECTION_BG);
         for col in 3..=8u16 {
@@ -951,7 +962,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         let expected_bg = Some(dimmed_client_color(6));
 
@@ -1005,7 +1016,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label on cursor row (3), after "hello world" (len 11) + 1 gap = col 12
         let expected_fg = Some(client_color(2));
@@ -1051,7 +1062,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label on row 0 after "fn main()" (len 9) + 1 gap = col 10
         let expected_fg = Some(client_color(3));
@@ -1090,7 +1101,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Label should be truncated to MAX_LABEL_WIDTH
         let truncated_label = label_text("very-long-username-that-exceeds-limit", "NORMAL");
@@ -1132,7 +1143,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // "long content here!" is 18 chars, label_x = 19 (18+1).
         // Label " charlie [N] " is 14 chars. 19 + 14 = 33 > 20.
@@ -1167,7 +1178,7 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // No label should appear anywhere (client is in a different buffer)
         let label_fg = Some(client_color(6));
@@ -1274,7 +1285,7 @@ mod tests {
             .insert(100, vec!["hello world".to_string(), "second line".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // First line should contain 'h' at position (0, 0)
         let cell = fb.get(0, 0).unwrap();
@@ -1296,7 +1307,7 @@ mod tests {
         state.buffer_cache.insert(100, vec!["hello".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Row 1 should have tilde (line beyond buffer content)
         let cell = fb.get(0, 1).unwrap();
@@ -1325,7 +1336,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Content should be offset by gutter_width
         let cell = fb.get(4, 0).unwrap();
@@ -1354,7 +1365,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Should render without panicking
         let cell = fb.get(4, 0).unwrap();
@@ -1384,7 +1395,7 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Content at gutter offset
         let cell = fb.get(4, 0).unwrap();
@@ -1406,7 +1417,7 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Self cursor at (5, 2) should have inverse video style
         let cell = fb.get(5, 2).unwrap();
@@ -1423,7 +1434,7 @@ mod tests {
         state.update_local_cursor(1, 3, 7);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Statusline at row 9 (height - 1)
         // Should contain mode indicator
@@ -1439,7 +1450,7 @@ mod tests {
         // No cursor set - should show "?:?"
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // Statusline should be rendered (row 9)
         let last_row = fb.row(9).unwrap();
@@ -1453,7 +1464,7 @@ mod tests {
         let config = RenderConfig::default();
 
         // Should not panic with no windows
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
     }
 
     #[test]
@@ -1470,7 +1481,7 @@ mod tests {
         };
 
         // Should not panic (skips cursor rendering when no data)
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
     }
 
     #[test]
@@ -1513,7 +1524,7 @@ mod tests {
             .insert(100, vec!["abcdefghijklmnop".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config);
+        render_frame(&mut fb, &state, &config, &[]);
 
         // First character should be 'a'
         let cell = fb.get(0, 0).unwrap();

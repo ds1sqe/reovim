@@ -15,16 +15,18 @@
 //! The `AppState` within this struct provides server-specific state (kernel,
 //! windows, cmdline) that doesn't belong in the driver layer.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandContext, CommandResult},
     reovim_driver_display::layout::RootCompositor,
-    reovim_driver_input::{FallbackContext, ResolverRegistry},
+    reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack},
+    reovim_kernel::api::v1::{
+        Buffer, BufferId, CommandId, KernelContext, ModeId, ModeStack, RegisterContent,
+    },
 };
 
 use crate::{
@@ -93,10 +95,17 @@ pub struct SessionState {
     /// Registry of mode key resolvers.
     ///
     /// Resolvers implement mode-specific key handling policy:
-    /// - Operator interception (d, y, c enter operator-pending mode)
-    /// - Motion handling (w, b, j, k compute ranges)
-    /// - Line-operator detection (dd, yy, cc)
+    /// - Operator interception (keys that enter operator-pending mode)
+    /// - Motion handling (keys that compute cursor ranges)
+    /// - Line-operator detection (repeated operator keys)
     pub resolver_registry: ResolverRegistry,
+
+    /// Session-scoped shared registers (A-Z) (#515 Phase 5).
+    ///
+    /// All clients in the session read/write from this shared storage.
+    /// Accessed via `Register::Session('A')` through `Register::Session('Z')`.
+    /// Provides cross-client register sharing within a single session.
+    pub session_registers: HashMap<char, RegisterContent>,
 }
 
 impl SessionState {
@@ -121,6 +130,7 @@ impl SessionState {
             command_registry: CommandRegistry::new(),
             keymap_registry: KeymapRegistry::new(),
             resolver_registry: ResolverRegistry::new(),
+            session_registers: HashMap::new(),
         }
     }
 
@@ -177,6 +187,7 @@ impl SessionState {
             command_registry,
             keymap_registry,
             resolver_registry,
+            session_registers: HashMap::new(),
         }
     }
 
@@ -261,29 +272,22 @@ impl SessionState {
     /// * `id` - The command ID to execute
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
     pub fn execute_command_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        client: reovim_driver_session::ClientContext<'_>,
         id: &CommandId,
         args: &CommandContext,
     ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
         // Flush pending edits before command execution
         self.app.flush_pending_edits();
-        // Use per-client state (#471, #477)
+        // Use per-client state (#471, #477, #515)
         // Pass client_id for per-client undo support
         self.command_registry.execute_for_client(
             client_id,
             id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            client_extensions,
-            client_compositor,
+            client,
             &self.app,
             &self.vfs,
             args,
@@ -368,9 +372,9 @@ impl SessionState {
     /// Resolve a key event using the resolver registry.
     ///
     /// This is the primary key resolution method that handles:
-    /// - Operator interception (d, y, c → operator-pending mode)
+    /// - Operator interception (entering operator-pending mode)
     /// - Mode-specific key handling (via registered resolvers)
-    /// - Extension access for module state (`VimSessionState`)
+    /// - Extension access for module state
     ///
     /// # Returns
     ///
@@ -414,13 +418,21 @@ impl SessionState {
         let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
+        let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
+        let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
+        let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
-            &mut temp_mode_stack,
-            &mut temp_windows,
-            &mut runtime_ext,
-            &mut temp_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut temp_mode_stack,
+                windows: &mut temp_windows,
+                extensions: &mut runtime_ext,
+                compositor: &mut temp_compositor,
+                registers: &mut temp_registers,
+                clipboard_history: &mut temp_clipboard_history,
+                local_marks: &mut temp_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -468,21 +480,14 @@ impl SessionState {
     /// let editing_state = session.client_state_mut(client_id)?;
     ///
     /// // Resolve key with per-client state
-    /// let result = session_state.resolve_key_for_client(
-    ///     client_id,
-    ///     &mut editing_state.mode_stack,
-    ///     &mut editing_state.windows,
-    ///     &mut editing_state.extensions,
-    ///     &key,
-    /// );
+    /// let client = editing_state.client_context();
+    /// let result = session_state.resolve_key_for_client(client_id, client, &key);
     /// ```
+    #[allow(clippy::too_many_lines)] // PendingBindings population requires match arms
     pub fn resolve_key_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        client: reovim_driver_session::ClientContext<'_>,
         key: &reovim_driver_input::KeyEvent,
     ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
     {
@@ -506,6 +511,16 @@ impl SessionState {
             }
         }
 
+        let reovim_driver_session::ClientContext {
+            mode_stack: client_mode_stack,
+            windows: client_windows,
+            extensions: client_extensions,
+            compositor: client_compositor,
+            registers: client_registers,
+            clipboard_history: client_clipboard_history,
+            local_marks: client_local_marks,
+        } = client;
+
         // Phase #471, #477: Use per-client state for resolution
         let mode = client_mode_stack.current().clone();
         let mut mode_state = ModeState::new(mode.clone());
@@ -521,10 +536,15 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            &mut runtime_ext,
-            client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: client_mode_stack,
+                windows: client_windows,
+                extensions: &mut runtime_ext,
+                compositor: client_compositor,
+                registers: client_registers,
+                clipboard_history: client_clipboard_history,
+                local_marks: client_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -540,6 +560,67 @@ impl SessionState {
             client_extensions,
         );
 
+        // Generic PendingBindings population for bridge consumers (#468).
+        // After resolution, populate PendingBindings so bridges (e.g., WhichKeyBridge)
+        // can produce UI hints without knowing about specific resolvers.
+        match &result {
+            Some(reovim_driver_input::ResolveResult::Pending) => {
+                let pending = self.resolver_registry.pending_keys_for(&mode);
+                if !pending.is_empty() {
+                    let mut continuations =
+                        self.keymap_registry.bindings_with_prefix(&mode, &pending);
+                    // Include parent mode bindings (consistent with Push arm)
+                    if let Some(resolver) = self.resolver_registry.get(&mode)
+                        && let Some(parent) = resolver.inherits_from()
+                    {
+                        let parent_bindings =
+                            self.keymap_registry.bindings_with_prefix(parent, &pending);
+                        continuations.extend(parent_bindings);
+                    }
+                    let pb = client_extensions.get_or_insert::<PendingBindings>();
+                    // Preserve mode_prefix from Push (e.g., trigger key for operator mode)
+                    pb.pending_keys = pending;
+                    pb.mode = mode;
+                    pb.continuations = continuations;
+                }
+            }
+            Some(reovim_driver_input::ResolveResult::ModeTransition(
+                reovim_driver_input::ModeTransition::Push {
+                    mode: target_mode, ..
+                },
+            )) => {
+                // On mode push (e.g., entering an operator-pending mode),
+                // populate PendingBindings with the new mode's available bindings
+                // so which-key can show hints immediately on mode entry.
+                let trigger_key = reovim_driver_input::KeySequence::from_keys(&[*key]);
+                let empty = reovim_driver_input::KeySequence::new();
+                let mut continuations = self
+                    .keymap_registry
+                    .bindings_with_prefix(target_mode, &empty);
+                // Include parent mode bindings (operator modes inherit motions)
+                if let Some(resolver) = self.resolver_registry.get(target_mode)
+                    && let Some(parent) = resolver.inherits_from()
+                {
+                    let parent_bindings = self.keymap_registry.bindings_with_prefix(parent, &empty);
+                    continuations.extend(parent_bindings);
+                }
+                if !continuations.is_empty() {
+                    let pb = client_extensions.get_or_insert::<PendingBindings>();
+                    pb.mode_prefix = trigger_key;
+                    pb.pending_keys = reovim_driver_input::KeySequence::new();
+                    pb.mode = target_mode.clone();
+                    pb.continuations = continuations;
+                }
+            }
+            Some(_) => {
+                // Non-pending, non-push: clear any previous pending bindings
+                if let Some(pb) = client_extensions.get_mut::<PendingBindings>() {
+                    pb.clear();
+                }
+            }
+            None => {}
+        }
+
         // Take accumulated changes
         let changes = reovim_driver_session::api::ChangeTracker::take_changes(&mut runtime);
 
@@ -549,17 +630,16 @@ impl SessionState {
     /// Try to call `on_command_complete` on the current mode's resolver.
     ///
     /// Called after executing a command from `ResolveResult::Execute`.
-    /// For operator-pending modes (delete, yank, change), this is where
-    /// the resolver reads the post-motion cursor position and builds
-    /// the final operator command.
+    /// For operator-pending modes, this is where the resolver reads
+    /// the post-motion cursor position and builds the final command.
     ///
-    /// # Flow (e.g., `dw`)
+    /// # Flow
     ///
-    /// 1. `w` key → DELETE resolver returns `Execute(word-forward)`
-    /// 2. Runner executes `word-forward` → cursor moves to next word
-    /// 3. **This method** → DELETE resolver reads end position, returns
-    ///    `ModeTransition::Pop { ExecuteCommand { delete, range } }`
-    /// 4. Runner pops DELETE mode and executes the delete command
+    /// 1. Key press → resolver returns `Execute(motion-command)`
+    /// 2. Runner executes the motion → cursor moves
+    /// 3. **This method** → resolver reads end position, returns
+    ///    `ModeTransition::Pop { ExecuteCommand { operator, range } }`
+    /// 4. Runner pops the operator mode and executes the operator command
     pub fn try_on_command_complete(&mut self) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
 
@@ -588,13 +668,21 @@ impl SessionState {
         let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
+        let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
+        let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
+        let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
-            &mut temp_mode_stack,
-            &mut temp_windows,
-            &mut runtime_ext,
-            &mut temp_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut temp_mode_stack,
+                windows: &mut temp_windows,
+                extensions: &mut runtime_ext,
+                compositor: &mut temp_compositor,
+                registers: &mut temp_registers,
+                clipboard_history: &mut temp_clipboard_history,
+                local_marks: &mut temp_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -613,9 +701,7 @@ impl SessionState {
     ///
     /// # Arguments
     ///
-    /// * `client_mode_stack` - Per-client mode stack (from server-level `EditingState`)
-    /// * `client_windows` - Per-client window layout (from server-level `EditingState`)
-    /// * `client_extensions` - Per-client module extensions (#477)
+    /// * `client` - Per-client state bundle (from server-level `EditingState`)
     ///
     /// # Returns
     ///
@@ -623,10 +709,7 @@ impl SessionState {
     pub fn try_on_command_complete_for_client(
         &mut self,
         client_id: usize,
-        client_mode_stack: &mut ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        client: reovim_driver_session::ClientContext<'_>,
     ) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{
             ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
@@ -644,7 +727,17 @@ impl SessionState {
             }
         }
 
-        // Phase #471, #477: Use per-client state with owner for per-client undo
+        let reovim_driver_session::ClientContext {
+            mode_stack: client_mode_stack,
+            windows: client_windows,
+            extensions: client_extensions,
+            compositor: client_compositor,
+            registers: client_registers,
+            clipboard_history: client_clipboard_history,
+            local_marks: client_local_marks,
+        } = client;
+
+        // Phase #471, #477, #515: Use per-client state with owner for per-client undo
         //
         // Use placeholder extensions in runtime - resolvers access session only
         // via SessionApiDyn (excludes ExtensionApi), so placeholder is safe.
@@ -656,10 +749,15 @@ impl SessionState {
         let mut runtime = SessionRuntime::with_owner(
             driver_client_id,
             &mut self.driver_session,
-            client_mode_stack,
-            client_windows,
-            &mut runtime_ext,
-            client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: client_mode_stack,
+                windows: client_windows,
+                extensions: &mut runtime_ext,
+                compositor: client_compositor,
+                registers: client_registers,
+                clipboard_history: client_clipboard_history,
+                local_marks: client_local_marks,
+            },
             &self.app.kernel,
             &stub_executor,
         );
@@ -696,7 +794,7 @@ mod tests {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
         reovim_kernel::api::v1::{
-            EventBus, MarkBank, ModuleId, MotionEngine, OptionRegistry, RegisterBank,
+            EventBus, HistoryRing, MarkBank, ModuleId, MotionEngine, OptionRegistry, RegisterBank,
             ServiceRegistry, TextObjectEngine,
         },
     };
@@ -716,7 +814,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -810,15 +907,23 @@ mod tests {
 
         // resolve_key_for_client should use per-client state, not shared
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         // Call resolve_key_for_client - it will return None (no resolver)
         // but the important thing is it uses per-client state
         let _result = state.resolve_key_for_client(
             1, // test client_id for per-client undo (#471)
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1036,13 +1141,21 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_none());
@@ -1059,6 +1172,9 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1068,10 +1184,15 @@ mod tests {
 
         let result = state.execute_command_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &cmd_id,
             &ctx,
         );
@@ -1221,14 +1342,22 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('x'));
         let result = state.resolve_key_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1483,14 +1612,22 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
             1,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -1543,14 +1680,22 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let ctx = reovim_driver_command::CommandContext::new();
         let result = state.execute_command_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &cmd_id,
             &ctx,
         );
@@ -1984,13 +2129,21 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_some(), "Should return ModeTransition from resolver");
@@ -2078,13 +2231,21 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = state.try_on_command_complete_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
         );
 
         assert!(result.is_some());
@@ -2178,14 +2339,22 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
             1,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &key,
         );
 
@@ -2238,5 +2407,350 @@ mod tests {
         assert_eq!(cmd.description(), "dummy");
         assert!(cmd.args().is_empty());
         assert_eq!(cmd.names(), &["dummy"]);
+    }
+
+    // ========================================================================
+    // PendingBindings population tests (lines 576-632)
+    // ========================================================================
+
+    /// Resolver returning `Pending` with configurable pending keys and parent.
+    struct PendingWithKeysResolver {
+        mode: ModeId,
+        parent: Option<ModeId>,
+        keys: reovim_driver_input::KeySequence,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_input::ModeKeyResolver for PendingWithKeysResolver {
+        fn resolve_with_keymap(
+            &self,
+            _key: &reovim_driver_input::KeyEvent,
+            _state: &mut reovim_driver_input::ModeState,
+            _input: &reovim_driver_input::ResolveInput<'_>,
+        ) -> reovim_driver_input::ResolveResult {
+            reovim_driver_input::ResolveResult::Pending
+        }
+
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn inherits_from(&self) -> Option<&ModeId> {
+            self.parent.as_ref()
+        }
+
+        fn pending_keys(&self) -> reovim_driver_input::KeySequence {
+            self.keys.clone()
+        }
+    }
+
+    /// Resolver returning `ModeTransition::Push` to a target mode.
+    struct PushToModeResolver {
+        mode: ModeId,
+        target: ModeId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_input::ModeKeyResolver for PushToModeResolver {
+        fn resolve_with_session(
+            &self,
+            _key: &reovim_driver_input::KeyEvent,
+            _state: &mut reovim_driver_input::ModeState,
+            _input: &reovim_driver_input::ResolveInput<'_>,
+            _session: &mut dyn reovim_driver_input::SessionApiDyn,
+            _shared_extensions: &mut reovim_driver_input::ExtensionMap,
+            _client_extensions: &mut reovim_driver_input::ExtensionMap,
+        ) -> reovim_driver_input::ResolveResult {
+            reovim_driver_input::ResolveResult::ModeTransition(
+                reovim_driver_input::ModeTransition::Push {
+                    mode: self.target.clone(),
+                    context: reovim_driver_input::TransitionContext::new(),
+                },
+            )
+        }
+
+        fn resolve_with_keymap(
+            &self,
+            _key: &reovim_driver_input::KeyEvent,
+            _state: &mut reovim_driver_input::ModeState,
+            _input: &reovim_driver_input::ResolveInput<'_>,
+        ) -> reovim_driver_input::ResolveResult {
+            reovim_driver_input::ResolveResult::NotHandled
+        }
+
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+    }
+
+    /// Stub resolver declaring a parent mode via `inherits_from`.
+    struct InheritingStubResolver {
+        mode: ModeId,
+        parent: ModeId,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl reovim_driver_input::ModeKeyResolver for InheritingStubResolver {
+        fn resolve_with_keymap(
+            &self,
+            _key: &reovim_driver_input::KeyEvent,
+            _state: &mut reovim_driver_input::ModeState,
+            _input: &reovim_driver_input::ResolveInput<'_>,
+        ) -> reovim_driver_input::ResolveResult {
+            reovim_driver_input::ResolveResult::NotHandled
+        }
+
+        fn mode_id(&self) -> &ModeId {
+            &self.mode
+        }
+
+        fn inherits_from(&self) -> Option<&ModeId> {
+            Some(&self.parent)
+        }
+    }
+
+    /// Helper: resolve a key for a client, returning result and allowing
+    /// inspection of the client extensions afterwards.
+    fn resolve_pb_test(
+        state: &mut SessionState,
+        key: &reovim_driver_input::KeyEvent,
+        extensions: &mut reovim_driver_session::ExtensionMap,
+    ) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
+    {
+        let mut mode_stack = ModeStack::new(state.home_mode().clone());
+        let mut windows = reovim_driver_session::WindowLayout::empty();
+        let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+
+        state.resolve_key_for_client(
+            1,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
+            key,
+        )
+    }
+
+    /// Test `PendingBindings` populated on `Pending` result with non-empty
+    /// pending keys (covers lines 578-594).
+    #[test]
+    fn test_pending_bindings_on_pending_result() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Pending key sequence: "g"
+        let g_key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+        let pending_keys = reovim_driver_input::KeySequence::from_keys(&[g_key]);
+
+        // Register resolver with non-empty pending keys
+        state.resolver_registry.register(PendingWithKeysResolver {
+            mode: test_mode_id(),
+            parent: None,
+            keys: pending_keys,
+        });
+
+        // Register keymap bindings: "gg" → goto-top, "gd" → goto-def
+        let goto_top = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "goto-top");
+        let goto_def = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "goto-def");
+        state
+            .keymap_registry
+            .register_str(&test_mode_id(), "gg", goto_top);
+        state
+            .keymap_registry
+            .register_str(&test_mode_id(), "gd", goto_def);
+
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        let pb = extensions.get::<PendingBindings>().unwrap();
+        assert!(!pb.pending_keys.is_empty());
+        assert_eq!(pb.mode, test_mode_id());
+        assert_eq!(pb.continuations.len(), 2);
+    }
+
+    /// Test `PendingBindings` includes parent mode bindings on `Pending`
+    /// (covers lines 583-588).
+    #[test]
+    fn test_pending_bindings_on_pending_with_parent_mode() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Use distinct discriminant so parent_mode != test_mode_id() in HashMap
+        let parent_mode = ModeId::with_discriminant(ModuleId::new("test"), "motion", 10);
+        let g_key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+        let pending_keys = reovim_driver_input::KeySequence::from_keys(&[g_key]);
+
+        // Register resolver with parent
+        state.resolver_registry.register(PendingWithKeysResolver {
+            mode: test_mode_id(),
+            parent: Some(parent_mode.clone()),
+            keys: pending_keys,
+        });
+
+        // Binding in child mode: "gg" → goto-top
+        let goto_top = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "goto-top");
+        state
+            .keymap_registry
+            .register_str(&test_mode_id(), "gg", goto_top);
+
+        // Binding in parent mode: "gd" → goto-def
+        let goto_def = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "goto-def");
+        state
+            .keymap_registry
+            .register_str(&parent_mode, "gd", goto_def);
+
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        let pb = extensions.get::<PendingBindings>().unwrap();
+        // Should have both child (gg) and parent (gd) continuations
+        assert_eq!(pb.continuations.len(), 2);
+    }
+
+    /// Test `PendingBindings` populated on `ModeTransition::Push`
+    /// (covers lines 605-622).
+    #[test]
+    fn test_pending_bindings_on_mode_push() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Use distinct discriminant so target_mode != test_mode_id()
+        let target_mode = ModeId::with_discriminant(ModuleId::new("test"), "operator", 1);
+
+        // Register resolver that pushes to target mode
+        state.resolver_registry.register(PushToModeResolver {
+            mode: test_mode_id(),
+            target: target_mode.clone(),
+        });
+
+        // Register keybindings for target mode
+        let word_forward =
+            reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "word-forward");
+        let word_backward =
+            reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "word-backward");
+        state
+            .keymap_registry
+            .register_str(&target_mode, "w", word_forward);
+        state
+            .keymap_registry
+            .register_str(&target_mode, "b", word_backward);
+
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        let pb = extensions.get::<PendingBindings>().unwrap();
+        assert!(!pb.mode_prefix.is_empty()); // trigger key "d"
+        assert!(pb.pending_keys.is_empty()); // no pending yet
+        assert_eq!(pb.mode, target_mode);
+        assert_eq!(pb.continuations.len(), 2);
+    }
+
+    /// Test `PendingBindings` on Push includes parent bindings
+    /// (covers lines 611-615).
+    #[test]
+    fn test_pending_bindings_on_push_with_parent() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Use distinct discriminants so all three modes are unique
+        let target_mode = ModeId::with_discriminant(ModuleId::new("test"), "operator", 1);
+        let motion_mode = ModeId::with_discriminant(ModuleId::new("test"), "motion", 2);
+
+        // Register resolver that pushes to target mode
+        state.resolver_registry.register(PushToModeResolver {
+            mode: test_mode_id(),
+            target: target_mode.clone(),
+        });
+
+        // Register inheriting resolver for target mode (inherits from motion)
+        state.resolver_registry.register(InheritingStubResolver {
+            mode: target_mode.clone(),
+            parent: motion_mode.clone(),
+        });
+
+        // Parent mode binding: "w" → word-forward
+        let word_fwd =
+            reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "word-forward");
+        state
+            .keymap_registry
+            .register_str(&motion_mode, "w", word_fwd);
+
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        let pb = extensions.get::<PendingBindings>().unwrap();
+        // Continuations from parent mode
+        assert_eq!(pb.continuations.len(), 1);
+        assert_eq!(pb.mode, target_mode);
+    }
+
+    /// Test `PendingBindings` NOT populated when Push target has no bindings
+    /// (covers line 617 false branch).
+    #[test]
+    fn test_pending_bindings_on_push_empty_continuations() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Use distinct discriminant
+        let target_mode = ModeId::with_discriminant(ModuleId::new("test"), "empty-mode", 3);
+
+        // Register resolver that pushes to target mode (no bindings)
+        state.resolver_registry.register(PushToModeResolver {
+            mode: test_mode_id(),
+            target: target_mode,
+        });
+
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        // No bindings registered for target → PendingBindings should not be set
+        assert!(extensions.get::<PendingBindings>().is_none());
+    }
+
+    /// Test `PendingBindings` cleared on non-Pending, non-Push result
+    /// (covers lines 627-628).
+    #[test]
+    fn test_pending_bindings_cleared_on_completed() {
+        let kernel = KernelContext::default();
+        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+
+        // Register resolver returning Completed
+        state
+            .resolver_registry
+            .register(ExecutingDuringResolveResolver::new(test_mode_id()));
+
+        // Pre-populate PendingBindings
+        let mut extensions = reovim_driver_session::ExtensionMap::new();
+        let pb = extensions.get_or_insert::<PendingBindings>();
+        let cmd = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy");
+        pb.continuations
+            .push((reovim_driver_input::KeySequence::new(), cmd));
+        assert!(extensions.get::<PendingBindings>().unwrap().is_active());
+
+        let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
+        let result = resolve_pb_test(&mut state, &key, &mut extensions);
+        assert!(result.is_some());
+
+        // PendingBindings should be cleared
+        let pb = extensions.get::<PendingBindings>().unwrap();
+        assert!(!pb.is_active());
     }
 }

@@ -106,9 +106,9 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
-                RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
+                RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -138,6 +138,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -162,6 +165,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -188,6 +194,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -195,10 +204,15 @@ mod tests {
         fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 kernel,
                 &StubExecutor,
             )
@@ -310,7 +324,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),

@@ -81,7 +81,7 @@ pub use provider::CommandProvider;
 pub use registry::CommandHandlerStore;
 
 // Re-export query service (#453)
-pub use query::{CommandInfo, CommandQueryService};
+pub use query::{CommandInfo, CommandQueryService, ExCommandInfo, ExCommandQueryService};
 
 // Re-export ex-command dispatcher and registry (#465)
 pub use ex_dispatch::{ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext};
@@ -316,6 +316,23 @@ mod tests {
             registry.dispatch("unknown", &kernel, &ctx),
             ExCommandResult::NotFound(_)
         ));
+    }
+
+    // Integration: ExCommandInfo + ExCommandQueryService re-exports (#453)
+    #[test]
+    fn test_ex_command_info_reexport() {
+        let info = ExCommandInfo {
+            id: "test".to_string(),
+            names: vec!["t".to_string()],
+            help: "Test".to_string(),
+        };
+        assert_eq!(info.id, "test");
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_ex_command_query_service_reexport() {
+        fn _accepts_dyn(_: &dyn ExCommandQueryService) {}
     }
 
     // Integration: CommandQueryService + CommandInfo

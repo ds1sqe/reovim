@@ -63,7 +63,7 @@ fn current_timestamp_ms() -> u64 {
 }
 
 /// Convert internal `Client` to new `ClientInfo` protobuf format (#480).
-fn to_proto_client_info(client: &Client) -> ProtoClientInfo {
+pub fn to_proto_client_info(client: &Client) -> ProtoClientInfo {
     let relation = client.relation.map(|r| match r {
         ClientRelation::Following { target } => ProtoClientRelation {
             r#type: ProtoRelationType::RelationTypeFollowing as i32,

@@ -96,12 +96,12 @@ impl Operator for YankOperator {
         };
 
         // Store to the specified register (handles +, *, a-z, etc.)
-        // Uses ClipboardProvider for +/* registers, RegisterBank for others
-        registers::store_to_register(ctx.kernel, ctx.register, &content);
+        // Uses ClipboardProvider for +/* registers, per-client RegisterBank for others (#515)
+        registers::store_and_sync(ctx.kernel, ctx.registers, ctx.register, &content);
 
-        // Push to history for numbered registers (0-9)
+        // Push to per-client history for numbered registers (0-9) (#515)
         // This happens on every yank regardless of target register
-        registers::push_to_history(ctx.kernel, &content);
+        registers::push_to_history(ctx.clipboard_history, &content);
 
         Ok(())
     }
@@ -116,7 +116,11 @@ impl Operator for YankOperator {
 }
 
 #[cfg(test)]
-#[allow(clippy::uninlined_format_args, clippy::significant_drop_tightening)]
+#[allow(
+    clippy::uninlined_format_args,
+    clippy::significant_drop_tightening,
+    clippy::drop_non_drop
+)]
 mod tests {
     use {
         super::*,
@@ -127,9 +131,9 @@ mod tests {
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, KernelContext,
-                MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position, RegisterBank,
-                RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
+                Register, RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -159,12 +163,20 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             ctx,
             &executor,
         );
@@ -230,7 +242,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -263,10 +274,14 @@ mod tests {
     fn test_yank_buffer_not_found() {
         let ctx = create_test_context();
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id: BufferId::from_raw(999),
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -282,10 +297,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -295,8 +314,8 @@ mod tests {
         assert!(result.is_ok());
 
         // Check unnamed register has "hello"
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello");
     }
 
     #[test]
@@ -306,10 +325,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -318,8 +341,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "world");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "world");
     }
 
     #[test]
@@ -329,10 +352,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -341,8 +368,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "lo\nwor");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "lo\nwor");
     }
 
     #[test]
@@ -352,10 +379,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -364,8 +395,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hello\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hello\n");
     }
 
     #[test]
@@ -375,10 +406,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -387,8 +422,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line1\nline2\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "line1\nline2\n");
     }
 
     #[test]
@@ -398,10 +433,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -410,8 +449,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "line1\nline2\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "line1\nline2\n");
     }
 
     #[test]
@@ -421,10 +460,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('a'),
+            register: Register::Slot('a'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -432,8 +475,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('a').map(|r| r.text.as_str()), Some("hello"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('a').map(|r| r.text.as_str()), Some("hello"));
     }
 
     #[test]
@@ -443,10 +486,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -466,10 +513,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -478,8 +529,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "");
     }
 
     #[test]
@@ -489,10 +540,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -501,8 +556,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "aa\nbbb\ncc");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "aa\nbbb\ncc");
     }
 
     #[test]
@@ -512,10 +567,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -523,8 +582,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "a\nb\nc\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "a\nb\nc\n");
     }
 
     #[test]
@@ -534,10 +593,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -546,8 +609,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "hi");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "hi");
     }
 
     #[test]
@@ -557,10 +620,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -569,8 +636,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "only line\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "only line\n");
     }
 
     #[test]
@@ -580,10 +647,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: Some('z'),
+            register: Register::Slot('z'),
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -591,8 +662,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get_named('z').map(|r| r.text.as_str()), Some("world"));
+        drop(op_ctx);
+        assert_eq!(registers.get_named('z').map(|r| r.text.as_str()), Some("world"));
     }
 
     #[test]
@@ -602,10 +673,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -613,8 +688,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "last\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "last\n");
     }
 
     #[test]
@@ -624,10 +699,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
@@ -636,8 +715,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "h");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "h");
     }
 
     #[test]
@@ -660,10 +739,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
         };
@@ -672,8 +755,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "cde");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "cde");
     }
 
     #[test]
@@ -683,10 +766,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
         };
@@ -695,8 +782,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "b\nc\nd\n");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "b\nc\nd\n");
     }
 
     #[test]
@@ -706,10 +793,14 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
         };
@@ -718,8 +809,8 @@ mod tests {
         let result = yank.execute(&mut op_ctx, range);
         assert!(result.is_ok());
 
-        let regs = ctx.registers.read();
-        assert_eq!(regs.get().text, "llo\nwor");
+        drop(op_ctx);
+        assert_eq!(registers.get().text, "llo\nwor");
     }
 
     // ========================================================================
@@ -762,18 +853,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         yank.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_characterwise());
+        drop(op_ctx);
+        assert!(registers.get().is_characterwise());
     }
 
     #[test]
@@ -783,18 +878,22 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         yank.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_linewise());
+        drop(op_ctx);
+        assert!(registers.get().is_linewise());
     }
 
     #[test]
@@ -804,19 +903,23 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
         yank.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_linewise());
-        assert_eq!(regs.get().text, "a\nb\nc\n");
+        drop(op_ctx);
+        assert!(registers.get().is_linewise());
+        assert_eq!(registers.get().text, "a\nb\nc\n");
     }
 
     #[test]
@@ -826,17 +929,21 @@ mod tests {
         let buffer_id = ctx.buffers.register(buffer);
 
         let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let mut op_ctx = OperatorContext {
             kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id,
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
         };
         let range = super::super::Range::new(Position::new(0, 2), Position::new(1, 3));
         yank.execute(&mut op_ctx, range).unwrap();
 
-        let regs = ctx.registers.read();
-        assert!(regs.get().is_characterwise());
+        drop(op_ctx);
+        assert!(registers.get().is_characterwise());
     }
 }

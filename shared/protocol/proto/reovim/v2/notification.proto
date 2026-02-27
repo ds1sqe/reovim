@@ -48,6 +48,9 @@ message Notification {
     PresenceJoinedPayload presence_joined = 23;
     PresenceLeftPayload presence_left = 24;
     PresenceUpdatedPayload presence_updated = 25;
+
+    // Extension state updates (#514)
+    ExtensionUpdatedPayload extension_updated = 26;
   }
 }
 
@@ -225,4 +228,19 @@ message PresenceLeftPayload {
 // A client's presence state changed (cursor, viewport, mode, sync_mode).
 message PresenceUpdatedPayload {
   ClientPresence client = 1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extension state updates (#514)
+//
+// Emitted when a bridge's is_active() state changes (activation/deactivation).
+// ─────────────────────────────────────────────────────────────────────────────
+
+message ExtensionUpdatedPayload {
+  // Extension kind (e.g., "cmdline").
+  string kind = 1;
+  // JSON-serialized extension state snapshot.
+  string data = 2;
+  // Client ID that owns this state (for per-client extensions).
+  uint64 client_id = 3;
 }

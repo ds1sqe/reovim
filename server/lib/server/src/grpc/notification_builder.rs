@@ -21,7 +21,7 @@
 //! use reovim_server::grpc::notification_builder::build_notifications;
 //!
 //! let changes = runtime.take_changes();
-//! let notifications = build_notifications(&changes, &session, client_id);
+//! let notifications = build_notifications(&changes, &session, client_id, None);
 //!
 //! for notification in notifications {
 //!     session.emit_notification(notification);
@@ -31,11 +31,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use {
-    reovim_driver_session::api::StateChanges,
+    reovim_driver_session::{api::StateChanges, bridges::BridgeRegistry},
     reovim_protocol::v2::{
-        BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload, LayoutChangedPayload,
-        ModeChangedPayload, Notification, OptionChangedPayload, Position, SelectionChangedPayload,
-        ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
+        BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
+        ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
+        OptionChangedPayload, Position, SelectionChangedPayload, ViewportUpdatedPayload,
+        WindowInfo, WindowRect, notification,
     },
 };
 
@@ -60,6 +61,7 @@ fn current_timestamp_ms() -> u64 {
 /// * `changes` - The state changes to convert
 /// * `session` - Session for reading per-client and shared state (#486)
 /// * `client_id` - Client ID that originated these changes (for multi-client filtering)
+/// * `bridges` - Optional bridge registry for extension notifications (#514)
 ///
 /// # Returns
 ///
@@ -69,6 +71,7 @@ pub fn build_notifications(
     changes: &StateChanges,
     session: &Session,
     client_id: u64,
+    bridges: Option<&BridgeRegistry>,
 ) -> Vec<Notification> {
     let mut notifications = Vec::new();
     let timestamp = current_timestamp_ms();
@@ -136,6 +139,19 @@ pub fn build_notifications(
         for window_id in &changes.scrolled_windows {
             if let Some(notification) =
                 build_viewport_notification(session, *window_id, timestamp, client_id)
+            {
+                notifications.push(notification);
+            }
+        }
+    }
+
+    // Extension state updated notifications (#514)
+    if changes.extension_changed
+        && let Some(registry) = bridges
+    {
+        for kind in &changes.extensions_updated {
+            if let Some(notification) =
+                build_extension_notification(kind, session, timestamp, client_id, registry)
             {
                 notifications.push(notification);
             }
@@ -470,6 +486,49 @@ fn build_option_notification(
     }
 }
 
+/// Build an extension state updated notification (#514).
+///
+/// Looks up the bridge by kind, gets the snapshot from the client's `ExtensionMap`,
+/// and returns a notification with the JSON data.
+///
+/// Returns `None` if the bridge is unknown or the extension has no state.
+#[allow(clippy::cast_possible_truncation)]
+fn build_extension_notification(
+    kind: &str,
+    session: &Session,
+    timestamp: u64,
+    client_id: u64,
+    bridges: &BridgeRegistry,
+) -> Option<Notification> {
+    use reovim_driver_session::bridges::ExtensionScope;
+
+    let bridge = bridges.get(kind)?;
+
+    let data = match bridge.scope() {
+        ExtensionScope::Client => {
+            // Use with_client_extensions to avoid cloning EditingState
+            // (EditingState::clone() creates empty ExtensionMap)
+            session.with_client_extensions(ClientId::new(client_id as usize), |extensions| {
+                bridge.snapshot(extensions)
+            })??
+        }
+        ExtensionScope::Shared => {
+            // Shared extensions not yet implemented at session level
+            return None;
+        }
+    };
+
+    Some(Notification {
+        event_type: "extension_updated".to_string(),
+        timestamp_ms: timestamp,
+        payload: Some(notification::Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: kind.to_string(),
+            data: data.to_string(),
+            client_id,
+        })),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use {super::*, crate::session::SessionId};
@@ -487,7 +546,7 @@ mod tests {
         let session = Session::new(SessionId::new("test"));
         // Use client_id 0 - no client registered, so per-client lookups return None
         // and fallback to shared state (or return empty notifications)
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
         assert!(notifications.is_empty());
     }
 
@@ -498,7 +557,7 @@ mod tests {
 
         let session = Session::new(SessionId::new("test"));
         // Use client_id 0 - fallback to shared state for mode
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "mode_changed");
@@ -707,7 +766,7 @@ mod tests {
         changes.record_buffer_modified(buffer_id);
 
         let session = Session::new(SessionId::new("buf-mod-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "buffer_modified");
@@ -721,7 +780,7 @@ mod tests {
         changes.buffers_created.push(buffer_id);
 
         let session = Session::new(SessionId::new("buf-create-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "buffer_list_changed");
@@ -742,7 +801,7 @@ mod tests {
         changes.buffers_deleted.push(buffer_id);
 
         let session = Session::new(SessionId::new("buf-delete-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "buffer_list_changed");
@@ -767,7 +826,7 @@ mod tests {
             });
 
         let session = Session::new(SessionId::new("opt-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "option_changed");
@@ -779,7 +838,7 @@ mod tests {
         changes.window_changed = true;
 
         let session = Session::new(SessionId::new("win-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "layout_changed");
@@ -791,7 +850,7 @@ mod tests {
         changes.focus_changed = true;
 
         let session = Session::new(SessionId::new("focus-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "layout_changed");
@@ -813,7 +872,7 @@ mod tests {
             });
 
         let session = Session::new(SessionId::new("multi-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         // Should have: mode_changed, buffer_modified, buffer_list_changed (added), option_changed
         assert_eq!(notifications.len(), 4);
@@ -836,7 +895,7 @@ mod tests {
 
         let session = Session::new(SessionId::new("cursor-test"));
         // No client registered, so cursor notifications are skipped
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         // Should have no notifications because cursor notification returns None for unknown client
         assert!(notifications.is_empty());
@@ -851,7 +910,7 @@ mod tests {
 
         let session = Session::new(SessionId::new("sel-test"));
         // No client registered
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         // No selection notification because client doesn't exist
         assert!(notifications.is_empty());
@@ -865,7 +924,7 @@ mod tests {
         changes.scrolled_windows.push(window_id);
 
         let session = Session::new(SessionId::new("scroll-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         // No viewport notification because client doesn't exist
         assert!(notifications.is_empty());
@@ -915,7 +974,7 @@ mod tests {
         changes.buffers_deleted.push(buf3);
 
         let session = Session::new(SessionId::new("multi-buf-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         // 2 created + 1 deleted = 3 buffer_list_changed notifications
         assert_eq!(notifications.len(), 3);
@@ -1305,7 +1364,7 @@ mod tests {
         // Build notifications with cursor_moved
         let mut changes = StateChanges::new();
         changes.record_cursor_move(buffer_id);
-        let notifications = build_notifications(&changes, &session, 10);
+        let notifications = build_notifications(&changes, &session, 10, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "cursor_moved");
@@ -1336,7 +1395,7 @@ mod tests {
         let mut changes = StateChanges::new();
         changes.selection_changed = true;
         changes.affected_buffers.push(buffer_id);
-        let notifications = build_notifications(&changes, &session, 11);
+        let notifications = build_notifications(&changes, &session, 11, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "selection_changed");
@@ -1366,7 +1425,7 @@ mod tests {
         let mut changes = StateChanges::new();
         changes.scroll_changed = true;
         changes.scrolled_windows.push(window_id);
-        let notifications = build_notifications(&changes, &session, 12);
+        let notifications = build_notifications(&changes, &session, 12, None);
 
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "viewport_updated");
@@ -1545,8 +1604,8 @@ mod tests {
                 },
             },
             reovim_kernel::api::v1::{
-                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank,
-                ServiceRegistry, TextObjectEngine,
+                EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,
+                TextObjectEngine,
             },
             std::sync::Arc,
         };
@@ -1629,7 +1688,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),
@@ -1697,7 +1755,7 @@ mod tests {
             });
 
         let session = Session::new(SessionId::new("multi-opt-test"));
-        let notifications = build_notifications(&changes, &session, 0);
+        let notifications = build_notifications(&changes, &session, 0, None);
 
         assert_eq!(notifications.len(), 2);
         assert!(
@@ -1705,5 +1763,123 @@ mod tests {
                 .iter()
                 .all(|n| n.event_type == "option_changed")
         );
+    }
+
+    // === Extension notification tests (#514) ===
+
+    #[test]
+    fn test_extension_changed_without_bridges_no_notification() {
+        let mut changes = StateChanges::new();
+        changes.record_extension_change("cmdline".into());
+
+        let session = Session::new(SessionId::new("test"));
+        // No bridges provided - should not emit extension notifications
+        let notifications = build_notifications(&changes, &session, 0, None);
+        assert!(
+            notifications.is_empty(),
+            "Should not emit extension notifications without bridges"
+        );
+    }
+
+    #[test]
+    fn test_extension_changed_with_bridges_unknown_kind() {
+        use reovim_driver_session::bridges::BridgeRegistry;
+
+        let mut changes = StateChanges::new();
+        changes.record_extension_change("unknown".into());
+
+        let session = Session::new(SessionId::new("test"));
+        let registry = BridgeRegistry::new(); // empty - no bridges registered
+        let notifications = build_notifications(&changes, &session, 0, Some(&registry));
+        assert!(notifications.is_empty(), "Should not emit notification for unknown bridge kind");
+    }
+
+    #[test]
+    fn test_extension_changed_with_cmdline_bridge() {
+        use {
+            reovim_driver_session::bridges::BridgeRegistry,
+            reovim_module_cmdline::{CmdlineBridge, CmdlinePrompt, CmdlineState},
+        };
+
+        let mut changes = StateChanges::new();
+        changes.record_extension_change("cmdline".into());
+
+        // Create session with client that has CmdlineState
+        let session = Session::new(SessionId::new("test"));
+        let client_id = ClientId::new(42);
+        session.add_client(client_id);
+        // Initialize CmdlineState in client extensions
+        session.update_client_state(client_id, |state| {
+            let cmdline = state.extensions.get_or_insert::<CmdlineState>();
+            cmdline.enter(CmdlinePrompt::Command);
+            cmdline.insert_char('w');
+        });
+
+        let mut registry = BridgeRegistry::new();
+        registry.register(CmdlineBridge);
+
+        let notifications = build_notifications(&changes, &session, 42, Some(&registry));
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].event_type, "extension_updated");
+        if let Some(notification::Payload::ExtensionUpdated(payload)) = &notifications[0].payload {
+            assert_eq!(payload.kind, "cmdline");
+            assert_eq!(payload.client_id, 42);
+            // Verify JSON data contains expected fields
+            let data: serde_json::Value = serde_json::from_str(&payload.data).expect("valid JSON");
+            assert_eq!(data["active"], true);
+            assert_eq!(data["prompt"], ":");
+            assert_eq!(data["input"], "w");
+            assert_eq!(data["cursor"], 1);
+        } else {
+            panic!("Expected ExtensionUpdated payload");
+        }
+    }
+
+    #[test]
+    fn test_extension_not_changed_no_notification() {
+        use {
+            reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
+        };
+
+        let changes = StateChanges::new(); // No extension changes
+
+        let session = Session::new(SessionId::new("test"));
+        let mut registry = BridgeRegistry::new();
+        registry.register(CmdlineBridge);
+
+        let notifications = build_notifications(&changes, &session, 0, Some(&registry));
+        assert!(notifications.is_empty());
+    }
+
+    #[test]
+    fn test_build_extension_notification_shared_scope_returns_none() {
+        use reovim_driver_session::{
+            ExtensionMap,
+            bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
+        };
+
+        struct SharedBridge;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl ExtensionStateBridge for SharedBridge {
+            fn kind(&self) -> &'static str {
+                "shared-test"
+            }
+            fn scope(&self) -> ExtensionScope {
+                ExtensionScope::Shared
+            }
+            fn snapshot(&self, _: &ExtensionMap) -> Option<serde_json::Value> {
+                Some(serde_json::json!({"shared": true}))
+            }
+            fn is_active(&self, _: &ExtensionMap) -> bool {
+                true
+            }
+        }
+
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(SharedBridge);
+
+        let session = Session::new(SessionId::new("shared-test"));
+        let result = build_extension_notification("shared-test", &session, 12345, 1, &bridges);
+        assert!(result.is_none());
     }
 }

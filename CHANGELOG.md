@@ -4,6 +4,89 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.9.5-dev
 
+### Added
+
+- **Per-client register isolation and type-safe Register enum (#515)**: Refactors
+  shared state to an explicit local/shared model. Registers (`RegisterBank`),
+  clipboard history (`HistoryRing`), and local marks (`MarkBank`) move from
+  shared `KernelContext` to per-client `EditingState`, fixing multi-client
+  isolation. Introduces kernel-level `Register` enum with six variants
+  (`Default`, `Slot`, `History`, `System`, `Session`, `PeerHistory`) for
+  compile-time register addressing. Decouples `ClipboardProvider` from register
+  routing into a standalone `ClipboardApi` trait. Adds session-scoped shared
+  registers (A-Z) via `SessionState.session_registers`. Expands `HistoryRing`
+  capacity from 10 to 256 entries. Updates gRPC `GetRegistersRequest` with
+  `client_id` field. Vim module operators use type-safe `Register` in
+  `OperatorContext` with `char_to_register`/`option_char_to_register` bridge
+  functions. E2E register and clipboard tests relocated to their policy module
+  crates (`reovim-module-vim`, `reovim-module-clipboard`).
+
+- **Headless web capture via Playwright (#516)**: `reovim cli capture --format png
+  --web-url URL` produces pixel-perfect screenshots by running the real web client
+  in headless Chromium via Playwright. Adds a Node.js capture script
+  (`clients/web/src/cli/capture.ts`) supporting PNG and HTML output with
+  configurable viewport, DPR, and timeout. Rust CLI routes `png`/`html` formats to
+  the Playwright script while `plain_text`/`raw_ansi`/`cell_grid` continue through
+  the existing gRPC relay. Web client server address now uses a 3-tier resolution
+  chain: `window.__REOVIM_SERVER` (Playwright/test injection), `VITE_GRPC_ADDRESS`
+  (build-time env), or default (`hostname:12521`). E2E test fixtures updated to use
+  `addInitScript` injection, removing the `?port=` query parameter.
+
+- **Stateless CLI with DebugService (#468)**: CLI no longer joins as a client.
+  All client-targeting operations (SendKeys, Capture, GetMode, GetCursor,
+  ListClients, GetExtensionState, ListExtensions) moved to `DebugService`
+  (no auth required). `InputService.target_client_id` field reverted and
+  reserved. CLI commands `clients`, `extension-state`, `extensions` added.
+  `Presence` subcommand replaced with `Clients`.
+
+- **Which-key hints for operator modes (#468)**: Pressing `d`, `y`, or `c` now
+  shows which-key popup with available continuations (motions, text objects).
+  `ModeTransition::Push` populates `PendingBindings` with all bindings for the
+  target mode + parent (inherited motions). Operator resolvers (`delete.rs`,
+  `yank.rs`, `change.rs`) expose `pending_keys()` returning accumulated keys.
+  `WhichKeyBridge` snapshot combines `mode_prefix` + `pending_keys` for display.
+  Pressing `di` narrows hints to inner text objects (`iw`, `i(`, `i"`, etc.).
+
+- **Extension state bridge foundation (#514)**: Server-side infrastructure for
+  exposing session extension state to clients via gRPC. Introduces
+  `ExtensionStateBridge` trait and `BridgeRegistry` in the driver layer,
+  `CmdlineBridge` as the first concrete bridge for command-line state, a new
+  `ExtensionService` gRPC service with `GetState` and `ListExtensions` RPCs,
+  `ExtensionUpdatedPayload` notification (field 26), and automatic CmdlineState
+  change detection during key resolution. Adds `Session::with_client_extensions()`
+  to access per-client extensions without cloning (works around
+  `EditingState::clone()` creating empty `ExtensionMap`). Enables client
+  extensions like which-key (#468) and cmdline UI (#469) to query and receive
+  updates for server-side state.
+
+- **Command query service for command completion (#453)**: Adds `ExCommandInfo`
+  struct and `ExCommandQueryService` trait to the driver layer for querying
+  ex-commands by prefix, name, and listing all commands. Implements the trait on
+  `ExCommandRegistry` with deduplication. Registers `CommandQuerySnapshot` in
+  bootstrap for keybinding command queries. Defines `CommandService` gRPC service
+  with `SearchCommands` (prefix search with source filtering: all/ex/keybinding)
+  and `CompleteArgs` (argument completion delegation) RPCs. Wires
+  `CommandServiceImpl` into the server router. Enables cmdline UI (#469) to
+  discover and complete commands via gRPC.
+
+- **Cmdline popup rendering and headless E2E tests (#469)**: TUI-side cmdline
+  extension crate with floating popup rendering, completion display, and search
+  prompt visualization. Headless E2E tests verify cmdline activation, typing,
+  escape, and search prompt display against a real server.
+
+- **Noice-style cmdline UI (#451)**: Transforms the bottom-line cmdline bar
+  (#469) into a centered floating popup inspired by noice.nvim with rounded
+  Unicode box-drawing borders (`╭─╮│╰─╯`). Adds enhanced command-line editing
+  (`<Left>`, `<Right>`, `<Home>`/`<C-a>`, `<End>`/`<C-e>`, `<BS>`, `<Del>`,
+  `<C-w>` delete-word, `<C-u>` delete-to-start), command history navigation
+  (`<Up>`/`<C-p>`, `<Down>`/`<C-n>` with separate command/search histories,
+  deduplication, and max 100 entries), and tab-completion (`<Tab>`/`<S-Tab>`
+  cycling through `ExCommandQueryService` prefix matches with completion list
+  rendered inside the popup). 12 new CommandId constants, 12 command handlers,
+  and 19 keybindings in `vim:command` mode. `CmdlineState` extended with cursor
+  movement, editing, history, and completion methods in the driver layer.
+  `CmdlineBridge` updated to expose completions state via gRPC.
+
 ### Changed
 
 - **Explicit shared vs client extensions in resolver API (#474)**: Split the
@@ -143,6 +226,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   token authentication — the body `client_id` field is removed and reserved.
   State-query RPCs (`get_mode`, `get_cursor`, `get_layout`) use the token for
   caller authentication while the body `client_id` selects the target (0 = self).
+
+- **Vim-specific comments in mechanism layer (#515)**: Replaced 5 Vim-leaking
+  comments in `session/state.rs` (operator interception, mode push, command
+  complete flow) with generic mechanism descriptions that reference modes and
+  resolvers without naming specific keys (`d`, `y`, `c`) or Vim types
+  (`VimSessionState`).
+
+- **Server crate patch coverage restored to 100% (#515)**: Added 25 tests
+  across 6 server crate files covering 97 previously uncovered lines:
+  `PendingBindings` population on Pending/Push/Completed results with parent
+  mode inheritance (state.rs), debug service session paths (debug.rs), extension
+  service get/list (extension.rs), keybinding snapshot search (command.rs),
+  register client-not-found (state.rs), shared scope notification (notification_builder.rs).
 
 ### Removed
 

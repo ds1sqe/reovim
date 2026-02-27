@@ -132,14 +132,17 @@ export { baseExpect as expect };
 
 /**
  * Navigate to the web client with the test server port configured.
+ *
+ * Uses `addInitScript` to inject `window.__REOVIM_SERVER` before the page
+ * loads, matching the resolution chain in main.ts.
  */
-export async function navigateWithPort(
+export async function navigateToServer(
   page: import("@playwright/test").Page,
   serverPort: number,
   path = "/",
 ): Promise<void> {
-  const url = `${path}?port=${serverPort}`;
-  await page.goto(url);
+  await page.addInitScript(`window.__REOVIM_SERVER = "http://127.0.0.1:${serverPort}"`);
+  await page.goto(path);
   await page.waitForLoadState("domcontentloaded");
 }
 

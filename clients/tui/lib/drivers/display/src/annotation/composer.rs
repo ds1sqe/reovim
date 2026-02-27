@@ -153,7 +153,7 @@ impl<'a> GutterComposer<'a> {
                 annotation.map_or(PresentedOutput::Hidden, |ann| self.render_annotation(ann, ctx));
 
             // Add cells with padding
-            self.add_cells_padded(&mut cells, output, col_width);
+            Self::add_cells_padded(&mut cells, output, col_width);
         }
 
         // Add separator if configured
@@ -232,8 +232,7 @@ impl<'a> GutterComposer<'a> {
     }
 
     /// Add cells to output with padding to reach target width.
-    #[allow(clippy::unused_self)]
-    fn add_cells_padded(&self, cells: &mut Vec<GutterCell>, output: PresentedOutput, width: usize) {
+    fn add_cells_padded(cells: &mut Vec<GutterCell>, output: PresentedOutput, width: usize) {
         let output_cells = output.into_cells();
         let output_width: usize = output_cells.iter().map(GutterCell::width).sum();
 

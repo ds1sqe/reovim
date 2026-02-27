@@ -229,8 +229,9 @@ mod tests {
         reovim_kernel::api::{
             KernelContext, ModeStack, ServiceRegistry,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, EventBus, MarkBank, ModeId, ModuleId,
-                MotionEngine, OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                Buffer, BufferError, BufferId, BufferManager, EventBus, HistoryRing, MarkBank,
+                ModeId, ModuleId, MotionEngine, OptionRegistry, RegisterBank, RwLock,
+                TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -311,7 +312,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -329,6 +329,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     impl TestState {
@@ -345,6 +348,9 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             }
         }
 
@@ -355,10 +361,15 @@ mod tests {
         ) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 kernel,
                 executor,
             )

@@ -6,7 +6,9 @@
 //! - **Mechanism (Kernel)**: Buffer management, position types, register storage
 //! - **Policy (This Module)**: What operators exist, how they behave
 
-use reovim_kernel::api::v1::{BufferId, KernelContext, Position};
+use reovim_kernel::api::v1::{
+    BufferId, HistoryRing, KernelContext, Position, Register, RegisterBank,
+};
 
 // ============================================================================
 // Range Type
@@ -167,10 +169,14 @@ pub trait Operator: Send + Sync {
 pub struct OperatorContext<'a> {
     /// Kernel context for accessing services.
     pub kernel: &'a KernelContext,
+    /// Per-client register storage (#515).
+    pub registers: &'a mut RegisterBank,
+    /// Per-client clipboard history (#515).
+    pub clipboard_history: &'a mut HistoryRing,
     /// Buffer to operate on.
     pub buffer_id: BufferId,
-    /// Target register (e.g., `"a` for register 'a').
-    pub register: Option<char>,
+    /// Target register for operator output.
+    pub register: Register,
     /// Count prefix (e.g., `3dd` has count 3).
     pub count: usize,
     /// Cursor position before operator execution (for undo tracking).
@@ -421,31 +427,41 @@ mod tests {
 
     #[test]
     fn test_operator_context_fields() {
+        use reovim_kernel::api::v1::Register;
         let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let op_ctx = OperatorContext {
             kernel: &kernel,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id: BufferId::from_raw(42),
-            register: Some('a'),
+            register: Register::Slot('a'),
             count: 3,
             cursor_position: Position::new(5, 10),
         };
         assert_eq!(op_ctx.buffer_id, BufferId::from_raw(42));
-        assert_eq!(op_ctx.register, Some('a'));
+        assert_eq!(op_ctx.register, Register::Slot('a'));
         assert_eq!(op_ctx.count, 3);
         assert_eq!(op_ctx.cursor_position, Position::new(5, 10));
     }
 
     #[test]
-    fn test_operator_context_no_register() {
+    fn test_operator_context_default_register() {
+        use reovim_kernel::api::v1::Register;
         let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
         let op_ctx = OperatorContext {
             kernel: &kernel,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
             buffer_id: BufferId::from_raw(1),
-            register: None,
+            register: Register::Default,
             count: 1,
             cursor_position: Position::origin(),
         };
-        assert!(op_ctx.register.is_none());
+        assert_eq!(op_ctx.register, Register::Default);
         assert_eq!(op_ctx.count, 1);
     }
 

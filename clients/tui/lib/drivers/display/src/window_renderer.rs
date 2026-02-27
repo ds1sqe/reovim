@@ -217,24 +217,15 @@ impl WindowRenderer {
                     gutter_width,
                     buffer_line,
                     content.cursor_line,
-                    content.total_lines,
                 );
             }
 
             // Render line content
-            self.render_line_content(buffer, content_x, y, content_width, line, default_style);
+            Self::render_line_content(buffer, content_x, y, content_width, line, default_style);
 
             // Render cursor if on this line and window is focused
             if self.config.show_cursor && content.focused && buffer_line == content.cursor_line {
-                self.render_cursor(
-                    buffer,
-                    content_x,
-                    y,
-                    content_width,
-                    content.cursor_column,
-                    line,
-                    default_style,
-                );
+                Self::render_cursor(buffer, content_x, y, content.cursor_column, line);
             }
         }
 
@@ -282,7 +273,6 @@ impl WindowRenderer {
     }
 
     /// Render a line number.
-    #[allow(clippy::too_many_arguments)]
     fn render_line_number(
         &self,
         buffer: &mut FrameBuffer,
@@ -291,7 +281,6 @@ impl WindowRenderer {
         width: u16,
         line: usize,
         cursor_line: usize,
-        total_lines: usize,
     ) {
         // Compute the display number based on line number mode.
         // Caller guarantees mode != None (gutter_width is 0 for None mode).
@@ -312,16 +301,11 @@ impl WindowRenderer {
             self.config.line_number_style.clone()
         };
 
-        // Ignore unused total_lines for now (could be used for padding)
-        let _ = total_lines;
-
         buffer.write_str(x, y, &number_str, &style);
     }
 
     /// Render line content.
-    #[allow(clippy::unused_self)]
     fn render_line_content(
-        &self,
         buffer: &mut FrameBuffer,
         x: u16,
         y: u16,
@@ -343,16 +327,12 @@ impl WindowRenderer {
     }
 
     /// Render cursor.
-    #[allow(clippy::too_many_arguments, clippy::unused_self)]
     fn render_cursor(
-        &self,
         buffer: &mut FrameBuffer,
         content_x: u16,
         y: u16,
-        _content_width: u16,
         cursor_col: usize,
         line: &str,
-        default_style: &Style,
     ) {
         // Calculate cursor X position (accounting for wide characters)
         let mut x_offset: u16 = 0;
@@ -372,9 +352,6 @@ impl WindowRenderer {
         let cursor_style = Style::default().reverse();
         let cursor_cell = Cell::new(char_under, cursor_style);
         buffer.set(cursor_x, y, cursor_cell);
-
-        // Ignore default_style for now (cursor has its own style)
-        let _ = default_style;
     }
 
     /// Calculate visible lines from viewport.
@@ -400,9 +377,7 @@ impl WindowRenderer {
     /// * `bounds` - The area allocated for the gutter
     /// * `ctx` - Presenter context with buffer information
     /// * `first_line` - First visible line index (0-indexed)
-    #[allow(clippy::unused_self)]
     pub fn render_gutter_annotated(
-        &self,
         composer: &GutterComposer<'_>,
         buffer: &mut FrameBuffer,
         bounds: Rect,
@@ -965,11 +940,10 @@ mod tests {
         let composer = GutterComposer::new(&store, &registry, &config);
         let ctx = PresenterContext::new(3, 0, false);
 
-        let renderer = WindowRenderer::new();
         let mut buffer = FrameBuffer::new(10, 5);
         let bounds = Rect::new(0, 0, 5, 3);
 
-        renderer.render_gutter_annotated(&composer, &mut buffer, bounds, &ctx, 0);
+        WindowRenderer::render_gutter_annotated(&composer, &mut buffer, bounds, &ctx, 0);
 
         // Verify that cells were rendered (line numbers 1, 2, 3)
         // The gutter should have content in the first 3 rows
@@ -1043,12 +1017,11 @@ mod tests {
         let composer = GutterComposer::new(&store, &registry, &config);
         let ctx = PresenterContext::new(5, 0, false);
 
-        let renderer = WindowRenderer::new();
         let mut buffer = FrameBuffer::new(10, 3);
         // Height is 2, but compose_range generates 5 lines (first_line=0, visible=2 rows)
         let bounds = Rect::new(0, 0, 5, 2);
 
-        renderer.render_gutter_annotated(&composer, &mut buffer, bounds, &ctx, 0);
+        WindowRenderer::render_gutter_annotated(&composer, &mut buffer, bounds, &ctx, 0);
 
         // Only 2 rows should be rendered
         let row0: String = (0..5)

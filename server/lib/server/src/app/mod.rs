@@ -6,7 +6,7 @@
 
 use {
     reovim_arch::sync::RwLock,
-    reovim_driver_input::{ExtensionMap, FallbackContext, KeySequence},
+    reovim_driver_input::{ExtensionMap, FallbackContext},
     reovim_driver_undo::{UndoKey, UndoProvider, UndoProviderRegistry},
     reovim_kernel::api::v1::{
         Buffer, BufferId, Edit, KernelContext, ModeId, Position, ServiceRegistry,
@@ -25,11 +25,6 @@ use {
 /// `AppState` wraps `KernelContext` and adds runtime-specific state that
 /// the server and commands need to operate.
 ///
-/// # SSOT Note
-///
-/// `mode_stack`, `active_buffer`, `terminal_size`, and `pending_keys` are now
-/// stored in `driver::Session` (SSOT). See `SessionState::driver_session`.
-/// This struct only keeps kernel-related and window-related state.
 #[derive(Debug)]
 pub struct AppState {
     /// Kernel context providing access to all kernel services.
@@ -38,21 +33,8 @@ pub struct AppState {
     /// Service registry for cross-module service discovery.
     pub services: Arc<ServiceRegistry>,
 
-    /// Pending key sequence for multi-key bindings.
-    ///
-    /// NOTE: This is a legacy field. The SSOT is `driver::Session::pending_keys`.
-    pub pending_keys: KeySequence,
-
     /// Whether the application is running.
     pub running: bool,
-
-    /// Terminal width in columns.
-    ///
-    /// NOTE: This is a legacy field. The SSOT is `driver::Session::terminal_size`.
-    pub terminal_width: u16,
-
-    /// Terminal height in rows.
-    pub terminal_height: u16,
 
     /// Per-session module extensions (Epic #385).
     pub extensions: ExtensionMap,
@@ -66,10 +48,7 @@ impl AppState {
         Self {
             kernel,
             services,
-            pending_keys: KeySequence::new(),
             running: true,
-            terminal_width: 80,
-            terminal_height: 24,
             extensions: ExtensionMap::new(),
         }
     }
@@ -98,11 +77,6 @@ impl AppState {
     #[must_use]
     pub const fn is_running(&self) -> bool {
         self.running
-    }
-
-    /// Clear the pending key sequence.
-    pub fn clear_pending_keys(&mut self) {
-        self.pending_keys.clear();
     }
 }
 
@@ -175,7 +149,6 @@ mod tests {
         let app = AppState::new(kernel);
 
         assert!(app.is_running());
-        assert!(app.pending_keys.is_empty());
     }
 
     #[test]
@@ -186,19 +159,6 @@ mod tests {
         assert!(app.is_running());
         app.request_quit();
         assert!(!app.is_running());
-    }
-
-    #[test]
-    fn test_app_state_clear_pending() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        app.pending_keys
-            .push(reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('g')));
-        assert!(!app.pending_keys.is_empty());
-
-        app.clear_pending_keys();
-        assert!(app.pending_keys.is_empty());
     }
 
     #[test]
@@ -295,14 +255,6 @@ mod tests {
     }
 
     #[test]
-    fn test_app_state_default_dimensions() {
-        let kernel = KernelContext::default();
-        let app = AppState::new(kernel);
-        assert_eq!(app.terminal_width, 80);
-        assert_eq!(app.terminal_height, 24);
-    }
-
-    #[test]
     fn test_app_state_services_arc_shared() {
         let kernel = KernelContext::default();
         let app = AppState::new(kernel);
@@ -343,34 +295,12 @@ mod tests {
     }
 
     #[test]
-    fn test_app_state_pending_keys_operations() {
-        let kernel = KernelContext::default();
-        let mut app = AppState::new(kernel);
-
-        // Initially empty
-        assert!(app.pending_keys.is_empty());
-
-        // Add keys
-        app.pending_keys
-            .push(reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('d')));
-        app.pending_keys
-            .push(reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('w')));
-        assert_eq!(app.pending_keys.len(), 2);
-
-        // Clear
-        app.clear_pending_keys();
-        assert!(app.pending_keys.is_empty());
-        assert_eq!(app.pending_keys.len(), 0);
-    }
-
-    #[test]
     fn test_fallback_get_buffer_with_real_buffer() {
         use {
             parking_lot::RwLock as ParkingLotRwLock,
             reovim_driver_buffer::TestBufferManager,
             reovim_kernel::api::v1::{
-                EventBus, MarkBank, MotionEngine, OptionRegistry, RegisterBank, ServiceRegistry,
-                TextObjectEngine,
+                EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
             },
         };
 
@@ -379,7 +309,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(ParkingLotRwLock::new(RegisterBank::new())),
             Arc::new(ParkingLotRwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::new()),
             Arc::new(ServiceRegistry::new()),

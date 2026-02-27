@@ -1,7 +1,15 @@
-// Debug service for server debugging and log access.
+// Debug service for server debugging, log access, and client-targeting operations.
+//
+// CLI uses this service for all client-targeting operations (no auth required).
+// The CLI is stateless — it never joins as a client. Instead, it targets
+// specific connected clients (TUI/Web) by their client ID.
 
 syntax = "proto3";
 package reovim.v2;
+
+import "reovim/v2/common.proto";
+import "reovim/v2/input.proto";
+import "reovim/v2/presence.proto";
 
 service DebugService {
   // Get recent log entries from the server ring buffer.
@@ -9,7 +17,30 @@ service DebugService {
 
   // Get or set the current log level.
   rpc LogLevel(LogLevelRequest) returns (LogLevelResponse);
+
+  // Send keys to a specific client's state (no auth required).
+  rpc DebugSendKeys(DebugSendKeysRequest) returns (DebugSendKeysResponse);
+
+  // Capture a client's screen content (no auth required).
+  rpc DebugCapture(DebugCaptureRequest) returns (DebugCaptureResponse);
+
+  // Get a client's current editor mode (no auth required).
+  rpc DebugGetMode(DebugGetModeRequest) returns (DebugGetModeResponse);
+
+  // Get a client's cursor position (no auth required).
+  rpc DebugGetCursor(DebugGetCursorRequest) returns (DebugGetCursorResponse);
+
+  // List connected clients (read-only, no auth required).
+  rpc DebugListClients(DebugListClientsRequest) returns (DebugListClientsResponse);
+
+  // Query extension state for a specific client (no auth required).
+  rpc DebugGetExtensionState(DebugGetExtensionStateRequest) returns (DebugGetExtensionStateResponse);
+
+  // List all registered extensions (no auth required).
+  rpc DebugListExtensions(DebugListExtensionsRequest) returns (DebugListExtensionsResponse);
 }
+
+// ── Logging ──────────────────────────────────────────────────────────────────
 
 message LogTailRequest {
   uint32 count = 1;           // Number of entries (default: 50)
@@ -36,4 +67,76 @@ message LogLevelRequest {
 
 message LogLevelResponse {
   string level = 1;           // Current log level
+}
+
+// ── Client-targeting debug operations ────────────────────────────────────────
+
+message DebugSendKeysRequest {
+  string keys = 1;
+  uint64 target_client_id = 2;
+}
+
+message DebugSendKeysResponse {
+  bool ok = 1;
+  KeyStatus status = 2;
+}
+
+message DebugCaptureRequest {
+  uint64 target_client_id = 1;
+  string format = 2;  // plain_text, raw_ansi, cell_grid
+}
+
+message DebugCaptureResponse {
+  uint32 width = 1;
+  uint32 height = 2;
+  string format = 3;
+  string content = 4;
+}
+
+message DebugGetModeRequest {
+  uint64 target_client_id = 1;
+}
+
+message DebugGetModeResponse {
+  string name = 1;
+  string display = 2;
+  bool is_insert = 3;
+}
+
+message DebugGetCursorRequest {
+  uint64 target_client_id = 1;
+}
+
+message DebugGetCursorResponse {
+  uint64 window_id = 1;
+  Position position = 2;
+}
+
+message DebugListClientsRequest {}
+
+message DebugListClientsResponse {
+  repeated ClientInfo clients = 1;
+}
+
+// ── Extension state queries ─────────────────────────────────────────────────
+
+message DebugGetExtensionStateRequest {
+  string kind = 1;                // Extension kind (e.g., "whichkey", "cmdline")
+  uint64 target_client_id = 2;    // Client whose extension state to query
+}
+
+message DebugGetExtensionStateResponse {
+  bool active = 1;     // Whether the extension is currently active
+  string data = 2;     // JSON-serialized extension state
+}
+
+message DebugListExtensionsRequest {}
+
+message DebugListExtensionsResponse {
+  repeated DebugExtensionInfo extensions = 1;
+}
+
+message DebugExtensionInfo {
+  string kind = 1;       // Extension kind (e.g., "cmdline")
+  string scope = 2;      // "client" or "shared"
 }

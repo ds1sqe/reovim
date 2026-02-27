@@ -11,7 +11,7 @@
  * Enable these tests once the server-client connection is properly configured.
  */
 
-import { test, expect, waitForConnection, getMode, getBufferContent, sendKeys, navigateWithPort } from "./fixtures";
+import { test, expect, waitForConnection, getMode, getBufferContent, sendKeys, navigateToServer } from "./fixtures";
 
 test.describe("Vim Commands", () => {
   // These tests require full server integration
@@ -22,7 +22,7 @@ test.describe("Vim Commands", () => {
 
   test.beforeEach(async ({ page, serverPort }) => {
     // Navigate with the test server port
-    await navigateWithPort(page, serverPort);
+    await navigateToServer(page, serverPort);
 
     // Wait for connection before each test
     await waitForConnection(page, 15000);

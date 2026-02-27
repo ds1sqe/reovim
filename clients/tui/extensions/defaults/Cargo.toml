@@ -1,0 +1,21 @@
+[package]
+name = "reovim-tui-ext-defaults"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Default TUI extensions meta-crate for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Extension trait
+reovim-driver-display = { workspace = true }
+
+# Concrete extensions
+reovim-tui-ext-whichkey = { path = "../which-key" }
+reovim-tui-ext-cmdline = { path = "../cmdline" }

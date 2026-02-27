@@ -71,19 +71,29 @@ pub enum OutputFormat {
 /// CLI commands.
 #[derive(Debug, Subcommand)]
 pub enum CliCommand {
-    /// Send keys to the editor.
-    ///
-    /// Identity resolved from session token (#483).
+    /// Send keys to a specific client.
     Keys {
-        /// Keys in vim notation (e.g., "iHello<Esc>").
+        /// Keys in vim notation (e.g., `iHello<Esc>`).
         keys: String,
+
+        /// Target client ID to send keys to (required).
+        #[arg(long, short)]
+        client: u64,
     },
 
-    /// Get current editor mode.
-    Mode,
+    /// Get a specific client's editor mode.
+    Mode {
+        /// Target client ID to query mode from (required).
+        #[arg(long, short)]
+        client: u64,
+    },
 
-    /// Get cursor position.
-    Cursor,
+    /// Get a specific client's cursor position.
+    Cursor {
+        /// Target client ID to query cursor from (required).
+        #[arg(long, short)]
+        client: u64,
+    },
 
     /// List open buffers.
     Buffers,
@@ -104,18 +114,41 @@ pub enum CliCommand {
         name: Option<String>,
     },
 
-    /// Capture TUI screen content.
+    /// Capture screen content.
     ///
-    /// Requests a screen capture from a specific TUI client.
-    /// Requires a headless TUI to be connected to the server.
+    /// For text formats (`plain_text`, `raw_ansi`, `cell_grid`): captures via gRPC relay
+    /// from a connected TUI client (requires `--client`).
+    ///
+    /// For visual formats (`png`, `html`): captures via Playwright headless browser
+    /// running the real web client (requires `--web-url`).
     Capture {
-        /// Target client ID to capture from (required).
+        /// Target client ID (required for text capture, ignored for web capture).
         #[arg(long, short)]
-        client: u64,
+        client: Option<u64>,
 
-        /// Capture format: `plain_text`, `raw_ansi` (default), `cell_grid`.
+        /// Capture format: `raw_ansi`, `plain_text`, `cell_grid`, `png`, `html`.
         #[arg(long, short = 'f', default_value = "raw_ansi")]
         capture_format: String,
+
+        /// Web client URL for visual capture (required for png/html formats).
+        #[arg(long)]
+        web_url: Option<String>,
+
+        /// Viewport width in pixels (web capture only).
+        #[arg(long, default_value = "1920")]
+        width: u32,
+
+        /// Viewport height in pixels (web capture only).
+        #[arg(long, default_value = "1080")]
+        height: u32,
+
+        /// Device pixel ratio (web capture only).
+        #[arg(long, default_value = "1")]
+        dpr: u32,
+
+        /// Output file path (web capture only; stdout if omitted).
+        #[arg(long, short)]
+        output: Option<String>,
     },
 
     /// Ping the server (health check).
@@ -124,71 +157,21 @@ pub enum CliCommand {
     /// Get server version and info.
     Version,
 
-    /// Presence operations for multi-client awareness.
-    ///
-    /// Enables clients to see each other's cursors, follow viewports,
-    /// and support collaborative editing scenarios.
-    Presence {
-        #[command(subcommand)]
-        action: PresenceAction,
-    },
-}
+    /// List connected clients (read-only debug query).
+    Clients,
 
-/// Presence subcommands for multi-client awareness.
-#[derive(Debug, Subcommand)]
-pub enum PresenceAction {
-    /// Join the session with a display name.
-    ///
-    /// Returns an assigned client ID and list of connected peers.
-    Join {
-        /// Display name for this client (e.g., "laptop", "phone").
-        name: String,
+    /// Query extension state (e.g., which-key, cmdline).
+    ExtensionState {
+        /// Extension kind to query (e.g., "whichkey", "cmdline").
+        kind: String,
 
-        /// Client type identifier.
-        #[arg(long, default_value = "cli")]
-        client_type: String,
+        /// Target client ID.
+        #[arg(long, short)]
+        client: u64,
     },
 
-    /// Leave the session.
-    ///
-    /// Identity resolved from session token (#483).
-    Leave,
-
-    /// List all connected clients.
-    List,
-
-    /// Update presence state (buffer, mode).
-    ///
-    /// Note: cursor line/column removed (Phase 14, #471).
-    /// Cursor is now tracked via `CursorMoved` notifications.
-    /// Identity resolved from session token (#483).
-    Update {
-        /// Buffer ID to switch to.
-        #[arg(long)]
-        buffer: Option<u64>,
-
-        /// Mode name.
-        #[arg(long)]
-        mode: Option<String>,
-    },
-
-    /// Set sync mode to follow another client.
-    ///
-    /// Identity resolved from session token (#483).
-    Follow {
-        /// Target client ID to follow.
-        target: u64,
-    },
-
-    /// Set sync mode to present (others can follow you).
-    ///
-    /// Identity resolved from session token (#483).
-    Present,
-
-    /// Set sync mode to independent (default).
-    ///
-    /// Identity resolved from session token (#483).
-    Independent,
+    /// List registered extensions.
+    Extensions,
 }
 
 impl CliArgs {
@@ -202,9 +185,16 @@ impl CliArgs {
         let mut client = GrpcClient::connect(&self.grpc).await?;
 
         match &self.command {
-            CliCommand::Keys { keys } => commands::keys(&mut client, keys, self.format).await,
-            CliCommand::Mode => commands::mode(&mut client, self.format).await,
-            CliCommand::Cursor => commands::cursor(&mut client, self.format).await,
+            CliCommand::Keys {
+                keys,
+                client: target,
+            } => commands::keys(&mut client, keys, *target, self.format).await,
+            CliCommand::Mode { client: target } => {
+                commands::mode(&mut client, *target, self.format).await
+            }
+            CliCommand::Cursor { client: target } => {
+                commands::cursor(&mut client, *target, self.format).await
+            }
             CliCommand::Buffers => commands::buffers(&mut client, self.format).await,
             CliCommand::Buffer { id } => commands::buffer(&mut client, *id, self.format).await,
             CliCommand::Registers { name } => {
@@ -213,29 +203,35 @@ impl CliArgs {
             CliCommand::Capture {
                 client: client_id,
                 capture_format,
-            } => commands::capture(&mut client, *client_id, capture_format, self.format).await,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+            } => {
+                let address = &self.grpc;
+                commands::capture(
+                    &mut client,
+                    *client_id,
+                    capture_format,
+                    web_url.as_deref(),
+                    address,
+                    *width,
+                    *height,
+                    *dpr,
+                    output.as_deref(),
+                    self.format,
+                )
+                .await
+            }
             CliCommand::Ping => commands::ping(&mut client, self.format).await,
             CliCommand::Version => commands::version(&mut client, self.format).await,
-            CliCommand::Presence { action } => match action {
-                PresenceAction::Join { name, client_type } => {
-                    commands::presence_join(&mut client, client_type, name, self.format).await
-                }
-                PresenceAction::Leave => commands::presence_leave(&mut client, self.format).await,
-                PresenceAction::List => commands::presence_list(&mut client, self.format).await,
-                PresenceAction::Update { buffer, mode } => {
-                    commands::presence_update(&mut client, *buffer, mode.clone(), self.format).await
-                }
-                PresenceAction::Follow { target } => {
-                    commands::presence_set_sync_mode(&mut client, 1, Some(*target), self.format)
-                        .await
-                }
-                PresenceAction::Present => {
-                    commands::presence_set_sync_mode(&mut client, 2, None, self.format).await
-                }
-                PresenceAction::Independent => {
-                    commands::presence_set_sync_mode(&mut client, 0, None, self.format).await
-                }
-            },
+            CliCommand::Clients => commands::clients(&mut client, self.format).await,
+            CliCommand::ExtensionState {
+                kind,
+                client: target,
+            } => commands::extension_state(&mut client, kind, *target, self.format).await,
+            CliCommand::Extensions => commands::extensions(&mut client, self.format).await,
         }
     }
 }
@@ -246,14 +242,36 @@ mod tests {
 
     #[test]
     fn test_cli_args_parse_keys() {
-        let args = CliArgs::parse_from(["reovim-cli", "keys", "iHello"]);
-        assert!(matches!(args.command, CliCommand::Keys { .. }));
+        let args = CliArgs::parse_from(["reovim-cli", "keys", "--client", "1", "iHello"]);
+        match &args.command {
+            CliCommand::Keys { keys, client } => {
+                assert_eq!(keys, "iHello");
+                assert_eq!(*client, 1);
+            }
+            _ => panic!("Expected Keys command"),
+        }
     }
 
     #[test]
     fn test_cli_args_parse_mode() {
-        let args = CliArgs::parse_from(["reovim-cli", "mode"]);
-        assert!(matches!(args.command, CliCommand::Mode));
+        let args = CliArgs::parse_from(["reovim-cli", "mode", "--client", "1"]);
+        match &args.command {
+            CliCommand::Mode { client } => {
+                assert_eq!(*client, 1);
+            }
+            _ => panic!("Expected Mode command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_parse_cursor() {
+        let args = CliArgs::parse_from(["reovim-cli", "cursor", "--client", "2"]);
+        match &args.command {
+            CliCommand::Cursor { client } => {
+                assert_eq!(*client, 2);
+            }
+            _ => panic!("Expected Cursor command"),
+        }
     }
 
     #[test]
@@ -268,82 +286,143 @@ mod tests {
         assert_eq!(args.format, OutputFormat::Json);
     }
 
-    // Phase 15: Presence command tests
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_cli_args_presence_join() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "join", "laptop"]);
+    fn test_cli_args_clients() {
+        let args = CliArgs::parse_from(["reovim-cli", "clients"]);
+        assert!(matches!(args.command, CliCommand::Clients));
+    }
+
+    #[test]
+    fn test_cli_args_extension_state() {
+        let args =
+            CliArgs::parse_from(["reovim-cli", "extension-state", "whichkey", "--client", "1"]);
         match &args.command {
-            CliCommand::Presence { action } => match action {
-                PresenceAction::Join { name, client_type } => {
-                    assert_eq!(name, "laptop");
-                    assert_eq!(client_type, "cli");
-                }
-                _ => panic!("Expected Join action"),
-            },
-            _ => panic!("Expected Presence command"),
+            CliCommand::ExtensionState { kind, client } => {
+                assert_eq!(kind, "whichkey");
+                assert_eq!(*client, 1);
+            }
+            _ => panic!("Expected ExtensionState command"),
         }
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_cli_args_presence_join_with_type() {
+    fn test_cli_args_extensions() {
+        let args = CliArgs::parse_from(["reovim-cli", "extensions"]);
+        assert!(matches!(args.command, CliCommand::Extensions));
+    }
+
+    #[test]
+    fn test_cli_args_capture_text_format() {
+        let args =
+            CliArgs::parse_from(["reovim-cli", "capture", "--client", "1", "-f", "plain_text"]);
+        match &args.command {
+            CliCommand::Capture {
+                client,
+                capture_format,
+                web_url,
+                ..
+            } => {
+                assert_eq!(*client, Some(1));
+                assert_eq!(capture_format, "plain_text");
+                assert!(web_url.is_none());
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_default_format() {
+        let args = CliArgs::parse_from(["reovim-cli", "capture", "--client", "1"]);
+        match &args.command {
+            CliCommand::Capture { capture_format, .. } => {
+                assert_eq!(capture_format, "raw_ansi");
+            }
+            _ => panic!("Expected Capture command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_args_capture_web_png() {
         let args = CliArgs::parse_from([
             "reovim-cli",
-            "presence",
-            "join",
-            "phone",
-            "--client-type",
-            "android",
+            "capture",
+            "-f",
+            "png",
+            "--web-url",
+            "http://localhost:5173",
+            "--width",
+            "800",
+            "--height",
+            "600",
+            "--dpr",
+            "2",
+            "-o",
+            "out.png",
         ]);
         match &args.command {
-            CliCommand::Presence { action } => match action {
-                PresenceAction::Join { name, client_type } => {
-                    assert_eq!(name, "phone");
-                    assert_eq!(client_type, "android");
-                }
-                _ => panic!("Expected Join action"),
-            },
-            _ => panic!("Expected Presence command"),
-        }
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_cli_args_presence_leave() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "leave"]);
-        match &args.command {
-            CliCommand::Presence { action } => {
-                assert!(matches!(action, PresenceAction::Leave));
+            CliCommand::Capture {
+                client,
+                capture_format,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+            } => {
+                assert!(client.is_none());
+                assert_eq!(capture_format, "png");
+                assert_eq!(web_url.as_deref(), Some("http://localhost:5173"));
+                assert_eq!(*width, 800);
+                assert_eq!(*height, 600);
+                assert_eq!(*dpr, 2);
+                assert_eq!(output.as_deref(), Some("out.png"));
             }
-            _ => panic!("Expected Presence command"),
+            _ => panic!("Expected Capture command"),
         }
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_cli_args_presence_list() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "list"]);
+    fn test_cli_args_capture_web_html() {
+        let args = CliArgs::parse_from([
+            "reovim-cli",
+            "capture",
+            "-f",
+            "html",
+            "--web-url",
+            "http://localhost:5173",
+        ]);
         match &args.command {
-            CliCommand::Presence { action } => {
-                assert!(matches!(action, PresenceAction::List));
+            CliCommand::Capture {
+                capture_format,
+                web_url,
+                width,
+                height,
+                dpr,
+                output,
+                ..
+            } => {
+                assert_eq!(capture_format, "html");
+                assert!(web_url.is_some());
+                assert_eq!(*width, 1920);
+                assert_eq!(*height, 1080);
+                assert_eq!(*dpr, 1);
+                assert!(output.is_none());
             }
-            _ => panic!("Expected Presence command"),
+            _ => panic!("Expected Capture command"),
         }
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_cli_args_presence_follow() {
-        let args = CliArgs::parse_from(["reovim-cli", "presence", "follow", "2"]);
+    fn test_cli_args_capture_no_client_no_web_url() {
+        let args = CliArgs::parse_from(["reovim-cli", "capture"]);
         match &args.command {
-            CliCommand::Presence { action } => match action {
-                PresenceAction::Follow { target } => {
-                    assert_eq!(*target, 2);
-                }
-                _ => panic!("Expected Follow action"),
-            },
-            _ => panic!("Expected Presence command"),
+            CliCommand::Capture {
+                client, web_url, ..
+            } => {
+                assert!(client.is_none());
+                assert!(web_url.is_none());
+            }
+            _ => panic!("Expected Capture command"),
         }
     }
 }

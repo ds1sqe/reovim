@@ -844,6 +844,10 @@ impl ModeKeyResolver for VimNormalResolver {
         self.pending_keys.write().expect("lock poisoned").clear();
         *self.pending_macro.write().expect("lock poisoned") = None;
     }
+
+    fn pending_keys(&self) -> KeySequence {
+        self.get_pending_keys()
+    }
 }
 
 #[cfg(test)]
@@ -2559,5 +2563,21 @@ mod tests {
         let result = resolver.handle_register_char_ext(&KeyEvent::new(KeyCode::Enter), &mut vim);
         assert!(matches!(result, ResolveResult::NotHandled));
         assert!(vim.pending_register.is_none());
+    }
+
+    #[test]
+    fn test_pending_keys_empty_initially() {
+        use reovim_driver_input::ModeKeyResolver;
+        let resolver = VimNormalResolver::new();
+        assert!(resolver.pending_keys().is_empty());
+    }
+
+    #[test]
+    fn test_pending_keys_after_push() {
+        use reovim_driver_input::ModeKeyResolver;
+        let resolver = VimNormalResolver::new();
+        resolver.push_pending_key(key('g'));
+        let keys = resolver.pending_keys();
+        assert_eq!(keys.len(), 1);
     }
 }

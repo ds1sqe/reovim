@@ -27,7 +27,10 @@ pub use {
     change::{ChangeLine, ChangeToEndOfLine},
     find_char::ExecuteFindChar,
     mode::{
-        CancelCommandLineMode, CancelToNormal, EnterCommandLineMode, EnterInsertMode,
+        CancelCommandLineMode, CancelToNormal, CmdlineBackspace, CmdlineCompleteNext,
+        CmdlineCompletePrev, CmdlineCursorEnd, CmdlineCursorHome, CmdlineCursorLeft,
+        CmdlineCursorRight, CmdlineDeleteChar, CmdlineDeleteToStart, CmdlineDeleteWord,
+        CmdlineHistoryDown, CmdlineHistoryUp, EnterCommandLineMode, EnterInsertMode,
         EnterInsertModeAppend, EnterSearchBackward, EnterSearchForward, EnterWindowMode,
         ExitCommandLineMode, ExitToNormal,
     },
@@ -65,6 +68,21 @@ pub fn mode_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ExecuteFindChar),
         // Dot repeat (Epic #465)
         Box::new(DotRepeat),
+        // Command-line editing (#451)
+        Box::new(CmdlineCursorLeft),
+        Box::new(CmdlineCursorRight),
+        Box::new(CmdlineCursorHome),
+        Box::new(CmdlineCursorEnd),
+        Box::new(CmdlineDeleteChar),
+        Box::new(CmdlineBackspace),
+        Box::new(CmdlineDeleteWord),
+        Box::new(CmdlineDeleteToStart),
+        // Command-line history (#451)
+        Box::new(CmdlineHistoryUp),
+        Box::new(CmdlineHistoryDown),
+        // Command-line completion (#451)
+        Box::new(CmdlineCompleteNext),
+        Box::new(CmdlineCompletePrev),
     ]
 }
 
@@ -75,7 +93,7 @@ mod tests {
     #[test]
     fn test_mode_commands_count() {
         let cmds = mode_commands();
-        assert_eq!(cmds.len(), 18);
+        assert_eq!(cmds.len(), 30);
     }
 
     #[test]

@@ -70,14 +70,10 @@ impl CommandHandler for YankLine {
             }
         }
 
-        // Store in register (use specified register or unnamed)
+        // Store in per-client register with clipboard sync (#515)
         let content = RegisterContent::linewise(yanked);
         let register = args.register();
-        runtime
-            .kernel()
-            .registers
-            .write()
-            .set_by_name(register, content);
+        runtime.store_register_with_sync(register, content);
 
         CommandResult::Success
     }
@@ -96,8 +92,8 @@ mod tests {
             ServiceRegistry,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, KernelContext, MarkBank, ModeId, ModeStack, ModuleId, MotionEngine,
-                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
+                MotionEngine, OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -180,7 +176,6 @@ mod tests {
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(RegisterBank::new())),
             Arc::new(RwLock::new(MarkBank::new())),
             Arc::new(OptionRegistry::default()),
             Arc::new(ServiceRegistry::new()),
@@ -193,6 +188,9 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        registers: RegisterBank,
+        clipboard_history: HistoryRing,
+        local_marks: MarkBank,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -205,6 +203,9 @@ mod tests {
                 windows: WindowLayout::empty(),
                 extensions: ExtensionMap::new(),
                 compositor: None,
+                registers: RegisterBank::new(),
+                clipboard_history: HistoryRing::new(),
+                local_marks: MarkBank::new(),
             };
             let mut window = Window::new();
             window.buffer_id = Some(buffer_id);
@@ -220,10 +221,15 @@ mod tests {
         ) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
-                &mut self.mode_stack,
-                &mut self.windows,
-                &mut self.extensions,
-                &mut self.compositor,
+                reovim_driver_session::ClientContext {
+                    mode_stack: &mut self.mode_stack,
+                    windows: &mut self.windows,
+                    extensions: &mut self.extensions,
+                    compositor: &mut self.compositor,
+                    registers: &mut self.registers,
+                    clipboard_history: &mut self.clipboard_history,
+                    local_marks: &mut self.local_marks,
+                },
                 kernel,
                 executor,
             )
@@ -275,12 +281,20 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -301,12 +315,20 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
         let mut runtime = SessionRuntime::new(
             &mut session,
-            &mut mode_stack,
-            &mut windows,
-            &mut extensions,
-            &mut compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &kernel,
             &executor,
         );
@@ -360,9 +382,8 @@ mod tests {
         assert!(result.is_success());
 
         // Check register content
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "hello world\n");
     }
@@ -382,9 +403,8 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 1\nline 2\n");
     }
@@ -404,9 +424,8 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 1\nline 2\n");
     }
@@ -429,9 +448,8 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 2\n");
     }
@@ -466,10 +484,9 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        // Check named register content
-        let registers = kernel.registers.read();
-        let content = registers.get_by_name(Some('a')).cloned();
-        drop(registers);
+        // Check named register content (per-client registers, #515)
+        drop(runtime);
+        let content = state.registers.get_by_name(Some('a')).cloned();
         let content = content.unwrap();
         assert!(content.is_linewise());
         assert_eq!(content.text, "hello world\n");
@@ -498,9 +515,8 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 2\nline 3\nline 4\n");
     }
@@ -527,9 +543,8 @@ mod tests {
         let result = YankLine.execute(&mut runtime, &args);
         assert!(result.is_success());
 
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "line 3\n");
     }
@@ -557,9 +572,8 @@ mod tests {
         assert!(result.is_success());
 
         // Yank line should yank the entire line regardless of column
-        let registers = kernel.registers.read();
-        let content = registers.get().clone();
-        drop(registers);
+        drop(runtime);
+        let content = state.registers.get().clone();
         assert!(content.is_linewise());
         assert_eq!(content.text, "hello world\n");
     }

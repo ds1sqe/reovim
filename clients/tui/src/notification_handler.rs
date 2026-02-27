@@ -22,6 +22,7 @@ use crate::{
     CursorPosition, RemoteClient, SelectionState, TuiCoreState,
     core_helpers::apply_layout_notification,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
+    render_backend::TuiExtension,
 };
 
 /// Context trait for notification handling.
@@ -78,6 +79,12 @@ pub trait NotificationContext {
     fn on_resize(&mut self, width: u16, height: u16) {
         // Default: no-op (interactive TUI uses screen.resize() separately)
     }
+
+    /// Get mutable access to TUI extensions for notification dispatch.
+    ///
+    /// Extensions own their state and handle notifications generically.
+    /// The engine dispatches via `kind()` matching — zero extension knowledge.
+    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>];
 }
 
 /// Result of notification handling.
@@ -126,7 +133,7 @@ pub async fn handle_notification<C: NotificationContext>(
             if is_local {
                 state.mode_name = mode.name;
                 state.mode_display = mode.display;
-                state.is_insert_mode = mode.is_insert;
+                state.set_insert_mode(mode.is_insert);
             } else {
                 // Remote mode update
                 if let Some(remote) = state.other_clients.get_mut(&mode.client_id) {
@@ -417,6 +424,23 @@ pub async fn handle_notification<C: NotificationContext>(
             Ok(NotificationResult::NoRedraw)
         }
 
+        Payload::ExtensionUpdated(ext) => {
+            let is_local = {
+                let state = ctx.state_mut();
+                ext.client_id == 0 || ext.client_id == state.my_client_id
+            };
+
+            if is_local {
+                // Generic dispatch — engine has ZERO knowledge of specific extensions
+                for extension in ctx.extensions_mut() {
+                    if extension.kind() == ext.kind {
+                        extension.apply_notification(&ext.data);
+                    }
+                }
+            }
+            Ok(NotificationResult::Redraw)
+        }
+
         _ => {
             // Other notifications - trigger redraw
             Ok(NotificationResult::Redraw)
@@ -433,6 +457,7 @@ mod tests {
         state: TuiCoreState,
         buffer_modified_calls: Vec<u64>,
         option_changed_calls: Vec<String>,
+        extensions: Vec<Box<dyn TuiExtension>>,
     }
 
     impl MockContext {
@@ -441,7 +466,13 @@ mod tests {
                 state: TuiCoreState::new(client_id),
                 buffer_modified_calls: Vec::new(),
                 option_changed_calls: Vec::new(),
+                extensions: Vec::new(),
             }
+        }
+
+        fn with_extensions(mut self, extensions: Vec<Box<dyn TuiExtension>>) -> Self {
+            self.extensions = extensions;
+            self
         }
     }
 
@@ -463,6 +494,10 @@ mod tests {
 
         fn on_option_changed(&mut self, name: &str, _value: Option<OptionValue>) {
             self.option_changed_calls.push(name.to_string());
+        }
+
+        fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+            &mut self.extensions
         }
     }
 
@@ -495,6 +530,7 @@ mod tests {
         // Ensure the default trait implementation doesn't panic
         struct MinimalContext {
             state: TuiCoreState,
+            extensions: Vec<Box<dyn TuiExtension>>,
         }
         #[cfg_attr(coverage_nightly, coverage(off))]
         impl NotificationContext for MinimalContext {
@@ -504,10 +540,14 @@ mod tests {
             fn client_mut(&mut self) -> &mut crate::grpc_client::TuiGrpcClient {
                 unimplemented!()
             }
+            fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+                &mut self.extensions
+            }
         }
 
         let mut ctx = MinimalContext {
             state: TuiCoreState::new(1),
+            extensions: Vec::new(),
         };
         // Default trait methods should be no-ops and not panic
         ctx.on_buffer_modified(42);
@@ -556,7 +596,7 @@ mod tests {
         assert!(matches!(result, NotificationResult::Redraw));
         assert_eq!(ctx.state.mode_name, "insert");
         assert_eq!(ctx.state.mode_display, "INSERT");
-        assert!(ctx.state.is_insert_mode);
+        assert!(ctx.state.is_insert_mode());
     }
 
     #[tokio::test]
@@ -1188,6 +1228,166 @@ mod tests {
         assert_eq!(sel.end.line, 0);
         assert_eq!(sel.end.column, 0);
         assert!(sel.mode.is_empty()); // visual_mode was None => default
+    }
+
+    // =========================================================================
+    // ExtensionUpdated generic dispatch tests (#468)
+    // =========================================================================
+
+    // Test extension stub — engine has ZERO knowledge of real extensions.
+    // This verifies the generic dispatch mechanism only.
+    use crate::render_backend::RenderBackend;
+
+    struct StubExtension {
+        ext_kind: &'static str,
+        active: bool,
+        last_data: String,
+    }
+
+    impl StubExtension {
+        fn new(kind: &'static str) -> Self {
+            Self {
+                ext_kind: kind,
+                active: false,
+                last_data: String::new(),
+            }
+        }
+    }
+
+    impl TuiExtension for StubExtension {
+        fn kind(&self) -> &'static str {
+            self.ext_kind
+        }
+
+        fn is_active(&self) -> bool {
+            self.active
+        }
+
+        fn apply_notification(&mut self, data: &str) {
+            self.last_data = data.to_string();
+            self.active = data.contains("\"active\":true");
+        }
+
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_dispatches_to_matching() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1).with_extensions(vec![
+            Box::new(StubExtension::new("cmdline")),
+            Box::new(StubExtension::new("whichkey")),
+        ]);
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true,"prompt":":","input":"wq","cursor":2}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // The matching extension should be activated
+        assert!(ctx.extensions[0].is_active());
+        // The other extension should NOT be affected
+        assert!(!ctx.extensions[1].is_active());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_remote_ignored() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx =
+            MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true}"#.to_string(),
+            client_id: 99, // Different client
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // Extension should NOT be updated (remote client)
+        assert!(!ctx.extensions[0].is_active());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_unknown_kind_ignored() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx = MockContext::new(1).with_extensions(vec![
+            Box::new(StubExtension::new("cmdline")),
+            Box::new(StubExtension::new("whichkey")),
+        ]);
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "unknown_ext".to_string(),
+            data: r#"{"active":true}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // Neither extension should be affected
+        assert!(!ctx.extensions[0].is_active());
+        assert!(!ctx.extensions[1].is_active());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_client_id_zero_is_local() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx =
+            MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true}"#.to_string(),
+            client_id: 0, // 0 means local/unspecified
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // Extension should be updated (client_id 0 treated as local)
+        assert!(ctx.extensions[0].is_active());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_invalid_json_no_panic() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        let mut ctx =
+            MockContext::new(1).with_extensions(vec![Box::new(StubExtension::new("cmdline"))]);
+
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: "not valid json{{{".to_string(),
+            client_id: 1,
+        }));
+
+        // Should not panic — extensions handle their own JSON parsing
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
+        // Extension received data but couldn't parse "active":true
+        assert!(!ctx.extensions[0].is_active());
+    }
+
+    #[tokio::test]
+    async fn test_handle_extension_updated_no_extensions() {
+        use reovim_protocol::v2::ExtensionUpdatedPayload;
+
+        // No extensions registered — should not panic
+        let mut ctx = MockContext::new(1);
+        let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
+            kind: "cmdline".to_string(),
+            data: r#"{"active":true}"#.to_string(),
+            client_id: 1,
+        }));
+
+        let result = handle_notification(&mut ctx, notif).await.unwrap();
+        assert!(matches!(result, NotificationResult::Redraw));
     }
 
     #[tokio::test]

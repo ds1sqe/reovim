@@ -1,6 +1,7 @@
 /target
 tmp/
 COVERAGE.md
+COVERAGE-SERVER.md
 
 # Python cache
 __pycache__/

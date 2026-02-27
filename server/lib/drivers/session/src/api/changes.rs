@@ -127,6 +127,12 @@ pub struct StateChanges {
     pub presence_changed: bool,
     /// Client IDs whose presence changed.
     pub presence_updates: Vec<usize>,
+
+    // === Extension Changes (#514) ===
+    /// Whether any extension state changed (activation/deactivation).
+    pub extension_changed: bool,
+    /// Extension kinds that changed (e.g., `["cmdline"]`).
+    pub extensions_updated: Vec<String>,
 }
 
 impl StateChanges {
@@ -153,6 +159,7 @@ impl StateChanges {
             || self.option_changed
             || self.scroll_changed
             || self.presence_changed
+            || self.extension_changed
     }
 
     /// Merge another `StateChanges` into this one.
@@ -179,6 +186,13 @@ impl StateChanges {
         for client_id in other.presence_updates {
             if !self.presence_updates.contains(&client_id) {
                 self.presence_updates.push(client_id);
+            }
+        }
+        // #514: Extension changes
+        self.extension_changed |= other.extension_changed;
+        for kind in other.extensions_updated {
+            if !self.extensions_updated.contains(&kind) {
+                self.extensions_updated.push(kind);
             }
         }
     }
@@ -286,6 +300,16 @@ impl StateChanges {
         self.presence_changed = true;
         if !self.presence_updates.contains(&client_id) {
             self.presence_updates.push(client_id);
+        }
+    }
+
+    /// Record that an extension's state changed (#514).
+    ///
+    /// Called when a bridge's `is_active()` changes (activation/deactivation).
+    pub fn record_extension_change(&mut self, kind: String) {
+        self.extension_changed = true;
+        if !self.extensions_updated.contains(&kind) {
+            self.extensions_updated.push(kind);
         }
     }
 }
@@ -627,6 +651,8 @@ mod tests {
         b.record_global_option_change("test", OptionValue::bool(true));
         b.record_scroll_change(win2);
         b.record_presence_change(2);
+        a.record_extension_change("cmdline".into());
+        b.record_extension_change("which-key".into());
 
         a.merge(b);
 
@@ -640,6 +666,7 @@ mod tests {
         assert!(a.option_changed);
         assert!(a.scroll_changed);
         assert!(a.presence_changed);
+        assert!(a.extension_changed);
 
         // Collections should have merged
         assert!(!a.modified_buffers.is_empty());
@@ -651,6 +678,7 @@ mod tests {
         assert!(!a.options_changed.is_empty());
         assert_eq!(a.scrolled_windows.len(), 2);
         assert_eq!(a.presence_updates.len(), 2);
+        assert_eq!(a.extensions_updated.len(), 2);
     }
 
     #[test]
@@ -772,5 +800,71 @@ mod tests {
         a.merge(b);
         assert!(a.mode_changed);
         assert!(a.focus_changed);
+    }
+
+    // === Extension change tests (#514) ===
+
+    #[test]
+    fn test_extension_change() {
+        let mut changes = StateChanges::new();
+        assert!(!changes.has_changes());
+        assert!(!changes.extension_changed);
+
+        changes.record_extension_change("cmdline".into());
+
+        assert!(changes.has_changes());
+        assert!(changes.extension_changed);
+        assert_eq!(changes.extensions_updated.len(), 1);
+        assert!(changes.extensions_updated.contains(&"cmdline".to_string()));
+    }
+
+    #[test]
+    fn test_extension_change_no_duplicates() {
+        let mut changes = StateChanges::new();
+
+        changes.record_extension_change("cmdline".into());
+        changes.record_extension_change("cmdline".into());
+        changes.record_extension_change("cmdline".into());
+
+        assert_eq!(changes.extensions_updated.len(), 1);
+    }
+
+    #[test]
+    fn test_extension_change_multiple_kinds() {
+        let mut changes = StateChanges::new();
+
+        changes.record_extension_change("cmdline".into());
+        changes.record_extension_change("which-key".into());
+
+        assert_eq!(changes.extensions_updated.len(), 2);
+        assert!(changes.extensions_updated.contains(&"cmdline".to_string()));
+        assert!(
+            changes
+                .extensions_updated
+                .contains(&"which-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_merge_extension_changes() {
+        let mut a = StateChanges::new();
+        a.record_extension_change("cmdline".into());
+
+        let mut b = StateChanges::new();
+        b.record_extension_change("which-key".into());
+        b.record_extension_change("cmdline".into()); // Duplicate
+
+        a.merge(b);
+        assert!(a.extension_changed);
+        assert_eq!(a.extensions_updated.len(), 2);
+        assert!(a.extensions_updated.contains(&"cmdline".to_string()));
+        assert!(a.extensions_updated.contains(&"which-key".to_string()));
+    }
+
+    #[test]
+    fn test_has_changes_extension_changed() {
+        let mut c = StateChanges::new();
+        c.extension_changed = true;
+        assert!(c.has_changes());
     }
 }

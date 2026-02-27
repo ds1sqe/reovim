@@ -1767,8 +1767,10 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-cmdline",
  "reovim-module-defaults",
  "reovim-module-textobjects",
+ "reovim-module-whichkey",
  "reovim-server",
  "tokio",
  "tracing",
@@ -1832,6 +1834,7 @@ dependencies = [
  "reovim-driver-tui",
  "reovim-protocol",
  "reovim-testing",
+ "reovim-tui-ext-defaults",
  "serde",
  "serde_json",
  "tokio",
@@ -1916,6 +1919,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
+ "reovim-module-cmdline",
  "tracing",
 ]
 
@@ -1969,6 +1973,7 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "serde_json",
 ]
 
 [[package]]
@@ -2064,7 +2069,21 @@ dependencies = [
  "reovim-driver-clipboard",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-testing",
+ "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-cmdline"
+version = "0.9.5-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-buffer",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -2087,6 +2106,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-buffer-simple",
  "reovim-module-clipboard",
+ "reovim-module-cmdline",
  "reovim-module-commands",
  "reovim-module-editor",
  "reovim-module-keymap",
@@ -2254,12 +2274,26 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-cmdline",
  "reovim-module-editor",
  "reovim-module-macros",
  "reovim-module-motions",
  "reovim-module-textobjects",
  "reovim-module-window-ops",
+ "reovim-testing",
+ "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-whichkey"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -2310,6 +2344,7 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
+ "reovim-module-cmdline",
  "reovim-protocol",
  "reovim-testing",
  "serde",
@@ -2335,6 +2370,33 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "reovim-tui-ext-cmdline"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-defaults"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-tui-ext-cmdline",
+ "reovim-tui-ext-whichkey",
+]
+
+[[package]]
+name = "reovim-tui-ext-whichkey"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
 ]
 
 [[package]]

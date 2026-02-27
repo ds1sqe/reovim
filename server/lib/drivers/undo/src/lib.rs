@@ -18,8 +18,10 @@
 mod error;
 mod key;
 mod provider;
+mod record;
 mod registry;
 
 pub use {
-    error::UndoPersistError, key::UndoKey, provider::UndoProvider, registry::UndoProviderRegistry,
+    error::UndoPersistError, key::UndoKey, provider::UndoProvider, record::UndoRecord,
+    registry::UndoProviderRegistry,
 };

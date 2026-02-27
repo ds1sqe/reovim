@@ -5,8 +5,9 @@
 //!
 //! # Status
 //!
-//! - 32 of 34 tests are enabled and passing
+//! - 28 of 30 tests are enabled and passing
 //! - 2 tests are ignored pending dot repeat implementation
+//! - Text object tests moved to `reovim-module-textobjects` (tests/e2e.rs)
 //!
 //! # Running Tests
 //!
@@ -351,62 +352,6 @@ async fn test_yw_p_yank_put_word() {
         .run()
         .await;
     result.assert_buffer_contains("hello");
-}
-
-// ============================================================================
-// Text Object Tests
-// ============================================================================
-
-/// Test `diw` deletes inner word.
-#[tokio::test]
-async fn test_diw_delete_inner_word() {
-    let result = IntegrationTest::with_modules(&["textobjects"])
-        .await
-        .with_buffer("hello world test")
-        .with_cursor_at(0, 7) // On 'o' of 'world'
-        .send_keys("diw")
-        .run()
-        .await;
-    result.assert_buffer_eq("hello  test");
-}
-
-/// Test `daw` deletes a word (with surrounding whitespace).
-#[tokio::test]
-async fn test_daw_delete_a_word() {
-    let result = IntegrationTest::with_modules(&["textobjects"])
-        .await
-        .with_buffer("hello world test")
-        .with_cursor_at(0, 6) // On 'w' of 'world'
-        .send_keys("daw")
-        .run()
-        .await;
-    result.assert_buffer_eq("hello test");
-}
-
-/// Test `di"` deletes inside quotes.
-#[tokio::test]
-async fn test_di_quote_delete_inside() {
-    let result = IntegrationTest::with_modules(&["textobjects"])
-        .await
-        .with_buffer(r#"say "hello" please"#)
-        .with_cursor_at(0, 5) // On '"'
-        .send_keys("di\"")
-        .run()
-        .await;
-    result.assert_buffer_eq(r#"say "" please"#);
-}
-
-/// Test `ci{` changes inside braces.
-#[tokio::test]
-async fn test_ci_brace_change_inside() {
-    let result = IntegrationTest::with_modules(&["textobjects"])
-        .await
-        .with_buffer("fn() { old }")
-        .with_cursor_at(0, 7) // Inside braces
-        .send_keys("ci{new<Esc>")
-        .run()
-        .await;
-    result.assert_buffer_eq("fn() {new}");
 }
 
 // ============================================================================

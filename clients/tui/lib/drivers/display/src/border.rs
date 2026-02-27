@@ -191,16 +191,64 @@ pub struct WindowAdjacency {
     pub bottom: bool,
 }
 
+impl core::ops::BitOr for WindowAdjacency {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self {
+            left: self.left || rhs.left,
+            right: self.right || rhs.right,
+            top: self.top || rhs.top,
+            bottom: self.bottom || rhs.bottom,
+        }
+    }
+}
+
 impl WindowAdjacency {
+    /// No adjacent windows in any direction.
+    pub const NONE: Self = Self {
+        left: false,
+        right: false,
+        top: false,
+        bottom: false,
+    };
+
+    /// Adjacent window to the left only.
+    pub const LEFT: Self = Self {
+        left: true,
+        ..Self::NONE
+    };
+
+    /// Adjacent window to the right only.
+    pub const RIGHT: Self = Self {
+        right: true,
+        ..Self::NONE
+    };
+
+    /// Adjacent window above only.
+    pub const TOP: Self = Self {
+        top: true,
+        ..Self::NONE
+    };
+
+    /// Adjacent window below only.
+    pub const BOTTOM: Self = Self {
+        bottom: true,
+        ..Self::NONE
+    };
+
+    /// Adjacent windows in all four directions.
+    pub const ALL: Self = Self {
+        left: true,
+        right: true,
+        top: true,
+        bottom: true,
+    };
+
     /// Create new adjacency with all sides set to false.
     #[must_use]
     pub const fn none() -> Self {
-        Self {
-            left: false,
-            right: false,
-            top: false,
-            bottom: false,
-        }
+        Self::NONE
     }
 
     /// Compute adjacency for a target rect from a list of other rects.
@@ -818,5 +866,62 @@ mod tests {
             ..WindowAdjacency::none()
         };
         assert_eq!(select_corner_char(&chars, Corner::BottomRight, adj), '┼');
+    }
+
+    // ================================================================
+    // WindowAdjacency constants and BitOr
+    // ================================================================
+
+    #[test]
+    fn test_adjacency_directional_constants() {
+        const {
+            assert!(WindowAdjacency::LEFT.left);
+            assert!(!WindowAdjacency::LEFT.right);
+
+            assert!(WindowAdjacency::RIGHT.right);
+            assert!(!WindowAdjacency::RIGHT.left);
+
+            assert!(WindowAdjacency::TOP.top);
+            assert!(!WindowAdjacency::TOP.bottom);
+
+            assert!(WindowAdjacency::BOTTOM.bottom);
+            assert!(!WindowAdjacency::BOTTOM.top);
+        }
+    }
+
+    #[test]
+    fn test_adjacency_none_and_all() {
+        const {
+            assert!(
+                !WindowAdjacency::NONE.left
+                    && !WindowAdjacency::NONE.right
+                    && !WindowAdjacency::NONE.top
+                    && !WindowAdjacency::NONE.bottom
+            );
+            assert!(
+                WindowAdjacency::ALL.left
+                    && WindowAdjacency::ALL.right
+                    && WindowAdjacency::ALL.top
+                    && WindowAdjacency::ALL.bottom
+            );
+        }
+    }
+
+    #[test]
+    fn test_adjacency_bitor_combines_directions() {
+        let adj = WindowAdjacency::LEFT | WindowAdjacency::TOP;
+        assert!(adj.left);
+        assert!(adj.top);
+        assert!(!adj.right);
+        assert!(!adj.bottom);
+    }
+
+    #[test]
+    fn test_adjacency_bitor_all_four() {
+        let adj = WindowAdjacency::LEFT
+            | WindowAdjacency::RIGHT
+            | WindowAdjacency::TOP
+            | WindowAdjacency::BOTTOM;
+        assert!(adj.left && adj.right && adj.top && adj.bottom);
     }
 }

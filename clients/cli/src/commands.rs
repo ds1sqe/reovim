@@ -6,26 +6,21 @@ use std::fmt::Write;
 
 use crate::{GrpcClient, GrpcClientError, OutputFormat};
 
-/// Send keys to the editor.
+/// Send keys to a target client via `DebugService`.
 ///
-/// # Arguments
-///
-/// * `client` - The gRPC client
-/// * `keys` - Keys in vim notation
-/// * `client_id` - Optional client ID for multi-client testing (#471)
-/// * `format` - Output format
+/// CLI is stateless — no join, no token. Targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn keys(
     client: &mut GrpcClient,
     keys: &str,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    // Identity resolved from session token (#483)
-    let response = client.send_keys(keys).await?;
+    let response = client.debug_send_keys(keys, target_client_id).await?;
 
     let status_str = match response.status {
         1 => "executed",
@@ -52,17 +47,20 @@ pub async fn keys(
     }
 }
 
-/// Get current editor mode.
+/// Get a specific client's editor mode via `DebugService`.
+///
+/// CLI is stateless — targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn mode(
     client: &mut GrpcClient,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_mode().await?;
+    let response = client.debug_get_mode(target_client_id).await?;
 
     match format {
         OutputFormat::Plain => Ok(format!(
@@ -82,17 +80,20 @@ pub async fn mode(
     }
 }
 
-/// Get cursor position.
+/// Get a specific client's cursor position via `DebugService`.
+///
+/// CLI is stateless — targets the client by ID.
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails.
+/// Returns an error if the gRPC call fails or target client doesn't exist.
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub async fn cursor(
     client: &mut GrpcClient,
+    target_client_id: u64,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_cursor().await?;
+    let response = client.debug_get_cursor(target_client_id).await?;
 
     let (line, column) = response
         .position
@@ -296,38 +297,254 @@ pub async fn registers(
     }
 }
 
-/// Capture TUI screen content.
+/// Capture screen content.
 ///
-/// Requests a screen capture from a specific TUI client via the server relay.
-///
-/// # Arguments
-///
-/// * `client_id` - Target client ID to capture from
-/// * `capture_format` - Capture format: `plain_text`, `raw_ansi`, or `cell_grid`
+/// Routes to either:
+/// - **gRPC relay** (text formats: `plain_text`, `raw_ansi`, `cell_grid`) via `DebugService`
+/// - **Playwright web capture** (visual formats: `png`, `html`) via Node.js script
 ///
 /// # Errors
 ///
-/// Returns an error if the gRPC call fails, no TUI is connected, or capture times out.
+/// Returns an error if arguments are invalid, the gRPC call fails, or the capture script fails.
 #[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::too_many_arguments)]
 pub async fn capture(
     client: &mut GrpcClient,
-    client_id: u64,
+    client_id: Option<u64>,
     capture_format: &str,
+    web_url: Option<&str>,
+    address: &str,
+    width: u32,
+    height: u32,
+    dpr: u32,
+    output: Option<&str>,
     format: OutputFormat,
 ) -> Result<String, GrpcClientError> {
-    let response = client.get_screen_content(client_id, capture_format).await?;
+    match capture_format {
+        "png" | "html" => {
+            let url = web_url.ok_or_else(|| {
+                GrpcClientError::InvalidArgument(
+                    "--web-url is required for png/html capture".into(),
+                )
+            })?;
+            web_capture(url, address, capture_format, width, height, dpr, output)
+        }
+        _ if web_url.is_some() => Err(GrpcClientError::InvalidArgument(format!(
+            "format '{capture_format}' not supported with --web-url. Use 'png' or 'html'."
+        ))),
+        _ => {
+            let target = client_id.ok_or_else(|| {
+                GrpcClientError::InvalidArgument("--client required for text capture".into())
+            })?;
+            let response = client.debug_capture(target, capture_format).await?;
+
+            match format {
+                OutputFormat::Plain => Ok(response.content),
+                OutputFormat::Json => {
+                    let json = serde_json::json!({
+                        "width": response.width,
+                        "height": response.height,
+                        "format": response.format,
+                        "content": response.content,
+                    });
+                    Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+                }
+            }
+        }
+    }
+}
+
+/// Locate the `capture.js` script from the web client build.
+///
+/// Resolution order:
+/// 1. `REOVIM_WEB_CLI` env var (explicit path to `capture.js`)
+/// 2. Relative to binary: `<binary>/../../clients/web/dist/cli/capture.js`
+///    (works for `target/release/reovim` and `target/debug/reovim`)
+/// 3. Relative to cwd: `clients/web/dist/cli/capture.js`
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn find_capture_script() -> Option<std::path::PathBuf> {
+    // 1. Explicit env override
+    if let Ok(path) = std::env::var("REOVIM_WEB_CLI") {
+        let p = std::path::PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    // 2. Relative to the binary location
+    //    Binary: <project>/target/{release,debug}/reovim
+    //    Script: <project>/clients/web/dist/cli/capture.js
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(target_dir) = exe.parent()
+    {
+        // target_dir = <project>/target/{release,debug}
+        let project_root = target_dir.join("../..").canonicalize().ok();
+        if let Some(root) = project_root {
+            let script = root.join("clients/web/dist/cli/capture.js");
+            if script.exists() {
+                return Some(script);
+            }
+        }
+    }
+
+    // 3. Relative to cwd
+    let cwd_script = std::path::PathBuf::from("clients/web/dist/cli/capture.js");
+    if cwd_script.exists() {
+        return Some(cwd_script);
+    }
+
+    None
+}
+
+/// Run Playwright-based web capture via the `capture.js` Node.js script.
+///
+/// Locates the built capture script, then spawns `node capture.js` with the
+/// appropriate arguments.
+///
+/// # Errors
+///
+/// Returns an error if the script is not found or fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(clippy::result_large_err)]
+fn web_capture(
+    web_url: &str,
+    address: &str,
+    format: &str,
+    width: u32,
+    height: u32,
+    dpr: u32,
+    output: Option<&str>,
+) -> Result<String, GrpcClientError> {
+    let script = find_capture_script().ok_or_else(|| {
+        GrpcClientError::CaptureError(
+            "capture.js not found. Build it first:\n\
+             cd clients/web && npm install && npm run build:cli\n\
+             Then: npx playwright install chromium"
+                .into(),
+        )
+    })?;
+
+    let mut cmd = std::process::Command::new("node");
+    cmd.arg(&script)
+        .args(["--grpc", address])
+        .args(["--web-url", web_url])
+        .args(["--format", format])
+        .args(["--width", &width.to_string()])
+        .args(["--height", &height.to_string()])
+        .args(["--dpr", &dpr.to_string()]);
+
+    if let Some(out) = output {
+        cmd.args(["--output", out]);
+    }
+
+    let result = cmd.output().map_err(|e| {
+        GrpcClientError::CaptureError(format!(
+            "Failed to run capture script: {e}.\n\
+             Ensure Node.js is installed and capture.js is built:\n\
+             cd clients/web && npm install && npm run build:cli"
+        ))
+    })?;
+
+    if !result.status.success() {
+        return Err(GrpcClientError::CaptureError(
+            String::from_utf8_lossy(&result.stderr).to_string(),
+        ));
+    }
+
+    if let Some(out) = output {
+        Ok(format!("Captured {format} to {out}"))
+    } else {
+        // Pass binary output (PNG) or text (HTML) through to stdout
+        use std::io::Write;
+        std::io::stdout().write_all(&result.stdout).ok();
+        Ok(String::new())
+    }
+}
+
+// =============================================================================
+// Extension Queries (#474)
+// =============================================================================
+
+/// Query extension state for a specific client via `DebugService`.
+///
+/// Returns JSON-serialized extension state (e.g., which-key pending bindings,
+/// cmdline input state).
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails or extension kind is unknown.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn extension_state(
+    client: &mut GrpcClient,
+    kind: &str,
+    target_client_id: u64,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client
+        .debug_get_extension_state(kind, target_client_id)
+        .await?;
 
     match format {
         OutputFormat::Plain => {
-            // For plain output, just return the raw content
-            Ok(response.content)
+            let status = if response.active {
+                "active"
+            } else {
+                "inactive"
+            };
+            if response.data.is_empty() {
+                Ok(format!("{kind} ({status}): no data"))
+            } else {
+                // Pretty-print the JSON data
+                let pretty = serde_json::from_str::<serde_json::Value>(&response.data).map_or_else(
+                    |_| response.data.clone(),
+                    |v| serde_json::to_string_pretty(&v).unwrap_or_else(|_| response.data.clone()),
+                );
+                Ok(format!("{kind} ({status}):\n{pretty}"))
+            }
+        }
+        OutputFormat::Json => {
+            let data_value = serde_json::from_str::<serde_json::Value>(&response.data)
+                .unwrap_or(serde_json::Value::Null);
+            let json = serde_json::json!({
+                "kind": kind,
+                "active": response.active,
+                "data": data_value,
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+/// List all registered extensions via `DebugService`.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn extensions(
+    client: &mut GrpcClient,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.debug_list_extensions().await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.extensions.is_empty() {
+                return Ok("No extensions registered".to_string());
+            }
+
+            let mut output = String::from("Registered extensions:\n");
+            for ext in &response.extensions {
+                let _ = writeln!(output, "  {} ({})", ext.kind, ext.scope);
+            }
+            Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
-                "width": response.width,
-                "height": response.height,
-                "format": response.format,
-                "content": response.content,
+                "extensions": response.extensions.iter().map(|e| serde_json::json!({
+                    "kind": e.kind,
+                    "scope": e.scope,
+                })).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }
@@ -392,6 +609,70 @@ pub async fn log_tail(
                     "target": e.target,
                     "message": e.message,
                 })).collect::<Vec<_>>(),
+            });
+            Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
+        }
+    }
+}
+
+/// List connected clients via `DebugService`.
+///
+/// Read-only debug query — no auth required.
+///
+/// # Errors
+///
+/// Returns an error if the gRPC call fails.
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub async fn clients(
+    client: &mut GrpcClient,
+    format: OutputFormat,
+) -> Result<String, GrpcClientError> {
+    let response = client.debug_list_clients().await?;
+
+    match format {
+        OutputFormat::Plain => {
+            if response.clients.is_empty() {
+                return Ok("No clients connected".to_string());
+            }
+
+            let mut output = format!("Connected clients: {}\n", response.clients.len());
+            for c in &response.clients {
+                let display_name = c.metadata.as_ref().map_or("?", |m| m.display_name.as_str());
+                let client_type = c.metadata.as_ref().map_or("?", |m| m.client_type.as_str());
+                let relation_str = c.relation.as_ref().map_or_else(
+                    || "independent".to_string(),
+                    |r| match r.r#type {
+                        0 => format!("following #{}", r.target_id),
+                        1 => format!("sharing #{}", r.target_id),
+                        _ => "unknown relation".to_string(),
+                    },
+                );
+                let _ = writeln!(
+                    output,
+                    "  {} ({}) - {} [{}]",
+                    c.id, display_name, client_type, relation_str
+                );
+            }
+            Ok(output.trim_end().to_string())
+        }
+        OutputFormat::Json => {
+            let json = serde_json::json!({
+                "clients": response.clients.iter().map(|c| {
+                    let meta = c.metadata.as_ref();
+                    let view = c.view.as_ref();
+                    serde_json::json!({
+                        "id": c.id,
+                        "client_type": meta.map_or("", |m| m.client_type.as_str()),
+                        "display_name": meta.map_or("", |m| m.display_name.as_str()),
+                        "joined_at_ms": meta.map_or(0, |m| m.joined_at_ms),
+                        "mode": view.map_or("", |v| v.mode.as_str()),
+                        "buffer_id": view.and_then(|v| v.buffer_id),
+                        "relation": c.relation.as_ref().map(|r| serde_json::json!({
+                            "type": r.r#type,
+                            "target_id": r.target_id,
+                        })),
+                    })
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }

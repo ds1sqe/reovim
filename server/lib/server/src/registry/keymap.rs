@@ -181,28 +181,6 @@ impl KeymapRegistry {
         key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
     }
 
-    // ========================================================================
-    // Legacy API (backward compatibility)
-    // ========================================================================
-
-    /// Register a keybinding at the Policy layer (without module ownership).
-    #[deprecated(since = "0.9.5", note = "Use register_at_layer() instead")]
-    pub fn register(&mut self, mode: &ModeId, keys: KeySequence, command: CommandId) {
-        self.register_at_layer(BindingLayer::Policy, mode, keys, command);
-    }
-
-    /// Register a keybinding at the Policy layer with module ownership.
-    #[deprecated(since = "0.9.5", note = "Use register_at_layer_for_module() instead")]
-    pub fn register_for_module(
-        &mut self,
-        mode: &ModeId,
-        keys: KeySequence,
-        command: CommandId,
-        owner: ModuleId,
-    ) {
-        self.register_at_layer_for_module(BindingLayer::Policy, mode, keys, command, owner);
-    }
-
     /// Remove all keybindings owned by a module.
     pub fn unregister_for_module(&mut self, module: &ModuleId) -> usize {
         let mut removed = 0;
@@ -220,10 +198,9 @@ impl KeymapRegistry {
     }
 
     /// Register a keybinding from a string at the Policy layer.
-    #[allow(deprecated)]
     pub fn register_str(&mut self, mode: &ModeId, keys: &str, command: CommandId) -> bool {
         KeySequence::parse(keys).is_some_and(|seq| {
-            self.register(mode, seq, command);
+            self.register_at_layer(BindingLayer::Policy, mode, seq, command);
             true
         })
     }
@@ -359,7 +336,6 @@ impl KeymapQuery for KeymapRegistry {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use {super::*, reovim_kernel::api::v1::ModuleId};
 
@@ -387,7 +363,7 @@ mod tests {
         let keys = KeySequence::parse("j").unwrap();
         let cmd = test_command("cursor-down");
 
-        registry.register(&mode, keys, cmd);
+        registry.register_at_layer(BindingLayer::Policy, &mode, keys, cmd);
 
         assert_eq!(registry.binding_count(&mode), 1);
         assert!(!registry.is_empty());
@@ -487,11 +463,23 @@ mod tests {
 
         let j = KeySequence::parse("j").unwrap();
         let k = KeySequence::parse("k").unwrap();
-        registry.register_for_module(&mode, j.clone(), test_command("down"), owner.clone());
-        registry.register_for_module(&mode, k, test_command("up"), owner.clone());
+        registry.register_at_layer_for_module(
+            BindingLayer::Policy,
+            &mode,
+            j.clone(),
+            test_command("down"),
+            owner.clone(),
+        );
+        registry.register_at_layer_for_module(
+            BindingLayer::Policy,
+            &mode,
+            k,
+            test_command("up"),
+            owner.clone(),
+        );
 
         let l = KeySequence::parse("l").unwrap();
-        registry.register(&mode, l.clone(), test_command("right"));
+        registry.register_at_layer(BindingLayer::Policy, &mode, l.clone(), test_command("right"));
 
         assert_eq!(registry.binding_count(&mode), 3);
 
@@ -826,7 +814,13 @@ mod tests {
         let owner = ModuleId::new("owner");
         let keys = KeySequence::parse("j").unwrap();
 
-        registry.register_for_module(&mode, keys, test_command("down"), owner.clone());
+        registry.register_at_layer_for_module(
+            BindingLayer::Policy,
+            &mode,
+            keys,
+            test_command("down"),
+            owner.clone(),
+        );
 
         assert!(!registry.is_empty());
 

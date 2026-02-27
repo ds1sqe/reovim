@@ -13,7 +13,7 @@
 //!
 //! See the [`Client`] struct for details.
 
-mod capture;
+pub(crate) mod capture;
 mod client;
 pub mod crash_dump;
 mod id;

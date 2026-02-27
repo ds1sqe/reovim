@@ -185,6 +185,20 @@ impl ResolverRegistry {
             .collect()
     }
 
+    /// Get pending keys from the resolver for a mode.
+    ///
+    /// Returns empty `KeySequence` if no resolver is registered or if
+    /// the resolver has no pending keys.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    #[must_use]
+    pub fn pending_keys_for(&self, mode: &ModeId) -> crate::KeySequence {
+        self.get(mode)
+            .map_or_else(crate::KeySequence::new, |r| r.pending_keys())
+    }
+
     /// Resolve a key event for a mode with keymap access.
     ///
     /// This is the preferred method that provides resolvers with access to
@@ -1110,5 +1124,25 @@ mod tests {
             &mut client_ext,
         );
         assert!(result.is_none());
+    }
+
+    // ========================================================================
+    // pending_keys_for tests (#468)
+    // ========================================================================
+
+    #[test]
+    fn test_pending_keys_for_unknown_mode() {
+        let registry = ResolverRegistry::new();
+        let keys = registry.pending_keys_for(&normal_mode());
+        assert!(keys.is_empty());
+    }
+
+    #[test]
+    fn test_pending_keys_for_resolver_with_default() {
+        let registry = ResolverRegistry::new();
+        registry.register(StubResolver::new(normal_mode()));
+        // StubResolver doesn't override pending_keys(), so default (empty) is returned
+        let keys = registry.pending_keys_for(&normal_mode());
+        assert!(keys.is_empty());
     }
 }

@@ -7,11 +7,11 @@ use std::io;
 
 use {
     reovim_driver_display::FrameBuffer,
-    reovim_driver_tui::{Cursor, CursorStyle, Screen, Terminal},
+    reovim_driver_tui::{Cursor, CursorStyle, Terminal},
 };
 
 use crate::{
-    render_backend::RenderBackend,
+    render_backend::{RenderBackend, ScreenBackend},
     tui_output::{CursorStyleHint, TuiOutput},
 };
 
@@ -22,8 +22,8 @@ use crate::{
 pub struct TerminalOutput {
     /// Terminal session (raw mode, alternate screen).
     terminal: Terminal,
-    /// Screen buffer and diff renderer.
-    screen: Screen,
+    /// Screen buffer and diff renderer (wrapped for `RenderBackend` trait).
+    screen: ScreenBackend,
     /// Cursor manager for terminal cursor.
     cursor: Cursor,
 }
@@ -40,7 +40,7 @@ impl TerminalOutput {
     pub fn new() -> io::Result<Self> {
         let terminal = Terminal::enter()?;
         let (width, height) = Terminal::size()?;
-        let screen = Screen::new(width, height);
+        let screen = ScreenBackend::new(width, height);
         let cursor = Cursor::new();
 
         Ok(Self {
@@ -73,8 +73,8 @@ impl TuiOutput for TerminalOutput {
         }
 
         // Copy cells from display::FrameBuffer → Screen via RenderBackend trait.
-        // Screen's RenderBackend impl handles display::Style → tui::Style conversion.
-        self.screen.clear();
+        // ScreenBackend's RenderBackend impl handles display::Style → tui::Style conversion.
+        RenderBackend::clear(&mut self.screen);
         for y in 0..fh {
             if let Some(row) = frame.row(y) {
                 for (x, cell) in row.iter().enumerate() {

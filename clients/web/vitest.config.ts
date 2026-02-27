@@ -10,6 +10,7 @@ export default defineConfig({
     // Use jsdom for tests that need DOM
     environmentMatchGlobs: [
       ["tests/render-*.test.ts", "jsdom"],
+      ["tests/extensions*.test.ts", "jsdom"],
       // Integration tests run in Node (need child_process, etc.)
       ["tests/integration/**/*.test.ts", "node"],
     ],

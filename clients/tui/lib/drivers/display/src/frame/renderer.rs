@@ -111,7 +111,7 @@ impl FrameRenderer {
         let commands = self.compute_diff();
 
         for cmd in commands {
-            self.write_command(writer, &cmd)?;
+            Self::write_command(writer, &cmd)?;
         }
 
         writer.flush()?;
@@ -252,8 +252,7 @@ impl FrameRenderer {
     }
 
     /// Write a render command to the output.
-    #[allow(clippy::unused_self)]
-    fn write_command(&self, writer: &mut dyn Write, cmd: &RenderCommand) -> io::Result<()> {
+    fn write_command(writer: &mut dyn Write, cmd: &RenderCommand) -> io::Result<()> {
         match cmd {
             RenderCommand::MoveTo { x, y } => {
                 // ANSI: ESC[{row};{col}H (1-indexed)
@@ -676,7 +675,6 @@ mod tests {
 
     #[test]
     fn test_write_command_clear_rect() {
-        let renderer = FrameRenderer::new(10, 5);
         let mut output = Vec::new();
         let cmd = RenderCommand::ClearRect {
             x: 0,
@@ -684,7 +682,7 @@ mod tests {
             width: 5,
             height: 3,
         };
-        renderer.write_command(&mut output, &cmd).unwrap();
+        FrameRenderer::write_command(&mut output, &cmd).unwrap();
         let output_str = String::from_utf8_lossy(&output);
         // Should contain MoveTo and spaces for each row
         assert!(!output_str.is_empty());
@@ -692,40 +690,29 @@ mod tests {
 
     #[test]
     fn test_write_command_show_hide_cursor() {
-        let renderer = FrameRenderer::new(10, 5);
         let mut output = Vec::new();
-        renderer
-            .write_command(&mut output, &RenderCommand::ShowCursor)
-            .unwrap();
+        FrameRenderer::write_command(&mut output, &RenderCommand::ShowCursor).unwrap();
         let output_str = String::from_utf8_lossy(&output);
         assert!(output_str.contains("\x1b[?25h"));
 
         let mut output2 = Vec::new();
-        renderer
-            .write_command(&mut output2, &RenderCommand::HideCursor)
-            .unwrap();
+        FrameRenderer::write_command(&mut output2, &RenderCommand::HideCursor).unwrap();
         let output_str2 = String::from_utf8_lossy(&output2);
         assert!(output_str2.contains("\x1b[?25l"));
     }
 
     #[test]
     fn test_write_command_clear_line() {
-        let renderer = FrameRenderer::new(10, 5);
         let mut output = Vec::new();
-        renderer
-            .write_command(&mut output, &RenderCommand::ClearLine)
-            .unwrap();
+        FrameRenderer::write_command(&mut output, &RenderCommand::ClearLine).unwrap();
         let output_str = String::from_utf8_lossy(&output);
         assert!(output_str.contains("\x1b[2K"));
     }
 
     #[test]
     fn test_write_command_clear_to_end() {
-        let renderer = FrameRenderer::new(10, 5);
         let mut output = Vec::new();
-        renderer
-            .write_command(&mut output, &RenderCommand::ClearToEndOfLine)
-            .unwrap();
+        FrameRenderer::write_command(&mut output, &RenderCommand::ClearToEndOfLine).unwrap();
         let output_str = String::from_utf8_lossy(&output);
         assert!(output_str.contains("\x1b[K"));
     }

@@ -1,96 +1,85 @@
 //! Render backend abstraction for TUI rendering.
 //!
-//! This module provides a trait that abstracts over different render targets
-//! (`Screen` for interactive TUI, `FrameBuffer` for headless TUI), enabling
-//! a single rendering implementation to work with both.
+//! This module provides `ScreenBackend` (a newtype around `Screen`) that
+//! implements `RenderBackend` for interactive TUI rendering. It also provides
+//! frame buffer capture utilities.
+//!
+//! The `RenderBackend` trait itself, `impl RenderBackend for FrameBuffer`,
+//! and `TuiExtension` trait live in `reovim-driver-display` — the shared
+//! display crate that extension crates depend on.
 //!
 //! # Design
-//!
-//! The `RenderBackend` trait provides a minimal interface for cell-based
-//! rendering. Both `Screen` (terminal output) and `FrameBuffer` (in-memory)
-//! implement this trait, allowing the render engine to be agnostic about
-//! the actual output target.
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │  render_engine.rs                                           │
 //! │    render_frame<B: RenderBackend>(backend, state, config)   │
 //! ├─────────────────────────────────────────────────────────────┤
-//! │  RenderBackend trait                                        │
+//! │  RenderBackend trait  (reovim-driver-display)               │
 //! │    set_cell, apply_style, write_str, size, clear            │
 //! ├──────────────────────────┬──────────────────────────────────┤
 //! │  ScreenBackend           │  FrameBufferBackend              │
-//! │  (interactive TUI)       │  (headless TUI)                  │
+//! │  (this module)           │  (reovim-driver-display)         │
 //! └──────────────────────────┴──────────────────────────────────┘
 //! ```
 
-use {reovim_arch::Color, reovim_driver_display::Style};
+// Re-export the trait and extension from display crate
+pub use reovim_driver_display::render_backend::{RenderBackend, TuiExtension};
 
-/// Trait for render backends that can display cell-based content.
-///
-/// This trait abstracts over `Screen` (terminal) and `FrameBuffer` (memory),
-/// allowing unified rendering code to work with both interactive and headless TUIs.
-// TODO(#494): Window separator drawing (│, ─, ┼) for multi-window layout
-pub trait RenderBackend {
-    /// Write a character at (x, y) with the given style.
-    ///
-    /// Coordinates are 0-indexed. Out-of-bounds writes are silently ignored.
-    fn set_cell(&mut self, x: u16, y: u16, ch: char, style: &Style);
-
-    /// Apply style to an existing cell without changing its character.
-    ///
-    /// Used for overlays like cursor highlighting where we want to preserve
-    /// the underlying character but change its appearance.
-    fn apply_style(&mut self, x: u16, y: u16, style: &Style);
-
-    /// Write a string starting at (x, y) with the given style.
-    ///
-    /// Returns the number of columns used (accounting for wide characters).
-    /// Does not wrap to the next line.
-    fn write_str(&mut self, x: u16, y: u16, text: &str, style: &Style) -> u16;
-
-    /// Get the dimensions of the render target.
-    fn size(&self) -> (u16, u16);
-
-    /// Clear the entire render target.
-    fn clear(&mut self);
-
-    /// Overlay a background color on an existing cell.
-    ///
-    /// Preserves the character and foreground color, only changing background.
-    /// Used for selection highlighting.
-    fn overlay_bg(&mut self, x: u16, y: u16, bg: Color);
-
-    /// Fill a horizontal line with a character.
-    fn fill_horizontal(&mut self, x: u16, y: u16, width: u16, ch: char, style: &Style) {
-        for col in x..x.saturating_add(width) {
-            self.set_cell(col, y, ch, style);
-        }
-    }
-
-    /// Fill a vertical line with a character.
-    fn fill_vertical(&mut self, x: u16, y: u16, height: u16, ch: char, style: &Style) {
-        for row in y..y.saturating_add(height) {
-            self.set_cell(x, row, ch, style);
-        }
-    }
-
-    /// Fill a rectangular region with a character.
-    fn fill_region(&mut self, x: u16, y: u16, width: u16, height: u16, ch: char, style: &Style) {
-        let (w, h) = self.size();
-        for row in y..y.saturating_add(height).min(h) {
-            for col in x..x.saturating_add(width).min(w) {
-                self.set_cell(col, row, ch, style);
-            }
-        }
-    }
-}
+use reovim_driver_display::{FrameBuffer, Style};
 
 // ============================================================================
 // Screen Backend (Interactive TUI)
 // ============================================================================
 
 use reovim_driver_tui::{Attributes as TuiAttrs, Screen, Style as TuiStyle};
+
+/// Newtype wrapper around `Screen` that implements `RenderBackend`.
+///
+/// This wrapper exists to satisfy Rust's orphan rule: `RenderBackend` is
+/// defined in `reovim-driver-display` and `Screen` in `reovim-driver-tui`,
+/// so neither can be implemented in this crate without a local type.
+pub struct ScreenBackend(pub Screen);
+
+impl ScreenBackend {
+    /// Create a new screen backend with the given dimensions.
+    #[must_use]
+    pub fn new(width: u16, height: u16) -> Self {
+        Self(Screen::new(width, height))
+    }
+
+    /// Get the width of the screen.
+    #[must_use]
+    pub const fn width(&self) -> u16 {
+        self.0.width()
+    }
+
+    /// Get the height of the screen.
+    #[must_use]
+    pub const fn height(&self) -> u16 {
+        self.0.height()
+    }
+
+    /// Resize the screen.
+    pub fn resize(&mut self, width: u16, height: u16) {
+        self.0.resize(width, height);
+    }
+
+    /// Invalidate the screen for full redraw.
+    pub fn invalidate(&mut self) {
+        self.0.invalidate();
+    }
+
+    /// Render the screen to the terminal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if terminal rendering fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub fn render(&mut self, terminal: &mut reovim_driver_tui::Terminal) -> std::io::Result<()> {
+        self.0.render(terminal)
+    }
+}
 
 /// Convert display driver Style to TUI driver Style.
 ///
@@ -129,16 +118,15 @@ fn to_tui_style(style: &Style) -> TuiStyle {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl RenderBackend for Screen {
+impl RenderBackend for ScreenBackend {
     fn set_cell(&mut self, x: u16, y: u16, ch: char, style: &Style) {
         let tui_style = to_tui_style(style);
-        self.put_char(x, y, ch, &tui_style);
+        self.0.put_char(x, y, ch, &tui_style);
     }
 
-    #[allow(clippy::use_self)] // Screen::apply_style is inherent method, Self:: would call trait method
     fn apply_style(&mut self, x: u16, y: u16, style: &Style) {
         let tui_style = to_tui_style(style);
-        Screen::apply_style(self, x, y, &tui_style);
+        self.0.apply_style(x, y, &tui_style);
     }
 
     fn write_str(&mut self, x: u16, y: u16, text: &str, style: &Style) -> u16 {
@@ -146,10 +134,10 @@ impl RenderBackend for Screen {
         // Screen's write_str doesn't return column count, so calculate manually
         let mut col = x;
         for ch in text.chars() {
-            if col >= self.width() {
+            if col >= self.0.width() {
                 break;
             }
-            self.put_char(col, y, ch, &tui_style);
+            self.0.put_char(col, y, ch, &tui_style);
             col += if reovim_driver_tui::char_width(ch) == 2 {
                 2
             } else {
@@ -160,58 +148,15 @@ impl RenderBackend for Screen {
     }
 
     fn size(&self) -> (u16, u16) {
-        (self.width(), self.height())
+        (self.0.width(), self.0.height())
     }
 
-    #[allow(clippy::use_self)] // Screen::clear is inherent method, Self:: would call trait method
     fn clear(&mut self) {
-        Screen::clear(self);
+        self.0.clear();
     }
 
-    #[allow(clippy::use_self)] // Screen::overlay_bg is inherent method, Self:: would call trait method
-    fn overlay_bg(&mut self, x: u16, y: u16, bg: Color) {
-        Screen::overlay_bg(self, x, y, bg);
-    }
-}
-
-// ============================================================================
-// FrameBuffer Backend (Headless TUI)
-// ============================================================================
-
-use reovim_driver_display::FrameBuffer;
-
-impl RenderBackend for FrameBuffer {
-    fn set_cell(&mut self, x: u16, y: u16, ch: char, style: &Style) {
-        self.put_char(x, y, ch, style);
-    }
-
-    #[allow(clippy::use_self)] // FrameBuffer::apply_style is inherent method
-    fn apply_style(&mut self, x: u16, y: u16, style: &Style) {
-        FrameBuffer::apply_style(self, x, y, style);
-    }
-
-    #[allow(clippy::use_self)] // FrameBuffer::write_str is inherent method
-    fn write_str(&mut self, x: u16, y: u16, text: &str, style: &Style) -> u16 {
-        FrameBuffer::write_str(self, x, y, text, style)
-    }
-
-    fn size(&self) -> (u16, u16) {
-        (self.width(), self.height())
-    }
-
-    #[allow(clippy::use_self)] // FrameBuffer::clear is inherent method
-    fn clear(&mut self) {
-        FrameBuffer::clear(self);
-    }
-
-    fn overlay_bg(&mut self, x: u16, y: u16, bg: Color) {
-        // FrameBuffer doesn't have overlay_bg, implement manually
-        if let Some(cell) = self.get(x, y).cloned() {
-            let mut new_style = cell.style.clone();
-            new_style.bg = Some(bg);
-            let new_cell = reovim_driver_display::Cell::new(cell.char, new_style);
-            self.set(x, y, new_cell);
-        }
+    fn overlay_bg(&mut self, x: u16, y: u16, bg: reovim_arch::Color) {
+        self.0.overlay_bg(x, y, bg);
     }
 }
 
@@ -304,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_screen_backend() {
-        let mut screen = Screen::new(80, 24);
+        let mut screen = ScreenBackend::new(80, 24);
         let style = Style::default();
 
         // Test set_cell
@@ -316,20 +261,34 @@ mod tests {
     }
 
     #[test]
+    fn test_screen_backend_new() {
+        let screen = ScreenBackend::new(100, 50);
+        assert_eq!(screen.width(), 100);
+        assert_eq!(screen.height(), 50);
+    }
+
+    #[test]
+    fn test_screen_backend_resize() {
+        let mut screen = ScreenBackend::new(80, 24);
+        screen.resize(120, 40);
+        assert_eq!(screen.size(), (120, 40));
+    }
+
+    #[test]
     fn test_framebuffer_backend() {
         let mut fb = FrameBuffer::new(80, 24);
         let style = Style::default();
 
-        // Test set_cell
-        fb.set_cell(0, 0, 'H', &style);
-        fb.set_cell(1, 0, 'i', &style);
+        // Test set_cell via trait
+        RenderBackend::set_cell(&mut fb, 0, 0, 'H', &style);
+        RenderBackend::set_cell(&mut fb, 1, 0, 'i', &style);
 
         // Verify
         assert_eq!(fb.get(0, 0).map(|c| c.char), Some('H'));
         assert_eq!(fb.get(1, 0).map(|c| c.char), Some('i'));
 
         // Test size
-        assert_eq!(fb.size(), (80, 24));
+        assert_eq!(RenderBackend::size(&fb), (80, 24));
     }
 
     #[test]
@@ -353,7 +312,7 @@ mod tests {
         let mut fb = FrameBuffer::new(80, 24);
         let style = Style::default();
 
-        let written = fb.write_str(0, 0, "Hello", &style);
+        let written = RenderBackend::write_str(&mut fb, 0, 0, "Hello", &style);
         assert_eq!(written, 5);
         assert_eq!(fb.get(0, 0).map(|c| c.char), Some('H'));
         assert_eq!(fb.get(4, 0).map(|c| c.char), Some('o'));
@@ -390,7 +349,7 @@ mod tests {
     fn test_format_frame_buffer_unknown_format_is_plain() {
         let mut fb = FrameBuffer::new(5, 1);
         let style = Style::default();
-        fb.set_cell(0, 0, 'X', &style);
+        RenderBackend::set_cell(&mut fb, 0, 0, 'X', &style);
 
         let plain = format_frame_buffer(&fb, "unknown_format");
         // Unknown format falls back to plain text
@@ -411,7 +370,7 @@ mod tests {
     fn test_framebuffer_clear() {
         let mut fb = FrameBuffer::new(5, 5);
         let style = Style::default();
-        fb.set_cell(2, 2, 'X', &style);
+        RenderBackend::set_cell(&mut fb, 2, 2, 'X', &style);
         assert_eq!(fb.get(2, 2).map(|c| c.char), Some('X'));
 
         RenderBackend::clear(&mut fb);
@@ -422,7 +381,7 @@ mod tests {
     fn test_framebuffer_apply_style() {
         let mut fb = FrameBuffer::new(10, 5);
         let style = Style::default();
-        fb.set_cell(3, 2, 'A', &style);
+        RenderBackend::set_cell(&mut fb, 3, 2, 'A', &style);
 
         let new_style = Style::default().fg(reovim_arch::Color::Red);
         RenderBackend::apply_style(&mut fb, 3, 2, &new_style);
@@ -435,7 +394,7 @@ mod tests {
     fn test_framebuffer_overlay_bg() {
         let mut fb = FrameBuffer::new(10, 5);
         let style = Style::default();
-        fb.set_cell(1, 1, 'B', &style);
+        RenderBackend::set_cell(&mut fb, 1, 1, 'B', &style);
 
         RenderBackend::overlay_bg(&mut fb, 1, 1, reovim_arch::Color::Blue);
         let cell = fb.get(1, 1).unwrap();
@@ -494,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_screen_backend_write_str() {
-        let mut screen = Screen::new(80, 24);
+        let mut screen = ScreenBackend::new(80, 24);
         let style = Style::default();
 
         let written = RenderBackend::write_str(&mut screen, 0, 0, "Hello", &style);
@@ -503,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_screen_backend_clear() {
-        let mut screen = Screen::new(10, 10);
+        let mut screen = ScreenBackend::new(10, 10);
         let style = Style::default();
         screen.set_cell(0, 0, 'X', &style);
 
@@ -562,7 +521,7 @@ mod tests {
         let style = Style::default();
         for row in 0..3 {
             for col in 0..5 {
-                fb.set_cell(col, row, 'a', &style);
+                RenderBackend::set_cell(&mut fb, col, row, 'a', &style);
             }
         }
 
@@ -579,13 +538,20 @@ mod tests {
     fn test_format_frame_buffer_ansi_with_styled_content() {
         let mut fb = FrameBuffer::new(3, 1);
         let style = Style::default().fg(reovim_arch::Color::Green);
-        fb.set_cell(0, 0, 'G', &style);
-        fb.set_cell(1, 0, 'o', &style);
-        fb.set_cell(2, 0, '!', &style);
+        RenderBackend::set_cell(&mut fb, 0, 0, 'G', &style);
+        RenderBackend::set_cell(&mut fb, 1, 0, 'o', &style);
+        RenderBackend::set_cell(&mut fb, 2, 0, '!', &style);
 
         let ansi = format_frame_buffer(&fb, "ansi");
         // Should contain ANSI escape codes
         assert!(ansi.contains("\x1b["));
         assert!(ansi.contains("\x1b[0m")); // Reset code
+    }
+
+    #[test]
+    fn test_screen_backend_invalidate() {
+        let mut screen = ScreenBackend::new(80, 24);
+        // Should not panic
+        screen.invalidate();
     }
 }

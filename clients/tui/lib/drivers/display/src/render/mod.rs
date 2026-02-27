@@ -34,7 +34,9 @@ mod separator;
 pub use line::{render_line, render_line_simple};
 
 // Chrome rendering (tab line, status line)
-pub use chrome::{TabInfo, render_statusline, render_statusline_simple, render_tabline};
+pub use chrome::{
+    TabInfo, TablineStyles, render_statusline, render_statusline_simple, render_tabline,
+};
 
 // Separator rendering
 pub use separator::{

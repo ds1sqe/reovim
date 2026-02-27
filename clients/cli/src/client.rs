@@ -4,6 +4,21 @@
 
 use {
     reovim_protocol::v2::{
+        // Debug service types (#468: CLI uses DebugService for client-targeting ops)
+        DebugCaptureRequest,
+        DebugCaptureResponse,
+        DebugGetCursorRequest,
+        DebugGetCursorResponse,
+        DebugGetExtensionStateRequest,
+        DebugGetExtensionStateResponse,
+        DebugGetModeRequest,
+        DebugGetModeResponse,
+        DebugListClientsRequest,
+        DebugListClientsResponse,
+        DebugListExtensionsRequest,
+        DebugListExtensionsResponse,
+        DebugSendKeysRequest,
+        DebugSendKeysResponse,
         GetCursorRequest,
         GetCursorResponse,
         GetModeRequest,
@@ -53,6 +68,10 @@ pub enum GrpcClientError {
     ConnectionFailed(String),
     /// gRPC call failed.
     GrpcError(tonic::Status),
+    /// Invalid CLI argument combination.
+    InvalidArgument(String),
+    /// Web capture script failed.
+    CaptureError(String),
 }
 
 impl std::fmt::Display for GrpcClientError {
@@ -60,6 +79,8 @@ impl std::fmt::Display for GrpcClientError {
         match self {
             Self::ConnectionFailed(msg) => write!(f, "Connection failed: {msg}"),
             Self::GrpcError(status) => write!(f, "gRPC error: {status}"),
+            Self::InvalidArgument(msg) => write!(f, "Invalid argument: {msg}"),
+            Self::CaptureError(msg) => write!(f, "Capture error: {msg}"),
         }
     }
 }
@@ -241,7 +262,7 @@ impl GrpcClient {
     ///
     /// # Arguments
     ///
-    /// * `keys` - Keys in vim notation (e.g., "iHello<Esc>").
+    /// * `keys` - Keys in vim notation (e.g., `iHello<Esc>`).
     ///
     /// # Returns
     ///
@@ -416,7 +437,10 @@ impl GrpcClient {
         &mut self,
         names: Vec<String>,
     ) -> Result<GetRegistersResponse, GrpcClientError> {
-        let request = self.make_request(GetRegistersRequest { names });
+        let request = self.make_request(GetRegistersRequest {
+            names,
+            client_id: 0, // 0 = self (authenticated client)
+        });
         let response = self.state.get_registers(request).await?;
         Ok(response.into_inner())
     }
@@ -597,6 +621,142 @@ impl GrpcClient {
         let response = self.debug.log_tail(request).await?;
         Ok(response.into_inner())
     }
+
+    // =========================================================================
+    // Debug Client-Targeting Methods (#468)
+    //
+    // CLI is stateless — no join, no token, no presence.
+    // These methods target specific connected clients (TUI/Web) by ID.
+    // =========================================================================
+
+    /// Send keys to a specific client's state via `DebugService`.
+    ///
+    /// No auth required — CLI targets the client by ID directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails or target client doesn't exist.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_send_keys(
+        &mut self,
+        keys: &str,
+        target_client_id: u64,
+    ) -> Result<DebugSendKeysResponse, GrpcClientError> {
+        let request = Request::new(DebugSendKeysRequest {
+            keys: keys.to_string(),
+            target_client_id,
+        });
+        let response = self.debug.debug_send_keys(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Capture a specific client's screen content via `DebugService`.
+    ///
+    /// No auth required — CLI targets the client by ID directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails, client doesn't exist, or capture times out.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_capture(
+        &mut self,
+        target_client_id: u64,
+        format: &str,
+    ) -> Result<DebugCaptureResponse, GrpcClientError> {
+        let request = Request::new(DebugCaptureRequest {
+            target_client_id,
+            format: format.to_string(),
+        });
+        let response = self.debug.debug_capture(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get a specific client's current editor mode via `DebugService`.
+    ///
+    /// No auth required — CLI targets the client by ID directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails or target client doesn't exist.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_get_mode(
+        &mut self,
+        target_client_id: u64,
+    ) -> Result<DebugGetModeResponse, GrpcClientError> {
+        let request = Request::new(DebugGetModeRequest { target_client_id });
+        let response = self.debug.debug_get_mode(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Get a specific client's cursor position via `DebugService`.
+    ///
+    /// No auth required — CLI targets the client by ID directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails or target client doesn't exist.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_get_cursor(
+        &mut self,
+        target_client_id: u64,
+    ) -> Result<DebugGetCursorResponse, GrpcClientError> {
+        let request = Request::new(DebugGetCursorRequest { target_client_id });
+        let response = self.debug.debug_get_cursor(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List connected clients via `DebugService`.
+    ///
+    /// No auth required — read-only debug query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_list_clients(
+        &mut self,
+    ) -> Result<DebugListClientsResponse, GrpcClientError> {
+        let request = Request::new(DebugListClientsRequest {});
+        let response = self.debug.debug_list_clients(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// Query extension state for a specific client via `DebugService`.
+    ///
+    /// No auth required — CLI targets the client by ID directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails or extension kind is unknown.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_get_extension_state(
+        &mut self,
+        kind: &str,
+        target_client_id: u64,
+    ) -> Result<DebugGetExtensionStateResponse, GrpcClientError> {
+        let request = Request::new(DebugGetExtensionStateRequest {
+            kind: kind.to_string(),
+            target_client_id,
+        });
+        let response = self.debug.debug_get_extension_state(request).await?;
+        Ok(response.into_inner())
+    }
+
+    /// List all registered extensions via `DebugService`.
+    ///
+    /// No auth required — read-only debug query.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the gRPC call fails.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    pub async fn debug_list_extensions(
+        &mut self,
+    ) -> Result<DebugListExtensionsResponse, GrpcClientError> {
+        let request = Request::new(DebugListExtensionsRequest {});
+        let response = self.debug.debug_list_extensions(request).await?;
+        Ok(response.into_inner())
+    }
 }
 
 #[cfg(test)]
@@ -611,5 +771,13 @@ mod tests {
         let status = tonic::Status::not_found("test");
         let err = GrpcClientError::GrpcError(status);
         assert!(err.to_string().contains("gRPC error"));
+
+        let err = GrpcClientError::InvalidArgument("bad arg".to_string());
+        assert!(err.to_string().contains("Invalid argument"));
+        assert!(err.to_string().contains("bad arg"));
+
+        let err = GrpcClientError::CaptureError("script failed".to_string());
+        assert!(err.to_string().contains("Capture error"));
+        assert!(err.to_string().contains("script failed"));
     }
 }

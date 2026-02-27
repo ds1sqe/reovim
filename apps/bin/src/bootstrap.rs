@@ -34,13 +34,36 @@ use {
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
-        OptionRegistry, ProbeResult, RegisterBank, ServiceRegistry, TextObjectEngine,
+        OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
     reovim_server::{
-        CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry, SessionState, SyntaxSessionState,
+        CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
+        SessionState, SyntaxSessionState,
     },
 };
+
+/// Create an extension bridge registry for gRPC notification emission (#468).
+///
+/// Bridges adapt session extension state to JSON for gRPC transmission.
+/// Each bridge adapts a module's `SessionExtension` state to JSON.
+///
+/// Currently registers bridges directly from module crates. Full
+/// `BridgeProvider`-based collection (where modules register during `init()`
+/// and bootstrap collects) requires refactoring the session factory pattern.
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
+    use {
+        reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
+        reovim_module_whichkey::WhichKeyBridge,
+    };
+
+    let mut registry = BridgeRegistry::new();
+    registry.register(CmdlineBridge);
+    registry.register(WhichKeyBridge);
+    registry
+}
 
 /// Create a session state with fully-initialized module registries.
 ///
@@ -79,6 +102,10 @@ pub fn create_session_state() -> SessionState {
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
         extract_registries(&services);
+
+    // Register CommandQuerySnapshot for module command queries (#453)
+    let command_query_snapshot = Arc::new(CommandQuerySnapshot::from_registry(&command_registry));
+    services.register(command_query_snapshot);
 
     // Extract ex-command handlers and create registry (#465)
     extract_ex_command_registry(&services);
@@ -293,7 +320,6 @@ fn create_kernel_context(services: Arc<ServiceRegistry>) -> KernelContext {
         Arc::new(reovim_driver_buffer::TestBufferManager::new()),
         Arc::new(MotionEngine),
         Arc::new(TextObjectEngine),
-        Arc::new(RwLock::new(RegisterBank::new())),
         Arc::new(RwLock::new(MarkBank::new())),
         Arc::new(OptionRegistry::new()),
         services,

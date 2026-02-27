@@ -27,6 +27,8 @@ reovim-driver-clipboard = { workspace = true }
 reovim-driver-undo = { workspace = true }
 # Search driver for Direction type (SearchState)
 reovim-driver-search = { workspace = true }
+# JSON serialization for extension state bridges (#514)
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # VFS driver for MockUndoProvider's persist/load methods in tests

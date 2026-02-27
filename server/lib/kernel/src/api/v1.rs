@@ -105,7 +105,7 @@ pub use crate::core::{Direction, LinePosition, Motion, MotionEngine, WordBoundar
 pub use crate::core::{TextObject, TextObjectEngine};
 
 // Registers
-pub use crate::core::{RegisterBank, RegisterContent, YankType};
+pub use crate::core::{HistoryRing, Register, RegisterBank, RegisterContent, YankType};
 
 // Marks
 pub use crate::core::{Mark, MarkBank, MarkResult, SpecialMark};

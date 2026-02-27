@@ -339,7 +339,7 @@ impl TextObjectEngine {
         }
 
         let end_col = buffer.line_len(end).unwrap_or(0).saturating_sub(1);
-        Some((Position::new(start, 0), Position::new(end, end_col.max(0))))
+        Some((Position::new(start, 0), Position::new(end, end_col)))
     }
 
     fn a_paragraph(buffer: &Buffer, pos: Position) -> Option<(Position, Position)> {
@@ -362,7 +362,7 @@ impl TextObjectEngine {
         }
 
         let end_col = buffer.line_len(end).unwrap_or(0).saturating_sub(1);
-        Some((Position::new(start, 0), Position::new(end, end_col.max(0))))
+        Some((Position::new(start, 0), Position::new(end, end_col)))
     }
 
     // === Quote Text Objects ===

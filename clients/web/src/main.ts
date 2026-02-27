@@ -19,12 +19,14 @@ async function main() {
   app.classList.remove("disconnected");
 
   try {
-    // Create gRPC-Web client
-    // Allow port override via URL query parameter for E2E testing
-    // e.g., http://localhost:5173/?port=12522
-    const urlParams = new URLSearchParams(window.location.search);
-    const port = urlParams.get("port") || "12521";
-    const serverUrl = `http://${window.location.hostname}:${port}`;
+    // Server address resolution:
+    // 1. Injected by Playwright/tests via window.__REOVIM_SERVER
+    // 2. Build-time env variable VITE_GRPC_ADDRESS
+    // 3. Default: same hostname, port 12521
+    const serverUrl = (window as any).__REOVIM_SERVER
+      || (import.meta.env.VITE_GRPC_ADDRESS
+          ? `http://${import.meta.env.VITE_GRPC_ADDRESS}`
+          : `http://${window.location.hostname}:12521`);
     console.log("Connecting to:", serverUrl);
     const client = createClient(serverUrl);
 

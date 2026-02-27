@@ -115,6 +115,42 @@ reovim cli log-tail --follow
 reovim cli log-tail --follow --level warn
 ```
 
+### Extension Queries
+
+Query extension state for debugging (e.g., which-key popup, cmdline input).
+
+```bash
+# List all registered extensions
+reovim cli extensions
+
+# Query extension state for a specific client
+reovim cli extension-state whichkey --client 1
+reovim cli extension-state cmdline --client 1
+
+# JSON format for programmatic use
+reovim cli --format json extension-state whichkey --client 1
+```
+
+Output example (plain, active which-key):
+```
+whichkey (active):
+{
+  "active": true,
+  "prefix": "g",
+  "hints": [
+    { "key": "g", "command": "vim/goto-top" },
+    { "key": "d", "command": "vim/goto-definition" }
+  ]
+}
+```
+
+Output example (extensions list):
+```
+Registered extensions:
+  cmdline (client)
+  whichkey (client)
+```
+
 ### Frame Capture
 
 ```bash

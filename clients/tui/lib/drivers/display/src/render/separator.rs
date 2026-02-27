@@ -3,7 +3,7 @@
 //! Renders the separator lines between split windows, including
 //! proper intersection characters where separators meet.
 
-use crate::{compositor::Style, frame::FrameBuffer};
+use crate::{WindowAdjacency, compositor::Style, frame::FrameBuffer};
 
 /// Separator character set for window dividers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,45 +125,32 @@ pub fn render_hseparator(
 /// Render an intersection point where separators meet.
 ///
 /// The intersection character is chosen based on which directions
-/// have connecting separators.
+/// have connecting separators, described by [`WindowAdjacency`].
 ///
 /// # Arguments
 ///
 /// * `buffer` - Frame buffer to render to
 /// * `x` - X position
 /// * `y` - Y position
-/// * `has_left` - Has separator extending left
-/// * `has_right` - Has separator extending right
-/// * `has_up` - Has separator extending up
-/// * `has_down` - Has separator extending down
+/// * `adj` - Which directions have connecting separators
 /// * `chars` - Separator character set
 /// * `style` - Style for the intersection
-#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 pub fn render_intersection(
     buffer: &mut FrameBuffer,
     x: u16,
     y: u16,
-    has_left: bool,
-    has_right: bool,
-    has_up: bool,
-    has_down: bool,
+    adj: WindowAdjacency,
     chars: &SeparatorChars,
     style: &Style,
 ) {
-    let ch = select_intersection_char(has_left, has_right, has_up, has_down, chars);
+    let ch = select_intersection_char(adj, chars);
     buffer.put_char(x, y, ch, style);
 }
 
 /// Select the appropriate intersection character based on connected directions.
-#[allow(clippy::fn_params_excessive_bools, clippy::match_same_arms)]
-const fn select_intersection_char(
-    has_left: bool,
-    has_right: bool,
-    has_up: bool,
-    has_down: bool,
-    chars: &SeparatorChars,
-) -> char {
-    match (has_left, has_right, has_up, has_down) {
+#[allow(clippy::match_same_arms)]
+const fn select_intersection_char(adj: WindowAdjacency, chars: &SeparatorChars) -> char {
+    match (adj.left, adj.right, adj.top, adj.bottom) {
         // Full cross
         (true, true, true, true) => chars.cross,
 
@@ -239,10 +226,12 @@ pub fn render_grid_separators(
                     buffer,
                     x,
                     y,
-                    x > 0,          // has_left
-                    x < width - 1,  // has_right
-                    y > 0,          // has_up
-                    y < height - 1, // has_down
+                    WindowAdjacency {
+                        left: x > 0,
+                        right: x < width - 1,
+                        top: y > 0,
+                        bottom: y < height - 1,
+                    },
                     chars,
                     style,
                 );
@@ -319,76 +308,58 @@ mod tests {
         }
     }
 
+    use crate::WindowAdjacency as Adj;
+
     #[test]
     fn test_select_intersection_cross() {
         let chars = SeparatorChars::SINGLE;
-
-        // Full cross: all directions connected
-        let ch = select_intersection_char(true, true, true, true, &chars);
-        assert_eq!(ch, '┼');
+        assert_eq!(select_intersection_char(Adj::ALL, &chars), '┼');
     }
 
     #[test]
     fn test_select_intersection_top_tee() {
         let chars = SeparatorChars::SINGLE;
-
         // Top tee: left, right, down (no up)
-        let ch = select_intersection_char(true, true, false, true, &chars);
-        assert_eq!(ch, '┬');
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::RIGHT | Adj::BOTTOM, &chars), '┬');
     }
 
     #[test]
     fn test_select_intersection_bottom_tee() {
         let chars = SeparatorChars::SINGLE;
-
         // Bottom tee: left, right, up (no down)
-        let ch = select_intersection_char(true, true, true, false, &chars);
-        assert_eq!(ch, '┴');
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::RIGHT | Adj::TOP, &chars), '┴');
     }
 
     #[test]
     fn test_select_intersection_left_tee() {
         let chars = SeparatorChars::SINGLE;
-
         // Left tee: right, up, down (no left)
-        let ch = select_intersection_char(false, true, true, true, &chars);
-        assert_eq!(ch, '├');
+        assert_eq!(select_intersection_char(Adj::RIGHT | Adj::TOP | Adj::BOTTOM, &chars), '├');
     }
 
     #[test]
     fn test_select_intersection_right_tee() {
         let chars = SeparatorChars::SINGLE;
-
         // Right tee: left, up, down (no right)
-        let ch = select_intersection_char(true, false, true, true, &chars);
-        assert_eq!(ch, '┤');
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::TOP | Adj::BOTTOM, &chars), '┤');
     }
 
     #[test]
     fn test_select_intersection_horizontal() {
         let chars = SeparatorChars::SINGLE;
-
-        // Just horizontal: left, right
-        let ch = select_intersection_char(true, true, false, false, &chars);
-        assert_eq!(ch, '─');
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::RIGHT, &chars), '─');
     }
 
     #[test]
     fn test_select_intersection_vertical() {
         let chars = SeparatorChars::SINGLE;
-
-        // Just vertical: up, down
-        let ch = select_intersection_char(false, false, true, true, &chars);
-        assert_eq!(ch, '│');
+        assert_eq!(select_intersection_char(Adj::TOP | Adj::BOTTOM, &chars), '│');
     }
 
     #[test]
     fn test_select_intersection_none() {
         let chars = SeparatorChars::SINGLE;
-
-        // No connections
-        let ch = select_intersection_char(false, false, false, false, &chars);
-        assert_eq!(ch, ' ');
+        assert_eq!(select_intersection_char(Adj::NONE, &chars), ' ');
     }
 
     #[test]
@@ -396,7 +367,7 @@ mod tests {
         let mut buffer = FrameBuffer::new(80, 24);
         let chars = SeparatorChars::SINGLE;
 
-        render_intersection(&mut buffer, 10, 10, true, true, true, true, &chars, &Style::default());
+        render_intersection(&mut buffer, 10, 10, Adj::ALL, &chars, &Style::default());
 
         assert_eq!(buffer.get(10, 10).unwrap().char, '┼');
     }
@@ -481,41 +452,19 @@ mod tests {
     fn test_select_intersection_corners() {
         let chars = SeparatorChars::SINGLE;
 
-        // Bottom-left corner: right + down (no left, no up)
-        let ch = select_intersection_char(false, true, false, true, &chars);
-        assert_eq!(ch, chars.vertical);
-
-        // Bottom-right corner: left + down (no right, no up)
-        let ch = select_intersection_char(true, false, false, true, &chars);
-        assert_eq!(ch, chars.vertical);
-
-        // Top-left corner: right + up (no left, no down)
-        let ch = select_intersection_char(false, true, true, false, &chars);
-        assert_eq!(ch, chars.vertical);
-
-        // Top-right corner: left + up (no right, no down)
-        let ch = select_intersection_char(true, false, true, false, &chars);
-        assert_eq!(ch, chars.vertical);
+        assert_eq!(select_intersection_char(Adj::RIGHT | Adj::BOTTOM, &chars), chars.vertical);
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::BOTTOM, &chars), chars.vertical);
+        assert_eq!(select_intersection_char(Adj::RIGHT | Adj::TOP, &chars), chars.vertical);
+        assert_eq!(select_intersection_char(Adj::LEFT | Adj::TOP, &chars), chars.vertical);
     }
 
     #[test]
     fn test_select_intersection_single_direction() {
         let chars = SeparatorChars::SINGLE;
 
-        // Single left endpoint
-        let ch = select_intersection_char(true, false, false, false, &chars);
-        assert_eq!(ch, chars.horizontal);
-
-        // Single right endpoint
-        let ch = select_intersection_char(false, true, false, false, &chars);
-        assert_eq!(ch, chars.horizontal);
-
-        // Single up endpoint
-        let ch = select_intersection_char(false, false, true, false, &chars);
-        assert_eq!(ch, chars.vertical);
-
-        // Single down endpoint
-        let ch = select_intersection_char(false, false, false, true, &chars);
-        assert_eq!(ch, chars.vertical);
+        assert_eq!(select_intersection_char(Adj::LEFT, &chars), chars.horizontal);
+        assert_eq!(select_intersection_char(Adj::RIGHT, &chars), chars.horizontal);
+        assert_eq!(select_intersection_char(Adj::TOP, &chars), chars.vertical);
+        assert_eq!(select_intersection_char(Adj::BOTTOM, &chars), chars.vertical);
     }
 }

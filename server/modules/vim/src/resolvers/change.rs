@@ -20,8 +20,8 @@ use std::sync::RwLock;
 
 use {
     reovim_driver_input::{
-        ExtensionMap, KeyEvent, ModeKeyResolver, ModeState, ModeTransition, ResolveContext,
-        ResolveInput, ResolveResult, SessionApiDyn,
+        ExtensionMap, KeyEvent, KeySequence, ModeKeyResolver, ModeState, ModeTransition,
+        ResolveContext, ResolveInput, ResolveResult, SessionApiDyn,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::{ModeId, Position},
@@ -452,6 +452,10 @@ impl ModeKeyResolver for VimChangeResolver {
 
     fn inherits_from(&self) -> Option<&ModeId> {
         Some(&self.parent_mode_id)
+    }
+
+    fn pending_keys(&self) -> KeySequence {
+        self.state.read().expect("lock poisoned").keys()
     }
 
     fn reset(&mut self) {

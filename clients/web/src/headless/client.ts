@@ -40,7 +40,10 @@
  * ```
  */
 
-import { createClient as createConnectClient } from "@connectrpc/connect";
+import {
+  createClient as createConnectClient,
+  type Interceptor,
+} from "@connectrpc/connect";
 import { createGrpcTransport } from "@connectrpc/connect-node";
 import type { Notification } from "../gen/reovim/v2/notification_pb.js";
 import { InputService } from "../gen/reovim/v2/input_connect.js";
@@ -56,6 +59,7 @@ import {
   type FrameCapture,
   type WindowState as CaptureWindowState,
 } from "../capture/index.js";
+import { createExtensions, type WebExtension } from "../extensions/index.js";
 
 /** gRPC client interface (same as browser client) */
 interface ReovimClient {
@@ -65,15 +69,31 @@ interface ReovimClient {
   notification: ReturnType<typeof createConnectClient<typeof NotificationService>>;
   server: ReturnType<typeof createConnectClient<typeof ServerService>>;
   presence: ReturnType<typeof createConnectClient<typeof PresenceService>>;
+  /** Store a session token received from Join() for subsequent requests. */
+  setSessionToken(token: string): void;
 }
 
 /**
  * Create a Node.js gRPC client (uses HTTP/2 native transport).
+ *
+ * Mirrors `createClient()` in `src/client.ts` but uses native gRPC
+ * transport instead of gRPC-Web. Includes the auth interceptor for
+ * `x-reovim-token` header injection (#483).
  */
 function createNodeClient(baseUrl: string): ReovimClient {
+  const tokenState = { value: "" };
+
+  const authInterceptor: Interceptor = (next) => async (req) => {
+    if (tokenState.value) {
+      req.header.set("x-reovim-token", tokenState.value);
+    }
+    return next(req);
+  };
+
   const transport = createGrpcTransport({
     baseUrl,
     httpVersion: "2",
+    interceptors: [authInterceptor],
   });
 
   return {
@@ -83,6 +103,9 @@ function createNodeClient(baseUrl: string): ReovimClient {
     notification: createConnectClient(NotificationService, transport),
     server: createConnectClient(ServerService, transport),
     presence: createConnectClient(PresenceService, transport),
+    setSessionToken(token: string) {
+      tokenState.value = token;
+    },
   };
 }
 
@@ -129,6 +152,7 @@ export class HeadlessWebClient {
   private client: ReovimClient;
   private state: HeadlessState;
   private captureHandler: CaptureHandler;
+  private extensions: WebExtension[];
   private notificationAbort: AbortController | null = null;
 
   private constructor(client: ReovimClient, options: HeadlessClientOptions) {
@@ -151,6 +175,8 @@ export class HeadlessWebClient {
       client: this.client,
       getState: () => this.getCaptureableState(),
     });
+
+    this.extensions = createExtensions();
   }
 
   /**
@@ -172,9 +198,17 @@ export class HeadlessWebClient {
   }
 
   /**
-   * Start the client: fetch initial state and begin notification subscription.
+   * Start the client: join session, fetch initial state, and begin notification subscription.
    */
   private async start(): Promise<void> {
+    // Join presence session to get a session token (#483)
+    // Without this, all subsequent requests are rejected with "unauthenticated"
+    const joinResponse = await this.client.presence.join({
+      clientType: "headless",
+      displayName: "Headless Test Client",
+    });
+    this.client.setSessionToken(joinResponse.sessionToken);
+
     // Fetch initial state from server
     const [modeResp, cursorResp, bufferResp] = await Promise.all([
       this.client.state.getMode({}),
@@ -265,6 +299,17 @@ export class HeadlessWebClient {
           this.state.lines = bufferResp.lines.length > 0 ? bufferResp.lines : [""];
         } catch (error) {
           console.warn("Failed to fetch buffer content:", error);
+        }
+        break;
+      }
+
+      case "extensionUpdated": {
+        // #468: Generic extension state tracking (no DOM rendering)
+        const ext = payload.value;
+        for (const extension of this.extensions) {
+          if (extension.kind() === ext.kind) {
+            extension.applyNotification(ext.data);
+          }
         }
         break;
       }
@@ -398,6 +443,16 @@ export class HeadlessWebClient {
    */
   getBuffer(): string {
     return this.state.lines.join("\n");
+  }
+
+  /**
+   * Get extension state by kind (#468).
+   *
+   * Returns the parsed state for headless testing, or null if the extension
+   * is not active or the kind is unknown.
+   */
+  getExtensionState(kind: string): Record<string, unknown> | null {
+    return this.extensions.find(e => e.kind() === kind)?.getState() ?? null;
   }
 
   /**

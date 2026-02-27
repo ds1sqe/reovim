@@ -10,7 +10,7 @@
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │  TuiCoreState (this module)                                 │
 //! │    - Identity: my_client_id, my_role                        │
-//! │    - Mode: mode_name, mode_display, is_insert_mode          │
+//! │    - Mode: mode_name, mode_display, flags (insert mode)      │
 //! │    - Cursor: global + per-window (window_cursors)           │
 //! │    - Selection: per-window (window_selections)              │
 //! │    - Layout: focused_window_id, windows                     │
@@ -116,6 +116,31 @@ pub struct RemoteClient {
     pub selection: Option<SelectionState>,
 }
 
+/// Boolean state flags packed into a `u8` bitfield.
+///
+/// Replaces individual `bool` fields on `TuiCoreState` to satisfy
+/// `clippy::struct_excessive_bools` without external dependencies.
+#[derive(Debug, Clone, Copy, Default)]
+struct TuiStateFlags(u8);
+
+impl TuiStateFlags {
+    const INSERT_MODE: u8 = 1 << 0;
+    const NEEDS_DEFAULT_WINDOW: u8 = 1 << 1;
+    const NEEDS_REDRAW: u8 = 1 << 2;
+
+    const fn get(self, bit: u8) -> bool {
+        self.0 & bit != 0
+    }
+
+    const fn set(&mut self, bit: u8, value: bool) {
+        if value {
+            self.0 |= bit;
+        } else {
+            self.0 &= !bit;
+        }
+    }
+}
+
 /// Shared TUI state tracked from server notifications.
 ///
 /// This struct contains all state needed by both interactive and headless
@@ -143,8 +168,8 @@ pub struct TuiCoreState {
     /// Current mode display string.
     pub mode_display: String,
 
-    /// Whether mode accepts text input.
-    pub is_insert_mode: bool,
+    /// Boolean state flags (`is_insert_mode`, `needs_default_window`, `needs_redraw`).
+    flags: TuiStateFlags,
 
     // =========================================================================
     // Cursor (per-window only)
@@ -170,9 +195,6 @@ pub struct TuiCoreState {
     /// Window layout info.
     pub windows: Vec<WindowInfo>,
 
-    /// Whether client needs to create a default window (empty server layout).
-    pub needs_default_window: bool,
-
     // =========================================================================
     // Content
     // =========================================================================
@@ -195,9 +217,6 @@ pub struct TuiCoreState {
     /// Line number display mode.
     pub line_number_mode: LineNumberMode,
 
-    /// Whether screen needs redraw.
-    pub needs_redraw: bool,
-
     /// Last error message for statusline.
     pub last_error: Option<String>,
 
@@ -212,6 +231,47 @@ pub struct TuiCoreState {
 }
 
 impl TuiCoreState {
+    // =========================================================================
+    // Flag accessors (delegating to TuiStateFlags bitfield)
+    // =========================================================================
+
+    /// Whether mode accepts text input.
+    #[must_use]
+    pub const fn is_insert_mode(&self) -> bool {
+        self.flags.get(TuiStateFlags::INSERT_MODE)
+    }
+
+    /// Set whether mode accepts text input.
+    pub const fn set_insert_mode(&mut self, value: bool) {
+        self.flags.set(TuiStateFlags::INSERT_MODE, value);
+    }
+
+    /// Whether client needs to create a default window (empty server layout).
+    #[must_use]
+    pub const fn needs_default_window(&self) -> bool {
+        self.flags.get(TuiStateFlags::NEEDS_DEFAULT_WINDOW)
+    }
+
+    /// Set whether client needs to create a default window.
+    pub const fn set_needs_default_window(&mut self, value: bool) {
+        self.flags.set(TuiStateFlags::NEEDS_DEFAULT_WINDOW, value);
+    }
+
+    /// Whether screen needs redraw.
+    #[must_use]
+    pub const fn needs_redraw(&self) -> bool {
+        self.flags.get(TuiStateFlags::NEEDS_REDRAW)
+    }
+
+    /// Set whether screen needs redraw.
+    pub const fn set_needs_redraw(&mut self, value: bool) {
+        self.flags.set(TuiStateFlags::NEEDS_REDRAW, value);
+    }
+
+    // =========================================================================
+    // Constructors
+    // =========================================================================
+
     /// Create a new core state with the given client ID.
     #[must_use]
     pub fn new(client_id: u64) -> Self {
@@ -584,9 +644,9 @@ mod tests {
     #[test]
     fn test_core_state_needs_redraw() {
         let mut state = TuiCoreState::new(1);
-        assert!(!state.needs_redraw);
-        state.needs_redraw = true;
-        assert!(state.needs_redraw);
+        assert!(!state.needs_redraw());
+        state.set_needs_redraw(true);
+        assert!(state.needs_redraw());
     }
 
     #[test]

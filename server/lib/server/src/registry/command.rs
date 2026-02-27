@@ -122,23 +122,18 @@ impl CommandRegistry {
     ///
     /// * `id` - The command ID to execute
     /// * `driver_session` - Driver session (for shared state like buffers)
-    /// * `client_mode_stack` - Per-client mode stack (source of truth for mode)
-    /// * `client_windows` - Per-client window layout (source of truth for cursor)
-    /// * `client_extensions` - Per-client module extensions (#477)
+    /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
     /// * `app` - Application state (contains `KernelContext`)
     /// * `vfs` - VFS driver for file operations
     /// * `args` - Command arguments (count, register, etc.)
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // Per-client execution needs all these parameters
+    #[allow(clippy::too_many_arguments)] // bundled via ClientContext, remaining are distinct concerns
     pub fn execute_for_client(
         &self,
         client_id: usize,
         id: &CommandId,
         driver_session: &mut DriverSession,
-        client_mode_stack: &mut reovim_kernel::api::v1::ModeStack,
-        client_windows: &mut reovim_driver_session::WindowLayout,
-        client_extensions: &mut reovim_driver_session::ExtensionMap,
-        client_compositor: &mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        client: reovim_driver_session::ClientContext<'_>,
         app: &AppState,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
@@ -154,17 +149,14 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Create SessionRuntime with per-client state and owner (#471, #477)
+            // Create SessionRuntime with per-client state and owner (#471, #477, #515)
             // The owner enables undo_mine()/redo_mine() for per-client undo
             let stub_executor = StubCommandExecutor;
             let driver_client_id = DriverClientId::new(client_id);
             let mut runtime = SessionRuntime::with_owner(
                 driver_client_id,
                 driver_session,
-                client_mode_stack,
-                client_windows,
-                client_extensions,
-                client_compositor,
+                client,
                 &app.kernel,
                 &stub_executor,
             );
@@ -322,7 +314,7 @@ mod tests {
         reovim_driver_command::{ArgSpec, Command},
         reovim_driver_session::ClientId,
         reovim_driver_vfs::MockVfs,
-        reovim_kernel::api::v1::ModuleId,
+        reovim_kernel::api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
     };
 
     fn test_vfs() -> Arc<dyn VfsDriver> {
@@ -427,15 +419,23 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1, // test client_id for per-client undo (#471)
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,
@@ -620,15 +620,23 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1,
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,
@@ -706,15 +714,23 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
 
         let result = registry.execute_for_client(
             1,
             &id,
             &mut driver_session,
-            &mut client_mode_stack,
-            &mut client_windows,
-            &mut client_extensions,
-            &mut client_compositor,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut client_mode_stack,
+                windows: &mut client_windows,
+                extensions: &mut client_extensions,
+                compositor: &mut client_compositor,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+            },
             &app,
             &vfs,
             &args,
@@ -734,6 +750,74 @@ mod tests {
         let registry = CommandRegistry::new();
         let id = CommandId::new(ModuleId::new("test"), "missing");
         assert!(!registry.contains(&id));
+    }
+
+    // === CommandQuerySnapshot additional tests (#453) ===
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix_empty_string() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("alpha")));
+        registry.register(Arc::new(TestCommand::new("beta")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        // Empty prefix should return all commands
+        let results = snapshot.search_by_prefix("");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_search_by_prefix_partial() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("write-file")));
+        registry.register(Arc::new(TestCommand::new("write-all")));
+        registry.register(Arc::new(TestCommand::new("quit")));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        let results = snapshot.search_by_prefix("write");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_command_query_snapshot_list_ex_commands_excludes_internal() {
+        // TestCommand always has a name, so create an internal-only command
+        struct InternalCommand;
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl Command for InternalCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "internal")
+            }
+            fn description(&self) -> &'static str {
+                "Internal command"
+            }
+            fn names(&self) -> &[&'static str] {
+                &[] // No ex-names → internal only
+            }
+        }
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl CommandHandler for InternalCommand {
+            fn execute(
+                &self,
+                _runtime: &mut SessionRuntime<'_>,
+                _args: &CommandContext,
+            ) -> CommandResult {
+                CommandResult::Success
+            }
+        }
+
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("visible")));
+        registry.register(Arc::new(InternalCommand));
+
+        let snapshot = CommandQuerySnapshot::from_registry(&registry);
+        // list_all includes internal
+        assert_eq!(snapshot.count(), 2);
+        // list_ex_commands excludes internal (no names)
+        let ex_cmds = snapshot.list_ex_commands();
+        assert_eq!(ex_cmds.len(), 1);
+        assert_eq!(ex_cmds[0].names[0], "visible");
     }
 
     #[test]

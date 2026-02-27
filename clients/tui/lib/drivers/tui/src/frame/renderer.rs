@@ -68,7 +68,7 @@ impl FrameRenderer {
         let commands = self.compute_diff();
 
         for cmd in commands {
-            self.write_command(writer, &cmd)?;
+            Self::write_command(writer, &cmd)?;
         }
 
         writer.flush()?;
@@ -170,8 +170,7 @@ impl FrameRenderer {
         self.front.swap_with(&mut self.back);
     }
 
-    #[allow(clippy::unused_self)]
-    fn write_command(&self, writer: &mut dyn Write, cmd: &RenderCommand) -> io::Result<()> {
+    fn write_command(writer: &mut dyn Write, cmd: &RenderCommand) -> io::Result<()> {
         match cmd {
             RenderCommand::MoveTo { x, y } => {
                 write!(writer, "\x1b[{};{}H", y + 1, x + 1)
@@ -430,10 +429,9 @@ mod tests {
 
     #[test]
     fn test_write_command_move_to() {
-        let renderer = FrameRenderer::new(1, 1);
         let mut output = Vec::new();
         let cmd = RenderCommand::MoveTo { x: 3, y: 7 };
-        renderer.write_command(&mut output, &cmd).unwrap();
+        FrameRenderer::write_command(&mut output, &cmd).unwrap();
         let out = String::from_utf8_lossy(&output);
         // MoveTo uses 1-based indexing: y+1, x+1
         assert!(out.contains("\x1b[8;4H"));
@@ -441,30 +439,27 @@ mod tests {
 
     #[test]
     fn test_write_command_print() {
-        let renderer = FrameRenderer::new(1, 1);
         let mut output = Vec::new();
         let cmd = RenderCommand::Print("test_text".to_string());
-        renderer.write_command(&mut output, &cmd).unwrap();
+        FrameRenderer::write_command(&mut output, &cmd).unwrap();
         let out = String::from_utf8_lossy(&output);
         assert_eq!(out, "test_text");
     }
 
     #[test]
     fn test_write_command_set_style() {
-        let renderer = FrameRenderer::new(1, 1);
         let mut output = Vec::new();
         let cmd = RenderCommand::SetStyle("\x1b[1m".to_string());
-        renderer.write_command(&mut output, &cmd).unwrap();
+        FrameRenderer::write_command(&mut output, &cmd).unwrap();
         let out = String::from_utf8_lossy(&output);
         assert_eq!(out, "\x1b[1m");
     }
 
     #[test]
     fn test_write_command_reset_style() {
-        let renderer = FrameRenderer::new(1, 1);
         let mut output = Vec::new();
         let cmd = RenderCommand::ResetStyle;
-        renderer.write_command(&mut output, &cmd).unwrap();
+        FrameRenderer::write_command(&mut output, &cmd).unwrap();
         let out = String::from_utf8_lossy(&output);
         assert_eq!(out, "\x1b[0m");
     }

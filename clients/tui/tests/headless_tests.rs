@@ -95,7 +95,6 @@ async fn test_statusline_renders() {
 ///
 /// Requires vim module to be loaded for 'i' keybinding to work.
 #[tokio::test]
-#[ignore = "Requires module loading (#465 Phase 16)"]
 async fn test_insert_mode_indicator() {
     let harness = TestServerHarness::spawn()
         .await
@@ -196,7 +195,6 @@ async fn test_escape_returns_to_normal() {
 ///
 /// Requires vim module to be loaded for 'i' keybinding and text insertion.
 #[tokio::test]
-#[ignore = "Requires module loading (#465 Phase 16)"]
 async fn test_text_input_visible() {
     let harness = TestServerHarness::spawn()
         .await
@@ -263,6 +261,198 @@ async fn test_resize_updates_viewport() {
 
     // The frame should be non-empty (we can't easily verify dimensions in plain text)
     assert!(!frame.is_empty(), "Frame should have content after resize");
+
+    handle.stop().await;
+}
+
+// ============================================================================
+// Cmdline UI Tests (#469)
+// ============================================================================
+
+/// Test that pressing `:` activates the cmdline bar and it appears in the frame.
+#[tokio::test]
+async fn test_cmdline_activates_on_colon() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Send `:` to activate cmdline
+    handle.send_keys(":").await.expect("Failed to send :");
+
+    // Wait for cmdline prompt to appear on the second-to-last row
+    // #451: Cmdline is now a floating popup with box-drawing borders.
+    // Look for the popup content row containing "│" and the ":" prompt.
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame.lines().any(|l| l.contains('│') && l.contains(':'))
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains(':'))
+                .unwrap_or("");
+            assert!(
+                content_line.contains(':'),
+                "Popup content row should contain ':' prompt, got: '{content_line}'"
+            );
+            eprintln!("[test] Cmdline popup activated: '{content_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!("Cmdline did not activate: {e}\nFrame:\n{}", frame.unwrap_or_default());
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that typing in cmdline mode shows input text in real-time.
+#[tokio::test]
+async fn test_cmdline_typing_visible() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Activate cmdline and type "wq"
+    handle.send_keys(":").await.expect("Failed to send :");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    handle.send_keys("w").await.expect("Failed to send w");
+    handle.send_keys("q").await.expect("Failed to send q");
+
+    // #451: Wait for "wq" to appear inside the floating popup content row.
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame.lines().any(|l| l.contains('│') && l.contains("wq"))
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains("wq"))
+                .unwrap_or("");
+            assert!(content_line.contains("wq"), "Popup should show ':wq', got: '{content_line}'");
+            eprintln!("[test] Cmdline input visible: '{content_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!("Cmdline input not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that Escape deactivates the cmdline bar.
+#[tokio::test]
+async fn test_cmdline_deactivates_on_escape() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Activate cmdline
+    handle.send_keys(":").await.expect("Failed to send :");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // #451: Verify popup is visible (box-drawing border present)
+    let frame = handle
+        .capture("plain_text")
+        .await
+        .expect("Failed to capture");
+    assert!(frame.contains('╭'), "Popup border should be visible before Escape");
+    eprintln!("[test] Before Escape - popup visible");
+
+    // Press Escape to deactivate
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Escape");
+
+    // #451: Wait for popup to disappear (no more box-drawing borders)
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| !frame.contains('╭'))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(!frame.contains('╭'), "Popup should be gone after Escape");
+            eprintln!("[test] After Escape - popup gone");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!("Cmdline did not deactivate: {e}\nFrame:\n{}", frame.unwrap_or_default());
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that `/` activates search cmdline with `/` prompt.
+#[tokio::test]
+async fn test_cmdline_search_prompt() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Send `/` for search
+    handle.send_keys("/").await.expect("Failed to send /");
+
+    // #451: Search cmdline now renders as floating popup with '/' prompt.
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame.lines().any(|l| l.contains('│') && l.contains('/'))
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            let content_line = frame
+                .lines()
+                .find(|l| l.contains('│') && l.contains('/'))
+                .unwrap_or("");
+            assert!(
+                content_line.contains('/'),
+                "Popup should show '/' search prompt, got: '{content_line}'"
+            );
+            eprintln!("[test] Search cmdline popup visible: '{content_line}'");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!("Search cmdline not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
+        }
+    }
 
     handle.stop().await;
 }

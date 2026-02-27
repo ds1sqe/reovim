@@ -26,6 +26,9 @@ tokio-stream = { version = "0.1", features = ["sync"], optional = true }
 # Display driver (FrameBuffer, FrameRenderer, Style)
 reovim-driver-display = { workspace = true }
 
+# TUI extensions (game-mod boundary — engine never imports individual extensions)
+reovim-tui-ext-defaults = { path = "extensions/defaults" }
+
 # Common client model (wire types, traits)
 reovim-client-model = { workspace = true }
 

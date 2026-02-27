@@ -33,6 +33,9 @@ import { ViewportCache, BufferCache } from "./cache/index.js";
 // Overlay rendering (Phase 11.1)
 import { OverlayRenderer } from "./render/overlay.js";
 
+// Extension system (#468)
+import { createExtensions, type WebExtension } from "./extensions/index.js";
+
 // Capture handler (Phase 16)
 import { CaptureHandler, type CaptureableState } from "./capture/index.js";
 
@@ -116,6 +119,9 @@ export class Editor {
   // Capture handler (Phase 16)
   private captureHandler: CaptureHandler;
 
+  // Extension system (#468)
+  private extensions: WebExtension[];
+
   // Remote clients for multi-client awareness (Phase 14, #471)
   private remoteClients: Map<bigint, RemoteClient> = new Map();
 
@@ -166,6 +172,9 @@ export class Editor {
 
     // Initialize overlay renderer (Phase 11.1)
     this.overlayRenderer = new OverlayRenderer();
+
+    // Initialize extensions (#468)
+    this.extensions = createExtensions();
 
     // Initialize capture handler (Phase 16)
     this.captureHandler = new CaptureHandler({
@@ -699,6 +708,30 @@ export class Editor {
         if (clientId !== undefined) {
           this.remoteClients.delete(BigInt(clientId));
           this.renderRemoteCursors();
+        }
+        break;
+      }
+
+      case "extensionUpdated": {
+        // #468: Generic extension dispatch
+        const ext = payload.value;
+        const extClientId = ext.clientId ?? 0n;
+        const isLocal = extClientId === 0n || extClientId === this.myClientId;
+
+        if (isLocal) {
+          for (const extension of this.extensions) {
+            if (extension.kind() === ext.kind) {
+              extension.applyNotification(ext.data);
+              const container = document.getElementById("app") ?? this.editorElement;
+              if (container) {
+                if (extension.isActive()) {
+                  extension.render(container);
+                } else {
+                  extension.hide();
+                }
+              }
+            }
+          }
         }
         break;
       }
