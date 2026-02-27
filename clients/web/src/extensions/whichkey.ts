@@ -4,6 +4,10 @@
  * Mirrors `clients/tui/extensions/which-key/src/lib.rs`.
  * Shows available key continuations when an operator (d, y, c) is pressed.
  *
+ * The popup appears after a configurable delay (default 500ms).
+ * If the user completes the key sequence before the delay expires,
+ * no popup is shown at all.
+ *
  * JSON payload (from `server/modules/whichkey/src/bridge.rs`):
  * ```json
  * {"active": true, "prefix": "d",
@@ -24,6 +28,9 @@ interface WhichKeyState {
   hints: WhichKeyHint[];
 }
 
+/** Default delay in milliseconds before showing the popup. */
+const DEFAULT_SHOW_DELAY_MS = 500;
+
 export class WhichKeyExtension implements WebExtension {
   private state: WhichKeyState = {
     active: false,
@@ -31,24 +38,59 @@ export class WhichKeyExtension implements WebExtension {
     hints: [],
   };
 
+  /** Whether the server says a prefix is pending. */
+  private serverActive: boolean = false;
+
+  /** Whether the popup is visible to the user. */
+  private visible: boolean = false;
+
+  /** Timer ID for the show-delay. */
+  private timerId: ReturnType<typeof setTimeout> | null = null;
+
+  /** Delay before showing the popup (milliseconds). */
+  private readonly showDelayMs: number;
+
   private popupElement: HTMLElement | null = null;
+
+  constructor(showDelayMs: number = DEFAULT_SHOW_DELAY_MS) {
+    this.showDelayMs = showDelayMs;
+  }
 
   kind(): string {
     return "whichkey";
   }
 
   isActive(): boolean {
-    return this.state.active;
+    return this.visible;
   }
 
   applyNotification(data: string): void {
     try {
       const parsed = JSON.parse(data) as Partial<WhichKeyState>;
+      const active = parsed.active ?? false;
+
+      // Always update prefix and hints
       this.state = {
-        active: parsed.active ?? this.state.active,
+        active,
         prefix: parsed.prefix ?? this.state.prefix,
         hints: parsed.hints ?? this.state.hints,
       };
+
+      if (active) {
+        // Start (or restart) the delay timer
+        if (!this.serverActive) {
+          this.clearTimer();
+          this.timerId = setTimeout(() => {
+            this.visible = true;
+          }, this.showDelayMs);
+        }
+        this.serverActive = true;
+      } else {
+        // Deactivate: clear timer and hide
+        this.clearTimer();
+        this.serverActive = false;
+        this.visible = false;
+      }
     } catch {
       // Invalid JSON — retain previous state
     }
@@ -102,11 +144,18 @@ export class WhichKeyExtension implements WebExtension {
   }
 
   getState(): Record<string, unknown> | null {
-    if (!this.state.active) return null;
+    if (!this.visible) return null;
     return {
       active: this.state.active,
       prefix: this.state.prefix,
       hints: this.state.hints,
     };
+  }
+
+  private clearTimer(): void {
+    if (this.timerId !== null) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
   }
 }

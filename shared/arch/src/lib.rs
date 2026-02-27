@@ -33,6 +33,7 @@
 //! - **Unix/Linux/macOS**: Full support via crossterm
 //! - **Windows**: Stub implementation (todo!() for all methods)
 
+pub mod clock;
 pub mod dirs;
 pub mod error;
 pub mod palette;

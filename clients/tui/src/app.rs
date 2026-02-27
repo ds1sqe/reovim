@@ -508,6 +508,13 @@ impl<O: TuiOutput> TuiApp<O> {
 
                 // Redraw timer (both modes)
                 _ = redraw_timer.tick() => {
+                    // Tick extensions (e.g., which-key show-delay)
+                    for ext in &mut self.extensions {
+                        if ext.tick() {
+                            self.state.set_needs_redraw(true);
+                        }
+                    }
+
                     if self.state.needs_redraw() {
                         self.render()?;
                         self.state.set_needs_redraw(false);

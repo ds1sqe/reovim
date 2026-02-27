@@ -64,8 +64,9 @@ mod tests {
             }
         }
 
-        // Verify only whichkey is active
+        // With the default 500ms show-delay, whichkey is not yet visible
+        // (server_active=true but visible=false until tick() after delay)
         let active_count = exts.iter().filter(|e| e.is_active()).count();
-        assert_eq!(active_count, 1);
+        assert_eq!(active_count, 0);
     }
 }

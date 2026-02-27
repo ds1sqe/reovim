@@ -2,13 +2,14 @@
  * WebExtension System Tests (#468)
  *
  * Comprehensive tests covering the extension interface contract, individual
- * extension implementations, error handling, notification→render flow,
+ * extension implementations, error handling, notification->render flow,
  * and state isolation.
  *
  * Uses jsdom environment for DOM testing.
+ * WhichKey tests use fake timers to control the show-delay (#462).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createExtensions,
   CmdlineExtension,
@@ -55,6 +56,9 @@ const WHICHKEY_NARROWED = JSON.stringify({
 });
 
 const WHICHKEY_DEACTIVATE = JSON.stringify({ active: false });
+
+/** Default show-delay matches WhichKeyExtension default (500ms). */
+const DEFAULT_DELAY_MS = 500;
 
 // ============ 8a: Interface Contract ============
 
@@ -117,11 +121,18 @@ describe("WhichKeyExtension payload parsing", () => {
   let ext: WhichKeyExtension;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     ext = new WhichKeyExtension();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("parses full whichkey payload", () => {
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
+
     const state = ext.getState();
     expect(state?.active).toBe(true);
     expect(state?.prefix).toBe("d");
@@ -130,6 +141,7 @@ describe("WhichKeyExtension payload parsing", () => {
 
   it("narrows hints on subsequent notification", () => {
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
     expect((ext.getState()?.hints as unknown[]).length).toBe(3);
 
     ext.applyNotification(WHICHKEY_NARROWED);
@@ -140,11 +152,27 @@ describe("WhichKeyExtension payload parsing", () => {
 
   it("activates and deactivates", () => {
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
     expect(ext.isActive()).toBe(true);
 
     ext.applyNotification(WHICHKEY_DEACTIVATE);
     expect(ext.isActive()).toBe(false);
     expect(ext.getState()).toBeNull();
+  });
+
+  it("not visible before delay expires", () => {
+    ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS - 1);
+    expect(ext.isActive()).toBe(false);
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("fast completion prevents popup", () => {
+    ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(200);
+    ext.applyNotification(WHICHKEY_DEACTIVATE);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
+    expect(ext.isActive()).toBe(false);
   });
 });
 
@@ -207,7 +235,8 @@ describe("WhichKeyExtension DOM rendering", () => {
 
   beforeEach(() => {
     document.body.innerHTML = "";
-    ext = new WhichKeyExtension();
+    // Zero delay for render tests — they test DOM structure, not timing
+    ext = new WhichKeyExtension(0);
     container = document.createElement("div");
     document.body.appendChild(container);
   });
@@ -282,13 +311,17 @@ describe("error handling", () => {
   });
 
   it("WhichKeyExtension: invalid JSON retains previous state", () => {
+    vi.useFakeTimers();
     const ext = new WhichKeyExtension();
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
     expect(ext.isActive()).toBe(true);
 
     ext.applyNotification("not json");
+    // Previous state retained (still visible)
     expect(ext.isActive()).toBe(true);
     expect(ext.getState()?.prefix).toBe("d");
+    vi.useRealTimers();
   });
 
   it("empty string does not throw", () => {
@@ -302,9 +335,9 @@ describe("error handling", () => {
   });
 });
 
-// ============ 8e: Integration — Notification→Render Flow ============
+// ============ 8e: Integration — Notification->Render Flow ============
 
-describe("notification → render flow", () => {
+describe("notification -> render flow", () => {
   it("dispatches extensionUpdated to matching extension", () => {
     document.body.innerHTML = "";
     const extensions = createExtensions();
@@ -432,24 +465,30 @@ describe("headless state queries", () => {
   });
 
   it("WhichKeyExtension getState returns full state when active", () => {
+    vi.useFakeTimers();
     const ext = new WhichKeyExtension();
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
 
     const state = ext.getState();
     expect(state).not.toBeNull();
     expect(state?.active).toBe(true);
     expect(state?.prefix).toBe("d");
     expect(state?.hints).toHaveLength(3);
+    vi.useRealTimers();
   });
 
   it("getState reflects latest notification", () => {
+    vi.useFakeTimers();
     const ext = new WhichKeyExtension();
     ext.applyNotification(WHICHKEY_PAYLOAD);
+    vi.advanceTimersByTime(DEFAULT_DELAY_MS);
     expect(ext.getState()?.prefix).toBe("d");
 
     ext.applyNotification(WHICHKEY_NARROWED);
     expect(ext.getState()?.prefix).toBe("di");
     expect((ext.getState()?.hints as unknown[]).length).toBe(2);
+    vi.useRealTimers();
   });
 });
 
@@ -461,12 +500,12 @@ describe("container null handling", () => {
     ext.applyNotification(CMDLINE_SIMPLE);
 
     const emptyContainer = document.createElement("div");
-    // No #commandline child — render should not throw
+    // No #commandline child -- render should not throw
     expect(() => ext.render(emptyContainer)).not.toThrow();
   });
 
   it("WhichKeyExtension render with any container works", () => {
-    const ext = new WhichKeyExtension();
+    const ext = new WhichKeyExtension(0);
     ext.applyNotification(WHICHKEY_PAYLOAD);
 
     const container = document.createElement("div");

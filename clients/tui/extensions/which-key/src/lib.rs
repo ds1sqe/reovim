@@ -4,12 +4,24 @@
 //! Displays a popup showing available key continuations when a prefix
 //! key is held (e.g., `g` shows `gg`, `gd`, etc.).
 //!
+//! The popup appears after a configurable delay (default 500ms).
+//! If the user completes the key sequence before the delay expires,
+//! no popup is shown at all.
+//!
 //! This crate is a self-contained TUI extension: it owns its state,
 //! parses notifications, and renders through `RenderBackend`.
 //! The engine has ZERO knowledge of this crate.
 
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
 use {
-    reovim_arch::Color,
+    reovim_arch::{
+        Color,
+        clock::{Clock, SystemClock},
+    },
     reovim_driver_display::{
         Style,
         popup_utils::{popup_width, popup_x, render_box_border},
@@ -18,12 +30,39 @@ use {
     },
 };
 
-/// Which-key popup extension.
+/// Default show-delay before the which-key popup appears.
+const DEFAULT_SHOW_DELAY: Duration = Duration::from_millis(500);
+
+/// Which-key popup extension with configurable show-delay.
 ///
-/// Shows available key continuations when a prefix key is pending.
+/// # State Machine
+///
+/// ```text
+/// IDLE: server_active=false, visible=false
+///   |
+///   | apply_notification(active=true)
+///   v
+/// WAITING: server_active=true, visible=false
+///   |--- tick(): elapsed >= show_delay ---> SHOWING (visible=true)
+///   |--- apply_notification(active=false) -> IDLE
+///   v
+/// SHOWING: server_active=true, visible=true
+///   |
+///   | apply_notification(active=false)
+///   v
+/// IDLE
+/// ```
 pub struct WhichKeyExtension {
-    /// Whether the popup is currently visible.
-    active: bool,
+    /// Whether the server says a prefix is pending.
+    server_active: bool,
+    /// Whether the popup is visible to the user.
+    visible: bool,
+    /// When the server last activated (for delay calculation).
+    activated_at: Option<Instant>,
+    /// How long to wait before showing the popup.
+    show_delay: Duration,
+    /// Clock source (swappable for deterministic testing).
+    clock: Arc<dyn Clock>,
     /// Pending key prefix (e.g., "g").
     prefix: String,
     /// Available continuations: `(key, command)` pairs.
@@ -31,13 +70,38 @@ pub struct WhichKeyExtension {
 }
 
 impl WhichKeyExtension {
-    /// Create a new which-key extension (inactive).
+    /// Create a new which-key extension with the default 500ms delay.
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            active: false,
+            server_active: false,
+            visible: false,
+            activated_at: None,
+            show_delay: DEFAULT_SHOW_DELAY,
+            clock: Arc::new(SystemClock),
             prefix: String::new(),
             hints: Vec::new(),
+        }
+    }
+
+    /// Create a which-key extension with a custom delay.
+    #[must_use]
+    pub fn with_delay(delay: Duration) -> Self {
+        Self {
+            show_delay: delay,
+            ..Self::new()
+        }
+    }
+
+    /// Create a which-key extension with a custom clock and delay.
+    ///
+    /// Used for deterministic testing with `TestClock`.
+    #[must_use]
+    pub fn with_clock(clock: Arc<dyn Clock>, delay: Duration) -> Self {
+        Self {
+            show_delay: delay,
+            clock,
+            ..Self::new()
         }
     }
 }
@@ -54,16 +118,16 @@ impl TuiExtension for WhichKeyExtension {
     }
 
     fn is_active(&self) -> bool {
-        self.active
+        self.visible
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn apply_notification(&mut self, data: &str) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-            self.active = json
+            let active = json
                 .get("active")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
+
             self.prefix = json
                 .get("prefix")
                 .and_then(serde_json::Value::as_str)
@@ -81,7 +145,33 @@ impl TuiExtension for WhichKeyExtension {
                         })
                         .collect()
                 });
+
+            if active {
+                // IDLE -> WAITING: start the delay timer
+                if !self.server_active {
+                    self.activated_at = Some(self.clock.now());
+                }
+                self.server_active = true;
+                // visible stays false until tick() promotes to SHOWING
+            } else {
+                // -> IDLE: reset everything
+                self.server_active = false;
+                self.visible = false;
+                self.activated_at = None;
+            }
         }
+    }
+
+    fn tick(&mut self) -> bool {
+        if self.server_active
+            && !self.visible
+            && let Some(activated_at) = self.activated_at
+            && self.clock.now().duration_since(activated_at) >= self.show_delay
+        {
+            self.visible = true;
+            return true;
+        }
+        false
     }
 
     #[allow(clippy::cast_possible_truncation)]
@@ -147,9 +237,41 @@ impl TuiExtension for WhichKeyExtension {
 
 #[cfg(test)]
 mod tests {
-    use reovim_driver_display::FrameBuffer;
+    use {reovim_arch::clock::TestClock, reovim_driver_display::FrameBuffer};
 
     use super::*;
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    fn activate_data() -> &'static str {
+        r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"goto-top"},{"key":"d","command":"goto-definition"}]}"#
+    }
+
+    fn activate_data_single() -> &'static str {
+        r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"goto-top"}]}"#
+    }
+
+    fn deactivate_data() -> &'static str {
+        r#"{"active":false}"#
+    }
+
+    /// Create a which-key extension with zero delay for backward-compatible tests.
+    fn zero_delay_ext() -> WhichKeyExtension {
+        WhichKeyExtension::with_delay(Duration::ZERO)
+    }
+
+    /// Create a which-key extension with a `TestClock` and given delay.
+    fn test_ext(delay_ms: u64) -> (WhichKeyExtension, Arc<TestClock>) {
+        let clock = Arc::new(TestClock::new());
+        let ext = WhichKeyExtension::with_clock(clock.clone(), Duration::from_millis(delay_ms));
+        (ext, clock)
+    }
+
+    // =========================================================================
+    // Original tests (updated to use zero-delay for backward compat)
+    // =========================================================================
 
     #[test]
     fn test_new_is_inactive() {
@@ -166,74 +288,76 @@ mod tests {
 
     #[test]
     fn test_apply_notification_activates() {
-        let mut ext = WhichKeyExtension::new();
-        let data = r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"goto-top"},{"key":"d","command":"goto-definition"}]}"#;
-        ext.apply_notification(data);
+        let mut ext = zero_delay_ext();
+        ext.apply_notification(activate_data());
 
-        assert!(ext.is_active());
+        // With zero delay, still not visible until tick()
+        assert!(!ext.is_active());
+        assert!(ext.server_active);
         assert_eq!(ext.prefix, "g");
         assert_eq!(ext.hints.len(), 2);
         assert_eq!(ext.hints[0].0, "g");
         assert_eq!(ext.hints[0].1, "goto-top");
         assert_eq!(ext.hints[1].0, "d");
         assert_eq!(ext.hints[1].1, "goto-definition");
+
+        // tick() promotes to visible immediately with zero delay
+        assert!(ext.tick());
+        assert!(ext.is_active());
     }
 
     #[test]
     fn test_apply_notification_deactivates() {
-        let mut ext = WhichKeyExtension::new();
-        // Activate
-        ext.apply_notification(
-            r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"top"}]}"#,
-        );
+        let mut ext = zero_delay_ext();
+        ext.apply_notification(activate_data());
+        ext.tick();
         assert!(ext.is_active());
 
-        // Deactivate
-        ext.apply_notification(r#"{"active":false}"#);
+        ext.apply_notification(deactivate_data());
         assert!(!ext.is_active());
     }
 
     #[test]
     fn test_apply_notification_invalid_json() {
-        let mut ext = WhichKeyExtension::new();
+        let mut ext = zero_delay_ext();
         ext.apply_notification("not json");
         assert!(!ext.is_active());
     }
 
     #[test]
     fn test_apply_notification_missing_hints() {
-        let mut ext = WhichKeyExtension::new();
+        let mut ext = zero_delay_ext();
         ext.apply_notification(r#"{"active":true,"prefix":"g"}"#);
+        ext.tick();
         assert!(ext.is_active());
         assert!(ext.hints.is_empty());
     }
 
     #[test]
     fn test_apply_notification_malformed_hint() {
-        let mut ext = WhichKeyExtension::new();
+        let mut ext = zero_delay_ext();
         ext.apply_notification(
             r#"{"active":true,"prefix":"g","hints":[{"key":"g"},{"bad":"data"}]}"#,
         );
+        ext.tick();
         assert!(ext.is_active());
-        // Malformed hints are filtered out
         assert!(ext.hints.is_empty());
     }
 
     #[test]
     fn test_render_not_shown_when_inactive() {
-        let ext = WhichKeyExtension::new();
+        let ext = zero_delay_ext();
         let mut fb = FrameBuffer::new(80, 24);
         ext.render(&mut fb);
-        // Should be all spaces (no rendering)
         assert_eq!(fb.get(0, 0).unwrap().char, ' ');
     }
 
     #[test]
     fn test_render_not_shown_with_empty_hints() {
-        let mut ext = WhichKeyExtension::new();
-        ext.active = true;
+        let mut ext = zero_delay_ext();
+        ext.server_active = true;
+        ext.visible = true;
         ext.prefix = "g".to_string();
-        // Empty hints -> don't render
         let mut fb = FrameBuffer::new(80, 24);
         ext.render(&mut fb);
         assert_eq!(fb.get(0, 0).unwrap().char, ' ');
@@ -241,68 +365,55 @@ mod tests {
 
     #[test]
     fn test_render_shows_popup() {
-        let mut ext = WhichKeyExtension::new();
-        ext.apply_notification(
-            r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"goto-top"},{"key":"d","command":"goto-definition"}]}"#,
-        );
+        let mut ext = zero_delay_ext();
+        ext.apply_notification(activate_data());
+        ext.tick();
 
         let mut fb = FrameBuffer::new(80, 24);
         ext.render(&mut fb);
 
-        // Popup should be visible near bottom
-        // Check for border characters
         let pw = popup_width(80);
         let px = popup_x(80, pw);
-        // popup height = 2 hints + 2 borders = 4
-        // py = 24 - 1 - 4 = 19
         let py = 19;
 
-        // Top-left corner
         assert_eq!(fb.get(px, py).unwrap().char, '\u{256D}');
-        // Top-right corner
         assert_eq!(fb.get(px + pw - 1, py).unwrap().char, '\u{256E}');
-        // Bottom-left corner
         assert_eq!(fb.get(px, py + 3).unwrap().char, '\u{2570}');
     }
 
     #[test]
     fn test_render_no_prefix() {
-        let mut ext = WhichKeyExtension::new();
-        ext.active = true;
+        let mut ext = zero_delay_ext();
+        ext.server_active = true;
+        ext.visible = true;
         ext.hints = vec![("a".to_string(), "cmd-a".to_string())];
-        // No prefix set
 
         let mut fb = FrameBuffer::new(80, 24);
         ext.render(&mut fb);
 
-        // Should still render the popup (just no title)
         let pw = popup_width(80);
         let px = popup_x(80, pw);
-        let py = 24 - 1 - 3; // 1 hint + 2 borders = 3
+        let py = 24 - 1 - 3;
         assert_eq!(fb.get(px, py).unwrap().char, '\u{256D}');
     }
 
     #[test]
     fn test_render_command_text() {
-        let mut ext = WhichKeyExtension::new();
-        ext.apply_notification(
-            r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"goto-top"}]}"#,
-        );
+        let mut ext = zero_delay_ext();
+        ext.apply_notification(activate_data_single());
+        ext.tick();
 
         let mut fb = FrameBuffer::new(80, 24);
         ext.render(&mut fb);
 
-        // Check command text is rendered
         let pw = popup_width(80);
         let px = popup_x(80, pw);
-        let py = 24 - 1 - 3; // 1 hint + 2 borders
+        let py = 24 - 1 - 3;
         let content_x = px + 2;
         let cmd_x = content_x + 7;
-
-        // 'g' should appear somewhere near content_x on the hint row
         let hint_row_y = py + 1;
+
         assert_eq!(fb.get(content_x, hint_row_y).unwrap().char, 'g');
-        // 'goto-top' should start at cmd_x
         assert_eq!(fb.get(cmd_x, hint_row_y).unwrap().char, 'g');
     }
 
@@ -311,5 +422,127 @@ mod tests {
         let ext: Box<dyn TuiExtension> = Box::new(WhichKeyExtension::new());
         assert_eq!(ext.kind(), "whichkey");
         assert!(!ext.is_active());
+    }
+
+    // =========================================================================
+    // Delay state machine tests (TestClock-based)
+    // =========================================================================
+
+    #[test]
+    fn test_delay_not_visible_before_timeout() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        // Advance 400ms (less than 500ms delay)
+        clock.advance(Duration::from_millis(400));
+        assert!(!ext.tick());
+        assert!(!ext.is_active());
+    }
+
+    #[test]
+    fn test_delay_visible_after_timeout() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        clock.advance(Duration::from_millis(500));
+        assert!(ext.tick());
+        assert!(ext.is_active());
+    }
+
+    #[test]
+    fn test_fast_completion_no_popup() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        // User completes sequence before delay
+        clock.advance(Duration::from_millis(200));
+        ext.apply_notification(deactivate_data());
+
+        // tick() should not make it visible
+        assert!(!ext.tick());
+        assert!(!ext.is_active());
+    }
+
+    #[test]
+    fn test_reactivation_resets_timer() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        // Advance 400ms
+        clock.advance(Duration::from_millis(400));
+        assert!(!ext.tick());
+
+        // Deactivate then reactivate
+        ext.apply_notification(deactivate_data());
+        ext.apply_notification(activate_data());
+
+        // Only 100ms from reactivation — should NOT be visible
+        clock.advance(Duration::from_millis(100));
+        assert!(!ext.tick());
+        assert!(!ext.is_active());
+
+        // 400ms more — now 500ms total from reactivation
+        clock.advance(Duration::from_millis(400));
+        assert!(ext.tick());
+        assert!(ext.is_active());
+    }
+
+    #[test]
+    fn test_tick_returns_true_on_transition() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        clock.advance(Duration::from_millis(500));
+        // First tick: WAITING -> SHOWING, returns true
+        assert!(ext.tick());
+        // Second tick: already SHOWING, returns false
+        assert!(!ext.tick());
+    }
+
+    #[test]
+    fn test_tick_returns_false_when_already_showing() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        clock.advance(Duration::from_millis(600));
+        ext.tick();
+        // Already visible — subsequent ticks return false
+        assert!(!ext.tick());
+        assert!(!ext.tick());
+    }
+
+    #[test]
+    fn test_zero_delay_shows_immediately() {
+        let (mut ext, _clock) = test_ext(0);
+        ext.apply_notification(activate_data());
+
+        // Zero delay: first tick transitions immediately
+        assert!(ext.tick());
+        assert!(ext.is_active());
+    }
+
+    #[test]
+    fn test_tick_when_idle() {
+        let (mut ext, _clock) = test_ext(500);
+        // Extension is IDLE — tick should be a no-op
+        assert!(!ext.tick());
+        assert!(!ext.is_active());
+    }
+
+    #[test]
+    fn test_apply_notification_while_showing_updates_hints() {
+        let (mut ext, clock) = test_ext(500);
+        ext.apply_notification(activate_data());
+
+        clock.advance(Duration::from_millis(500));
+        ext.tick();
+        assert!(ext.is_active());
+        assert_eq!(ext.hints.len(), 2);
+
+        // Server sends updated hints while already showing
+        ext.apply_notification(activate_data_single());
+        // Still visible (server_active stays true, no deactivation)
+        assert_eq!(ext.hints.len(), 1);
+        assert_eq!(ext.hints[0].1, "goto-top");
     }
 }

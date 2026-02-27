@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Which-key show-delay with testable clock injection (#462)**: Adds a
+  configurable 500ms delay before showing the which-key popup, preventing
+  visual noise during fast key sequences. Introduces `Clock` trait,
+  `SystemClock`, and `TestClock` in `reovim-arch` for deterministic time
+  testing. TUI extension uses a state machine (IDLE/WAITING/SHOWING) driven
+  by a new `TuiExtension::tick()` method called on the 16ms redraw timer.
+  Web client uses `setTimeout`/`clearTimeout` for equivalent behavior.
+  22 Rust tests and 33 web tests cover all timing paths with zero real sleeps.
+
 - **Per-client register isolation and type-safe Register enum (#515)**: Refactors
   shared state to an explicit local/shared model. Registers (`RegisterBank`),
   clipboard history (`HistoryRing`), and local marks (`MarkBank`) move from

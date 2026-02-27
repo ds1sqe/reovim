@@ -158,6 +158,18 @@ pub trait TuiExtension: Send + Sync {
     /// (buffer, cursors, statusline) has been rendered.
     fn render(&self, backend: &mut dyn RenderBackend);
 
+    /// Periodic tick for time-based state transitions.
+    ///
+    /// Called by the engine on each redraw timer tick (~16ms / 60 FPS).
+    /// Extensions that need delayed visibility (e.g., show-after-timeout)
+    /// override this to check elapsed time and update state.
+    ///
+    /// Returns `true` if the extension's visible state changed (forces redraw).
+    /// Default: no-op, returns `false`.
+    fn tick(&mut self) -> bool {
+        false
+    }
+
     /// Hardware cursor position override.
     ///
     /// When this extension is active and wants to control the terminal's
@@ -322,6 +334,16 @@ mod tests {
         };
         // Default cursor_position returns None
         assert!(ext.cursor_position(80, 24).is_none());
+    }
+
+    #[test]
+    fn test_extension_default_tick() {
+        let mut ext = MockExtension {
+            active: false,
+            rendered: AtomicBool::new(false),
+        };
+        // Default tick returns false (no-op)
+        assert!(!ext.tick());
     }
 
     #[test]
