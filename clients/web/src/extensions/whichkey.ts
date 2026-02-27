@@ -20,7 +20,11 @@ import type { WebExtension } from "./interface.js";
 interface WhichKeyHint {
   key: string;
   command: string;
+  category?: string;
 }
+
+/** Default category display order. Unlisted categories sort after these. */
+const CATEGORY_ORDER = ["motion", "operator", "textobject", "window", "buffer"];
 
 interface WhichKeyState {
   active: boolean;
@@ -114,21 +118,56 @@ export class WhichKeyExtension implements WebExtension {
     const hintsContainer = document.createElement("div");
     hintsContainer.className = "whichkey-hints";
 
+    // Group hints by category
+    const groups = new Map<string, WhichKeyHint[]>();
     for (const hint of this.state.hints) {
-      const hintEl = document.createElement("div");
-      hintEl.className = "whichkey-hint";
+      const cat = hint.category || "";
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(hint);
+    }
 
-      const keySpan = document.createElement("span");
-      keySpan.className = "whichkey-key";
-      keySpan.textContent = hint.key;
-      hintEl.appendChild(keySpan);
+    // Sort groups by CATEGORY_ORDER
+    const sortedGroups = [...groups.entries()].sort(([a], [b]) => {
+      const ai = CATEGORY_ORDER.indexOf(a);
+      const bi = CATEGORY_ORDER.indexOf(b);
+      const aIdx = ai >= 0 ? ai : CATEGORY_ORDER.length;
+      const bIdx = bi >= 0 ? bi : CATEGORY_ORDER.length;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      return a.localeCompare(b);
+    });
 
-      const commandSpan = document.createElement("span");
-      commandSpan.className = "whichkey-command";
-      commandSpan.textContent = hint.command;
-      hintEl.appendChild(commandSpan);
+    // Check if we have meaningful categories (not just empty strings)
+    const hasCategories =
+      sortedGroups.length > 1 ||
+      (sortedGroups.length === 1 && sortedGroups[0][0] !== "");
 
-      hintsContainer.appendChild(hintEl);
+    for (const [cat, catHints] of sortedGroups) {
+      if (hasCategories) {
+        const groupHeader = document.createElement("div");
+        groupHeader.className = "whichkey-group-header";
+        groupHeader.textContent =
+          cat === ""
+            ? "Other"
+            : cat.charAt(0).toUpperCase() + cat.slice(1);
+        hintsContainer.appendChild(groupHeader);
+      }
+
+      for (const hint of catHints) {
+        const hintEl = document.createElement("div");
+        hintEl.className = "whichkey-hint";
+
+        const keySpan = document.createElement("span");
+        keySpan.className = "whichkey-key";
+        keySpan.textContent = hint.key;
+        hintEl.appendChild(keySpan);
+
+        const commandSpan = document.createElement("span");
+        commandSpan.className = "whichkey-command";
+        commandSpan.textContent = hint.command;
+        hintEl.appendChild(commandSpan);
+
+        hintsContainer.appendChild(hintEl);
+      }
     }
 
     popup.appendChild(hintsContainer);

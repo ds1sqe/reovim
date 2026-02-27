@@ -40,9 +40,9 @@ const WHICHKEY_PAYLOAD = JSON.stringify({
   active: true,
   prefix: "d",
   hints: [
-    { key: "d", command: "motions:whole-line" },
-    { key: "w", command: "motions:word-forward" },
-    { key: "i", command: "textobjects:inner" },
+    { key: "d", command: "motions:whole-line", category: "motion" },
+    { key: "w", command: "motions:word-forward", category: "motion" },
+    { key: "i", command: "textobjects:inner", category: "textobject" },
   ],
 });
 
@@ -50,8 +50,8 @@ const WHICHKEY_NARROWED = JSON.stringify({
   active: true,
   prefix: "di",
   hints: [
-    { key: "w", command: "textobjects:inner-word" },
-    { key: "(", command: "textobjects:inner-paren" },
+    { key: "w", command: "textobjects:inner-word", category: "textobject" },
+    { key: "(", command: "textobjects:inner-paren", category: "textobject" },
   ],
 });
 
@@ -293,6 +293,59 @@ describe("WhichKeyExtension DOM rendering", () => {
 
     const popups = container.querySelectorAll(".whichkey-popup");
     expect(popups.length).toBe(1);
+  });
+
+  it("grouped rendering creates category headers", () => {
+    ext.applyNotification(WHICHKEY_PAYLOAD);
+    ext.render(container);
+
+    // WHICHKEY_PAYLOAD has "motion" and "textobject" categories
+    const headers = container.querySelectorAll(".whichkey-group-header");
+    expect(headers.length).toBe(2);
+    expect(headers[0].textContent).toBe("Motion");
+    expect(headers[1].textContent).toBe("Textobject");
+  });
+
+  it("flat rendering when no categories", () => {
+    const noCatPayload = JSON.stringify({
+      active: true,
+      prefix: "g",
+      hints: [
+        { key: "g", command: "goto-top" },
+        { key: "d", command: "goto-def" },
+      ],
+    });
+    ext.applyNotification(noCatPayload);
+    ext.render(container);
+
+    // No category headers when all hints lack categories
+    const headers = container.querySelectorAll(".whichkey-group-header");
+    expect(headers.length).toBe(0);
+
+    // Hints should still be rendered
+    const hints = container.querySelectorAll(".whichkey-hint");
+    expect(hints.length).toBe(2);
+  });
+
+  it("category ordering follows CATEGORY_ORDER", () => {
+    const payload = JSON.stringify({
+      active: true,
+      prefix: "g",
+      hints: [
+        { key: "i", command: "inner-word", category: "textobject" },
+        { key: "d", command: "delete", category: "operator" },
+        { key: "g", command: "goto-top", category: "motion" },
+      ],
+    });
+    ext.applyNotification(payload);
+    ext.render(container);
+
+    const headers = container.querySelectorAll(".whichkey-group-header");
+    expect(headers.length).toBe(3);
+    // motion < operator < textobject per CATEGORY_ORDER
+    expect(headers[0].textContent).toBe("Motion");
+    expect(headers[1].textContent).toBe("Operator");
+    expect(headers[2].textContent).toBe("Textobject");
   });
 });
 

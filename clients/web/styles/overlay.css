@@ -222,6 +222,13 @@
   font-size: 0.9em;
 }
 
+.whichkey-group-header {
+  padding: 4px 12px 2px;
+  font-size: 0.85em;
+  color: var(--theme-text-muted);
+  text-transform: capitalize;
+}
+
 /* ============ Cmdline Completions ============ */
 
 .cmdline-completions {

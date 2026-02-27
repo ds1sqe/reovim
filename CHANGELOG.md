@@ -19,6 +19,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   BindingInfo)>`. 88 tests cover all filter combinations and metadata
   round-trips.
 
+- **Which-key binding category grouping (#460)**: Groups keybinding hints by
+  category in the which-key popup for both TUI and web clients. Hints are sorted
+  by a fixed category order (motion, operator, textobject, window, buffer) with
+  unknown categories sorted alphabetically after. Category headers render above
+  each group; when all hints lack categories, headers are suppressed for backward
+  compatibility. TUI uses `grouped_hints()` pure function with `BTreeMap`-based
+  grouping; web uses `Map`-based grouping with DOM `.whichkey-group-header`
+  elements. 12 new TUI tests and 3 new web tests cover all grouping paths.
+
 - **Which-key show-delay with testable clock injection (#462)**: Adds a
   configurable 500ms delay before showing the which-key popup, preventing
   visual noise during fast key sequences. Introduces `Clock` trait,
