@@ -28,6 +28,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   grouping; web uses `Map`-based grouping with DOM `.whichkey-group-header`
   elements. 12 new TUI tests and 3 new web tests cover all grouping paths.
 
+- **Notification plugin - toast messages and progress indicators (#443)**:
+  Non-blocking notification system with server-side state management and
+  client-side rendering. Server module (`server/modules/notification/`) provides
+  `NotificationState` session extension with `push()`, `push_with_body()`,
+  `push_progress()`, `update_progress()`, and `dismiss()` API. `NotificationBridge`
+  serializes state to JSON for gRPC transmission via `ExtensionStateBridge`.
+  TUI extension (`clients/tui/extensions/notification/`) renders stacked toasts
+  in top-right corner with four levels (info, success, warning, error), auto-dismiss
+  after 4s (configurable), progress bars with percentage and detail text, and
+  MAX_VISIBLE=5 cap. Web extension (`clients/web/src/extensions/notification.ts`)
+  provides TypeScript equivalent with DOM rendering and `setInterval`-based
+  auto-dismiss. Deterministic testing via `TestClock` injection (same pattern as
+  #462 which-key). 45 server tests + 48 TUI tests + 27 web tests, 100% coverage.
+
 - **Which-key show-delay with testable clock injection (#462)**: Adds a
   configurable 500ms delay before showing the which-key popup, preventing
   visual noise during fast key sequences. Introduces `Clock` trait,

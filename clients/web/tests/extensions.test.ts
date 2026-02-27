@@ -14,6 +14,7 @@ import {
   createExtensions,
   CmdlineExtension,
   WhichKeyExtension,
+  NotificationExtension,
 } from "../src/extensions/index.js";
 
 // ============ Test Fixtures ============
@@ -57,19 +58,55 @@ const WHICHKEY_NARROWED = JSON.stringify({
 
 const WHICHKEY_DEACTIVATE = JSON.stringify({ active: false });
 
+const NOTIFICATION_SINGLE = JSON.stringify({
+  active: true,
+  entries: [{ id: 0, level: "info", title: "Hello", body: "" }],
+});
+
+const NOTIFICATION_WITH_BODY = JSON.stringify({
+  active: true,
+  entries: [{ id: 0, level: "warning", title: "Warn", body: "details here" }],
+});
+
+const NOTIFICATION_WITH_PROGRESS = JSON.stringify({
+  active: true,
+  entries: [
+    {
+      id: 0,
+      level: "info",
+      title: "Building",
+      body: "",
+      progress: { percent: 35, detail: "3/10" },
+    },
+  ],
+});
+
+const NOTIFICATION_MULTIPLE = JSON.stringify({
+  active: true,
+  entries: [
+    { id: 0, level: "info", title: "First", body: "" },
+    { id: 1, level: "error", title: "Second", body: "" },
+  ],
+});
+
+const NOTIFICATION_EMPTY = JSON.stringify({ active: true, entries: [] });
+
+const NOTIFICATION_DEACTIVATE = JSON.stringify({ active: false, entries: [] });
+
 /** Default show-delay matches WhichKeyExtension default (500ms). */
 const DEFAULT_DELAY_MS = 500;
 
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 2 extensions with correct kinds", () => {
+  it("createExtensions returns 3 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(2);
+    expect(extensions).toHaveLength(3);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
     expect(kinds).toContain("whichkey");
+    expect(kinds).toContain("notification");
   });
 
   it("extensions start inactive", () => {
@@ -572,5 +609,297 @@ describe("container null handling", () => {
 
     const whichkey = new WhichKeyExtension();
     expect(() => whichkey.hide()).not.toThrow();
+
+    const notification = new NotificationExtension();
+    expect(() => notification.hide()).not.toThrow();
+  });
+});
+
+// ============ 8h: NotificationExtension ============
+
+describe("NotificationExtension payload parsing", () => {
+  let ext: NotificationExtension;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ext = new NotificationExtension();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("starts inactive", () => {
+    expect(ext.isActive()).toBe(false);
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("parses single toast", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    expect(ext.isActive()).toBe(true);
+
+    const state = ext.getState();
+    expect(state?.toasts).toHaveLength(1);
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts[0]?.title).toBe("Hello");
+    expect(toasts[0]?.level).toBe("info");
+  });
+
+  it("parses toast with body", () => {
+    ext.applyNotification(NOTIFICATION_WITH_BODY);
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts[0]?.body).toBe("details here");
+    expect(toasts[0]?.level).toBe("warning");
+  });
+
+  it("parses toast with progress", () => {
+    ext.applyNotification(NOTIFICATION_WITH_PROGRESS);
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    const progress = toasts[0]?.progress as Record<string, unknown>;
+    expect(progress.percent).toBe(35);
+    expect(progress.detail).toBe("3/10");
+  });
+
+  it("parses multiple toasts", () => {
+    ext.applyNotification(NOTIFICATION_MULTIPLE);
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts).toHaveLength(2);
+    expect(toasts[0]?.title).toBe("First");
+    expect(toasts[1]?.title).toBe("Second");
+  });
+
+  it("deduplicates by ID on re-send", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts).toHaveLength(1);
+  });
+
+  it("updates progress on existing toast", () => {
+    ext.applyNotification(NOTIFICATION_WITH_PROGRESS);
+
+    const updated = JSON.stringify({
+      active: true,
+      entries: [
+        {
+          id: 0,
+          level: "info",
+          title: "Building",
+          body: "",
+          progress: { percent: 70, detail: "7/10" },
+        },
+      ],
+    });
+    ext.applyNotification(updated);
+
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts).toHaveLength(1);
+    const progress = toasts[0]?.progress as Record<string, unknown>;
+    expect(progress.percent).toBe(70);
+    expect(progress.detail).toBe("7/10");
+  });
+
+  it("removes server-dismissed toasts", () => {
+    ext.applyNotification(NOTIFICATION_MULTIPLE);
+    expect((ext.getState()?.toasts as unknown[]).length).toBe(2);
+
+    // Server only sends id=1
+    const remaining = JSON.stringify({
+      active: true,
+      entries: [{ id: 1, level: "error", title: "Second", body: "" }],
+    });
+    ext.applyNotification(remaining);
+    const state = ext.getState();
+    const toasts = state?.toasts as Array<Record<string, unknown>>;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0]?.id).toBe(1);
+  });
+
+  it("empty entries removes all toasts", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    expect(ext.isActive()).toBe(true);
+
+    ext.applyNotification(NOTIFICATION_EMPTY);
+    expect(ext.isActive()).toBe(false);
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("invalid JSON retains previous state", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    expect(ext.isActive()).toBe(true);
+
+    ext.applyNotification("{broken!!}");
+    expect(ext.isActive()).toBe(true);
+  });
+
+  it("missing entries field is ignored", () => {
+    ext.applyNotification(JSON.stringify({ active: true }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("entry without id is skipped", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        entries: [{ level: "info", title: "no id", body: "" }],
+      }),
+    );
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("auto-dismisses non-progress toasts after timeout", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    expect(ext.isActive()).toBe(true);
+
+    vi.advanceTimersByTime(4001);
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("does not auto-dismiss progress toasts", () => {
+    ext.applyNotification(NOTIFICATION_WITH_PROGRESS);
+    expect(ext.isActive()).toBe(true);
+
+    vi.advanceTimersByTime(10000);
+    expect(ext.isActive()).toBe(true);
+  });
+});
+
+describe("NotificationExtension DOM rendering", () => {
+  let ext: NotificationExtension;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "";
+    ext = new NotificationExtension();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    document.body.innerHTML = "";
+  });
+
+  it("renders notification container with overlay class", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-container")).toBeTruthy();
+    expect(
+      container.querySelector(".notification-container")?.classList.contains("overlay"),
+    ).toBe(true);
+  });
+
+  it("renders toast with level class", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-toast")).toBeTruthy();
+    expect(container.querySelector(".notification-info")).toBeTruthy();
+  });
+
+  it("renders icon and title", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-icon")?.textContent).toBe("i");
+    expect(container.querySelector(".notification-title")?.textContent).toBe("Hello");
+  });
+
+  it("renders body when present", () => {
+    ext.applyNotification(NOTIFICATION_WITH_BODY);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-body")?.textContent).toBe("details here");
+  });
+
+  it("does not render body when empty", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-body")).toBeNull();
+  });
+
+  it("renders progress bar", () => {
+    ext.applyNotification(NOTIFICATION_WITH_PROGRESS);
+    ext.render(container);
+
+    expect(container.querySelector(".notification-progress")).toBeTruthy();
+    expect(container.querySelector(".notification-progress-label")?.textContent).toBe("35%");
+    expect(container.querySelector(".notification-progress-fill")).toBeTruthy();
+    expect(container.querySelector(".notification-progress-detail")?.textContent).toBe("3/10");
+  });
+
+  it("renders multiple toasts", () => {
+    ext.applyNotification(NOTIFICATION_MULTIPLE);
+    ext.render(container);
+
+    const toasts = container.querySelectorAll(".notification-toast");
+    expect(toasts.length).toBe(2);
+  });
+
+  it("limits visible toasts to MAX_VISIBLE", () => {
+    const entries = Array.from({ length: 7 }, (_, i) => ({
+      id: i,
+      level: "info",
+      title: `Toast ${i}`,
+      body: "",
+    }));
+    ext.applyNotification(JSON.stringify({ active: true, entries }));
+    ext.render(container);
+
+    const toasts = container.querySelectorAll(".notification-toast");
+    expect(toasts.length).toBe(5); // MAX_VISIBLE = 5
+  });
+
+  it("hide removes container from DOM", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+    expect(container.querySelector(".notification-container")).toBeTruthy();
+
+    ext.hide();
+    expect(container.querySelector(".notification-container")).toBeNull();
+  });
+
+  it("re-render replaces container instead of duplicating", () => {
+    ext.applyNotification(NOTIFICATION_SINGLE);
+    ext.render(container);
+    ext.render(container);
+
+    const containers = container.querySelectorAll(".notification-container");
+    expect(containers.length).toBe(1);
+  });
+
+  it("renders level icons correctly", () => {
+    const cases = [
+      { level: "info", icon: "i" },
+      { level: "success", icon: "+" },
+      { level: "warning", icon: "!" },
+      { level: "error", icon: "x" },
+    ];
+
+    for (const { level, icon } of cases) {
+      const e = new NotificationExtension();
+      e.applyNotification(
+        JSON.stringify({
+          active: true,
+          entries: [{ id: 0, level, title: "test", body: "" }],
+        }),
+      );
+      const c = document.createElement("div");
+      e.render(c);
+      expect(c.querySelector(".notification-icon")?.textContent).toBe(icon);
+    }
+  });
+
+  it("empty toasts does not render container", () => {
+    ext.render(container);
+    expect(container.querySelector(".notification-container")).toBeNull();
   });
 });

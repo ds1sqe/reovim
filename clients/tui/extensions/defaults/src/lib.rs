@@ -22,6 +22,7 @@ pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
     vec![
         Box::new(reovim_tui_ext_whichkey::WhichKeyExtension::new()),
         Box::new(reovim_tui_ext_cmdline::CmdlineExtension::new()),
+        Box::new(reovim_tui_ext_notification::NotificationExtension::new()),
     ]
 }
 
@@ -30,9 +31,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_create_extensions_returns_two() {
+    fn test_create_extensions_returns_three() {
         let exts = create_extensions();
-        assert_eq!(exts.len(), 2);
+        assert_eq!(exts.len(), 3);
     }
 
     #[test]
@@ -41,6 +42,7 @@ mod tests {
         let kinds: Vec<&str> = exts.iter().map(|e| e.kind()).collect();
         assert!(kinds.contains(&"whichkey"));
         assert!(kinds.contains(&"cmdline"));
+        assert!(kinds.contains(&"notification"));
     }
 
     #[test]

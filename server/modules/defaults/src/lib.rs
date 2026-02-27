@@ -46,8 +46,9 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_editor as editor, reovim_module_keymap as keymap,
-    reovim_module_motions as motions, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_motions as motions, reovim_module_notification as notification,
+    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
 };
@@ -100,8 +101,9 @@ impl DefaultsModule {
             Box::new(editor::EditorModule),
             Box::new(motions::MotionsModule),
             Box::new(vim::VimModule::new()),
-            // Extension bridge modules (#468)
+            // Extension bridge modules (#468, #443)
             Box::new(cmdline::CmdlineModule::new()),
+            Box::new(notification::NotificationModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
@@ -147,8 +149,9 @@ impl Module for DefaultsModule {
             ModuleId::new("editor"),
             ModuleId::new("motions"),
             ModuleId::new("vim"),
-            // Extension bridge modules (#468)
+            // Extension bridge modules (#468, #443)
             ModuleId::new("cmdline"),
+            ModuleId::new("notification"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
             ModuleId::new("treesitter-markdown"),
@@ -217,9 +220,10 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
+        // Extension bridge modules (2): cmdline, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 14 modules
-        assert_eq!(deps.len(), 14);
+        // Total: 15 modules
+        assert_eq!(deps.len(), 15);
     }
 
     #[test]
@@ -228,9 +232,10 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
+        // Extension bridge modules (2): cmdline, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 14 modules
-        assert_eq!(modules.len(), 14);
+        // Total: 15 modules
+        assert_eq!(modules.len(), 15);
     }
 
     #[test]
