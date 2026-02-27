@@ -21,11 +21,11 @@ This displays:
 ### Enable Debug Logging
 
 ```bash
-# Log to file
-REOVIM_LOG=debug reovim --log=/tmp/reovim.log myfile.txt
+# Enable debug logging via environment
+REOVIM_LOG=debug reovim server --grpc 12540
 
-# Watch logs in another terminal
-tail -f /tmp/reovim.log
+# View logs from a running server
+reovim cli --grpc 127.0.0.1:12540 log-tail --level debug
 ```
 
 Log levels: `error`, `warn`, `info`, `debug`, `trace`
@@ -52,7 +52,7 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 
 3. **Run with minimal plugins:**
    ```bash
-   REOVIM_LOG=debug reovim --log=- 2>&1 | head -100
+   REOVIM_LOG=debug reovim server --grpc 12540
    ```
 
 ### 2. No Syntax Highlighting
@@ -102,10 +102,13 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
    ```
 
 2. **Enable LSP logging:**
-   ```bash
-   reovim --lsp-log=/tmp/lsp.log myfile.rs
-   tail -f /tmp/lsp.log
-   ```
+
+   > **Note:** `--lsp-log` is a planned feature (not yet implemented). LSP logs
+   > currently appear in the server's standard error stream alongside other
+   > tracing output. To capture them, run the server with debug logging enabled:
+   > ```bash
+   > REOVIM_LOG=debug reovim server --grpc 12540
+   > ```
 
 3. **Check LSP status:**
    ```vim
@@ -114,9 +117,10 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
    Look for "LSP: Connected" or error messages
 
 4. **Restart LSP:**
-   ```vim
-   :LspRestart
-   ```
+
+   > **Planned feature (not yet implemented):** `:LspRestart` is not yet
+   > available. As a workaround, restart the reovim server to reinitialize all
+   > LSP connections.
 
 ### 4. Keybindings Not Working
 
@@ -131,11 +135,12 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
    Press `Space ?` to open which-key hints
 
 3. **Check for conflicts:**
-   Plugins may override default bindings. Enable trace logging:
+   Plugins may override default bindings. Enable trace logging and search the
+   output for your key:
    ```bash
-   REOVIM_LOG=trace reovim --log=/tmp/keys.log myfile.txt
+   REOVIM_LOG=trace reovim server --grpc 12540
+   reovim cli --grpc 127.0.0.1:12540 log-tail --level trace
    ```
-   Then search for your key in the log.
 
 4. **Reset keymap:**
    Remove custom keybindings from profile:
@@ -178,23 +183,23 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 
 1. **List running servers:**
    ```bash
-   cargo run -- cli list
+   reovim cli --grpc 127.0.0.1:12540 clients
    ```
 
 2. **Check server is listening:**
    ```bash
    # Server prints this on startup
-   # "Listening on 127.0.0.1:12521"
+   # "Listening on 127.0.0.1:12540"
    ```
 
 3. **Check port availability:**
    ```bash
-   netstat -an | grep 12521
+   netstat -an | grep 12540
    ```
 
 4. **Connect to specific port:**
    ```bash
-   cargo run -- cli --tcp 127.0.0.1:12522 keys 'j'
+   reovim cli --grpc 127.0.0.1:12540 keys 'j' --client 1
    ```
 
 5. **Clean up stale port files:**
@@ -298,32 +303,33 @@ Log levels: `error`, `warn`, `info`, `debug`, `trace`
 ### Trace Event Flow
 
 ```bash
-REOVIM_LOG=trace reovim --log=/tmp/trace.log myfile.txt
-grep "RuntimeEvent" /tmp/trace.log
+REOVIM_LOG=trace reovim server --grpc 12540
+reovim cli --grpc 127.0.0.1:12540 log-tail --level trace
 ```
 
 ### Profile Rendering
 
 ```bash
-REOVIM_LOG=debug reovim --log=/tmp/render.log myfile.txt
-grep "\[RTT\]" /tmp/render.log
+REOVIM_LOG=debug reovim server --grpc 12540
+reovim cli --grpc 127.0.0.1:12540 log-tail --level debug
 ```
 
 ### Inspect RPC Communication
 
 ```bash
 # Server
-cargo run -- server --log=/tmp/server.log
+REOVIM_LOG=debug reovim server --grpc 12540
 
 # Client
-cargo run -- cli keys 'itest<Esc>'
-grep "RPC" /tmp/server.log
+reovim cli --grpc 127.0.0.1:12540 keys 'itest<Esc>'
+reovim cli --grpc 127.0.0.1:12540 log-tail --level debug
 ```
 
 ### Check Plugin Loading
 
 ```bash
-REOVIM_LOG=info reovim --log=- 2>&1 | grep "Plugin"
+REOVIM_LOG=info reovim server --grpc 12540
+reovim cli --grpc 127.0.0.1:12540 log-tail --level info
 ```
 
 ## Getting Help
@@ -334,7 +340,7 @@ REOVIM_LOG=info reovim --log=- 2>&1 | grep "Plugin"
    - [Module System](../modules/overview.md)
 
 2. **Search existing issues:**
-   https://github.com/anthropics/reovim/issues
+   https://github.com/ds1sqe/reovim/issues
 
 3. **File a bug report:**
    Include:
@@ -387,6 +393,9 @@ sudo pacman -S wl-clipboard
 
 ### Reduce Logging Overhead
 
+To minimize logging overhead, simply omit the `REOVIM_LOG` environment variable
+when starting the server. By default, only `error`-level messages are emitted:
+
 ```bash
-reovim --log=none myfile.txt  " Disable logging entirely
+reovim server --grpc 12540
 ```

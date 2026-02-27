@@ -15,8 +15,7 @@ Includes adapter module for Common Client Model: `clients/tui/src/adapter/`
 reovim tui
 
 # Connect to specific server
-reovim tui --tcp 127.0.0.1:12521
-reovim tui --socket /tmp/reovim.sock
+reovim tui --grpc 127.0.0.1:12540
 ```
 
 ## Features
@@ -44,9 +43,9 @@ reovim tui --socket /tmp/reovim.sock
 
 The TUI subscribes to server notifications for real-time updates:
 
-- `mode/changed` → Update status line
-- `cursor/moved` → Update cursor display
-- `buffer/modified` → Request screen refresh
+- `mode_changed` → Update status line
+- `cursor_moved` → Update cursor display
+- `buffer_modified` → Request screen refresh
 
 ## Related Documents
 

@@ -1,6 +1,6 @@
 # Text Objects
 
-Text objects are a powerful Vim concept that allow you to select regions of text based on structure. Reovim supports both delimiter-based text objects and semantic text objects powered by treesitter.
+Text objects are a powerful Vim concept that allow you to select regions of text based on structure. Reovim supports delimiter-based text objects for matching pairs, quotes, words, sentences, and paragraphs.
 
 ## Syntax
 
@@ -36,6 +36,22 @@ These work on matching pairs of characters.
 | `` i` `` | Inner backticks | `` `▸code▸` `` → selects `code` |
 | `` a` `` | Around backticks | `` ▸`code`▸ `` → selects `` `code` `` |
 
+### Tags
+
+| Text Object | Description | Example |
+|-------------|-------------|---------|
+| `it` | Inner tag | `<div>▸content▸</div>` → selects `content` |
+| `at` | Around tag | `▸<div>content</div>▸` → selects `<div>content</div>` |
+
+### Sentence and Paragraph
+
+| Text Object | Description |
+|-------------|-------------|
+| `is` | Inner sentence |
+| `as` | Around sentence (includes trailing whitespace) |
+| `ip` | Inner paragraph |
+| `ap` | Around paragraph (includes trailing blank lines) |
+
 ## Word Text Objects
 
 | Text Object | Description |
@@ -57,56 +73,6 @@ Given: `file-name.txt`
 - `diw` on `file` deletes `file` (stops at `-`)
 - `diW` on `file` deletes `file-name.txt` (all non-whitespace)
 
-## Semantic Text Objects (Treesitter)
-
-Semantic text objects use treesitter to understand code structure. They work across supported languages (Rust, C, JavaScript, Python, JSON, TOML, Markdown).
-
-### Function Text Objects
-
-| Text Object | Description |
-|-------------|-------------|
-| `if` | Inner function (body only) |
-| `af` | Around function (including signature) |
-
-**Rust example:**
-```rust
-fn example(x: i32) -> i32 {
-    let y = x + 1;  // ← `if` selects this
-    y * 2
-}
-// `af` selects the entire function including `fn example...`
-```
-
-### Class/Struct Text Objects
-
-| Text Object | Description |
-|-------------|-------------|
-| `ic` | Inner class/struct (fields/methods only) |
-| `ac` | Around class/struct (including declaration) |
-
-**Rust example:**
-```rust
-struct Point {
-    x: f64,  // ← `ic` selects fields
-    y: f64,
-}
-// `ac` selects entire struct including `struct Point`
-```
-
-### Argument/Parameter Text Objects
-
-| Text Object | Description |
-|-------------|-------------|
-| `ia` | Inner argument (single parameter) |
-| `aa` | Around argument (including comma/whitespace) |
-
-**Example:**
-```rust
-fn process(first: i32, second: String, third: bool)
-//         ▲          ▲               ▲
-//         `ia` selects each individual parameter
-```
-
 ## Common Operations
 
 ### Delete Operations
@@ -115,8 +81,7 @@ fn process(first: i32, second: String, third: bool)
 di(    " Delete inside parentheses
 da{    " Delete around braces (including braces)
 di"    " Delete inside double quotes
-dif    " Delete inner function body
-daf    " Delete entire function
+dip    " Delete inner paragraph
 ```
 
 ### Change Operations
@@ -124,7 +89,7 @@ daf    " Delete entire function
 ```vim
 ci[    " Change inside brackets
 ca'    " Change around single quotes
-cif    " Change function body
+cit    " Change inside tag
 ```
 
 ### Yank Operations
@@ -132,28 +97,16 @@ cif    " Change function body
 ```vim
 yi(    " Yank inside parentheses
 ya{    " Yank around braces
-yaf    " Yank entire function
+yis    " Yank inner sentence
 ```
 
 ### Visual Selection
 
 ```vim
 vi(    " Visually select inside parentheses
-vaf    " Visually select entire function
-vic    " Visually select inside class/struct
+vaw    " Visually select around word
+vap    " Visually select around paragraph
 ```
-
-## Language Support for Semantic Objects
-
-| Language | Functions | Classes/Structs | Arguments |
-|----------|-----------|-----------------|-----------|
-| Rust | `fn` | `struct`, `enum`, `impl` | function params |
-| C | functions | `struct` | function params |
-| JavaScript | `function`, arrow funcs | `class` | function params |
-| Python | `def` | `class` | function params |
-| JSON | - | objects | - |
-| TOML | - | tables | - |
-| Markdown | - | - | - |
 
 ## Nested Text Objects
 
@@ -183,29 +136,10 @@ let x = ((nested));
 
 ## Implementation Details
 
-### Delimiter Text Objects
+### Text Object Module
 
 Implemented in `server/modules/textobjects/src/`:
-- `DelimiterTextObject` handles paired delimiters
-- Supports: `()`, `[]`, `{}`, `<>`, `""`, `''`, ``` `` ```
-
-### Semantic Text Objects
-
-Implemented via treesitter in `server/lib/drivers/syntax/`:
-- Language-specific queries define what constitutes functions, classes, etc.
-- Query files are bundled with the syntax driver
-- Falls back gracefully when treesitter is unavailable
-
-### Adding Custom Text Objects
-
-To add semantic text objects for a new language:
-
-1. Create `textobjects.scm` in your language plugin's queries directory
-2. Define captures for `@function.inner`, `@function.outer`, etc.
-3. Register the language with the treesitter plugin
-
-Example query for functions:
-```scheme
-(function_definition
-  body: (_) @function.inner) @function.outer
-```
+- Handles paired delimiters: `()`, `[]`, `{}`, `<>`, `""`, `''`, ``` `` ```
+- Handles tags: `<tag>...</tag>`
+- Handles word, WORD, sentence, and paragraph boundaries
+- Command IDs defined in `server/modules/textobjects/src/ids.rs`

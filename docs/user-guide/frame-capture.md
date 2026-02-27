@@ -20,15 +20,15 @@ This architecture ensures:
 
 ```bash
 # Terminal 1: Start server
-reovim server --tcp 12530
+reovim server --grpc 12530
 
 # Terminal 2: Start TUI (interactive or headless)
-reovim tui --tcp 127.0.0.1:12530
+reovim tui --grpc 127.0.0.1:12530
 # OR for CI/scripting:
-reovim tui --headless --tcp 127.0.0.1:12530
+reovim tui --headless --grpc 127.0.0.1:12530
 
 # Terminal 3: Capture frame (--client specifies target TUI's client ID)
-reovim cli --tcp 127.0.0.1:12530 capture --client 1
+reovim cli --grpc 127.0.0.1:12530 capture --client 1
 ```
 
 ## Output Formats
@@ -38,7 +38,7 @@ reovim cli --tcp 127.0.0.1:12530 capture --client 1
 Full ANSI-escaped output with colors, suitable for terminal replay:
 
 ```bash
-reovim cli capture --client 1 --format raw_ansi
+reovim cli capture --client 1 --capture-format raw_ansi
 ```
 
 Output:
@@ -57,7 +57,7 @@ Cursor: 0,0
 Plain text without ANSI codes, ideal for LLM consumption:
 
 ```bash
-reovim cli capture --client 1 --format plain_text
+reovim cli capture --client 1 --capture-format plain_text
 ```
 
 Output:
@@ -78,7 +78,7 @@ Hello world
 JSON structure with per-cell styling, for programmatic analysis:
 
 ```bash
-reovim cli capture --client 1 --format cell_grid
+reovim cli capture --client 1 --capture-format cell_grid
 ```
 
 Output:
@@ -98,7 +98,7 @@ For CI/testing without a terminal, use headless TUI:
 
 ```bash
 # Start headless TUI (no terminal required)
-reovim tui --headless --tcp 127.0.0.1:12530
+reovim tui --headless --grpc 127.0.0.1:12530
 ```
 
 Headless mode:
@@ -146,7 +146,7 @@ enabling multi-client scenarios where multiple TUIs are connected.
 Capture plain text for AI analysis:
 
 ```bash
-SCREEN=$(reovim cli capture --client 1 --format plain_text)
+SCREEN=$(reovim cli capture --client 1 --capture-format plain_text)
 echo "$SCREEN" | llm "What mode is the editor in?"
 ```
 
@@ -155,8 +155,8 @@ echo "$SCREEN" | llm "What mode is the editor in?"
 Verify editor state in tests:
 
 ```bash
-reovim cli keys 'iHello<Esc>'
-CAPTURE=$(reovim cli capture --client 1 --format plain_text)
+reovim cli --grpc 127.0.0.1:12530 keys 'iHello<Esc>' --client 1
+CAPTURE=$(reovim cli --grpc 127.0.0.1:12530 capture --client 1 --capture-format plain_text)
 echo "$CAPTURE" | grep -q "Hello" && echo "PASS"
 ```
 
@@ -166,7 +166,7 @@ Stream content for screen readers:
 
 ```bash
 while true; do
-  reovim cli capture --client 1 --format plain_text
+  reovim cli capture --client 1 --capture-format plain_text
   sleep 1
 done
 ```
@@ -176,7 +176,7 @@ done
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  CLI Client                                             │
-│  reovim cli capture --client 1 --format plain_text      │
+│  reovim cli capture --client 1 --capture-format plain_text      │
 └─────────────────────┬───────────────────────────────────┘
                       │ gRPC: StateService.GetScreenContent
                       ▼

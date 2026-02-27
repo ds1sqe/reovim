@@ -1,34 +1,25 @@
 # editor Module
 
-Core editing fallback handler.
+Core editor command provider.
 
 ## Source Location
 
-`modules/editor/src/`
+`server/modules/editor/src/`
 
 ## Purpose
 
-The editor module provides fallback handling for unmatched key events. When no other module handles a key, the editor module processes it as:
-
-- Character insertion in insert mode
-- Command feedback in normal mode
+The editor module provides core editing commands including cursor movement, line operations, and mode-aware text manipulation. It registers commands like `editor:cursor-up`, `editor:cursor-down`, `editor:line-start`, `editor:line-end`, `editor:delete-char`, etc.
 
 ## Key Features
 
-- Fallback key handling
-- Character insertion
-- Mode-aware behavior
+- Core cursor movement commands
+- Line editing operations (delete char, delete to EOL)
+- Mode-aware character input handling
+- Basic editing primitives used by other modules
 
 ## Dependencies
 
-None (base module)
-
-## Exports
-
-```rust
-// Fallback handler
-pub struct EditorFallbackHandler;
-```
+- `reovim_kernel::api::v1` - Module trait, command registration
 
 ## Related Documents
 

@@ -7,18 +7,20 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         CLIENTS                                 │
-│  ┌─────────────────────┐    ┌─────────────────────┐             │
-│  │  TUI (clients/tui/) │    │  CLI (clients/cli/) │             │
-│  └──────────┬──────────┘    └──────────┬──────────┘             │
-│             │                          │                        │
-│             └───────────┬──────────────┘                        │
+│  ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐  │
+│  │ TUI (clients/tui)│ │ CLI (clients/cli)│ │ Web (clients/web)│  │
+│  └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘  │
+│           │                    │                     │            │
+│           └────────────────────┼─────────────────────┘            │
 │                         │ gRPC v2 (shared/protocol/)            │
 └─────────────────────────┼───────────────────────────────────────┘
                           │
 ┌─────────────────────────┼───────────────────────────────────────┐
 │                    SERVER (server/lib/server/)                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  gRPC Services: Input, State, Notification, Server      │    │
+│  │  gRPC Services (12): Input, State, Buffer, Editor,      │    │
+│  │  Notification, Server, Debug, Module, Command,          │    │
+│  │  Syntax, Presence, Extension                            │    │
 │  │  Session Management, Module Registry                    │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────┼───────────────────────────────────────┘
@@ -51,16 +53,21 @@ Reovim follows a **Linux kernel-inspired architecture** with clear separation be
 │  │ Resolve│ │Driver  │ │ Client │ │  Ops   │ │ State  │         │
 │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
 │                                                                 │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                    │
-│  │buffer/ │ │  undo/ │ │search/ │ │  ffi/  │                    │
-│  │ Ops    │ │ Redo   │ │Replace │ │ Python │                    │
-│  └────────┘ └────────┘ └────────┘ └────────┘                    │
+│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐         │
+│  │buffer/ │ │  undo/ │ │search/ │ │  ffi/  │ │ffi-py/ │         │
+│  │ Ops    │ │ Redo   │ │Replace │ │  FFI   │ │ Python │         │
+│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘         │
+│                                                                 │
+│  ┌────────┐ ┌────────┐ ┌──────────────┐ ┌───────────────────┐   │
+│  │command/│ │cmdtype/│ │  clipboard/  │ │syntax-treesitter/ │   │
+│  │Registry│ │ Types  │ │  Clipboard   │ │  Tree-sitter Impl │   │
+│  └────────┘ └────────┘ └──────────────┘ └───────────────────┘   │
 └───────────────────────────────┼─────────────────────────────────┘
                                 │
 ┌───────────────────────────────┼─────────────────────────────────┐
 │                        SHARED (shared/)                         │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  protocol/ (gRPC) │ arch/ │ net/ │ log/ │ module-macros │    │
+│  │  protocol/ │ arch/ │ net/ │ log/ │ trace/ │ module-macros │   │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -142,7 +149,7 @@ shared/protocol            ← gRPC v2 definitions
     │
     ├──▶ server/lib/server  ← Server runtime
     │
-    └──▶ clients/*          ← TUI, CLI clients
+    └──▶ clients/*          ← TUI, CLI, Web clients
 ```
 
 ## Source Layout
@@ -173,13 +180,25 @@ server/
 │   │
 │   ├── server/              # Server runtime
 │   │   └── src/
-│   │       ├── grpc/        # gRPC service handlers
-│   │       │   ├── input.rs # InputService
-│   │       │   └── state.rs # StateService
+│   │       ├── grpc/        # gRPC service handlers (12 services)
+│   │       │   ├── input.rs       # InputService
+│   │       │   ├── state.rs       # StateService
+│   │       │   ├── buffer.rs      # BufferService
+│   │       │   ├── editor.rs      # EditorService
+│   │       │   ├── notification.rs # NotificationService
+│   │       │   ├── server_service.rs # ServerService
+│   │       │   ├── debug.rs       # DebugService
+│   │       │   ├── module.rs      # ModuleService
+│   │       │   ├── command.rs     # CommandService
+│   │       │   ├── syntax.rs      # SyntaxService
+│   │       │   ├── presence.rs    # PresenceService
+│   │       │   ├── extension.rs   # ExtensionService
+│   │       │   ├── auth.rs        # Authentication
+│   │       │   └── notification_builder.rs # Notification helpers
 │   │       ├── session/     # Session management
 │   │       └── registry/    # Module loader, registry
 │   │
-│   └── drivers/             # Driver implementations (13 crates)
+│   └── drivers/             # Driver implementations (14 crates)
 │       ├── input/           # Key event parsing
 │       ├── syntax/          # Tree-sitter integration
 │       ├── lsp/             # LSP client
@@ -189,7 +208,7 @@ server/
 │       ├── undo/            # Undo/redo
 │       └── ...              # (search, clipboard, ffi, etc.)
 │
-└── modules/                 # Policy modules (17 crates)
+└── modules/                 # Policy modules (21 crates)
     ├── vim/                 # Core Vim behavior
     ├── motions/             # Movement commands
     ├── textobjects/         # Text object definitions
@@ -199,7 +218,8 @@ server/
 clients/
 ├── tui/                     # TUI client
 │   └── lib/drivers/         # TUI-specific drivers (display, tui)
-└── cli/                     # CLI client
+├── cli/                     # CLI client
+└── web/                     # Web client (gRPC-Web, WASM)
 
 shared/
 ├── protocol/                # gRPC v2 definitions
@@ -209,6 +229,7 @@ shared/
 │   └── src/windows/         # Windows implementation
 ├── net/                     # Network transport
 ├── log/                     # Logging infrastructure
+├── trace/                   # Tracing/diagnostics
 ├── module-macros/           # declare_module! proc-macro
 └── testing/                 # Integration test utilities
 ```

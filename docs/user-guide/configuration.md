@@ -198,7 +198,7 @@ autoload = ["vim", "editor", "keymap"]
 extra = ["my-custom-module", "lang-rust"]
 
 # Skip specific default modules
-skip = ["operators"]
+skip = ["scratch-buffer"]
 
 # Skip all default modules
 no_defaults = false
@@ -212,7 +212,7 @@ search_paths = [
 
 ### Default Modules
 
-These modules are loaded by default: `editor`, `keymap`, `operators`, `motions`, `commands`, `mode-manager`
+These modules are loaded by default via the `defaults` meta-module. See [defaults module](../architecture/modules/builtin/defaults.md) for the full list.
 
 ### Module Search Paths
 
@@ -222,29 +222,22 @@ Modules are searched in order:
 3. `~/.local/share/reovim/modules` (user)
 4. Paths from config `search_paths`
 
-### CLI Module Options
+### Extra Modules via Environment Variable
+
+Use the `REOVIM_EXTRA_MODULES` environment variable to load additional modules at startup:
 
 ```bash
-# Load specific modules
-reovim server --load my-module --load another-module
-
-# Skip default modules
-reovim server --no-defaults
-
-# Add module search directory
-reovim server --moddir /path/to/modules
+REOVIM_EXTRA_MODULES=my-module:another-module reovim server
 ```
 
 ### Runtime Module Management
 
-Use the embedded CLI (`Ctrl+B ;`) or CLI REPL:
+Runtime module management is available via the ModuleService gRPC API. The following operations are supported:
 
-```
-modules              # List loaded modules
-load /path/to.so     # Load a module
-unload my-module     # Unload a module
-reload my-module     # Hot reload a module
-```
+- `module/list` - List all loaded modules
+- `module/load` - Load a module by path
+- `module/unload` - Unload a module by name
+- `module/reload` - Hot reload a module by name
 
 ## Environment Variables
 
@@ -266,13 +259,12 @@ Commands:
   cli       Execute commands
 
 Server options:
-  --tcp <PORT>      Listen on custom TCP port (default: 12521)
-  --socket <PATH>   Listen on Unix socket
-  --stdio           Use stdio transport
+  --tcp <PORT>      Listen on raw TCP port (default: 12540)
+  --grpc <PORT>     Listen on gRPC port (recommended, default: 12540)
+  --socket <PATH>   Listen on Unix socket (Unix only)
 
 Client options (tui/cli):
-  --tcp <ADDR>      Connect via TCP (e.g., 127.0.0.1:12521)
-  --socket <PATH>   Connect via Unix socket
+  --grpc <ADDR>     Connect via gRPC (e.g., 127.0.0.1:12540)
 ```
 
 **Examples:**
@@ -280,18 +272,17 @@ Client options (tui/cli):
 # Start server
 reovim server
 
-# Server on custom port
-reovim server --tcp 9000
+# Server on custom gRPC port
+reovim server --grpc 9000
 
 # Connect TUI client
 reovim tui
 
 # CLI commands
-reovim cli list
-reovim cli keys 'iHello<Esc>'
+reovim cli --grpc 127.0.0.1:12540 keys 'iHello<Esc>' --client 1
 
 # Debug logging
-REOVIM_LOG=debug reovim server --log=/tmp/reovim.log
+REOVIM_LOG=debug reovim server
 ```
 
 ## Settings Menu

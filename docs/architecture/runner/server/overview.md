@@ -1,6 +1,6 @@
 # Server Architecture
 
-The RPC server manages sessions, clients, and request dispatching.
+The gRPC server manages sessions, clients, and request dispatching.
 
 ## Source Location
 
@@ -12,10 +12,10 @@ The RPC server manages sessions, clients, and request dispatching.
 |-----------|------|---------|
 | Server | `mod.rs` | Main server struct, accept loop |
 | Session | `session/` | Session state management |
-| Client | `client/` | Per-client state, viewport |
-| RPC Dispatcher | `rpc/` | Request routing, handlers |
-| Transport | `transport/` | TCP, Unix socket, stdio |
-| Notification | `notification.rs` | Broadcast to clients |
+| Client | `session/client.rs` | Per-client state, viewport |
+| gRPC Handlers | `grpc/` | Request routing, 15 handler files |
+| Transport | `shared/net/` | Network transport layer (separate crate) |
+| Notification | `grpc/notification.rs` | Broadcast to clients |
 
 ## Architecture
 
@@ -36,8 +36,8 @@ The RPC server manages sessions, clients, and request dispatching.
 │  └─────────────────────────────────────────────────────┘   │
 │                          │                                  │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │ RpcDispatcher                                        │   │
-│  │ └── dispatch(request) → handler → response          │   │
+│  │ gRPC Handlers (grpc/)                               │   │
+│  │ └── 15 handler files (input, state, buffer, ...)    │   │
 │  └─────────────────────────────────────────────────────┘   │
 └────────────────────────────────────────────────────────────┘
 ```
@@ -56,15 +56,15 @@ Each client has independent viewport state (terminal size, active buffer, cursor
 
 See [Sessions Documentation](./sessions.md#per-client-viewport) for the viewport architecture.
 
-### RPC Protocol
+### gRPC v2 Protocol
 
-JSON-RPC 2.0 over TCP, Unix socket, or stdio.
+gRPC v2 protocol defined in `shared/protocol/` (.proto files).
 
 See [RPC Protocol Documentation](./rpc-protocol.md) for message formats.
 
 ## Related Documents
 
 - [Sessions](./sessions.md) - Session and viewport management
-- [Transport](./transport.md) - Transport layer options
-- [RPC Protocol](./rpc-protocol.md) - JSON-RPC 2.0 spec
+- [Transport](./transport.md) - Transport layer (shared/net/)
+- [RPC Protocol](./rpc-protocol.md) - gRPC v2 protocol spec
 - [Notifications](./notifications.md) - Client notifications

@@ -26,8 +26,8 @@ This enables a single server to support multiple client platforms:
               │               │               │
               ▼               ▼               ▼
       ┌───────────┐   ┌───────────┐   ┌───────────┐
-      │    TUI    │   │  Android  │   │    Web    │
-      │  (Rust)   │   │  (Kotlin) │   │   (TS)    │
+      │    TUI    │   │    CLI    │   │    Web    │
+      │  (Rust)   │   │  (Rust)   │   │   (TS)    │
       └───────────┘   └───────────┘   └───────────┘
 ```
 

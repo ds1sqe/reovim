@@ -91,8 +91,8 @@ reovim/
 │       ├── clipboard/     # Clipboard operations
 │       ├── ffi/           # Foreign function interface
 │       └── ffi-python/    # Python FFI bindings
-├── server/modules/        # Policy modules (19 loadable modules)
-│   ├── vim/               # Core Vim-like behavior
+├── server/modules/        # Policy modules (21 loadable modules)
+│   ├── vim/               # Core Vim-like behavior (includes operators)
 │   ├── editor/            # Editor core operations
 │   ├── motions/           # Movement commands
 │   ├── textobjects/       # Text object definitions
@@ -103,12 +103,14 @@ reovim/
 │   ├── buffer-ops/        # Buffer lifecycle events
 │   ├── buffer-simple/     # SimpleBufferManager implementation
 │   ├── scratch-buffer/    # Empty buffer on session start
-│   ├── defaults/          # Meta-module aggregating 13 modules
+│   ├── defaults/          # Meta-module aggregating 14 modules
 │   ├── clipboard/         # Clipboard operations
 │   ├── search/            # Search provider
 │   ├── undo/              # Undo provider
 │   ├── vfs-local/         # Local filesystem VFS
 │   ├── window-ops/        # Window operations (<C-w> commands)
+│   ├── cmdline/           # Command-line mode input (#468)
+│   ├── whichkey/          # Which-key hints (#468)
 │   ├── treesitter-rust/   # Rust syntax highlighting
 │   └── treesitter-markdown/ # Markdown syntax highlighting
 ├── clients/               # Client applications

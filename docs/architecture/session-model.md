@@ -53,6 +53,8 @@ reovim follows a tmux-inspired session model for multi-client editing.
 | Window | `WindowId(usize)` | kernel | Window identifier |
 | Buffer | `BufferId(usize)` | kernel | Buffer identifier |
 
+**Note:** The kernel also has a `SessionId(usize)` type for internal session tracking. This is distinct from the server-layer `SessionId(Arc<str>)` which uses named string identifiers.
+
 **Important distinction:**
 - `SessionId` is a **name** (string) - identifies which session
 - `driver::Session` holds **shared state** - buffers, extensions (bootstrap-only for mode/windows)

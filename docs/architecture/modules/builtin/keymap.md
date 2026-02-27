@@ -17,41 +17,17 @@ The keymap module maps key sequences to commands using an interactor pattern. It
 
 ## Key Features
 
-### Interactor Pattern
+### Keymap Trie
 
-```rust
-pub struct Interactor<K, V> {
-    // Keymap trie for efficient prefix matching
-    keymap: Keymap<K, V>,
-    // Current input sequence
-    buffer: Vec<K>,
-}
-```
-
-The interactor accumulates keys until:
+The keymap uses a trie structure for efficient prefix matching. Keys accumulate until:
 - A complete binding is matched → Execute command
 - No prefix matches → Clear buffer, report unbound
 - Partial match → Wait for more keys
 
-### Key Sequence Parsing
-
-```rust
-// Parse vim-style key notation
-KeySequence::parse("<C-w>h")  // Ctrl+W then H
-KeySequence::parse("gg")      // Two G's
-KeySequence::parse("<Esc>")   // Escape key
-```
-
 ## Dependencies
 
 - `reovim-driver-input` - Key event types
-
-## Exports
-
-```rust
-pub use interactor::{Interactor, InteractorConfig, InteractorResponse};
-pub use keymap::Keymap;
-```
+- `reovim_kernel::api::v1` - Module trait, keybinding registration
 
 ## Related Documents
 

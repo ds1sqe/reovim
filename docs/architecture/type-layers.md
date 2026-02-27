@@ -21,7 +21,7 @@ Understanding which types belong where prevents layer confusion and import confl
 │  ModeId, CommandId, Position, BufferId, KernelContext, ...              │
 │  → Core primitives, WHAT can be done                                    │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  RUNNER (runner/)                                          MECHANISM    │
+│  SERVER (server/lib/server/)                              MECHANISM    │
 │  EventLoop, ModeRegistry, CommandRegistry, SessionState, ...            │
 │  → Runtime orchestration, wires everything together                     │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -41,7 +41,7 @@ Context types are NOT duplicates - they serve different lifecycle stages:
 | `TransitionContext` | input driver | Mode transition input | Per-transition |
 | `CommandContext` | command driver | Command execution context | Per-command |
 | `ExCommandContext` | commands module | Ex-command specific context | Per-ex-command |
-| `RpcContext` | runner | RPC handling context | Per-RPC call |
+| `RpcContext` | server | gRPC handling context | Per-RPC call |
 
 ### Why So Many Contexts?
 
@@ -136,17 +136,17 @@ pub trait ModeKeyResolver: Send + Sync {
 }
 ```
 
-### ModeRegistry (Runner)
+### ModeRegistry (Server)
 
 ```rust
-// Runner manages registered modes at runtime
+// Server manages registered modes at runtime
 pub struct ModeRegistry {
     // Maps ModeId -> mode properties (cursor style, display name, etc.)
 }
 ```
 
 **Note:** The input driver previously had a `ModeRegistry` type that was unused.
-It was removed in #391 - the runner's `ModeRegistry` is the canonical implementation.
+It was removed in #391 - the server's `ModeRegistry` is the canonical implementation.
 
 ## Resolver Types
 

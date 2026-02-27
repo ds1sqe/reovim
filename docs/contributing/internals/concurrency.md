@@ -122,11 +122,11 @@ The kernel already uses these lock-free patterns:
 
 | Pattern | Component | File | Purpose |
 |---------|-----------|------|---------|
-| **ArcSwap (RCU)** | EventBus handlers | `lib/kernel/src/ipc/event_bus.rs:117` | Lock-free handler dispatch |
-| **ArcSwap** | LineCache | `lib/kernel/src/mm/cache.rs:66` | Lock-free cache reads |
-| **AtomicU64** | SubscriptionId | `lib/kernel/src/ipc/subscription.rs:58` | ID generation |
-| **AtomicBool** | Saturator shutdown | `lib/kernel/src/mm/saturator.rs:88` | Graceful termination |
-| **Condvar** | EventScope | `lib/kernel/src/ipc/scope.rs:90` | Wait for completion |
+| **ArcSwap (RCU)** | EventBus handlers | `server/lib/kernel/src/ipc/event_bus.rs` | Lock-free handler dispatch |
+| **ArcSwap** | LineCache | `server/lib/kernel/src/mm/cache.rs` | Lock-free cache reads |
+| **AtomicU64** | SubscriptionId | `server/lib/kernel/src/ipc/subscription.rs` | ID generation |
+| **AtomicBool** | Saturator shutdown | `server/lib/kernel/src/mm/saturator.rs` | Graceful termination |
+| **Condvar** | EventScope | `server/lib/kernel/src/ipc/scope.rs` | Wait for completion |
 
 ### ArcSwap (RCU Pattern)
 

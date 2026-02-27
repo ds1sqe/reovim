@@ -50,7 +50,7 @@ Reovim includes an end-to-end integration test system that uses server mode to v
 
 ```
 TestServerHarness
-├── Spawns: reovim server --tcp <port>
+├── Spawns: reovim server --grpc 0
 ├── GrpcClient (TCP connection via gRPC)
 └── Auto-cleanup on Drop
 
@@ -80,15 +80,14 @@ cargo test -p reovim-module-vim
 cargo test -p reovim-module-vim test_visual_mode
 ```
 
-**Note:** Integration tests require the release binary. Run `cargo build --release` before running integration tests.
+**Note:** Tests use the debug binary by default. Set `REOVIM_TEST_BINARY` env var to override.
 
 ### Writing Integration Tests
 
 #### Basic Structure
 
 ```rust
-mod common;
-use common::IntegrationTest;
+use reovim_testing::IntegrationTest;
 
 #[tokio::test]
 async fn test_example() {
@@ -136,8 +135,7 @@ async fn test_example() {
 | `assert_normal_mode()` | Editor is in normal mode |
 | `assert_insert_mode()` | Editor is in insert mode |
 | `assert_visual_mode()` | Editor is in visual mode |
-| `assert_command_mode()` | Editor is in command mode |
-| `assert_cursor(x, y)` | Cursor at position |
+| `assert_cursor(line, col)` | Cursor at position (0-indexed, line then column) |
 | `assert_buffer_contains("text")` | Buffer contains substring |
 | `assert_buffer_eq("text")` | Buffer equals exactly |
 
@@ -189,18 +187,14 @@ let client = harness.client().await?;
 
 #### TestClient (`shared/testing/src/`)
 
-gRPC client for testing:
+gRPC client used in multi-client tests (obtained from `MultiClientTest`):
 
 ```rust
-let mut client = TestClient::connect("127.0.0.1", port).await?;
-
-client.keys("ihello<Esc>").await?;   // Inject keys
-let mode = client.mode().await?;      // Get mode
-let cursor = client.cursor().await?;  // Get cursor (x, y)
-let content = client.buffer_content().await?;  // Get buffer
-client.set_buffer_content("text").await?;      // Set buffer
-client.resize(100, 40).await?;        // Resize editor
-client.kill().await?;                 // Kill server
+// TestClient is accessed via the clients array in MultiClientTest::run()
+clients[0].send_keys("ihello<Esc>").await.unwrap();  // Inject keys
+let cursor = clients[0].get_cursor().await.unwrap(); // Get cursor position
+let content = clients[0].get_buffer().await.unwrap(); // Get buffer content
+clients[0].open_buffer("/path/to/file").await.unwrap(); // Open a file
 ```
 
 #### IntegrationTest (`shared/testing/src/integration.rs`)
@@ -211,7 +205,6 @@ Fluent builder for tests:
 IntegrationTest::new()
     .await
     .with_buffer("initial text")   // Optional: set initial buffer
-    .with_size(80, 24)             // Optional: set screen dimensions
     .send_keys("dd")               // Optional: inject keys (can chain)
     .send_keys("p")
     .run()
@@ -223,7 +216,7 @@ IntegrationTest::new()
 For tests that need to verify state at each keystroke, use `StepTest`:
 
 ```rust
-use shared::testing::StepTest;
+use reovim_testing::StepTest;
 
 #[tokio::test]
 async fn test_delete_word_step_by_step() {
@@ -246,7 +239,7 @@ async fn test_delete_word_step_by_step() {
 For tests that need to verify TUI output:
 
 ```rust
-use shared::testing::frame::{assert_frame_contains, assert_statusline_mode};
+use reovim_testing::frame::{assert_frame_contains, assert_statusline_mode};
 
 // Assert frame contains text
 assert_frame_contains(&frame, "Hello");
@@ -260,7 +253,7 @@ assert_frame_line_contains(&frame, 0, "fn main");
 
 ### Best Practices
 
-1. **Build release first** - Tests spawn `./target/release/reovim`
+1. **Tests use the debug binary by default** - Set `REOVIM_TEST_BINARY` env var to override
 2. **Keep key sequences short** - Long sequences are harder to debug
 3. **Test one behavior per test** - Makes failures easier to diagnose
 4. **Use `with_buffer()` for cursor tests** - Need text to move through
@@ -275,7 +268,7 @@ Phase 7+ uses a comprehensive integration test framework in `shared/testing/` th
 ```
 IntegrationTest (Builder)
 ├── TestServerHarness
-│   ├── Spawns: reovim server --tcp 0 (OS-assigned port)
+│   ├── Spawns: reovim server --grpc 0 (OS-assigned port)
 │   ├── Parses port from stderr
 │   └── kill_on_drop(true) for cleanup
 ├── GrpcClient (TCP gRPC connection)
@@ -297,8 +290,7 @@ Test Flow:
 The fluent builder pattern makes tests readable and maintainable:
 
 ```rust
-mod common;
-use common::IntegrationTest;
+use reovim_testing::IntegrationTest;
 
 #[tokio::test]
 async fn test_delete_line() {
@@ -331,15 +323,15 @@ async fn test_delete_line() {
 | `assert_buffer_eq(expected)` | Buffer exactly matches |
 | `assert_buffer_contains(text)` | Buffer contains substring |
 | `assert_cursor(line, col)` | Cursor at position (0-indexed) |
-| `assert_mode(mode)` | Editor in specified mode |
-| `assert_register(name, content)` | Register contains expected text |
+| `assert_mode!(mode)` | Editor in specified mode (macro) |
+| `assert_register(name, content, yank_type)` | Register contains expected text and yank type |
 
 ### Multi-Client Tests
 
 For concurrent client testing:
 
 ```rust
-use common::MultiClientTest;
+use reovim_testing::MultiClientTest;
 
 #[tokio::test]
 async fn test_two_clients_see_changes() {
@@ -365,6 +357,9 @@ shared/testing/src/
 ├── harness.rs              # TestServerHarness (subprocess management)
 ├── integration.rs          # IntegrationTest builder + TestResult
 ├── multi_client.rs         # MultiClientTest + TestClient
+├── presence.rs             # Presence/connection utilities
+├── step_test.rs            # StepTest builder for per-keystroke assertions
+├── frame.rs                # Frame assertion helpers
 └── assertions.rs           # Assertion macros
 
 server/modules/vim/tests/   # Vim module tests
@@ -397,8 +392,7 @@ cargo test -- --nocapture
 1. **Create test file** in module's `tests/` directory
 2. **Import common utilities**:
    ```rust
-   mod common;
-   use common::IntegrationTest;
+   use reovim_testing::IntegrationTest;
    ```
 3. **Use async test**:
    ```rust
@@ -429,18 +423,17 @@ cargo test -- --nocapture
 Integration tests use **OS-assigned ports** (port 0) for collision-free parallel execution:
 
 - **Test servers**: OS-assigned ephemeral ports (let the kernel pick an available port)
-- **Regular servers**: Port 12521 by default, auto-increments to 12522, 12523, ... if in use
+- **Regular servers**: Port 12540 by default, auto-increments to 12541-12549 if in use
 
 This approach ensures:
 - **No port collisions** - OS guarantees port uniqueness
 - **Parallel-safe** - Multiple test processes can run simultaneously
 - **Cross-process safe** - Works correctly with `cargo test` parallelism
 - Tests don't interfere with manually started debug servers
-- `reovim cli list` only shows regular servers (not test instances)
 
 ### How It Works
 
-1. `IntegrationTest::new()` spawns `reovim server --tcp 0` (OS-assigned port)
+1. `IntegrationTest::new()` spawns `reovim server --grpc 0` (OS-assigned port)
 2. Server binds to an ephemeral port and prints `Listening on 127.0.0.1:<port>` to stderr
 3. Test harness reads stderr to discover the actual port
 4. `GrpcClient` connects via gRPC and sends commands
@@ -450,24 +443,12 @@ This approach ensures:
 
 ## Current Test Coverage
 
-| Module | Coverage Area | Tests |
-|--------|--------------|-------|
-| `buffer` | Text operations, cursor movement, selection | 25 |
-| `completion` | Filter, item, source, state, trigger | 20 |
-| `count_parser` | Numeric prefix parsing (5j, 10w, etc.) | 6 |
-| `explorer` | Node, render, state, tree | 15 |
-| `highlight` | Color, span, store, theme | 18 |
-| `jumplist` | Jump navigation | 4 |
-| `range-finder` | Jump navigation and code folding | 15+ |
-| `screen/layout` | Layout calculations | 4 |
-| `microscope` | Item, matcher, state | 11 |
-| `types` | Core data types | 4 |
-| `folding` | Fold state, toggle, markers | 4 |
-| `rpc` | Server config, transport, types | 15 |
-| `testing` | Key parsing, harness spawn | 10 |
+Test coverage is tracked via Codecov. The project enforces **100% coverage** on all PRs:
 
-**Unit Tests: 213**
-**Integration Tests: 40** (basic_editing: 10, mode_switching: 8, resize: 5, visual_snapshot: 17)
+- **Non-server crates**: 100% MC/DC coverage (line + condition)
+- **Server crate** (`reovim-server`): 100% line coverage
+
+Coverage reports are uploaded as CI artifacts (`COVERAGE-workspace.md`, `COVERAGE-server.md`) and enforced via Codecov status checks. PRs that regress coverage are blocked.
 
 ### Phase 7+ Integration Tests
 
@@ -681,7 +662,6 @@ tools/bench/
 Before submitting a PR:
 
 ```bash
-cargo build --release  # Required for integration tests
 cargo test             # All tests must pass
 cargo clippy           # No warnings allowed
 cargo fmt -- --check   # Code must be formatted
