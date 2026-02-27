@@ -48,6 +48,7 @@
 //! let driver_event: KeyEvent = arch_event.into();
 //! ```
 
+mod binding_info;
 mod convert;
 mod error;
 mod fallback;
@@ -129,3 +130,6 @@ pub use keybinding_store::KeybindingStore;
 
 // Re-export pending bindings extension (#468 - Which-Key bridge)
 pub use pending::PendingBindings;
+
+// Re-export binding metadata (#459 - Which-Key filter refinement)
+pub use binding_info::BindingInfo;

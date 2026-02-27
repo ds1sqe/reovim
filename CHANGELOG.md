@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Which-key filter command refinement (#459)**: Threads binding metadata
+  (description, category, layer) through the full input pipeline from
+  `KeybindingRegistration` to `WhichKeyBridge`. Introduces `BindingInfo` struct
+  in `reovim-driver-input` as the mechanism-layer metadata carrier. Adds
+  `WhichKeyFilterConfig` session extension with three filter axes: command
+  category (e.g., "motion", "operator"), key display pattern (substring match),
+  and binding layer (`UserOnly`, `DefaultsOnly`, `Specific`). `WhichKeyBridge`
+  applies active filters before emitting JSON hints, and emits richer fields
+  (description, category, layer) alongside existing key/command data.
+  `KeymapRegistry::bindings_with_prefix()` now returns `Vec<(KeySequence,
+  BindingInfo)>`. 88 tests cover all filter combinations and metadata
+  round-trips.
+
 - **Which-key show-delay with testable clock injection (#462)**: Adds a
   configurable 500ms delay before showing the which-key popup, preventing
   visual noise during fast key sequences. Introduces `Clock` trait,

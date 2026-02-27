@@ -2741,8 +2741,13 @@ mod tests {
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let pb = extensions.get_or_insert::<PendingBindings>();
         let cmd = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy");
-        pb.continuations
-            .push((reovim_driver_input::KeySequence::new(), cmd));
+        pb.continuations.push((
+            reovim_driver_input::KeySequence::new(),
+            reovim_driver_input::BindingInfo::from_command(
+                cmd,
+                reovim_driver_input::BindingLayer::Policy,
+            ),
+        ));
         assert!(extensions.get::<PendingBindings>().unwrap().is_active());
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));

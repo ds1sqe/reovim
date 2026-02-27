@@ -198,6 +198,8 @@ fn extract_registries(
                         mode_id,
                         keys.clone(),
                         binding.command_id.clone(),
+                        binding.description,
+                        binding.category,
                     );
                     wired += 1;
                 } else {

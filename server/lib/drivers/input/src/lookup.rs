@@ -41,7 +41,7 @@
 
 use reovim_kernel::api::v1::{CommandId, ModeId};
 
-use crate::KeySequence;
+use crate::{BindingInfo, KeySequence};
 
 /// Pure mechanism: reports what exists in the registry.
 ///
@@ -362,6 +362,9 @@ pub trait KeymapQuery: Send + Sync {
     /// Returns bindings where the key sequence starts with `prefix` but is longer
     /// than `prefix`. This is used by which-key to show available completions.
     ///
+    /// Each result includes full binding metadata ([`BindingInfo`]) with
+    /// command, description, category, and layer.
+    ///
     /// # Arguments
     ///
     /// * `mode` - The mode to query bindings for
@@ -369,7 +372,7 @@ pub trait KeymapQuery: Send + Sync {
     ///
     /// # Returns
     ///
-    /// A vector of (full key sequence, command ID) pairs for bindings that
+    /// A vector of (full key sequence, binding info) pairs for bindings that
     /// extend the given prefix. The caller can extract the suffix by skipping
     /// `prefix.len()` keys from the full sequence.
     ///
@@ -381,7 +384,7 @@ pub trait KeymapQuery: Send + Sync {
         &self,
         _mode: &ModeId,
         _prefix: &KeySequence,
-    ) -> Vec<(KeySequence, CommandId)> {
+    ) -> Vec<(KeySequence, BindingInfo)> {
         Vec::new()
     }
 }
