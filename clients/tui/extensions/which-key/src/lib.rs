@@ -78,6 +78,36 @@ fn title_case(s: &str) -> String {
         .map_or_else(String::new, |c| c.to_uppercase().to_string() + chars.as_str())
 }
 
+/// Color configuration for the which-key popup.
+///
+/// Controls the foreground colors used for each element of the popup.
+/// Defaults match the original hardcoded values for backward compatibility.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhichKeyStyleConfig {
+    /// Border and box-drawing character color.
+    pub border_color: Color,
+    /// Title/prefix text color (shown in top border).
+    pub title_color: Color,
+    /// Key binding text color (left column).
+    pub key_color: Color,
+    /// Command description text color (right column).
+    pub desc_color: Color,
+    /// Category header text color.
+    pub category_color: Color,
+}
+
+impl Default for WhichKeyStyleConfig {
+    fn default() -> Self {
+        Self {
+            border_color: Color::DarkGrey,
+            title_color: Color::Yellow,
+            key_color: Color::Cyan,
+            desc_color: Color::White,
+            category_color: Color::DarkGrey,
+        }
+    }
+}
+
 /// Render a single hint row. Returns the number of rows consumed (always 1).
 #[allow(clippy::too_many_arguments)]
 fn render_hint_row(
@@ -144,6 +174,8 @@ pub struct WhichKeyExtension {
     prefix: String,
     /// Available continuations with category metadata.
     hints: Vec<WhichKeyHint>,
+    /// Color styling configuration for popup elements.
+    style: WhichKeyStyleConfig,
 }
 
 impl WhichKeyExtension {
@@ -158,6 +190,16 @@ impl WhichKeyExtension {
             clock: Arc::new(SystemClock),
             prefix: String::new(),
             hints: Vec::new(),
+            style: WhichKeyStyleConfig::default(),
+        }
+    }
+
+    /// Create a which-key extension with custom color styling.
+    #[must_use]
+    pub fn with_style(style: WhichKeyStyleConfig) -> Self {
+        Self {
+            style,
+            ..Self::new()
         }
     }
 
@@ -284,7 +326,7 @@ impl TuiExtension for WhichKeyExtension {
         // Position above the statusline (bottom-anchored)
         let py = height.saturating_sub(1 + popup_height);
 
-        let border_style = Style::default().fg(Color::DarkGrey);
+        let border_style = Style::default().fg(self.style.border_color);
 
         // Draw border
         render_box_border(backend, px, py, pw, popup_height, &border_style);
@@ -293,7 +335,7 @@ impl TuiExtension for WhichKeyExtension {
         if !self.prefix.is_empty() {
             let title = format!(" {} ", self.prefix);
             let title_x = px + 3; // after "---"
-            let title_style = Style::default().fg(Color::Yellow);
+            let title_style = Style::default().fg(self.style.title_color);
             backend.write_str(title_x, py, &title, &title_style);
         }
 
@@ -301,9 +343,9 @@ impl TuiExtension for WhichKeyExtension {
         let content_x = px + 2; // border + padding
         let content_width = pw.saturating_sub(4); // 2 padding each side
 
-        let key_style = Style::default().fg(Color::Cyan);
-        let cmd_style = Style::default().fg(Color::White);
-        let cat_style = Style::default().fg(Color::DarkGrey);
+        let key_style = Style::default().fg(self.style.key_color);
+        let cmd_style = Style::default().fg(self.style.desc_color);
+        let cat_style = Style::default().fg(self.style.category_color);
         let clear_style = Style::default();
 
         let mut row_offset: u16 = 0;
@@ -822,12 +864,12 @@ mod tests {
         assert_eq!(fb.get(content_x, hint_y).unwrap().char, 'g');
 
         // Third row should be category header "Operator"
-        let header2_y = py + 3;
-        assert_eq!(fb.get(content_x, header2_y).unwrap().char, 'O');
+        let header_y2 = py + 3;
+        assert_eq!(fb.get(content_x, header_y2).unwrap().char, 'O');
 
         // Fourth row should be hint "d"
-        let hint2_y = py + 4;
-        assert_eq!(fb.get(content_x, hint2_y).unwrap().char, 'd');
+        let hint_y2 = py + 4;
+        assert_eq!(fb.get(content_x, hint_y2).unwrap().char, 'd');
     }
 
     #[test]
@@ -880,5 +922,162 @@ mod tests {
         let py = 24u16.saturating_sub(1 + 5);
         let header_y = py + 1;
         assert_eq!(fb.get(content_x, header_y).unwrap().char, 'M'); // "Motion"
+    }
+
+    // =========================================================================
+    // WhichKeyStyleConfig tests
+    // =========================================================================
+
+    #[test]
+    fn test_style_config_default() {
+        let config = WhichKeyStyleConfig::default();
+        assert_eq!(config.border_color, Color::DarkGrey);
+        assert_eq!(config.title_color, Color::Yellow);
+        assert_eq!(config.key_color, Color::Cyan);
+        assert_eq!(config.desc_color, Color::White);
+        assert_eq!(config.category_color, Color::DarkGrey);
+    }
+
+    #[test]
+    fn test_style_config_clone_eq() {
+        let config = WhichKeyStyleConfig::default();
+        let cloned = config.clone();
+        assert_eq!(config, cloned);
+    }
+
+    #[test]
+    fn test_with_style_constructor() {
+        let custom = WhichKeyStyleConfig {
+            border_color: Color::Red,
+            title_color: Color::Green,
+            key_color: Color::Blue,
+            desc_color: Color::Magenta,
+            category_color: Color::Yellow,
+        };
+        let ext = WhichKeyExtension::with_style(custom.clone());
+        assert_eq!(ext.style, custom);
+        assert!(!ext.is_active());
+    }
+
+    // =========================================================================
+    // Render color tests
+    // =========================================================================
+
+    fn styled_ext(style: WhichKeyStyleConfig) -> WhichKeyExtension {
+        let mut ext = zero_delay_ext();
+        ext.style = style;
+        ext
+    }
+
+    #[test]
+    fn test_render_uses_custom_border_color() {
+        let style = WhichKeyStyleConfig {
+            border_color: Color::Red,
+            ..WhichKeyStyleConfig::default()
+        };
+        let mut ext = styled_ext(style);
+        ext.apply_notification(activate_data_single());
+        ext.tick();
+
+        let mut fb = FrameBuffer::new(80, 24);
+        ext.render(&mut fb);
+
+        let pw = popup_width(80);
+        let px = popup_x(80, pw);
+        let py = 24u16.saturating_sub(1 + 4); // 1 hint + 1 header + 2 borders
+        // Top-left corner border char
+        let cell = fb.get(px, py).unwrap();
+        assert_eq!(cell.style.fg, Some(Color::Red));
+    }
+
+    #[test]
+    fn test_render_uses_custom_title_color() {
+        let style = WhichKeyStyleConfig {
+            title_color: Color::Magenta,
+            ..WhichKeyStyleConfig::default()
+        };
+        let mut ext = styled_ext(style);
+        ext.apply_notification(activate_data_single());
+        ext.tick();
+
+        let mut fb = FrameBuffer::new(80, 24);
+        ext.render(&mut fb);
+
+        let pw = popup_width(80);
+        let px = popup_x(80, pw);
+        let py = 24u16.saturating_sub(1 + 4);
+        // Title is at px + 3, " g " format — the space + prefix
+        let title_x = px + 3;
+        let cell = fb.get(title_x, py).unwrap();
+        assert_eq!(cell.style.fg, Some(Color::Magenta));
+    }
+
+    #[test]
+    fn test_render_uses_custom_key_color() {
+        let style = WhichKeyStyleConfig {
+            key_color: Color::Green,
+            ..WhichKeyStyleConfig::default()
+        };
+        let mut ext = styled_ext(style);
+        ext.apply_notification(activate_data_single());
+        ext.tick();
+
+        let mut fb = FrameBuffer::new(80, 24);
+        ext.render(&mut fb);
+
+        let pw = popup_width(80);
+        let px = popup_x(80, pw);
+        let py = 24u16.saturating_sub(1 + 4);
+        let content_x = px + 2;
+        // First hint row is after the category header: py + 1 (header) + 1 (hint)
+        let hint_y = py + 2;
+        let cell = fb.get(content_x, hint_y).unwrap();
+        assert_eq!(cell.style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn test_render_uses_custom_desc_color() {
+        let style = WhichKeyStyleConfig {
+            desc_color: Color::Blue,
+            ..WhichKeyStyleConfig::default()
+        };
+        let mut ext = styled_ext(style);
+        ext.apply_notification(activate_data_single());
+        ext.tick();
+
+        let mut fb = FrameBuffer::new(80, 24);
+        ext.render(&mut fb);
+
+        let pw = popup_width(80);
+        let px = popup_x(80, pw);
+        let py = 24u16.saturating_sub(1 + 4);
+        // Command text at content_x + 7
+        let cmd_x = px + 2 + 7;
+        let hint_y = py + 2;
+        let cell = fb.get(cmd_x, hint_y).unwrap();
+        assert_eq!(cell.style.fg, Some(Color::Blue));
+    }
+
+    #[test]
+    fn test_render_uses_custom_category_color() {
+        let style = WhichKeyStyleConfig {
+            category_color: Color::DarkMagenta,
+            ..WhichKeyStyleConfig::default()
+        };
+        let mut ext = styled_ext(style);
+        ext.apply_notification(activate_data_single());
+        ext.tick();
+
+        let mut fb = FrameBuffer::new(80, 24);
+        ext.render(&mut fb);
+
+        let pw = popup_width(80);
+        let px = popup_x(80, pw);
+        let py = 24u16.saturating_sub(1 + 4);
+        let content_x = px + 2;
+        // Category header is right after the top border
+        let header_y = py + 1;
+        let cell = fb.get(content_x, header_y).unwrap();
+        assert_eq!(cell.style.fg, Some(Color::DarkMagenta));
     }
 }

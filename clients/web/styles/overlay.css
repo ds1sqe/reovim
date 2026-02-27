@@ -183,6 +183,13 @@
 /* ============ Which-Key Hints ============ */
 
 .whichkey-popup {
+  /* Overridable color properties (default to theme vars) */
+  --whichkey-border-color: var(--theme-border);
+  --whichkey-title-color: var(--theme-text-accent);
+  --whichkey-key-color: var(--theme-accent);
+  --whichkey-desc-color: var(--theme-text-muted);
+  --whichkey-category-color: var(--theme-text-muted);
+
   position: fixed;
   bottom: 2rem;
   left: 50%;
@@ -192,13 +199,14 @@
   max-height: 40%;
   overflow-y: auto;
   z-index: 150;
+  border-color: var(--whichkey-border-color);
 }
 
 .whichkey-header {
   padding: 6px 12px;
   font-weight: bold;
-  color: var(--theme-text-accent);
-  border-bottom: 1px solid var(--theme-border);
+  color: var(--whichkey-title-color);
+  border-bottom: 1px solid var(--whichkey-border-color);
 }
 
 .whichkey-hints {
@@ -214,18 +222,18 @@
 .whichkey-key {
   min-width: 5em;
   font-weight: bold;
-  color: var(--theme-accent);
+  color: var(--whichkey-key-color);
 }
 
 .whichkey-command {
-  color: var(--theme-text-muted);
+  color: var(--whichkey-desc-color);
   font-size: 0.9em;
 }
 
 .whichkey-group-header {
   padding: 4px 12px 2px;
   font-size: 0.85em;
-  color: var(--theme-text-muted);
+  color: var(--whichkey-category-color);
   text-transform: capitalize;
 }
 

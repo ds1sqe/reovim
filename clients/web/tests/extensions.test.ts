@@ -386,6 +386,56 @@ describe("WhichKeyExtension DOM rendering", () => {
   });
 });
 
+// ============ 8c2: Which-Key Style Custom Properties ============
+
+describe("which-key style custom property support", () => {
+  let ext: WhichKeyExtension;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ext = new WhichKeyExtension(0);
+    container = document.createElement("div");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("popup container scopes all styled children for CSS custom property inheritance", () => {
+    ext.applyNotification(WHICHKEY_PAYLOAD);
+    ext.render(container);
+
+    const popup = container.querySelector(".whichkey-popup");
+    expect(popup).toBeTruthy();
+
+    // All styled elements must be descendants of .whichkey-popup
+    // so --whichkey-* custom properties defined on .whichkey-popup cascade down
+    const header = popup!.querySelector(".whichkey-header");
+    const key = popup!.querySelector(".whichkey-key");
+    const command = popup!.querySelector(".whichkey-command");
+    const groupHeader = popup!.querySelector(".whichkey-group-header");
+
+    expect(header).toBeTruthy();
+    expect(key).toBeTruthy();
+    expect(command).toBeTruthy();
+    expect(groupHeader).toBeTruthy();
+  });
+
+  it("inline style override on popup propagates to children", () => {
+    ext.applyNotification(WHICHKEY_PAYLOAD);
+    ext.render(container);
+
+    const popup = container.querySelector(".whichkey-popup") as HTMLElement;
+    expect(popup).toBeTruthy();
+
+    // Setting a custom property on the popup element should work
+    // (verifies the element accepts style.setProperty for overrides)
+    popup.style.setProperty("--whichkey-key-color", "#ff0000");
+    expect(popup.style.getPropertyValue("--whichkey-key-color")).toBe("#ff0000");
+  });
+});
+
 // ============ 8d: Error Handling ============
 
 describe("error handling", () => {

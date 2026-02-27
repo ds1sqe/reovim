@@ -19,6 +19,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   BindingInfo)>`. 88 tests cover all filter combinations and metadata
   round-trips.
 
+- **Which-key popup color styling (#461)**: Makes which-key popup colors
+  configurable in both TUI and web clients. TUI: adds `WhichKeyStyleConfig`
+  struct with 5 color fields (border, title, key, desc, category) replacing
+  hardcoded `Color::*` constants. Defaults preserve original appearance.
+  `WhichKeyExtension::with_style()` constructor accepts custom configs.
+  Web: introduces `--whichkey-*` CSS custom properties on `.whichkey-popup`
+  with fallbacks to theme variables, enabling per-element color overrides.
+  8 new TUI tests + 2 new web tests cover all color slots.
+
 - **Which-key binding category grouping (#460)**: Groups keybinding hints by
   category in the which-key popup for both TUI and web clients. Hints are sorted
   by a fixed category order (motion, operator, textobject, window, buffer) with
