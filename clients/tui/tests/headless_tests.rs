@@ -741,9 +741,15 @@ async fn test_picker_backspace_removes_char() {
         .await
         .expect("Failed to send BS");
 
-    // Wait for 'b' to be gone while 'a' remains (check that "ab" is gone)
+    // Wait for query line to show "> a" without "b" (the prompt line specifically).
+    // We check that no line starts with "> ab" (the query line), rather than
+    // checking the entire frame, since item file paths may contain "ab".
     let result = handle
-        .wait_for(Duration::from_secs(2), |frame| !frame.contains("ab"))
+        .wait_for(Duration::from_secs(2), |frame| {
+            frame
+                .lines()
+                .any(|line| line.starts_with("> a") && !line.starts_with("> ab"))
+        })
         .await;
 
     match result {

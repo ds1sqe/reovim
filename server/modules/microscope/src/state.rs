@@ -5,7 +5,7 @@
 //! input routing system when the microscope is active.
 
 use {
-    reovim_driver_picker::PreviewContent,
+    reovim_driver_picker::{PickerEngine, PickerItem, PreviewContent},
     reovim_driver_session::{SessionExtension, TextInputSink},
 };
 
@@ -28,7 +28,6 @@ pub struct PickerItemSnapshot {
 /// Tracks the current picker, query, selection, and visible items.
 /// Updated by the module's command handlers and read by the bridge
 /// for serialization to clients.
-#[derive(Debug)]
 pub struct MicroscopeState {
     /// Whether the microscope UI is visible.
     pub active: bool,
@@ -54,6 +53,10 @@ pub struct MicroscopeState {
     pub matched_count: u32,
     /// Preview content for the selected item.
     pub preview: Option<PreviewContent>,
+    /// Fuzzy matching engine (persists across keystrokes).
+    pub engine: PickerEngine,
+    /// Full matched items (with `PickerData` for action dispatch).
+    pub full_items: Vec<PickerItem>,
 }
 
 impl SessionExtension for MicroscopeState {
@@ -71,11 +74,29 @@ impl SessionExtension for MicroscopeState {
             total_count: 0,
             matched_count: 0,
             preview: None,
+            engine: PickerEngine::new(),
+            full_items: Vec::new(),
         }
     }
 
     fn as_text_input_sink(&mut self) -> Option<&mut dyn TextInputSink> {
         if self.active { Some(self) } else { None }
+    }
+}
+
+impl std::fmt::Debug for MicroscopeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MicroscopeState")
+            .field("active", &self.active)
+            .field("query", &self.query)
+            .field("cursor", &self.cursor)
+            .field("selected", &self.selected)
+            .field("picker_name", &self.picker_name)
+            .field("items_len", &self.items.len())
+            .field("full_items_len", &self.full_items.len())
+            .field("total_count", &self.total_count)
+            .field("matched_count", &self.matched_count)
+            .finish_non_exhaustive()
     }
 }
 
@@ -89,6 +110,47 @@ impl TextInputSink for MicroscopeState {
             .map_or(self.query.len(), |(i, _)| i);
         self.query.insert(byte_pos, ch);
         self.cursor += 1;
+        self.refresh_engine();
+    }
+}
+
+/// Maximum number of visible items returned from the engine.
+const MAX_VISIBLE: usize = 200;
+
+impl MicroscopeState {
+    /// Sync engine pattern with current query, tick, and update visible items.
+    ///
+    /// Called after every query change (character insert, backspace) to
+    /// refresh the fuzzy-matched result list from the engine.
+    pub fn refresh_engine(&mut self) {
+        self.engine.set_pattern(&self.query);
+        // Tick until stable (bounded to avoid infinite loop).
+        for _ in 0..100 {
+            let status = self.engine.tick(10);
+            if !status.running {
+                break;
+            }
+        }
+        // Update counts.
+        self.total_count = self.engine.total_count();
+        self.matched_count = self.engine.matched_count();
+        // Update visible items (snapshots for bridge + full items for dispatch).
+        let matched = self.engine.matched_items(MAX_VISIBLE);
+        self.items = matched
+            .iter()
+            .map(|item| PickerItemSnapshot {
+                display: item.display.clone(),
+                detail: item.detail.clone(),
+                icon: item.icon,
+            })
+            .collect();
+        self.full_items = matched;
+        // Clamp selection.
+        if self.matched_count == 0 {
+            self.selected = 0;
+        } else {
+            self.selected = self.selected.min(self.matched_count as usize - 1);
+        }
     }
 }
 
@@ -111,6 +173,7 @@ mod tests {
         assert_eq!(state.total_count, 0);
         assert_eq!(state.matched_count, 0);
         assert!(state.preview.is_none());
+        assert!(state.full_items.is_empty());
     }
 
     #[test]
@@ -118,6 +181,105 @@ mod tests {
         let state = MicroscopeState::create();
         let debug = format!("{state:?}");
         assert!(debug.contains("MicroscopeState"));
+    }
+
+    #[test]
+    fn refresh_engine_empty() {
+        let mut state = MicroscopeState::create();
+        state.refresh_engine();
+        assert_eq!(state.total_count, 0);
+        assert_eq!(state.matched_count, 0);
+        assert!(state.items.is_empty());
+        assert!(state.full_items.is_empty());
+        assert_eq!(state.selected, 0);
+    }
+
+    #[test]
+    fn refresh_engine_with_items() {
+        use reovim_driver_picker::{PickerData, push_items};
+
+        let mut state = MicroscopeState::create();
+        let injector = state.engine.injector();
+        push_items(
+            &injector,
+            vec![
+                PickerItem {
+                    display: "main.rs".to_owned(),
+                    detail: None,
+                    data: PickerData::Text("a".to_owned()),
+                    icon: None,
+                },
+                PickerItem {
+                    display: "lib.rs".to_owned(),
+                    detail: Some("src/lib.rs".to_owned()),
+                    data: PickerData::Text("b".to_owned()),
+                    icon: Some('f'),
+                },
+            ],
+        );
+        state.refresh_engine();
+        assert_eq!(state.total_count, 2);
+        assert_eq!(state.matched_count, 2);
+        assert_eq!(state.items.len(), 2);
+        assert_eq!(state.full_items.len(), 2);
+    }
+
+    #[test]
+    fn refresh_engine_clamps_selection() {
+        use reovim_driver_picker::{PickerData, push_items};
+
+        let mut state = MicroscopeState::create();
+        state.selected = 10; // Out of bounds.
+        let injector = state.engine.injector();
+        push_items(
+            &injector,
+            vec![PickerItem {
+                display: "only.rs".to_owned(),
+                detail: None,
+                data: PickerData::Text("x".to_owned()),
+                icon: None,
+            }],
+        );
+        state.refresh_engine();
+        assert_eq!(state.selected, 0); // Clamped to max valid index.
+    }
+
+    #[test]
+    fn insert_char_refreshes_engine() {
+        use reovim_driver_picker::{PickerData, push_items};
+
+        let mut state = MicroscopeState::create();
+        state.active = true;
+        let injector = state.engine.injector();
+        push_items(
+            &injector,
+            vec![
+                PickerItem {
+                    display: "main.rs".to_owned(),
+                    detail: None,
+                    data: PickerData::Text("a".to_owned()),
+                    icon: None,
+                },
+                PickerItem {
+                    display: "lib.rs".to_owned(),
+                    detail: None,
+                    data: PickerData::Text("b".to_owned()),
+                    icon: None,
+                },
+            ],
+        );
+        // Initial refresh to populate.
+        state.refresh_engine();
+        assert_eq!(state.matched_count, 2);
+
+        // Type "main" to filter.
+        TextInputSink::insert_char(&mut state, 'm');
+        TextInputSink::insert_char(&mut state, 'a');
+        TextInputSink::insert_char(&mut state, 'i');
+        TextInputSink::insert_char(&mut state, 'n');
+        // After typing, engine should have filtered.
+        assert_eq!(state.matched_count, 1);
+        assert_eq!(state.items[0].display, "main.rs");
     }
 
     #[test]
