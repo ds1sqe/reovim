@@ -4,7 +4,7 @@
 
 use {
     reovim_kernel::api::v1::KeybindingRegistration, reovim_module_editor::ids as editor,
-    reovim_module_motions::ids as motions,
+    reovim_module_motions::ids as motions, reovim_module_window_ops::ids as window_ops,
 };
 
 use crate::ids as vim;
@@ -312,6 +312,17 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_category("window")
             .with_description("Enter window mode"),
         // ====================================================================
+        // Tabs (#401)
+        // ====================================================================
+        KeybindingRegistration::new("gt", window_ops::TAB_NEXT)
+            .with_modes(&["vim:normal"])
+            .with_category("tab")
+            .with_description("Go to next tab"),
+        KeybindingRegistration::new("gT", window_ops::TAB_PREV)
+            .with_modes(&["vim:normal"])
+            .with_category("tab")
+            .with_description("Go to previous tab"),
+        // ====================================================================
         // Marks
         // ====================================================================
         KeybindingRegistration::new("m", editor::SET_MARK)
@@ -545,6 +556,14 @@ mod tests {
         assert!(keys.contains(&"<C-b>d"), "Missing '<C-b>d' binding");
         assert!(keys.contains(&"<C-b>s"), "Missing '<C-b>s' binding");
         assert!(keys.contains(&"<C-b>&"), "Missing '<C-b>&' binding");
+    }
+
+    #[test]
+    fn test_tab_keys_exist() {
+        let b = bindings();
+        let keys: Vec<_> = b.iter().map(|kb| kb.keys).collect();
+        assert!(keys.contains(&"gt"), "Missing 'gt' binding");
+        assert!(keys.contains(&"gT"), "Missing 'gT' binding");
     }
 
     #[test]

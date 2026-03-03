@@ -130,6 +130,10 @@ pub trait RootCompositor: Send + Sync {
 
     /// Focus window by clicking at position (handles click-through).
     ///
+    /// Iterates layers top-to-bottom. Layers with opacity below
+    /// [`CLICK_THROUGH_THRESHOLD`](super::layer::CLICK_THROUGH_THRESHOLD)
+    /// are skipped, allowing clicks to pass through to lower layers.
+    ///
     /// Returns the window that was focused, or None if clicking empty space.
     fn focus_at(&mut self, x: u16, y: u16) -> Option<WindowId>;
 
@@ -408,6 +412,7 @@ mod tests {
                     layer_id: LayerId::new(0),
                     visible: true,
                     focusable: true,
+                    opacity: 1.0,
                 },
                 WindowPlacement {
                     window_id: WindowId::from_raw(2),
@@ -417,6 +422,7 @@ mod tests {
                     layer_id: LayerId::new(0),
                     visible: true,
                     focusable: true,
+                    opacity: 1.0,
                 },
             ],
             focused: Some(WindowId::from_raw(1)),

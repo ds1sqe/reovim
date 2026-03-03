@@ -47,7 +47,8 @@ mod view;
 
 // Layer types
 pub use layer::{
-    Anchor, Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, ZOrder, Zone,
+    Anchor, CLICK_THROUGH_THRESHOLD, Layer, LayerConfig, LayerId, OverlayConstraints,
+    WindowPlacement, ZOrder, Zone,
 };
 
 // Compositor traits and types

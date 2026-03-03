@@ -558,6 +558,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -571,6 +572,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -673,6 +675,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -686,6 +689,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -709,6 +713,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -722,6 +727,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -750,6 +756,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -763,6 +770,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -789,6 +797,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -802,6 +811,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -828,6 +838,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -841,6 +852,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -874,6 +886,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -887,6 +900,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -920,6 +934,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -933,6 +948,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -982,6 +998,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -995,6 +1012,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1020,6 +1038,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1033,6 +1052,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1062,6 +1082,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1075,6 +1096,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1117,6 +1139,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -1130,6 +1153,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1158,6 +1182,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -1171,6 +1196,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1316,6 +1342,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1329,6 +1356,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1361,6 +1389,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1374,6 +1403,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1405,6 +1435,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12; // position past the second hello
@@ -1421,6 +1452,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1457,6 +1489,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1470,6 +1503,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1495,6 +1529,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12; // At second 'hello'
@@ -1511,6 +1546,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1537,6 +1573,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 5; // On space between hello and world
@@ -1553,6 +1590,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1579,6 +1617,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 100; // way past end
@@ -1595,6 +1634,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1620,6 +1660,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 5; // On space
@@ -1636,6 +1677,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1662,6 +1704,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 12;
@@ -1678,6 +1721,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1710,6 +1754,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -1723,6 +1768,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1757,6 +1803,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -1770,6 +1817,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1803,6 +1851,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -1816,6 +1865,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1843,6 +1893,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 0; // At 'h' of hello
@@ -1859,6 +1910,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1885,6 +1937,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 6; // At 'w' of world
@@ -1901,6 +1954,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1956,6 +2010,7 @@ mod tests {
         let mut windows = WindowLayout::empty(); // No window added
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
@@ -1968,6 +2023,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1990,6 +2046,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
@@ -2002,6 +2059,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2025,6 +2083,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
@@ -2037,6 +2096,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2062,6 +2122,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
@@ -2074,6 +2135,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2105,6 +2167,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
@@ -2117,6 +2180,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2142,6 +2206,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::with_buffer(buffer_id));
 
         let mut registers = RegisterBank::new();
@@ -2155,6 +2220,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2180,6 +2246,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         windows.add(Window::new());
 
         let mut registers = RegisterBank::new();
@@ -2193,6 +2260,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2224,6 +2292,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 2; // 'l' in hello (middle of word)
@@ -2240,6 +2309,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2265,6 +2335,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         let mut win = Window::with_buffer(buffer_id);
         win.cursor.column = 14; // 'l' in second hello
@@ -2281,6 +2352,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,

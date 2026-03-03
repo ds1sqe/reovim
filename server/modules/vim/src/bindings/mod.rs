@@ -143,7 +143,7 @@ mod tests {
     #[test]
     fn test_window_bindings_count() {
         let bindings = window::bindings();
-        assert_eq!(bindings.len(), 26, "Window mode should have 26 bindings");
+        assert_eq!(bindings.len(), 27, "Window mode should have 27 bindings");
     }
 
     #[test]

@@ -75,6 +75,31 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   functions. E2E register and clipboard tests relocated to their policy module
   crates (`reovim-module-vim`, `reovim-module-clipboard`).
 
+- **Layer transparency and color passthrough (#400)**: Adds per-window opacity
+  support for layered rendering. Introduces `color_blend` module in the TUI
+  display driver with `blend_cell_colors()` for alpha-compositing foreground
+  and background colors against a configurable default background. Adds
+  `ansi_to_rgb()` and `rgb_lerp()` utility functions for 256-color and
+  true-color blending. `RenderConfig` struct encapsulates line number mode and
+  opacity for clean parameter passing. `render_line_number()` and cell
+  rendering paths use opacity-aware blending when opacity < 1.0. Includes
+  30 unit tests covering all color variants, edge cases, and opacity levels.
+
+- **Tab pages for window layout grouping (#401)**: Implements a tmux-like tab
+  page system for organizing window layouts. Adds `TabPageSet` and `TabPage`
+  types in the session driver with full lifecycle management (create, close,
+  switch, reorder). Each tab owns an independent set of `WindowId`s. Tab
+  operations (`tab_new`, `tab_close`, `tab_next`, `tab_prev`, `tab_goto`)
+  wired into `SessionRuntime` and `CompositorApi`. New command IDs in
+  `reovim-module-window-ops`: `TAB_NEW`, `TAB_CLOSE`, `TAB_NEXT`, `TAB_PREV`,
+  `TAB_GOTO`, `TAB_COUNT`, `MOVE_TO_NEW_TAB`. Normal mode keybindings `gt`
+  (next tab) and `gT` (previous tab), window mode `T` (move to new tab).
+  `TabPageInfo` proto message added to gRPC v2 protocol with `active_tab_id`
+  and `tabs` fields in `LayoutChanged` notifications and `GetLayoutResponse`.
+  TUI stores tab state from server notifications. Per-client `TabPageSet`
+  stored in `EditingState` and threaded through `ClientContext`. 263 unit
+  tests across all layers.
+
 - **Headless web capture via Playwright (#516)**: `reovim cli capture --format png
   --web-url URL` produces pixel-perfect screenshots by running the real web client
   in headless Chromium via Playwright. Adds a Node.js capture script

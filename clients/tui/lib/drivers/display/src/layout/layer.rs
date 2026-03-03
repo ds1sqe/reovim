@@ -17,6 +17,12 @@ use crate::{Rect, WindowId};
 
 use super::view::{ColIndex, LineIndex};
 
+/// Opacity threshold below which mouse clicks pass through to the layer below.
+///
+/// Layers with opacity below this value are considered "click-through" —
+/// they are still rendered (dimmed) but do not capture mouse input.
+pub const CLICK_THROUGH_THRESHOLD: f32 = 0.1;
+
 /// Unique identifier for a layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LayerId(pub u16);
@@ -165,6 +171,20 @@ impl Layer {
         }
     }
 
+    /// Check if this layer is click-through.
+    ///
+    /// A layer is click-through when its opacity is below
+    /// [`CLICK_THROUGH_THRESHOLD`]. Click-through layers are still
+    /// rendered (dimmed) but do not capture mouse input — clicks
+    /// pass through to the layer below.
+    ///
+    /// Keyboard input is NOT affected by click-through; it always
+    /// goes to the focused layer regardless of opacity.
+    #[must_use]
+    pub fn is_click_through(&self) -> bool {
+        self.opacity < CLICK_THROUGH_THRESHOLD
+    }
+
     /// Calculate z-order for a window in a specific zone.
     ///
     /// # Arguments
@@ -201,6 +221,8 @@ pub struct WindowPlacement {
     pub visible: bool,
     /// Whether the window can receive focus.
     pub focusable: bool,
+    /// Layer opacity (0.0 = fully transparent, 1.0 = fully opaque).
+    pub opacity: f32,
 }
 
 impl WindowPlacement {
@@ -221,7 +243,17 @@ impl WindowPlacement {
             z_order,
             visible: true,
             focusable: true,
+            opacity: 1.0,
         }
+    }
+
+    /// Check if this placement is click-through.
+    ///
+    /// A window placement inherits click-through from its layer's opacity.
+    /// When click-through, mouse clicks pass through to windows below.
+    #[must_use]
+    pub fn is_click_through(&self) -> bool {
+        self.opacity < CLICK_THROUGH_THRESHOLD
     }
 }
 
@@ -430,6 +462,16 @@ mod tests {
         assert_eq!(placement.z_order, ZOrder::new(100));
         assert!(placement.visible);
         assert!(placement.focusable);
+        assert!((placement.opacity - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_click_through_threshold() {
+        assert!((CLICK_THROUGH_THRESHOLD - 0.1).abs() < f32::EPSILON);
+        // Layers below threshold should be click-through
+        const { assert!(0.05 < CLICK_THROUGH_THRESHOLD) };
+        // Layers at threshold should NOT be click-through
+        assert!((CLICK_THROUGH_THRESHOLD - 0.1).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -585,5 +627,59 @@ mod tests {
         assert_eq!(config.label, "sidebar");
         assert_eq!(config.bounds, Some(bounds));
         assert!((config.opacity - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_layer_is_click_through_fully_opaque() {
+        let layer = Layer::new(LayerId::new(0), "main", ZOrder::new(0));
+        assert!(!layer.is_click_through());
+    }
+
+    #[test]
+    fn test_layer_is_click_through_at_threshold() {
+        let mut layer = Layer::new(LayerId::new(0), "main", ZOrder::new(0));
+        layer.opacity = CLICK_THROUGH_THRESHOLD;
+        // At threshold (0.1), NOT click-through (< not <=)
+        assert!(!layer.is_click_through());
+    }
+
+    #[test]
+    fn test_layer_is_click_through_below_threshold() {
+        let mut layer = Layer::new(LayerId::new(0), "main", ZOrder::new(0));
+        layer.opacity = 0.05;
+        assert!(layer.is_click_through());
+    }
+
+    #[test]
+    fn test_layer_is_click_through_zero_opacity() {
+        let mut layer = Layer::new(LayerId::new(0), "main", ZOrder::new(0));
+        layer.opacity = 0.0;
+        assert!(layer.is_click_through());
+    }
+
+    #[test]
+    fn test_placement_is_click_through_default() {
+        let placement = WindowPlacement::new(
+            WindowId::from_raw(1),
+            LayerId::new(0),
+            Zone::Tiled,
+            Rect::new(0, 0, 80, 24),
+            ZOrder::new(0),
+        );
+        // Default opacity is 1.0 — not click-through
+        assert!(!placement.is_click_through());
+    }
+
+    #[test]
+    fn test_placement_is_click_through_transparent() {
+        let mut placement = WindowPlacement::new(
+            WindowId::from_raw(1),
+            LayerId::new(0),
+            Zone::Tiled,
+            Rect::new(0, 0, 80, 24),
+            ZOrder::new(0),
+        );
+        placement.opacity = 0.05;
+        assert!(placement.is_click_through());
     }
 }

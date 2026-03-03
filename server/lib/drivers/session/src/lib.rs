@@ -101,6 +101,7 @@ mod handler_registry;
 mod mode;
 mod operator_state;
 mod runtime;
+pub mod tab;
 pub mod testing;
 mod transition;
 mod types;
@@ -138,6 +139,9 @@ pub use api::{
     RegisterContent, Selection, SelectionMode, SessionApi, SessionApiDyn, StateChanges, WindowApi,
     WindowError, YankType,
 };
+
+// Tab page management (#401)
+pub use tab::{TabPage, TabPageSet};
 
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
 pub use {handler_key::SessionHandlerKey, handler_registry::SessionHandlerRegistry};

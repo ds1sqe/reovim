@@ -54,6 +54,7 @@ mod position;
 mod saturator;
 mod selection;
 mod snapshot;
+mod tab_id;
 mod window_id;
 mod word;
 
@@ -72,6 +73,7 @@ pub use {
     },
     selection::{Selection, SelectionMode},
     snapshot::BufferSnapshot,
+    tab_id::TabId,
     window_id::WindowId,
     word::{
         CharKind, WordType, char_kind, next_word_end, next_word_start, word_bounds, word_end,

@@ -45,3 +45,11 @@ message Status {
   bool ok = 1;
   optional string error = 2;
 }
+
+// Tab page information (#401).
+// Used in both LayoutChangedPayload (notification) and GetLayoutResponse (state).
+message TabPageInfo {
+  uint64 tab_id = 1;
+  string label = 2;
+  bool active = 3;
+}

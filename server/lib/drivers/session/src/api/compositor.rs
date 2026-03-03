@@ -24,9 +24,12 @@
 //! above all other windows. They do NOT auto-focus when shown - focus remains
 //! on the underlying tiled/float window.
 //!
-use reovim_driver_display::{
-    NavigateDirection, Rect, SplitDirection, WindowId,
-    layout::{LayerId, OverlayConstraints, WindowPlacement},
+use {
+    reovim_driver_display::{
+        NavigateDirection, Rect, SplitDirection, WindowId,
+        layout::{LayerId, OverlayConstraints, WindowPlacement},
+    },
+    reovim_kernel::api::v1::TabId,
 };
 
 /// Errors from compositor operations.
@@ -48,6 +51,12 @@ pub enum CompositorError {
     WindowNotFound(WindowId),
     /// Layer not found.
     LayerNotFound(LayerId),
+    /// No tab pages available.
+    NoTabPages,
+    /// Cannot close the last tab page.
+    CannotCloseLastTab,
+    /// Tab page not found.
+    TabNotFound(TabId),
 }
 
 impl std::fmt::Display for CompositorError {
@@ -61,6 +70,9 @@ impl std::fmt::Display for CompositorError {
             Self::NoFocusedWindow => write!(f, "no focused window"),
             Self::WindowNotFound(id) => write!(f, "window {} not found", id.as_usize()),
             Self::LayerNotFound(id) => write!(f, "layer {} not found", id.as_u16()),
+            Self::NoTabPages => write!(f, "no tab pages"),
+            Self::CannotCloseLastTab => write!(f, "cannot close last tab"),
+            Self::TabNotFound(id) => write!(f, "tab {} not found", id.as_usize()),
         }
     }
 }
@@ -242,6 +254,45 @@ pub trait CompositorApi {
     fn lower_float(&mut self) -> Result<(), CompositorError>;
 
     // =========================================================================
+    // Opacity Operations (#400)
+    // =========================================================================
+
+    /// Set the opacity of the active layer.
+    ///
+    /// # Arguments
+    ///
+    /// * `opacity` - Value clamped to 0.0..=1.0
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn set_active_layer_opacity(&mut self, opacity: f32) -> Result<(), CompositorError>;
+
+    /// Get the opacity of the active layer.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn active_layer_opacity(&self) -> Result<f32, CompositorError>;
+
+    /// Adjust the active layer's opacity by a delta.
+    ///
+    /// The result is clamped to 0.0..=1.0.
+    ///
+    /// # Arguments
+    ///
+    /// * `delta` - Amount to add (positive = more opaque, negative = more transparent)
+    ///
+    /// # Returns
+    ///
+    /// The new opacity value after adjustment.
+    ///
+    /// # Errors
+    ///
+    /// - `NoActiveLayer` - No layer is active
+    fn adjust_active_layer_opacity(&mut self, delta: f32) -> Result<f32, CompositorError>;
+
+    // =========================================================================
     // Overlay Zone Operations (#399)
     // =========================================================================
 
@@ -300,6 +351,55 @@ pub trait CompositorApi {
     ///
     /// - `NoActiveLayer` - No layer is active
     fn hide_all_overlays(&mut self) -> Result<(), CompositorError>;
+
+    // =========================================================================
+    // Tab Page Operations (#401)
+    // =========================================================================
+
+    /// Create a new tab page after the active tab.
+    ///
+    /// The new tab becomes active.
+    ///
+    /// # Errors
+    ///
+    /// - `NoTabPages` - Tab system not initialized
+    fn tab_new(&mut self) -> Result<TabId, CompositorError>;
+
+    /// Close the active tab page.
+    ///
+    /// # Errors
+    ///
+    /// - `NoTabPages` - Tab system not initialized
+    /// - `CannotCloseLastTab` - Cannot close the only tab
+    fn tab_close(&mut self) -> Result<(), CompositorError>;
+
+    /// Switch to the next tab page (wraps around).
+    ///
+    /// # Errors
+    ///
+    /// - `NoTabPages` - Tab system not initialized
+    fn tab_next(&mut self) -> Result<TabId, CompositorError>;
+
+    /// Switch to the previous tab page (wraps around).
+    ///
+    /// # Errors
+    ///
+    /// - `NoTabPages` - Tab system not initialized
+    fn tab_prev(&mut self) -> Result<TabId, CompositorError>;
+
+    /// Switch to a tab page by 0-based index.
+    ///
+    /// # Errors
+    ///
+    /// - `NoTabPages` - Tab system not initialized
+    /// - `TabNotFound` - Index out of bounds
+    fn tab_goto(&mut self, index: usize) -> Result<TabId, CompositorError>;
+
+    /// Get the number of tab pages.
+    fn tab_count(&self) -> usize;
+
+    /// Get the active tab page's ID.
+    fn active_tab_id(&self) -> Option<TabId>;
 }
 
 #[cfg(test)]
@@ -376,5 +476,20 @@ mod tests {
     fn test_compositor_error_eq() {
         assert_eq!(CompositorError::NoActiveLayer, CompositorError::NoActiveLayer);
         assert_ne!(CompositorError::NoActiveLayer, CompositorError::NoFocusedWindow);
+    }
+
+    #[test]
+    fn test_compositor_error_no_tab_pages() {
+        assert_eq!(CompositorError::NoTabPages.to_string(), "no tab pages");
+    }
+
+    #[test]
+    fn test_compositor_error_cannot_close_last_tab() {
+        assert_eq!(CompositorError::CannotCloseLastTab.to_string(), "cannot close last tab");
+    }
+
+    #[test]
+    fn test_compositor_error_tab_not_found() {
+        assert_eq!(CompositorError::TabNotFound(TabId::from_raw(3)).to_string(), "tab 3 not found");
     }
 }

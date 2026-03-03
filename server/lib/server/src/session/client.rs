@@ -44,8 +44,8 @@ use std::{collections::HashMap, time::SystemTime};
 use {
     reovim_driver_display::layout::RootCompositor,
     reovim_driver_session::{
-        CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, Viewport, Window,
-        WindowLayout,
+        CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
+        Window, WindowLayout,
     },
     reovim_kernel::api::v1::{HistoryRing, MarkBank, ModeStack, RegisterBank},
 };
@@ -607,6 +607,14 @@ pub struct EditingState {
     /// notifications and state queries.
     pub compositor: Option<Box<dyn RootCompositor>>,
 
+    /// Per-client tab pages (#401).
+    ///
+    /// Manages tab page lifecycle. Each tab can have its own window layout
+    /// and compositor. Currently starts with a single default tab.
+    /// Future work will integrate with `windows` and `compositor` fields
+    /// so that `active_tab().windows()` becomes the source of truth.
+    pub tabs: TabPageSet,
+
     /// Per-client register storage (#515).
     ///
     /// Each client owns their own registers (unnamed `""`, named `a-z`/`A-Z`).
@@ -638,6 +646,7 @@ impl std::fmt::Debug for EditingState {
             .field("selection", &self.selection)
             .field("extensions", &self.extensions)
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
+            .field("tabs", &self.tabs)
             .field("registers", &self.registers)
             .field("clipboard_history", &self.clipboard_history)
             .field("local_marks", &self.local_marks)
@@ -660,6 +669,7 @@ impl Clone for EditingState {
             selection: self.selection.clone(),
             extensions: ExtensionMap::new(), // Fresh extensions for cloned state
             compositor: self.compositor.as_ref().map(|c| c.boxed_clone()), // #474
+            tabs: self.tabs.clone(),         // #401
             registers: self.registers.clone(), // #515
             clipboard_history: self.clipboard_history.clone(), // #515
             local_marks: self.local_marks.clone(), // #515
@@ -682,6 +692,7 @@ impl Default for EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            tabs: TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -701,6 +712,7 @@ impl EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            tabs: TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -722,6 +734,7 @@ impl EditingState {
             selection: None,
             extensions: ExtensionMap::new(),
             compositor: None,
+            tabs: TabPageSet::new(),
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
@@ -749,6 +762,7 @@ impl EditingState {
             windows: &mut self.windows,
             extensions: &mut self.extensions,
             compositor: &mut self.compositor,
+            tabs: &mut self.tabs,
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,

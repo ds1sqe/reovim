@@ -35,8 +35,8 @@ use {
     reovim_protocol::v2::{
         BufferListChangedPayload, BufferModifiedPayload, CursorMovedPayload,
         ExtensionUpdatedPayload, LayoutChangedPayload, ModeChangedPayload, Notification,
-        OptionChangedPayload, Position, SelectionChangedPayload, ViewportUpdatedPayload,
-        WindowInfo, WindowRect, notification,
+        OptionChangedPayload, Position, SelectionChangedPayload, TabPageInfo,
+        ViewportUpdatedPayload, WindowInfo, WindowRect, notification,
     },
 };
 
@@ -315,6 +315,8 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                             height: u64::from(p.bounds.height),
                         }),
                         focused: focused_id == Some(p.window_id),
+                        // #400: Always send explicit opacity from compositor placement
+                        opacity: Some(p.opacity),
                     }
                 })
                 .collect()
@@ -334,11 +336,30 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
                         height: 24,
                     }),
                     focused: focused_id == Some(w.id),
+                    opacity: None, // No compositor → default opaque
                 })
                 .collect()
         }
     } else {
         Vec::new()
+    };
+
+    // #401 Phase 5: Populate tab info from per-client TabPageSet
+    let (active_tab_id, tabs_info) = if let Some(ref state) = editing_state {
+        let tab_set = &state.tabs;
+        let active_id = Some(tab_set.active_tab_id().as_usize() as u64);
+        let info: Vec<TabPageInfo> = tab_set
+            .tab_info()
+            .into_iter()
+            .map(|(id, label, is_active)| TabPageInfo {
+                tab_id: id.as_usize() as u64,
+                label: label.to_string(),
+                active: is_active,
+            })
+            .collect();
+        (active_id, info)
+    } else {
+        (None, Vec::new())
     };
 
     Notification {
@@ -348,6 +369,8 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
             focused_window_id: focused_id.map(|id| id.as_usize() as u64),
             windows,
             client_id,
+            active_tab_id,
+            tabs: tabs_info,
         })),
     }
 }

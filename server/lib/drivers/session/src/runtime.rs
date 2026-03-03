@@ -46,7 +46,7 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{
-        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, UndoResult,
+        BufferId, CommandId, Edit, KernelContext, ModeId, OptionValue, Position, TabId, UndoResult,
         WindowId,
         events::kernel::{LayoutChangeKind, LayoutChanged, SplitDirection as KernelSplitDirection},
     },
@@ -124,6 +124,8 @@ pub struct SessionRuntime<'a> {
     /// `CompositorApi` methods use this instead of `session.shared.compositor`.
     /// `None` when compositor is not set (tests, headless mode).
     compositor: &'a mut Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+    /// Per-client tab pages (#401).
+    tabs: &'a mut crate::TabPageSet,
     /// Per-client register storage (#515).
     ///
     /// Each client owns their own registers (unnamed, named a-z/A-Z).
@@ -207,6 +209,7 @@ impl<'a> SessionRuntime<'a> {
             windows: client.windows,
             extensions: client.extensions,
             compositor: client.compositor,
+            tabs: client.tabs,
             registers: client.registers,
             clipboard_history: client.clipboard_history,
             local_marks: client.local_marks,
@@ -267,6 +270,7 @@ impl<'a> SessionRuntime<'a> {
             windows: client.windows,
             extensions: client.extensions,
             compositor: client.compositor,
+            tabs: client.tabs,
             registers: client.registers,
             clipboard_history: client.clipboard_history,
             local_marks: client.local_marks,
@@ -1601,6 +1605,100 @@ impl CompositorApi for SessionRuntime<'_> {
         layer.hide_all_overlays();
         Ok(())
     }
+
+    // =========================================================================
+    // Opacity Operations (#400)
+    // =========================================================================
+
+    fn set_active_layer_opacity(&mut self, opacity: f32) -> Result<(), CompositorError> {
+        let compositor = self
+            .compositor
+            .as_mut()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        compositor.set_layer_opacity(active, opacity.clamp(0.0, 1.0));
+        self.changes.window_changed = true;
+        Ok(())
+    }
+
+    fn active_layer_opacity(&self) -> Result<f32, CompositorError> {
+        let compositor = self
+            .compositor
+            .as_ref()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let active = compositor
+            .active_layer()
+            .ok_or(CompositorError::NoActiveLayer)?;
+
+        let opacity = compositor
+            .layers()
+            .iter()
+            .find(|l| l.id == active)
+            .map_or(1.0, |l| l.opacity);
+        Ok(opacity)
+    }
+
+    fn adjust_active_layer_opacity(&mut self, delta: f32) -> Result<f32, CompositorError> {
+        let current = self.active_layer_opacity()?;
+        let new_opacity = (current + delta).clamp(0.0, 1.0);
+        self.set_active_layer_opacity(new_opacity)?;
+        Ok(new_opacity)
+    }
+
+    // =========================================================================
+    // Tab Page Operations (#401)
+    //
+    // Tab page operations — delegate to per-client TabPageSet (#401 Phase 5).
+    // =========================================================================
+
+    fn tab_new(&mut self) -> Result<TabId, CompositorError> {
+        let id = self.tabs.new_tab();
+        self.changes.window_changed = true;
+        Ok(id)
+    }
+
+    fn tab_close(&mut self) -> Result<(), CompositorError> {
+        if self.tabs.close_tab() {
+            self.changes.window_changed = true;
+            Ok(())
+        } else {
+            Err(CompositorError::CannotCloseLastTab)
+        }
+    }
+
+    fn tab_next(&mut self) -> Result<TabId, CompositorError> {
+        let id = self.tabs.next_tab();
+        self.changes.window_changed = true;
+        Ok(id)
+    }
+
+    fn tab_prev(&mut self) -> Result<TabId, CompositorError> {
+        let id = self.tabs.prev_tab();
+        self.changes.window_changed = true;
+        Ok(id)
+    }
+
+    fn tab_goto(&mut self, index: usize) -> Result<TabId, CompositorError> {
+        self.tabs
+            .goto_tab(index)
+            .ok_or_else(|| CompositorError::TabNotFound(TabId::from_raw(index)))
+            .inspect(|_| {
+                self.changes.window_changed = true;
+            })
+    }
+
+    fn tab_count(&self) -> usize {
+        self.tabs.tab_count()
+    }
+
+    fn active_tab_id(&self) -> Option<TabId> {
+        Some(self.tabs.active_tab_id())
+    }
 }
 
 #[cfg(test)]
@@ -1646,6 +1744,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1657,6 +1756,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1708,6 +1808,7 @@ mod tests {
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut client_registers = RegisterBank::new();
         let mut client_clipboard_history = HistoryRing::new();
         let mut client_local_marks = MarkBank::new();
@@ -1725,6 +1826,7 @@ mod tests {
                     windows: &mut client_windows,
                     extensions: &mut client_extensions,
                     compositor: &mut client_compositor,
+                    tabs: &mut tabs,
                     registers: &mut client_registers,
                     clipboard_history: &mut client_clipboard_history,
                     local_marks: &mut client_local_marks,
@@ -1764,6 +1866,7 @@ mod tests {
         let mut client_windows = crate::WindowLayout::empty();
         let mut client_extensions = crate::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut client_registers = RegisterBank::new();
         let mut client_clipboard_history = HistoryRing::new();
         let mut client_local_marks = MarkBank::new();
@@ -1777,6 +1880,7 @@ mod tests {
                     windows: &mut client_windows,
                     extensions: &mut client_extensions,
                     compositor: &mut client_compositor,
+                    tabs: &mut tabs,
                     registers: &mut client_registers,
                     clipboard_history: &mut client_clipboard_history,
                     local_marks: &mut client_local_marks,
@@ -1798,6 +1902,7 @@ mod tests {
                     windows: &mut client_windows,
                     extensions: &mut client_extensions,
                     compositor: &mut client_compositor,
+                    tabs: &mut tabs,
                     registers: &mut client_registers,
                     clipboard_history: &mut client_clipboard_history,
                     local_marks: &mut client_local_marks,
@@ -1830,6 +1935,7 @@ mod tests {
         let mut client2_windows = crate::WindowLayout::empty();
         let mut client2_extensions = crate::ExtensionMap::new();
         let mut client2_compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut client2_registers = RegisterBank::new();
         let mut client2_clipboard_history = HistoryRing::new();
         let mut client2_local_marks = MarkBank::new();
@@ -1843,6 +1949,7 @@ mod tests {
                     windows: &mut client1_windows,
                     extensions: &mut client1_extensions,
                     compositor: &mut client1_compositor,
+                    tabs: &mut tabs,
                     registers: &mut client1_registers,
                     clipboard_history: &mut client1_clipboard_history,
                     local_marks: &mut client1_local_marks,
@@ -1862,6 +1969,7 @@ mod tests {
                     windows: &mut client2_windows,
                     extensions: &mut client2_extensions,
                     compositor: &mut client2_compositor,
+                    tabs: &mut tabs,
                     registers: &mut client2_registers,
                     clipboard_history: &mut client2_clipboard_history,
                     local_marks: &mut client2_local_marks,
@@ -1892,6 +2000,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1903,6 +2012,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1964,6 +2074,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1975,6 +2086,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2008,6 +2120,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2019,6 +2132,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2578,6 +2692,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2589,6 +2704,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2610,6 +2726,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2621,6 +2738,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2642,6 +2760,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2653,6 +2772,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2675,6 +2795,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2686,6 +2807,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2708,6 +2830,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2719,6 +2842,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2740,6 +2864,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2751,6 +2876,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2995,6 +3121,20 @@ mod tests {
             assert!(runtime.raise_float().is_err());
             assert!(runtime.lower_float().is_err());
             assert!(runtime.hide_all_overlays().is_err());
+            assert!(runtime.set_active_layer_opacity(0.5).is_err());
+            assert!(runtime.active_layer_opacity().is_err());
+            assert!(runtime.adjust_active_layer_opacity(0.1).is_err());
+
+            // Tab operations work via TabPageSet even without compositor (#401)
+            assert!(runtime.tab_new().is_ok()); // creates a new tab
+            assert!(runtime.tab_close().is_ok()); // close the new tab (2 -> 1)
+            assert!(runtime.tab_close().is_err()); // can't close last tab
+            assert!(runtime.tab_next().is_ok()); // cycle (only 1 tab)
+            assert!(runtime.tab_prev().is_ok()); // cycle (only 1 tab)
+            assert!(runtime.tab_goto(0).is_ok()); // goto first tab
+            assert!(runtime.tab_goto(99).is_err()); // out-of-range
+            assert_eq!(runtime.tab_count(), 1);
+            assert!(runtime.active_tab_id().is_some());
 
             // focused_window returns None
             assert!(runtime.focused_window().is_none());
@@ -3306,6 +3446,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3317,6 +3458,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3550,6 +3692,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3561,6 +3704,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3592,6 +3736,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty(); // No windows!
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3603,6 +3748,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3704,6 +3850,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3715,6 +3862,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3745,6 +3893,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3756,6 +3905,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3784,6 +3934,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         // Pre-populate per-client clipboard history (#515):
         // push "yank-1" first so it becomes index 1, then "yank-0" so it becomes index 0
@@ -3799,6 +3950,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3830,6 +3982,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3841,6 +3994,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3867,6 +4021,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3878,6 +4033,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3905,6 +4061,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3916,6 +4073,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -3941,6 +4099,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -3952,6 +4111,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4132,6 +4292,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4143,6 +4304,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4176,6 +4338,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4187,6 +4350,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4213,6 +4377,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4224,6 +4389,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4255,6 +4421,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4267,6 +4434,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4301,6 +4469,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4313,6 +4482,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4342,6 +4512,7 @@ mod tests {
         let mut windows = crate::WindowLayout::empty();
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4354,6 +4525,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4517,6 +4689,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4528,6 +4701,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4563,6 +4737,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4574,6 +4749,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4610,6 +4786,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4622,6 +4799,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4658,6 +4836,7 @@ mod tests {
         windows.add(window);
         let mut extensions = crate::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -4670,6 +4849,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -4698,6 +4878,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -4709,6 +4890,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -4987,6 +5169,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -4998,6 +5181,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5020,6 +5204,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5031,6 +5216,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5053,6 +5239,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5064,6 +5251,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5086,6 +5274,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5097,6 +5286,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5119,6 +5309,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5130,6 +5321,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5152,6 +5344,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5163,6 +5356,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5185,6 +5379,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5196,6 +5391,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5218,6 +5414,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5229,6 +5426,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5251,6 +5449,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5262,6 +5461,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5285,6 +5485,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5296,6 +5497,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5316,6 +5518,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5327,6 +5530,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5347,6 +5551,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5358,6 +5563,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5378,6 +5584,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5389,6 +5596,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5410,6 +5618,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5421,6 +5630,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5441,6 +5651,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5452,6 +5663,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5472,6 +5684,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5483,6 +5696,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5506,6 +5720,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5517,6 +5732,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5537,6 +5753,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5548,6 +5765,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5568,6 +5786,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5579,6 +5798,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5587,6 +5807,144 @@ mod tests {
             &executor,
         );
         assert!(rt.hide_all_overlays().is_ok());
+    }
+
+    #[test]
+    fn test_compositor_set_active_layer_opacity() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
+
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                tabs: &mut tabs,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
+            &kernel,
+            &executor,
+        );
+        assert!(rt.set_active_layer_opacity(0.5).is_ok());
+    }
+
+    #[test]
+    fn test_compositor_set_active_layer_opacity_clamps() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
+
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                tabs: &mut tabs,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
+            &kernel,
+            &executor,
+        );
+        // Values should be clamped to 0.0..=1.0
+        assert!(rt.set_active_layer_opacity(2.0).is_ok());
+        assert!(rt.set_active_layer_opacity(-1.0).is_ok());
+    }
+
+    #[test]
+    fn test_compositor_active_layer_opacity() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
+
+        let rt = make_compositor_runtime(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                tabs: &mut tabs,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
+            &kernel,
+            &executor,
+        );
+        // MockRootCompositor returns empty layers(), so default 1.0
+        let opacity = rt.active_layer_opacity().unwrap();
+        assert!((opacity - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_compositor_adjust_active_layer_opacity() {
+        use reovim_kernel::api::v1::ModeStack;
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+        let mut ms = ModeStack::new(test_mode());
+        let mut w = crate::WindowLayout::empty();
+        let mut e = crate::ExtensionMap::new();
+        let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut r = RegisterBank::new();
+        let mut ch = HistoryRing::new();
+        let mut lm = MarkBank::new();
+
+        let mut rt = make_compositor_runtime(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut ms,
+                windows: &mut w,
+                extensions: &mut e,
+                compositor: &mut c,
+                tabs: &mut tabs,
+                registers: &mut r,
+                clipboard_history: &mut ch,
+                local_marks: &mut lm,
+            },
+            &kernel,
+            &executor,
+        );
+        // Adjust from default 1.0 by -0.3 → 0.7
+        let new_opacity = rt.adjust_active_layer_opacity(-0.3).unwrap();
+        assert!((new_opacity - 0.7).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -5599,6 +5957,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5610,6 +5969,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5630,6 +5990,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5641,6 +6002,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5661,6 +6023,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5672,6 +6035,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5850,6 +6214,7 @@ mod tests {
         let mut e = crate::ExtensionMap::new();
         let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> =
             Some(Box::new(SingleWindowRootCompositor::new()));
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5860,6 +6225,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5888,6 +6254,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5907,6 +6274,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5937,6 +6305,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5954,6 +6323,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -5980,6 +6350,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty(); // No windows added
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -5992,6 +6363,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -6018,6 +6390,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -6030,6 +6403,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -6060,6 +6434,7 @@ mod tests {
         let mut w = crate::WindowLayout::empty();
         let mut e = crate::ExtensionMap::new();
         let mut c = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -6071,6 +6446,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,
@@ -6135,6 +6511,7 @@ mod tests {
         let mut e = crate::ExtensionMap::new();
         // No compositor
         let mut c: Option<Box<dyn reovim_driver_display::layout::RootCompositor>> = None;
+        let mut tabs = crate::TabPageSet::new();
         let mut r = RegisterBank::new();
         let mut ch = HistoryRing::new();
         let mut lm = MarkBank::new();
@@ -6146,6 +6523,7 @@ mod tests {
                 windows: &mut w,
                 extensions: &mut e,
                 compositor: &mut c,
+                tabs: &mut tabs,
                 registers: &mut r,
                 clipboard_history: &mut ch,
                 local_marks: &mut lm,

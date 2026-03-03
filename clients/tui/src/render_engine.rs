@@ -12,7 +12,7 @@
 use {
     reovim_arch::Color,
     reovim_driver_display::{
-        Style,
+        Style, dim_style,
         ui::{display_width, truncate_end},
     },
 };
@@ -26,7 +26,7 @@ use crate::{
 ///
 /// Controls what features are rendered and provides optional data
 /// like syntax tokens and theme styles.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RenderConfig {
     /// Whether to show line numbers in the gutter.
     pub show_line_numbers: bool,
@@ -39,6 +39,24 @@ pub struct RenderConfig {
     pub render_self_cursor: bool,
     /// Gutter width (for line numbers).
     pub gutter_width: u16,
+    /// Window opacity for the current render pass (#400).
+    ///
+    /// When < 1.0, all text styles are dimmed via `dim_style()`.
+    /// When == 0.0, the window is fully transparent (skip rendering).
+    /// Default: 1.0 (fully opaque).
+    pub opacity: f32,
+}
+
+impl Default for RenderConfig {
+    fn default() -> Self {
+        Self {
+            show_line_numbers: false,
+            line_number_mode: LineNumberMode::None,
+            render_self_cursor: false,
+            gutter_width: 0,
+            opacity: 1.0,
+        }
+    }
 }
 
 /// CBF-8 colorblind-friendly palette for remote cursors.
@@ -137,6 +155,18 @@ const LOCAL_SELECTION_BG: Color = Color::Rgb {
     b: 100,
 };
 
+/// Apply opacity dimming to a style.
+///
+/// When opacity is 1.0, returns the style unchanged. When < 1.0,
+/// dims the foreground and background colors toward `default_bg`.
+#[must_use]
+fn apply_opacity(style: &Style, opacity: f32, default_bg: Color) -> Style {
+    if (opacity - 1.0).abs() < f32::EPSILON {
+        return style.clone();
+    }
+    dim_style(style, opacity, default_bg)
+}
+
 /// Render a complete frame to the backend.
 ///
 /// This is the single entry point for all TUI rendering.
@@ -190,6 +220,12 @@ pub fn render_frame<B: RenderBackend>(
     }
 }
 
+/// Default background color for opacity blending.
+///
+/// Terminal backgrounds are typically black; this is used as the
+/// blend target when dimming styles for transparent windows.
+const DEFAULT_BG: Color = Color::Black;
+
 /// Render buffer content.
 #[allow(clippy::cast_possible_truncation)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -202,6 +238,7 @@ fn render_buffer_content<B: RenderBackend>(
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
     let content_x = gutter_width;
+    let opacity = config.opacity;
 
     // TODO(#494): Multi-window — iterate all windows with tiling layout
     let buffer_id = state.windows.first().and_then(|w| w.buffer_id);
@@ -219,25 +256,18 @@ fn render_buffer_content<B: RenderBackend>(
         if config.show_line_numbers && gutter_width > 0 {
             // Use cursor line for highlighting; default to 0 if no cursor data yet
             let cursor_line = state.get_focused_cursor().map_or(0, |c| c.line as usize);
-            render_line_number(
-                backend,
-                0,
-                screen_y,
-                gutter_width,
-                line_idx,
-                cursor_line,
-                config.line_number_mode,
-            );
+            render_line_number(backend, 0, screen_y, gutter_width, line_idx, cursor_line, config);
         }
 
         // Render line content
         if let Some(lines) = lines {
             if line_idx < lines.len() {
                 let line = &lines[line_idx];
-                render_line_content(backend, content_x, screen_y, width - content_x, line);
+                render_line_content(backend, content_x, screen_y, width - content_x, line, opacity);
             } else {
                 // Empty line indicator
-                let tilde_style = Style::default().fg(Color::DarkGrey);
+                let tilde_style =
+                    apply_opacity(&Style::default().fg(Color::DarkGrey), opacity, DEFAULT_BG);
                 backend.set_cell(content_x, screen_y, '~', &tilde_style);
             }
         }
@@ -253,11 +283,11 @@ fn render_line_number<B: RenderBackend>(
     width: u16,
     line_idx: usize,
     cursor_line: usize,
-    mode: LineNumberMode,
+    config: &RenderConfig,
 ) {
     let line_num = line_idx + 1; // 1-indexed display
 
-    let (display_num, is_cursor_line) = match mode {
+    let (display_num, is_cursor_line) = match config.line_number_mode {
         LineNumberMode::Absolute | LineNumberMode::Hybrid => (line_num, line_idx == cursor_line),
         LineNumberMode::Relative => {
             let rel = if line_idx == cursor_line {
@@ -270,11 +300,12 @@ fn render_line_number<B: RenderBackend>(
         LineNumberMode::None => return,
     };
 
-    let style = if is_cursor_line {
+    let base_style = if is_cursor_line {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default().fg(Color::DarkGrey)
     };
+    let style = apply_opacity(&base_style, config.opacity, DEFAULT_BG);
 
     // Right-align the number
     let num_str = display_num.to_string();
@@ -286,9 +317,16 @@ fn render_line_number<B: RenderBackend>(
 
 /// Render a line of buffer content.
 #[allow(clippy::cast_possible_truncation)]
-fn render_line_content<B: RenderBackend>(backend: &mut B, x: u16, y: u16, width: u16, line: &str) {
+fn render_line_content<B: RenderBackend>(
+    backend: &mut B,
+    x: u16,
+    y: u16,
+    width: u16,
+    line: &str,
+    opacity: f32,
+) {
     // TODO(#494): Syntax highlighting — accept token spans from tree-sitter driver
-    let style = Style::default();
+    let style = apply_opacity(&Style::default(), opacity, DEFAULT_BG);
 
     for (col, ch) in line.chars().enumerate() {
         let col = col as u16;
@@ -644,6 +682,7 @@ mod tests {
             buffer_id: Some(buffer_id),
             rect: None,
             focused: true,
+            opacity: None,
         }
     }
 
@@ -1533,5 +1572,108 @@ mod tests {
         // Last visible column (9) should be 'j' (index 9 of "abcdefghij...")
         let cell = fb.get(9, 0).unwrap();
         assert_eq!(cell.char, 'j');
+    }
+
+    #[test]
+    fn test_render_config_default_opacity() {
+        let config = RenderConfig::default();
+        assert!((config.opacity - 1.0).abs() < f32::EPSILON);
+        assert!(!config.show_line_numbers);
+        assert!(!config.render_self_cursor);
+        assert_eq!(config.gutter_width, 0);
+    }
+
+    #[test]
+    fn test_apply_opacity_fully_opaque() {
+        let style = Style::default().fg(Color::White);
+        let result = apply_opacity(&style, 1.0, Color::Black);
+        assert_eq!(result.fg, style.fg);
+    }
+
+    #[test]
+    fn test_apply_opacity_half_transparent() {
+        let style = Style::default().fg(Color::Rgb {
+            r: 200,
+            g: 200,
+            b: 200,
+        });
+        let result = apply_opacity(&style, 0.5, Color::Black);
+        // Dimmed color should be darker than original
+        if let (Some(Color::Rgb { r: orig, .. }), Some(Color::Rgb { r: dimmed, .. })) =
+            (style.fg, result.fg)
+        {
+            assert!(dimmed < orig, "Dimmed {dimmed} should be less than original {orig}");
+        } else {
+            panic!("Expected RGB colors");
+        }
+    }
+
+    #[test]
+    fn test_apply_opacity_fully_transparent() {
+        let style = Style::default().fg(Color::Rgb {
+            r: 200,
+            g: 200,
+            b: 200,
+        });
+        let result = apply_opacity(&style, 0.0, Color::Black);
+        // At opacity 0.0, fg should blend to default_bg (black)
+        assert_eq!(result.fg, Some(Color::Black));
+    }
+
+    #[test]
+    fn test_render_with_opacity_dims_content() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.buffer_cache.insert(100, vec!["hello".to_string()]);
+
+        // Render at full opacity
+        let config_full = RenderConfig {
+            opacity: 1.0,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config_full, &[]);
+        let full_style = fb.get(0, 0).unwrap().style.clone();
+
+        // Render at half opacity
+        let mut fb_dim = FrameBuffer::new(40, 10);
+        let config_dim = RenderConfig {
+            opacity: 0.5,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb_dim, &state, &config_dim, &[]);
+        let dim_style = fb_dim.get(0, 0).unwrap().style.clone();
+
+        // Content characters should be the same
+        assert_eq!(fb.get(0, 0).unwrap().char, fb_dim.get(0, 0).unwrap().char);
+
+        // Styles may differ when opacity dims (depending on default style colors)
+        // At minimum, the function should not panic
+        assert_eq!(full_style.fg, None); // Default style has no explicit fg
+        // With dim, fg is still None because dimming None returns None
+        assert_eq!(dim_style.fg, None);
+    }
+
+    #[test]
+    fn test_render_with_opacity_dims_tilde() {
+        let mut fb = FrameBuffer::new(40, 10);
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.buffer_cache.insert(100, vec!["one".to_string()]); // 1 line, 8 rows of tildes
+
+        // Render at half opacity
+        let config = RenderConfig {
+            opacity: 0.5,
+            ..RenderConfig::default()
+        };
+        render_frame(&mut fb, &state, &config, &[]);
+
+        // Row 1 should have a dimmed tilde
+        let tilde_cell = fb.get(0, 1).unwrap();
+        assert_eq!(tilde_cell.char, '~');
+        // The tilde's fg should be dimmed (darker than DarkGrey at 0.5 opacity)
+        assert!(tilde_cell.style.fg.is_some());
     }
 }

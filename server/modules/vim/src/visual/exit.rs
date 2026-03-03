@@ -171,6 +171,7 @@ mod tests {
         windows: WindowLayout,
         extensions: ExtensionMap,
         compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+        tabs: reovim_driver_session::TabPageSet,
         registers: RegisterBank,
         clipboard_history: HistoryRing,
         local_marks: MarkBank,
@@ -197,6 +198,7 @@ mod tests {
                 windows,
                 extensions,
                 compositor: None,
+                tabs: reovim_driver_session::TabPageSet::new(),
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
@@ -211,6 +213,7 @@ mod tests {
                     windows: &mut self.windows,
                     extensions: &mut self.extensions,
                     compositor: &mut self.compositor,
+                    tabs: &mut self.tabs,
                     registers: &mut self.registers,
                     clipboard_history: &mut self.clipboard_history,
                     local_marks: &mut self.local_marks,
@@ -386,6 +389,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -397,6 +401,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,

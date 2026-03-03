@@ -195,6 +195,12 @@ pub struct TuiCoreState {
     /// Window layout info.
     pub windows: Vec<WindowInfo>,
 
+    /// Active tab page ID (#401).
+    pub active_tab_id: Option<u64>,
+
+    /// Tab page info (#401).
+    pub tabs: Vec<reovim_protocol::v2::TabPageInfo>,
+
     // =========================================================================
     // Content
     // =========================================================================
@@ -573,6 +579,7 @@ mod tests {
             buffer_id: Some(1),
             rect: None,
             focused: true,
+            opacity: None,
         }];
 
         state.cleanup_stale_cursors();

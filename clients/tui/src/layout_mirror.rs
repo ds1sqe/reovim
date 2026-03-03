@@ -60,6 +60,9 @@ pub struct WindowPlacement {
     pub height: u16,
     /// Whether this window is focused.
     pub focused: bool,
+    /// Layer opacity (0.0 = transparent, 1.0 = opaque).
+    /// #400: Deserialized from `optional float` with absent = 1.0 (fully opaque).
+    pub opacity: f32,
 }
 
 impl ServerLayoutMirror {
@@ -120,6 +123,8 @@ impl ServerLayoutMirror {
                     width,
                     height,
                     focused: w.focused,
+                    // #400: absent = fully opaque (proto3 optional float)
+                    opacity: w.opacity.unwrap_or(1.0),
                 }
             })
             .collect();
@@ -198,6 +203,7 @@ mod tests {
                 height: h,
             }),
             focused,
+            opacity: None,
         }
     }
 
@@ -288,12 +294,14 @@ mod tests {
                 buffer_id: Some(100),
                 rect: None, // No rect - uses fallback vertical stacking
                 focused: true,
+                opacity: None,
             },
             WindowInfo {
                 window_id: 2,
                 buffer_id: Some(101),
                 rect: None, // No rect - uses fallback vertical stacking
                 focused: false,
+                opacity: None,
             },
         ];
 
@@ -408,6 +416,7 @@ mod tests {
                 height: 20,
             }),
             focused: true,
+            opacity: None,
         }];
 
         mirror.apply_layout_changed(1, &windows);
@@ -428,6 +437,7 @@ mod tests {
             buffer_id: None,
             rect: None,
             focused: true,
+            opacity: None,
         }];
 
         mirror.apply_layout_changed(1, &windows);
@@ -446,6 +456,7 @@ mod tests {
             width: 80,
             height: 24,
             focused: true,
+            opacity: 1.0,
         };
         let cloned = placement;
         assert_eq!(cloned.window_id, 1);
@@ -465,6 +476,7 @@ mod tests {
             width: 80,
             height: 24,
             focused: true,
+            opacity: 1.0,
         };
         let debug = format!("{placement:?}");
         assert!(debug.contains("WindowPlacement"));
