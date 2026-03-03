@@ -2052,6 +2052,7 @@ name = "reovim-driver-syntax"
 version = "0.9.5-dev"
 dependencies = [
  "parking_lot",
+ "reovim-driver-session",
  "reovim-kernel",
 ]
 
@@ -2186,6 +2187,7 @@ dependencies = [
  "reovim-module-microscope",
  "reovim-module-motions",
  "reovim-module-notification",
+ "reovim-module-range-finder",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
  "reovim-module-snippet",
@@ -2296,6 +2298,22 @@ version = "0.9.5-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-range-finder"
+version = "0.9.5-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-buffer",
+ "reovim-driver-command",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

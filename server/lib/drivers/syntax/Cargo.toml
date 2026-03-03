@@ -17,5 +17,8 @@ workspace = true
 # NOTE: NO tree-sitter! That's an implementation detail of language modules.
 reovim-kernel = { workspace = true }
 
+# Session extension trait (for SyntaxSessionState as SessionExtension)
+reovim-driver-session = { workspace = true }
+
 # Sync primitives for SyntaxFactoryStore
 parking_lot = { workspace = true }

@@ -39,6 +39,6 @@ pub use {
     ring_buffer::{ClientEventType, ClientRingBuffer},
     session::Session,
     state::SessionState,
-    syntax_state::SyntaxSessionState,
+    syntax_state::{SyntaxSessionState, SyntaxStreamState},
     token_registry::{SessionToken, TokenRegistry},
 };

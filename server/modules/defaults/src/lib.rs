@@ -47,9 +47,9 @@ use {
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_editor as editor, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_microscope as microscope, reovim_module_motions as motions,
-    reovim_module_notification as notification, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_snippet as snippet,
-    reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_notification as notification, reovim_module_range_finder as range_finder,
+    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
+    reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
 };
@@ -114,6 +114,8 @@ impl DefaultsModule {
             Box::new(lsp::LspModule::new()),
             // Snippet expansion (#136)
             Box::new(snippet::SnippetModule::new()),
+            // Jump navigation and code folding (#524)
+            Box::new(range_finder::RangeFinderModule::new()),
         ]
     }
 }
@@ -168,6 +170,8 @@ impl Module for DefaultsModule {
             ModuleId::new("lsp"),
             // Snippet expansion (#136)
             ModuleId::new("snippet"),
+            // Jump navigation and code folding (#524)
+            ModuleId::new("range-finder"),
         ]
     }
 
@@ -238,8 +242,9 @@ mod tests {
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
-        // Total: 18 modules
-        assert_eq!(deps.len(), 18);
+        // Range-finder (1): range-finder
+        // Total: 19 modules
+        assert_eq!(deps.len(), 19);
     }
 
     #[test]
@@ -253,8 +258,9 @@ mod tests {
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
-        // Total: 18 modules
-        assert_eq!(modules.len(), 18);
+        // Range-finder (1): range-finder
+        // Total: 19 modules
+        assert_eq!(modules.len(), 19);
     }
 
     #[test]

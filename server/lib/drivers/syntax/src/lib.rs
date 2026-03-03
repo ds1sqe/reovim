@@ -76,6 +76,7 @@ mod fold;
 mod highlight;
 mod injection;
 mod registry;
+pub mod state;
 mod store;
 
 // ============================================================================
@@ -102,3 +103,6 @@ pub use error::ModuleError;
 
 // SyntaxHighlight trait (defined in this crate)
 pub use highlight::SyntaxHighlight;
+
+// Per-session syntax driver storage
+pub use state::SyntaxSessionState;
