@@ -315,8 +315,9 @@ async fn run(cli: Cli) -> std::io::Result<()> {
 
             tracing::info!("Starting reovim server (new architecture with modules)");
 
-            // Create server with module-initialized session factory and bridges
-            let bridges = bootstrap::create_bridge_registry();
+            // Create server with module-initialized session factory and bridges.
+            // Bridges are collected from modules via BridgeProvider during init().
+            let bridges = bootstrap::collect_bridges();
             let server =
                 Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
                     .with_bridges(bridges);
@@ -491,7 +492,7 @@ async fn run_integrated() -> std::io::Result<()> {
         instance_name: "default".to_string(),
         default_session_name: "main".to_string(),
     };
-    let bridges = bootstrap::create_bridge_registry();
+    let bridges = bootstrap::collect_bridges();
     let server = Server::with_session_factory(config, Box::new(bootstrap::create_session_state))
         .with_bridges(bridges);
 

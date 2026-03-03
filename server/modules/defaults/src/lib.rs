@@ -45,13 +45,15 @@ use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
-    reovim_module_editor as editor, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
+    reovim_module_completion as completion, reovim_module_editor as editor,
+    reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_microscope as microscope, reovim_module_motions as motions,
     reovim_module_notification as notification, reovim_module_range_finder as range_finder,
     reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
     reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
+    reovim_module_whichkey as whichkey,
 };
 
 /// Default modules bundle.
@@ -104,6 +106,7 @@ impl DefaultsModule {
             Box::new(vim::VimModule::new()),
             // Extension bridge modules (#468, #443)
             Box::new(cmdline::CmdlineModule::new()),
+            Box::new(whichkey::WhichKeyModule::new()),
             Box::new(notification::NotificationModule::new()),
             // Picker module (#522)
             Box::new(microscope::MicroscopeModule::new()),
@@ -116,6 +119,8 @@ impl DefaultsModule {
             Box::new(snippet::SnippetModule::new()),
             // Jump navigation and code folding (#524)
             Box::new(range_finder::RangeFinderModule::new()),
+            // Completion engine (#521)
+            Box::new(completion::CompletionModule::new()),
         ]
     }
 }
@@ -160,6 +165,7 @@ impl Module for DefaultsModule {
             ModuleId::new("vim"),
             // Extension bridge modules (#468, #443)
             ModuleId::new("cmdline"),
+            ModuleId::new("whichkey"),
             ModuleId::new("notification"),
             // Picker module (#522)
             ModuleId::new("microscope"),
@@ -172,6 +178,8 @@ impl Module for DefaultsModule {
             ModuleId::new("snippet"),
             // Jump navigation and code folding (#524)
             ModuleId::new("range-finder"),
+            // Completion engine (#521)
+            ModuleId::new("completion"),
         ]
     }
 
@@ -237,14 +245,15 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Extension bridge modules (2): cmdline, notification
+        // Extension bridge modules (3): cmdline, whichkey, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
-        // Total: 19 modules
-        assert_eq!(deps.len(), 19);
+        // Completion (1): completion
+        // Total: 21 modules
+        assert_eq!(deps.len(), 21);
     }
 
     #[test]
@@ -253,14 +262,15 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Extension bridge modules (2): cmdline, notification
+        // Extension bridge modules (3): cmdline, whichkey, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
-        // Total: 19 modules
-        assert_eq!(modules.len(), 19);
+        // Completion (1): completion
+        // Total: 21 modules
+        assert_eq!(modules.len(), 21);
     }
 
     #[test]

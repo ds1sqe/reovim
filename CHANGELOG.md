@@ -6,6 +6,26 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Completion engine with LSP source (#521, #520 Phase 5)**: Full-stack
+  completion system with pluggable source architecture powered by nucleo fuzzy
+  matching. Driver layer (`reovim-driver-completion`) provides `CompletionSource`
+  trait, `CompletionItem`/`CompletionKind` (17 variants), `CompletionEngine`
+  wrapping nucleo for streaming fuzzy matching, and `CompletionSourceRegistry`
+  for extensible source registration via `ServiceRegistry`. Module layer
+  (`reovim-module-completion`) provides `BufferWordsSource` (scan buffer, dedup,
+  min length 2, exclude current word) and `LspCompletionSource` (pre-cache
+  pattern for sync `complete()` contract, maps all `lsp_types::CompletionItemKind`
+  variants). `CompletionState` session extension with open/close/next/prev
+  navigation and wrap-around selection. `CompletionBridge` serializes state to
+  JSON via `ExtensionStateBridge`. Five commands: trigger (`<C-Space>`), next
+  (`<C-n>`), prev (`<C-p>`), confirm (`<C-y>`), dismiss (`<C-e>`) in insert mode.
+  TUI extension (`reovim-tui-ext-completion`) renders Helix-style popup below
+  cursor with kind abbreviation, label, and source columns. LSP driver extended
+  with `LspRequest::Completion` variant and `Client::completion()` method with
+  `CompletionClientCapabilities`. Bootstrap refactored to use generic
+  `BridgeProvider` collection (zero module-specific imports). 157 unit tests,
+  100% MC/DC coverage, zero clippy warnings.
+
 - **Range-finder module - jump navigation and code folding (#524)**: Two-char
   jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).
   Jump search engine uses case-insensitive pattern matching with home-row label

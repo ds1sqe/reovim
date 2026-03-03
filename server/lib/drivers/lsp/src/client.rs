@@ -15,11 +15,12 @@ use std::{
 
 use {
     lsp_types::{
-        ClientCapabilities, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams,
-        InitializeParams, InitializeResult, InitializedParams, Location, PartialResultParams,
-        Position, ReferenceContext, ReferenceParams, ServerCapabilities,
-        TextDocumentClientCapabilities, TextDocumentIdentifier, TextDocumentPositionParams,
-        TextDocumentSyncClientCapabilities, Uri, WorkDoneProgressParams,
+        ClientCapabilities, CompletionParams, CompletionResponse, GotoDefinitionParams,
+        GotoDefinitionResponse, Hover, HoverParams, InitializeParams, InitializeResult,
+        InitializedParams, Location, PartialResultParams, Position, ReferenceContext,
+        ReferenceParams, ServerCapabilities, TextDocumentClientCapabilities,
+        TextDocumentIdentifier, TextDocumentPositionParams, TextDocumentSyncClientCapabilities,
+        Uri, WorkDoneProgressParams,
     },
     serde_json::Value,
     tokio::{
@@ -354,6 +355,19 @@ impl Client {
                     dynamic_registration: Some(false),
                     link_support: Some(true),
                 }),
+                // Enable completion support
+                completion: Some(lsp_types::CompletionClientCapabilities {
+                    dynamic_registration: Some(false),
+                    completion_item: Some(lsp_types::CompletionItemCapability {
+                        snippet_support: Some(true),
+                        documentation_format: Some(vec![
+                            lsp_types::MarkupKind::Markdown,
+                            lsp_types::MarkupKind::PlainText,
+                        ]),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
             // Enable work done progress support
@@ -431,6 +445,29 @@ impl Client {
         };
 
         self.request("textDocument/hover", params).await
+    }
+
+    /// Get completion items at the given position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn completion(
+        &self,
+        uri: Uri,
+        position: Position,
+    ) -> Result<Option<CompletionResponse>, LspError> {
+        let params = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        };
+
+        self.request("textDocument/completion", params).await
     }
 
     /// Shutdown the language server gracefully.
@@ -887,5 +924,46 @@ mod tests {
         }
 
         task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_completion_sends_request() {
+        let (client, mut rx) = test_client_with_rx();
+        let client = Arc::new(client);
+        let client_clone = Arc::clone(&client);
+
+        let uri: Uri = "file:///test.rs".parse().unwrap();
+        let position = Position::new(5, 10);
+
+        let task = tokio::spawn(async move { client_clone.completion(uri, position).await });
+
+        let msg = rx.recv().await.unwrap();
+        let request_id = match msg {
+            Message::Request(req) => {
+                assert_eq!(req.method, "textDocument/completion");
+                req.id
+            }
+            _ => panic!("expected request"),
+        };
+
+        client
+            .handle_response(Response::success(request_id, Value::Null))
+            .await;
+
+        let result = task.await.unwrap().unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_client_capabilities_has_completion() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let completion = text_doc.completion.unwrap();
+        assert_eq!(completion.dynamic_registration, Some(false));
+        let item = completion.completion_item.unwrap();
+        assert_eq!(item.snippet_support, Some(true));
+        let formats = item.documentation_format.unwrap();
+        assert!(formats.contains(&lsp_types::MarkupKind::Markdown));
+        assert!(formats.contains(&lsp_types::MarkupKind::PlainText));
     }
 }

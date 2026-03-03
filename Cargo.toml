@@ -24,6 +24,7 @@ members = [
     "server/lib/drivers/ffi",
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
+    "server/lib/drivers/completion",
 
     # Server modules
     "server/modules/vim",
@@ -52,6 +53,7 @@ members = [
     "server/modules/lsp",
     "server/modules/snippet",
     "server/modules/range-finder",
+    "server/modules/completion",
 
     # Client layer - TUI
     "clients/tui",
@@ -63,6 +65,7 @@ members = [
     "clients/tui/extensions/cmdline",
     "clients/tui/extensions/notification",
     "clients/tui/extensions/microscope",
+    "clients/tui/extensions/completion",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -166,6 +169,7 @@ reovim-driver-clipboard = { path = "./server/lib/drivers/clipboard", version = "
 reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.9.5-dev" }
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.9.5-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.9.5-dev" }
+reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.9.5-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.9.5-dev" }
@@ -211,6 +215,7 @@ reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdo
 reovim-module-lsp = { path = "./server/modules/lsp", version = "0.9.5-dev" }
 reovim-module-snippet = { path = "./server/modules/snippet", version = "0.9.5-dev" }
 reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.9.5-dev" }
+reovim-module-completion = { path = "./server/modules/completion", version = "0.9.5-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

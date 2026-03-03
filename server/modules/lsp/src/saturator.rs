@@ -307,6 +307,19 @@ impl LspSaturator {
                     let _ = response_tx.send(result);
                 });
             }
+            LspRequest::Completion {
+                uri,
+                position,
+                response_tx,
+            } => {
+                debug!(uri = %uri.as_str(), position = ?position, "Spawning completion task");
+                let client = Arc::clone(client);
+                tokio::spawn(async move {
+                    let result = client.completion(uri, position).await;
+                    debug!(success = result.is_ok(), "completion completed");
+                    let _ = response_tx.send(result);
+                });
+            }
             LspRequest::Shutdown => {
                 info!("Shutdown requested");
                 if let Err(e) = client.shutdown().await {

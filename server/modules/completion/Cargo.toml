@@ -1,0 +1,30 @@
+[package]
+name = "reovim-module-completion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Completion module for reovim - pluggable completion sources and popup state"
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = [] # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-completion = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-command-types = { workspace = true }
+reovim-driver-input = { workspace = true }
+reovim-module-macros = { workspace = true }
+lsp-types = "0.97"
+serde_json = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

@@ -43,28 +43,33 @@ use {
     },
 };
 
-/// Create an extension bridge registry for gRPC notification emission (#468).
+/// Collect extension bridges from modules via `BridgeProvider`.
 ///
-/// Bridges adapt session extension state to JSON for gRPC transmission.
-/// Each bridge adapts a module's `SessionExtension` state to JSON.
+/// Initializes modules in a temporary `ServiceRegistry` to collect bridges.
+/// Bridges are stateless trait objects — they can be collected once and reused
+/// across all sessions. The actual session state is created separately by
+/// the session factory.
 ///
-/// Currently registers bridges directly from module crates. Full
-/// `BridgeProvider`-based collection (where modules register during `init()`
-/// and bootstrap collects) requires refactoring the session factory pattern.
+/// This keeps bootstrap decoupled from individual modules: zero module-specific
+/// imports needed. Modules self-register their bridges during `init()`.
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
-    use {
-        reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
-        reovim_module_microscope::MicroscopeBridge,
-        reovim_module_notification::NotificationBridge, reovim_module_whichkey::WhichKeyBridge,
-    };
+pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
+    use reovim_driver_session::bridges::{BridgeProvider, BridgeRegistry};
+
+    // Initialize modules in a temporary ServiceRegistry just for bridge collection.
+    let services = Arc::new(ServiceRegistry::new());
+    let kernel = create_kernel_context(Arc::clone(&services));
+    let module_ctx = create_module_context(kernel, Arc::clone(&services));
+    initialize_modules(&module_ctx);
 
     let mut registry = BridgeRegistry::new();
-    registry.register(CmdlineBridge);
-    registry.register(WhichKeyBridge);
-    registry.register(NotificationBridge);
-    registry.register(MicroscopeBridge);
+    if let Some(provider) = services.get::<BridgeProvider>() {
+        for bridge in provider.take_bridges() {
+            registry.register_boxed(bridge);
+        }
+    }
+
     registry
 }
 

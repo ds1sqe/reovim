@@ -21,3 +21,4 @@ reovim-tui-ext-whichkey = { path = "../which-key" }
 reovim-tui-ext-cmdline = { path = "../cmdline" }
 reovim-tui-ext-notification = { path = "../notification" }
 reovim-tui-ext-microscope = { path = "../microscope" }
+reovim-tui-ext-completion = { path = "../completion" }
