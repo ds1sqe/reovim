@@ -4,16 +4,26 @@
 //! These handlers operate on `CompletionState` stored in the session's
 //! `ExtensionMap`.
 
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
+    reovim_driver_lsp::{
+        LspKey, LspProvider, LspProviderRegistry, LspRequest, LspServerConfig, uri_from_path,
+    },
     reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::{CommandId, Position, ServiceRegistry, oneshot},
+    tracing::{debug, info, warn},
 };
 
 use crate::{
     ids,
+    lsp_source::{LspCompletionSource, map_lsp_item},
     state::{CompletionItemSnapshot, CompletionState},
 };
 
@@ -43,7 +53,14 @@ impl CommandHandler for Trigger {
             return CommandResult::Success;
         };
 
-        // Gather items from all registered sources.
+        // Fire-and-forget: send LSP completion request in background.
+        // The response populates the LspCompletionSource cache so that
+        // the NEXT trigger shows LSP items.
+        if ctx.language_id.is_some() {
+            fire_lsp_completion(&runtime.kernel().services, &ctx);
+        }
+
+        // Gather items from all registered sources (sync).
         let registry = runtime.kernel().services.get::<CompletionSourceRegistry>();
         let mut all_items = Vec::new();
 
@@ -152,9 +169,44 @@ impl reovim_driver_command::Command for Confirm {
 impl CommandHandler for Confirm {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<CompletionState>();
-        // TODO(#521): Insert the selected item's text into the buffer.
-        // For now, just close the popup.
+        if !state.active {
+            return CommandResult::Success;
+        }
+
+        // Extract what we need before closing.
+        let Some(item) = state.selected_item() else {
+            state.close();
+            return CommandResult::Success;
+        };
+        let insert_text = item.insert_text.clone();
+        let prefix_len = state.prefix.len();
         state.close();
+
+        // Get buffer and cursor position.
+        let Some(buffer_id) = runtime.active_buffer() else {
+            return CommandResult::Success;
+        };
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::Success;
+        };
+        let cursor_line = window.cursor.line;
+        let cursor_col = window.cursor.column;
+
+        // Delete the typed prefix and insert the completion text.
+        let start_col = cursor_col.saturating_sub(prefix_len);
+        let delete_start = Position::new(cursor_line, start_col);
+        let delete_end = Position::new(cursor_line, cursor_col);
+        runtime.delete_range(buffer_id, delete_start, delete_end);
+
+        let insert_pos = Position::new(cursor_line, start_col);
+        runtime.insert_text(buffer_id, insert_pos, &insert_text);
+
+        // Update cursor to end of inserted text.
+        let new_col = start_col + insert_text.len();
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.cursor.column = new_col;
+        }
+
         CommandResult::Success
     }
 }
@@ -223,6 +275,7 @@ fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
         + cursor_col;
 
     let file_path = runtime.buffer_file_path(buffer_id);
+    let language_id = file_path.as_deref().and_then(language_id_from_path);
 
     Some(CompletionContext {
         content,
@@ -232,8 +285,201 @@ fn build_context(runtime: &SessionRuntime<'_>) -> Option<CompletionContext> {
         prefix,
         buffer_id: buffer_id.as_usize(),
         file_path,
-        language_id: None,
+        language_id,
     })
+}
+
+/// Fire an asynchronous LSP completion request in the background.
+///
+/// The response updates the `LspCompletionSource` cache so that the NEXT
+/// trigger returns LSP items via the sync `complete()` contract.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext) {
+    let lang = match ctx.language_id {
+        Some(ref l) => l.clone(),
+        None => return,
+    };
+    let file_path = match ctx.file_path {
+        Some(ref p) => p.clone(),
+        None => return,
+    };
+
+    let lsp_registry = services.get_or_create::<LspProviderRegistry>();
+
+    // Look up provider: try per-language key first, then Default.
+    let provider = lsp_registry
+        .get(&LspKey::Language(lang.clone()))
+        .or_else(|| lsp_registry.get(&LspKey::Default));
+
+    let provider = match provider {
+        Some(p) if p.is_active() => p,
+        _ => {
+            // No active provider — try to auto-start one.
+            try_auto_start_lsp(services, &file_path, &lang, &ctx.content);
+            return;
+        }
+    };
+
+    // Build the completion request.
+    let path = Path::new(&file_path);
+    let uri = uri_from_path(path);
+    let position = lsp_types::Position::new(
+        u32::try_from(ctx.line).unwrap_or(0),
+        u32::try_from(ctx.col).unwrap_or(0),
+    );
+
+    let (response_tx, response_rx) = oneshot();
+    let request = LspRequest::Completion {
+        uri,
+        position,
+        response_tx,
+    };
+
+    if !provider.send_request(request) {
+        debug!("LSP completion request not accepted (channel full or closed)");
+        return;
+    }
+
+    // Spawn a background thread to wait for the response and update cache.
+    let lsp_source = services.get::<LspCompletionSource>();
+    std::thread::spawn(move || {
+        let Some(source) = lsp_source else {
+            return;
+        };
+        match response_rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(Ok(Some(response))) => {
+                let items: Vec<_> = match response {
+                    lsp_types::CompletionResponse::Array(arr) => {
+                        arr.iter().map(map_lsp_item).collect()
+                    }
+                    lsp_types::CompletionResponse::List(list) => {
+                        list.items.iter().map(map_lsp_item).collect()
+                    }
+                };
+                info!(count = items.len(), "LSP completion cache updated");
+                source.update_cache(items);
+            }
+            Ok(Ok(None)) => {
+                debug!("LSP returned no completion results");
+            }
+            Ok(Err(e)) => {
+                warn!("LSP completion error: {e}");
+            }
+            Err(_) => {
+                debug!("LSP completion response timed out");
+            }
+        }
+    });
+}
+
+/// Try to auto-start an LSP server for the given language.
+///
+/// Currently supports Rust (rust-analyzer) only. Spawns the server
+/// in the background via the tokio runtime and registers it in
+/// `LspProviderRegistry`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn try_auto_start_lsp(
+    services: &Arc<ServiceRegistry>,
+    file_path: &str,
+    lang: &str,
+    buffer_content: &str,
+) {
+    // Only Rust is supported for now.
+    if lang != "rust" {
+        return;
+    }
+
+    let Some(root) = find_project_root(Path::new(file_path)) else {
+        debug!("No project root found for {file_path}");
+        return;
+    };
+
+    let config = LspServerConfig::rust_analyzer(&root);
+    let services_clone = Arc::clone(services);
+    let lang_owned = lang.to_owned();
+    let file_path_owned = file_path.to_owned();
+    let content_owned = buffer_content.to_owned();
+
+    // Use tokio runtime to spawn the async LSP server start.
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+            info!(root = ?root, "Auto-starting rust-analyzer");
+            match reovim_module_lsp::LspSaturator::start(config).await {
+                Ok(lsp_handle) => {
+                    // Send DidOpen so the server knows about the file.
+                    let uri = uri_from_path(Path::new(&file_path_owned));
+                    lsp_handle.send_request(LspRequest::DidOpen {
+                        uri,
+                        language_id: lang_owned.clone(),
+                        version: 1,
+                        content: content_owned,
+                    });
+
+                    // Register in LspProviderRegistry.
+                    let registry = services_clone.get_or_create::<LspProviderRegistry>();
+                    registry.register(LspKey::Language(lang_owned), Arc::new(lsp_handle));
+                    info!("rust-analyzer registered and ready");
+                }
+                Err(e) => {
+                    warn!("Failed to start rust-analyzer: {e}");
+                }
+            }
+        });
+    }
+}
+
+/// Walk up from a file path to find the project root.
+///
+/// Looks for `Cargo.toml` (Rust), `package.json` (JS/TS), or `pyproject.toml` (Python).
+/// Returns the directory containing the project marker file.
+#[must_use]
+pub fn find_project_root(file_path: &Path) -> Option<PathBuf> {
+    let markers = ["Cargo.toml", "package.json", "pyproject.toml", "go.mod"];
+
+    let mut dir = if file_path.is_file() {
+        file_path.parent()?
+    } else {
+        file_path
+    };
+
+    loop {
+        for marker in &markers {
+            if dir.join(marker).exists() {
+                return Some(dir.to_path_buf());
+            }
+        }
+        dir = dir.parent()?;
+    }
+}
+
+/// Derive the language ID from a file path's extension.
+///
+/// Maps file extensions to LSP language identifiers used for server
+/// lookup and `textDocument/didOpen` notifications.
+#[must_use]
+pub fn language_id_from_path(path: &str) -> Option<String> {
+    let ext = Path::new(path).extension()?.to_str()?;
+    let lang = match ext {
+        "rs" => "rust",
+        "py" | "pyi" => "python",
+        "ts" => "typescript",
+        "tsx" => "typescriptreact",
+        "js" => "javascript",
+        "jsx" => "javascriptreact",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
+        "go" => "go",
+        "java" => "java",
+        "lua" => "lua",
+        "rb" => "ruby",
+        "zig" => "zig",
+        "toml" => "toml",
+        "json" => "json",
+        "yaml" | "yml" => "yaml",
+        "md" | "markdown" => "markdown",
+        _ => return None,
+    };
+    Some(lang.to_owned())
 }
 
 /// Collect all command handlers for registration.
@@ -301,5 +547,106 @@ mod tests {
         deduped.sort_by_key(CommandId::name);
         deduped.dedup_by_key(|id| id.name());
         assert_eq!(ids.len(), deduped.len());
+    }
+
+    // ========================================================================
+    // language_id_from_path tests
+    // ========================================================================
+
+    #[test]
+    fn language_id_rust() {
+        assert_eq!(language_id_from_path("src/main.rs"), Some("rust".to_owned()));
+    }
+
+    #[test]
+    fn language_id_python() {
+        assert_eq!(language_id_from_path("script.py"), Some("python".to_owned()));
+        assert_eq!(language_id_from_path("stubs.pyi"), Some("python".to_owned()));
+    }
+
+    #[test]
+    fn language_id_typescript() {
+        assert_eq!(language_id_from_path("app.ts"), Some("typescript".to_owned()));
+        assert_eq!(language_id_from_path("Component.tsx"), Some("typescriptreact".to_owned()));
+    }
+
+    #[test]
+    fn language_id_javascript() {
+        assert_eq!(language_id_from_path("index.js"), Some("javascript".to_owned()));
+        assert_eq!(language_id_from_path("App.jsx"), Some("javascriptreact".to_owned()));
+    }
+
+    #[test]
+    fn language_id_c_cpp() {
+        assert_eq!(language_id_from_path("main.c"), Some("c".to_owned()));
+        assert_eq!(language_id_from_path("util.h"), Some("c".to_owned()));
+        assert_eq!(language_id_from_path("main.cpp"), Some("cpp".to_owned()));
+        assert_eq!(language_id_from_path("main.cc"), Some("cpp".to_owned()));
+        assert_eq!(language_id_from_path("main.cxx"), Some("cpp".to_owned()));
+        assert_eq!(language_id_from_path("header.hpp"), Some("cpp".to_owned()));
+    }
+
+    #[test]
+    fn language_id_other_languages() {
+        assert_eq!(language_id_from_path("main.go"), Some("go".to_owned()));
+        assert_eq!(language_id_from_path("Main.java"), Some("java".to_owned()));
+        assert_eq!(language_id_from_path("init.lua"), Some("lua".to_owned()));
+        assert_eq!(language_id_from_path("app.rb"), Some("ruby".to_owned()));
+        assert_eq!(language_id_from_path("main.zig"), Some("zig".to_owned()));
+    }
+
+    #[test]
+    fn language_id_config_files() {
+        assert_eq!(language_id_from_path("Cargo.toml"), Some("toml".to_owned()));
+        assert_eq!(language_id_from_path("data.json"), Some("json".to_owned()));
+        assert_eq!(language_id_from_path("config.yaml"), Some("yaml".to_owned()));
+        assert_eq!(language_id_from_path("config.yml"), Some("yaml".to_owned()));
+        assert_eq!(language_id_from_path("README.md"), Some("markdown".to_owned()));
+        assert_eq!(language_id_from_path("doc.markdown"), Some("markdown".to_owned()));
+    }
+
+    #[test]
+    fn language_id_unknown_extension() {
+        assert_eq!(language_id_from_path("file.xyz"), None);
+        assert_eq!(language_id_from_path("file.wasm"), None);
+    }
+
+    #[test]
+    fn language_id_no_extension() {
+        assert_eq!(language_id_from_path("Makefile"), None);
+        assert_eq!(language_id_from_path("/usr/bin/cat"), None);
+    }
+
+    #[test]
+    fn language_id_nested_path() {
+        assert_eq!(language_id_from_path("/home/user/project/src/lib.rs"), Some("rust".to_owned()));
+    }
+
+    // ========================================================================
+    // find_project_root tests
+    // ========================================================================
+
+    #[test]
+    fn find_project_root_from_this_crate() {
+        // This crate has a Cargo.toml, so we should find it.
+        let this_file = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
+        let root = find_project_root(&this_file);
+        assert!(root.is_some());
+        let root = root.unwrap();
+        assert!(root.join("Cargo.toml").exists());
+    }
+
+    #[test]
+    fn find_project_root_from_directory() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = find_project_root(&dir);
+        assert!(root.is_some());
+    }
+
+    #[test]
+    fn find_project_root_nonexistent() {
+        // Root "/" has no Cargo.toml.
+        let root = find_project_root(Path::new("/nonexistent/path/file.rs"));
+        assert!(root.is_none());
     }
 }

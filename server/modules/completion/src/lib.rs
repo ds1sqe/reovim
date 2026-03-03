@@ -73,6 +73,15 @@ impl Module for CompletionModule {
         let registry = ctx.services.get_or_create::<CompletionSourceRegistry>();
         registry.register(Arc::new(buffer_words::BufferWordsSource));
 
+        // Register LspCompletionSource in both registries:
+        // - CompletionSourceRegistry: so the engine calls complete() on it
+        // - ServiceRegistry: so fire_lsp_completion() can update_cache() on it
+        let lsp_source = Arc::new(lsp_source::LspCompletionSource::new());
+        registry.register(
+            Arc::clone(&lsp_source) as Arc<dyn reovim_driver_completion::CompletionSource>
+        );
+        ctx.services.register(lsp_source);
+
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
         for handler in commands::command_handlers() {
@@ -161,12 +170,17 @@ mod tests {
         assert_eq!(bridges.len(), 1);
         assert_eq!(bridges[0].kind(), "completion");
 
-        // Verify CompletionSourceRegistry was created with built-in source.
+        // Verify CompletionSourceRegistry was created with built-in sources.
         let registry = services.get::<CompletionSourceRegistry>();
         assert!(registry.is_some());
         let reg = registry.unwrap();
-        assert_eq!(reg.len(), 1);
+        assert_eq!(reg.len(), 2);
         assert!(reg.get("buffer").is_some());
+        assert!(reg.get("lsp").is_some());
+
+        // Verify LspCompletionSource is also in ServiceRegistry (for cache updates).
+        let lsp_source = services.get::<lsp_source::LspCompletionSource>();
+        assert!(lsp_source.is_some());
 
         // Verify commands were registered.
         let command_store = services.get::<CommandHandlerStore>();

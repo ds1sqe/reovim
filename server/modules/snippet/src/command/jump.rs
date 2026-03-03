@@ -36,9 +36,7 @@ impl CommandHandler for JumpNext {
         let cursor = runtime
             .windows()
             .active()
-            .map_or(Position::origin(), |w| {
-                Position::new(w.cursor.line, w.cursor.column)
-            });
+            .map_or(Position::origin(), |w| Position::new(w.cursor.line, w.cursor.column));
 
         // Extract tab stop info while holding ext_mut borrow.
         // Reconciles any user typing, then navigates and pre-adjusts
@@ -90,9 +88,7 @@ impl CommandHandler for JumpPrev {
         let cursor = runtime
             .windows()
             .active()
-            .map_or(Position::origin(), |w| {
-                Position::new(w.cursor.line, w.cursor.column)
-            });
+            .map_or(Position::origin(), |w| Position::new(w.cursor.line, w.cursor.column));
 
         let jump_info = {
             let state = runtime.ext_mut::<SnippetSessionState>();

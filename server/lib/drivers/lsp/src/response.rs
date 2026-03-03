@@ -1,7 +1,7 @@
 //! LSP response types.
 //!
 //! Defines response variants for LSP operations. Most responses are
-//! handled via oneshot channels in [`LspRequest`], but this module
+//! handled via oneshot channels in [`crate::LspRequest`], but this module
 //! provides unified types for response handling.
 
 use lsp_types::{
@@ -11,7 +11,7 @@ use lsp_types::{
 
 /// LSP response variants.
 ///
-/// Corresponds to the request types in [`LspRequest`].
+/// Corresponds to the request types in [`crate::LspRequest`].
 ///
 /// # Note
 ///

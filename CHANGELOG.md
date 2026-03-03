@@ -6,7 +6,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
-- **Completion engine with LSP source (#521, #520 Phase 5)**: Full-stack
+- **Completion engine with LSP source (#521, #520 Phase 5-6)**: Full-stack
   completion system with pluggable source architecture powered by nucleo fuzzy
   matching. Driver layer (`reovim-driver-completion`) provides `CompletionSource`
   trait, `CompletionItem`/`CompletionKind` (17 variants), `CompletionEngine`
@@ -23,8 +23,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   cursor with kind abbreviation, label, and source columns. LSP driver extended
   with `LspRequest::Completion` variant and `Client::completion()` method with
   `CompletionClientCapabilities`. Bootstrap refactored to use generic
-  `BridgeProvider` collection (zero module-specific imports). 157 unit tests,
-  100% MC/DC coverage, zero clippy warnings.
+  `BridgeProvider` collection (zero module-specific imports). Phase 2 wires real
+  rust-analyzer completions via fire-and-forget pre-cache pattern: language
+  detection from file extensions (15+ languages), `LspKey::Language(String)` for
+  per-language server lookup, auto-start of rust-analyzer on first `<C-Space>` in
+  `.rs` files (project root detection via `Cargo.toml`), background LSP completion
+  requests with 10s timeout and cache update, and Confirm command (`<C-y>`)
+  replaces typed prefix with selected item. 157 unit tests, 100% MC/DC coverage,
+  zero clippy warnings.
 
 - **Range-finder module - jump navigation and code folding (#524)**: Two-char
   jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).

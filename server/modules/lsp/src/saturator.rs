@@ -31,7 +31,7 @@ use {
 
 /// Handle for sending requests to the saturator (non-blocking).
 ///
-/// Implements [`LspProvider`] so it can be registered in [`ServiceRegistry`].
+/// Implements [`LspProvider`] so it can be registered in a service registry.
 #[derive(Clone)]
 pub struct LspSaturatorHandle {
     /// Channel for sending requests (buffered for backpressure).

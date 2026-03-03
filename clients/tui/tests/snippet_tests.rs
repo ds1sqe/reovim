@@ -52,17 +52,12 @@ async fn test_tui_expand_simple() {
 
     // Wait for expansion to appear in the rendered frame
     let result = handle
-        .wait_for(Duration::from_secs(3), |frame| {
-            frame.contains("TEST_EXPANDED")
-        })
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("TEST_EXPANDED"))
         .await;
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("TEST_EXPANDED"),
-                "TUI frame should show expanded snippet"
-            );
+            assert!(frame.contains("TEST_EXPANDED"), "TUI frame should show expanded snippet");
             eprintln!("[snippet] Simple expansion rendered correctly");
         }
         Err(e) => {
@@ -106,10 +101,7 @@ async fn test_tui_expand_no_match() {
 
     // "xyz" should remain since no snippet matched
     assert!(frame.contains("xyz"), "Buffer should keep raw text 'xyz'");
-    assert!(
-        !frame.contains("TEST_EXPANDED"),
-        "No expansion should occur for unknown prefix"
-    );
+    assert!(!frame.contains("TEST_EXPANDED"), "No expansion should occur for unknown prefix");
 
     handle.stop().await;
 }
@@ -244,9 +236,7 @@ async fn test_tui_snippet_escape_to_insert() {
 
     // Should return to INSERT mode
     let result = handle
-        .wait_for(Duration::from_secs(3), |frame| {
-            frame.to_lowercase().contains("insert")
-        })
+        .wait_for(Duration::from_secs(3), |frame| frame.to_lowercase().contains("insert"))
         .await;
 
     match result {
@@ -302,10 +292,7 @@ async fn test_tui_tab_navigates_cursor() {
         .expect("Failed to capture");
 
     // Tab to next stop ($2 = params)
-    handle
-        .send_keys("<Tab>")
-        .await
-        .expect("Failed to send Tab");
+    handle.send_keys("<Tab>").await.expect("Failed to send Tab");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
@@ -318,7 +305,10 @@ async fn test_tui_tab_navigates_cursor() {
     // Buffer content should be preserved (function template still there)
     assert!(frame_after.contains("fn "), "Function template should persist after Tab");
     // After Tab to $2, its placeholder "params" is also deleted
-    assert!(!frame_after.contains("params"), "Placeholder 'params' should be deleted after Tab");
+    assert!(
+        !frame_after.contains("params"),
+        "Placeholder 'params' should be deleted after Tab"
+    );
 
     eprintln!("[snippet] Tab navigation - before:\n{frame_before}");
     eprintln!("[snippet] Tab navigation - after:\n{frame_after}");
@@ -349,10 +339,7 @@ async fn test_tui_shift_tab_backward() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Tab forward to $2
-    handle
-        .send_keys("<Tab>")
-        .await
-        .expect("Failed to send Tab");
+    handle.send_keys("<Tab>").await.expect("Failed to send Tab");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -400,9 +387,7 @@ async fn test_tui_expand_multiline_for() {
         .expect("Failed to send keys");
 
     let result = handle
-        .wait_for(Duration::from_secs(3), |frame| {
-            frame.contains("for ") && frame.contains("in ")
-        })
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("for ") && frame.contains("in "))
         .await;
 
     match result {
@@ -456,10 +441,7 @@ async fn test_tui_full_workflow() {
     eprintln!("[workflow] Step 1 - Expanded:\n{frame}");
 
     // Step 2: Tab to $2 (params)
-    handle
-        .send_keys("<Tab>")
-        .await
-        .expect("Failed to send Tab");
+    handle.send_keys("<Tab>").await.expect("Failed to send Tab");
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let frame = handle
@@ -469,10 +451,7 @@ async fn test_tui_full_workflow() {
     eprintln!("[workflow] Step 2 - After Tab to $2:\n{frame}");
 
     // Step 3: Tab to $0 (final position, body)
-    handle
-        .send_keys("<Tab>")
-        .await
-        .expect("Failed to send Tab");
+    handle.send_keys("<Tab>").await.expect("Failed to send Tab");
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let frame = handle
@@ -488,9 +467,7 @@ async fn test_tui_full_workflow() {
         .expect("Failed to send Escape");
 
     let result = handle
-        .wait_for(Duration::from_secs(2), |f| {
-            f.to_lowercase().contains("insert")
-        })
+        .wait_for(Duration::from_secs(2), |f| f.to_lowercase().contains("insert"))
         .await;
 
     match result {

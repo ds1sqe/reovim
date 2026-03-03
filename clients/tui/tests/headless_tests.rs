@@ -576,18 +576,12 @@ async fn test_picker_opens_on_space_f() {
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("> "),
-                "Frame should show picker prompt '> '"
-            );
+            assert!(frame.contains("> "), "Frame should show picker prompt '> '");
             eprintln!("[test] Picker opened with prompt visible");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Picker did not open: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Picker did not open: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -627,18 +621,12 @@ async fn test_picker_query_input() {
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("main"),
-                "Frame should show typed query 'main'"
-            );
+            assert!(frame.contains("main"), "Frame should show typed query 'main'");
             eprintln!("[test] Picker query 'main' visible");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Picker query not visible: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Picker query not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -695,10 +683,7 @@ async fn test_picker_closes_on_escape() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Picker did not close: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Picker did not close: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -736,10 +721,7 @@ async fn test_picker_backspace_removes_char() {
         .expect("Query 'ab' not visible");
 
     // Press backspace to remove 'b'
-    handle
-        .send_keys("<BS>")
-        .await
-        .expect("Failed to send BS");
+    handle.send_keys("<BS>").await.expect("Failed to send BS");
 
     // Wait for query line to show "> a" without "b" (the prompt line specifically).
     // We check that no line starts with "> ab" (the query line), rather than
@@ -795,18 +777,12 @@ async fn test_grep_picker_opens() {
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("rg>"),
-                "Frame should show grep prompt 'rg> '"
-            );
+            assert!(frame.contains("rg>"), "Frame should show grep prompt 'rg> '");
             eprintln!("[test] Grep picker opened with rg> prompt");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Grep picker did not open: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Grep picker did not open: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -839,25 +815,17 @@ async fn test_buffer_picker_opens() {
     // Note: the picker overlay covers the statusline, so MICROSCOPE mode text
     // is not visible. Check for the picker prompt and count indicator instead.
     let result = handle
-        .wait_for(Duration::from_secs(3), |frame| {
-            frame.contains("> ") && frame.contains('[')
-        })
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("> ") && frame.contains('['))
         .await;
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("> "),
-                "Frame should show buffer picker prompt"
-            );
+            assert!(frame.contains("> "), "Frame should show buffer picker prompt");
             eprintln!("[test] Buffer picker opened");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Buffer picker did not open: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Buffer picker did not open: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -889,25 +857,17 @@ async fn test_command_picker_opens() {
     // Wait for picker prompt to appear (overlay covers statusline, so check
     // for the prompt and count indicator instead of mode text).
     let result = handle
-        .wait_for(Duration::from_secs(3), |frame| {
-            frame.contains("> ") && frame.contains('[')
-        })
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("> ") && frame.contains('['))
         .await;
 
     match result {
         Ok(frame) => {
-            assert!(
-                frame.contains("> "),
-                "Frame should show command picker prompt"
-            );
+            assert!(frame.contains("> "), "Frame should show command picker prompt");
             eprintln!("[test] Command picker opened");
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Command picker did not open: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Command picker did not open: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 

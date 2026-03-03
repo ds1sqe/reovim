@@ -11,6 +11,7 @@ use {
     reovim_driver_completion::{
         CompletionContext, CompletionItem, CompletionKind, CompletionSource,
     },
+    reovim_kernel::api::v1::Service,
 };
 
 /// Completion source backed by an LSP server.
@@ -57,6 +58,8 @@ impl LspCompletionSource {
         self.cache.read().is_empty()
     }
 }
+
+impl Service for LspCompletionSource {}
 
 impl Default for LspCompletionSource {
     fn default() -> Self {

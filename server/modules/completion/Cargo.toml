@@ -20,8 +20,11 @@ reovim-driver-session = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
+reovim-driver-lsp = { workspace = true }
+reovim-module-lsp = { workspace = true }
 reovim-module-macros = { workspace = true }
 lsp-types = "0.97"
+tokio = { workspace = true, features = ["rt"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 parking_lot = { workspace = true }

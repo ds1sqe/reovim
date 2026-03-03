@@ -14,8 +14,10 @@ use {
 /// Lightweight copy of driver `CompletionItem` fields needed by the UI.
 #[derive(Debug, Clone)]
 pub struct CompletionItemSnapshot {
-    /// Primary display text (what will be inserted).
+    /// Primary display text.
     pub label: String,
+    /// Text to insert when confirmed (may differ from label for snippets).
+    pub insert_text: String,
     /// Kind abbreviation (e.g., "fn", "va", "kw").
     pub kind_abbrev: String,
     /// Kind for styling.
@@ -32,6 +34,7 @@ impl CompletionItemSnapshot {
     pub fn from_item(item: &CompletionItem) -> Self {
         Self {
             label: item.label.clone(),
+            insert_text: item.insert_text.clone(),
             kind_abbrev: item.kind.abbreviation().to_owned(),
             kind: item.kind,
             detail: item.detail.clone(),
@@ -122,6 +125,7 @@ mod tests {
     fn make_snapshot(label: &str, kind: CompletionKind) -> CompletionItemSnapshot {
         CompletionItemSnapshot {
             label: label.to_owned(),
+            insert_text: label.to_owned(),
             kind_abbrev: kind.abbreviation().to_owned(),
             kind,
             detail: None,
@@ -295,6 +299,7 @@ mod tests {
         let item = make_driver_item("my_func");
         let snap = CompletionItemSnapshot::from_item(&item);
         assert_eq!(snap.label, "my_func");
+        assert_eq!(snap.insert_text, "my_func");
         assert_eq!(snap.kind_abbrev, "fn");
         assert_eq!(snap.kind, CompletionKind::Function);
         assert_eq!(snap.detail.as_deref(), Some("fn()"));

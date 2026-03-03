@@ -2219,10 +2219,13 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-completion",
  "reovim-driver-input",
+ "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
+ "reovim-module-lsp",
  "reovim-module-macros",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 

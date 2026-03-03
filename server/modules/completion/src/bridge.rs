@@ -75,6 +75,7 @@ mod tests {
     fn make_snapshot(label: &str, kind: CompletionKind) -> CompletionItemSnapshot {
         CompletionItemSnapshot {
             label: label.to_owned(),
+            insert_text: label.to_owned(),
             kind_abbrev: kind.abbreviation().to_owned(),
             kind,
             detail: None,
@@ -134,6 +135,7 @@ mod tests {
         state.items = vec![
             CompletionItemSnapshot {
                 label: "println".to_owned(),
+                insert_text: "println".to_owned(),
                 kind_abbrev: "fn".to_owned(),
                 kind: CompletionKind::Function,
                 detail: Some("macro".to_owned()),
