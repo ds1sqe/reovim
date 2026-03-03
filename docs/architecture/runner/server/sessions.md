@@ -30,25 +30,37 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 │  └────────────────────────────────────────────────────────┘ │
 │                                                              │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │ ClientRegistry (per-client isolation)                   │ │
+│  │ clients: HashMap<ClientId, Client> (per-client state)   │ │
 │  │ ├── Client 1 → EditingState                            │ │
 │  │ │   ├── mode_stack (NORMAL)                            │ │
 │  │ │   ├── windows (cursor@10:5)                          │ │
 │  │ │   ├── viewport (80x24)                               │ │
 │  │ │   ├── extensions (per-client module state)           │ │
-│  │ │   └── selection (none)                               │ │
+│  │ │   ├── selection (none)                               │ │
+│  │ │   ├── compositor (window layout)                     │ │
+│  │ │   ├── registers (a-z, unnamed)                       │ │
+│  │ │   ├── clipboard_history (ring 0-9)                   │ │
+│  │ │   └── local_marks (a-z)                              │ │
 │  │ ├── Client 2 → EditingState                            │ │
 │  │ │   ├── mode_stack (INSERT)                            │ │
 │  │ │   ├── windows (cursor@20:3)                          │ │
 │  │ │   ├── viewport (200x50)                              │ │
 │  │ │   ├── extensions (per-client module state)           │ │
-│  │ │   └── selection (char: 0,0-0,5)                      │ │
+│  │ │   ├── selection (char: 0,0-0,5)                      │ │
+│  │ │   ├── compositor (window layout)                     │ │
+│  │ │   ├── registers (a-z, unnamed)                       │ │
+│  │ │   ├── clipboard_history (ring 0-9)                   │ │
+│  │ │   └── local_marks (a-z)                              │ │
 │  │ └── Client 3 → EditingState                            │ │
 │  │     ├── mode_stack (VISUAL)                            │ │
 │  │     ├── windows (cursor@1:0)                           │ │
 │  │     ├── viewport (120x40)                              │ │
 │  │     ├── extensions (per-client module state)           │ │
-│  │     └── selection (line: 1-5)                          │ │
+│  │     ├── selection (line: 1-5)                          │ │
+│  │     ├── compositor (window layout)                     │ │
+│  │     ├── registers (a-z, unnamed)                       │ │
+│  │     ├── clipboard_history (ring 0-9)                   │ │
+│  │     └── local_marks (a-z)                              │ │
 │  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -73,11 +85,15 @@ Sessions manage shared editor state while `EditingState` provides per-client iso
 | Field | Location | Description |
 |-------|----------|-------------|
 | `mode_stack` | `EditingState` | Per-client editing mode (NORMAL/INSERT/VISUAL) |
+| `pending_keys` | `EditingState` | Per-client key sequence accumulator |
 | `windows` | `EditingState` | Per-client window layout and cursor positions |
 | `viewport` | `EditingState` | Per-client terminal dimensions, scroll offset |
 | `selection` | `EditingState` | Per-client visual selection |
-| `pending_keys` | `EditingState` | Per-client key sequence accumulator |
 | `extensions` | `EditingState` | Per-client module state (#477) |
+| `compositor` | `EditingState` | Per-client compositor cloned from shared template (#474) |
+| `registers` | `EditingState` | Per-client register storage (a-z, A-Z, unnamed) (#515) |
+| `clipboard_history` | `EditingState` | Per-client yank/delete history ring for registers 0-9 (#515) |
+| `local_marks` | `EditingState` | Per-client local marks (a-z); global marks A-Z shared (#515) |
 
 Commands use `SessionRuntime` which borrows both shared and per-client state.
 
@@ -119,6 +135,26 @@ pub struct EditingState {
 
     /// Per-client visual selection
     pub selection: Option<ClientSelection>,
+
+    /// Per-client module extensions (#477) - type-erased storage
+    /// for VimSessionState, SearchState, CmdlineState, etc.
+    pub extensions: ExtensionMap,
+
+    /// Per-client compositor for window layout (#474) - cloned
+    /// from the shared template at join time
+    pub compositor: Option<Box<dyn RootCompositor>>,
+
+    /// Per-client register storage (#515) - named registers (a-z/A-Z),
+    /// unnamed register (""). System clipboard (+, *) remains shared.
+    pub registers: RegisterBank,
+
+    /// Per-client clipboard history ring (#515) - tracks yank/delete
+    /// history for numbered registers 0-9
+    pub clipboard_history: HistoryRing,
+
+    /// Per-client local marks (a-z) (#515) - global marks (A-Z)
+    /// remain shared in KernelContext.global_marks
+    pub local_marks: MarkBank,
 }
 ```
 
@@ -185,41 +221,158 @@ let mode = {
 session.with_state(|state| { ... });  // Now safe to acquire
 ```
 
-## gRPC Handler Pattern (#471)
+## Token-Based Authentication (#483)
 
-gRPC handlers query per-client state when `client_id > 0`:
+All gRPC RPCs (except `Join()`) require token authentication. The server issues
+a `SessionToken` on `Join()` and the client includes it in every subsequent request
+via the `x-reovim-token` metadata header.
+
+### TokenRegistry
+
+`TokenRegistry` (`server/lib/server/src/session/token_registry.rs`) maintains a
+bidirectional mapping between tokens and client IDs:
+
+```rust
+pub struct TokenRegistry {
+    maps: RwLock<TokenMaps>,  // forward: token→ClientId, reverse: ClientId→token
+}
+```
+
+- `register(client_id)` -- generates a 128-bit random token (32 hex chars), returns `SessionToken`
+- `resolve(token)` -- O(1) lookup via read lock (hot path, called on every request)
+- `revoke(token)` / `revoke_by_client(client_id)` -- removes mapping on Leave/disconnect
+
+### AuthInterceptor
+
+The `AuthInterceptor` (`server/lib/server/src/grpc/auth.rs`) is a tonic interceptor
+inserted into every gRPC service:
+
+1. Reads `x-reovim-token` from request metadata
+2. Resolves token to `ClientId` via `TokenRegistry` (read lock, O(1))
+3. Inserts `ClientId` into request extensions
+4. Handlers extract `ClientId` from extensions (not from the request body)
+
+### Client ID Resolution
+
+Two helper functions in `auth.rs` extract the authenticated client:
+
+- `require_client_id(token_client_id)` -- for caller-identity RPCs (`send_keys`, `leave`, etc.).
+  Returns `Unauthenticated` if no token was provided.
+- `resolve_target_client_id(token_client_id, target_client_id)` -- for state queries
+  where the body field selects whose state to return. `target=0` means "self" (uses
+  token identity), `target>0` returns that specific client's state.
+
+## ClientRelation Model (#480)
+
+Each `Client` has a `relation` field (`Option<ClientRelation>`) that controls input
+routing and state visibility:
+
+```rust
+pub enum ClientRelation {
+    /// Read-only spectator. Input is ignored, sees target's state.
+    Following { target: ClientId },
+    /// Bidirectional co-editing. Input goes to target's state.
+    Sharing { with: ClientId },
+}
+```
+
+When `relation` is `None`, the client is independent (input goes to its own state).
+
+### Behavior Matrix
+
+| Relation         | My Input       | I See          | Use Case            |
+|------------------|----------------|----------------|---------------------|
+| `None`           | goes to self   | my state       | Solo editing        |
+| `Following(X)`   | ignored        | X's state      | Spectator/present   |
+| `Sharing(X)`     | goes to X      | X's state      | Pair programming    |
+
+### State Transitions
+
+```
+Independent <-> Following(B) <-> Sharing(B) <-> Independent
+```
+
+Transitions are validated by `Client::try_set_relation()` which returns
+`TransitionResult`:
+
+- `Ok` -- transition succeeded
+- `RequiresCursorSync { current, target }` -- caller must sync cursor first (Following to Sharing upgrade)
+- `TargetNotFound(id)` -- target client does not exist
+- `WouldCreateCycle` -- would create A follows B follows A
+- `CannotTargetSelf` -- cannot follow/share with self
+
+## Presence Model (Phase 14, #465)
+
+The presence system tracks connected clients for multi-client awareness.
+
+### ClientPresence
+
+```rust
+pub struct ClientPresence {
+    pub client_id: ClientId,
+    pub client_type: String,       // "tui", "android", "web", "cli"
+    pub display_name: String,      // "laptop", "phone", "tablet"
+    pub buffer_id: Option<usize>,
+    pub cursor: (usize, usize),    // (line, column)
+    pub visible_lines: (usize, usize), // (start, end exclusive)
+    pub mode: String,              // "NORMAL", "INSERT", etc.
+    pub sync_mode: SyncMode,
+    pub joined_at: SystemTime,
+}
+```
+
+### SyncMode
+
+```rust
+pub enum SyncMode {
+    Independent,              // Own cursor, own scroll
+    Follow { target: ClientId }, // Follow another client's cursor/scroll
+    Present,                  // Normal editing, tagged so others can follow
+}
+```
+
+### PresenceMap
+
+`PresenceMap` (`server/lib/server/src/session/presence.rs`) is a per-session,
+thread-safe (`RwLock<HashMap<ClientId, ClientPresence>>`) map:
+
+| Operation       | Complexity | Notes                    |
+|-----------------|------------|--------------------------|
+| `join()`        | O(n)       | Collects existing peers  |
+| `leave()`       | O(1)       | HashMap remove           |
+| `update()`      | O(1)       | Closure-based mutation   |
+| `get()`         | O(1)       | HashMap get              |
+| `list()`        | O(n)       | Collects all             |
+| `followers_of()`| O(n)       | Scans for Follow targets |
+
+## gRPC Handler Pattern (#471, #483)
+
+gRPC handlers authenticate via `x-reovim-token` metadata. The interceptor injects
+`ClientId` into request extensions. Handlers use `resolve_target_client_id()` to
+determine whose state to query:
 
 ```rust
 async fn get_mode(&self, request: Request<GetModeRequest>) -> Result<Response<GetModeResponse>, Status> {
     let req = request.into_inner();
     let session = self.get_session()?;
 
-    // Per-client state (#471): Query per-client mode when client_id provided
-    if req.client_id > 0 {
-        let client_id = ClientId::new(req.client_id as usize);
-        if let Some(mode) = session.client_current_mode(client_id) {
-            return Ok(Response::new(GetModeResponse {
-                name: mode.name().to_string(),
-                display: mode.name().to_uppercase(),
-                is_insert: mode.name().contains("insert"),
-            }));
-        }
+    // Token auth (#483): resolve caller identity from x-reovim-token header.
+    // target_client_id=0 means "self" (uses token), >0 targets another client.
+    let token_client_id = request.extensions().get::<ClientId>().copied();
+    let client_id = resolve_target_client_id(token_client_id, req.target_client_id)?;
+
+    if let Some(mode) = session.client_current_mode(client_id) {
+        return Ok(Response::new(GetModeResponse {
+            name: mode.name().to_string(),
+            display: mode.name().to_uppercase(),
+            is_insert: mode.name().contains("insert"),
+        }));
     }
 
     // Fallback to shared mode (backward compatibility)
     // ...
 }
 ```
-
-## Buffer Close Cleanup
-
-When a buffer is closed, clients viewing it have their state updated:
-
-```rust
-clear_client_state_for_closed_buffer(&session, closed_buffer_id);
-```
-
-Per-client cursor positions in windows are preserved for potential undo/reload.
 
 ## Related Documents
 

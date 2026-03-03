@@ -11,7 +11,7 @@ Command-line interface for scripting and automation.
 ### Key Injection
 
 ```bash
-reovim cli keys 'iHello<Esc>'
+reovim cli keys 'iHello<Esc>' --client 1
 ```
 
 Supports vim-style key notation:
@@ -23,11 +23,11 @@ Supports vim-style key notation:
 
 ```bash
 # Current mode
-reovim cli mode
+reovim cli mode --client 1
 Mode: NORMAL
 
 # Cursor position
-reovim cli cursor
+reovim cli cursor --client 1
 Cursor: line 0, column 5
 
 # JSON output
@@ -35,48 +35,28 @@ reovim cli --format json mode
 {"mode":"Normal"}
 ```
 
-### Server Management
+### Server Queries
 
 ```bash
-# List servers
-reovim cli list
-127.0.0.1:12521 (pid: 123456)
+# List connected clients
+reovim cli clients
 
-# Kill server
-reovim cli kill
+# Server info
+reovim cli ping
+reovim cli version
 ```
 
 ### Debug Commands
 
 ```bash
-# Log level control
-reovim cli log-level              # Get current level
-reovim cli log-level debug        # Set level dynamically
-
 # Log viewing with filters
 reovim cli log-tail --count 100   # Last 100 entries
 reovim cli log-tail --level warn  # Filter by level
 reovim cli log-tail --target mod  # Filter by module
 reovim cli log-tail --grep "err"  # Search messages
-
-# Real-time log streaming
-reovim cli log-tail --follow      # Stream like tail -f
 ```
 
 Output is color-coded: ERROR (red), WARN (yellow), INFO (green), DEBUG (cyan), TRACE (gray)
-
-### Interactive REPL
-
-```bash
-$ reovim cli -i
-reovim> keys iHello<Esc>
-ok: true
-reovim> mode
-Mode: NORMAL
-reovim> cursor
-Cursor: line 0, column 5
-reovim> quit
-```
 
 ## Connection Options
 
@@ -84,11 +64,8 @@ reovim> quit
 # Auto-discover (default)
 reovim cli keys 'j'
 
-# Explicit TCP
-reovim cli --tcp localhost:12521 keys 'j'
-
-# Unix socket
-reovim cli --socket /tmp/reovim.sock keys 'j'
+# Explicit gRPC endpoint
+reovim cli --grpc 127.0.0.1:12540 keys 'j' --client 1
 ```
 
 ## Output Formats
@@ -104,13 +81,14 @@ reovim cli --socket /tmp/reovim.sock keys 'j'
 
 ```bash
 #!/bin/bash
-reovim server &
+reovim server --grpc 12540 &
+SERVER_PID=$!
 sleep 1
-reovim cli keys 'iTest<Esc>'
-if reovim cli mode | grep -q "NORMAL"; then
+reovim cli --grpc 127.0.0.1:12540 keys 'iTest<Esc>' --client 1
+if reovim cli --grpc 127.0.0.1:12540 mode --client 1 | grep -q "NORMAL"; then
   echo "PASS"
 fi
-reovim cli kill
+kill $SERVER_PID
 ```
 
 ### IDE Integration
@@ -118,7 +96,7 @@ reovim cli kill
 ```python
 import subprocess
 result = subprocess.run(
-    ['reovim', 'cli', '--format', 'json', 'cursor'],
+    ['reovim', 'cli', '--format', 'json', 'cursor', '--client', '1'],
     capture_output=True, text=True
 )
 cursor = json.loads(result.stdout)

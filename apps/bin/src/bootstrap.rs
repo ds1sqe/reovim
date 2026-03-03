@@ -56,12 +56,13 @@ use {
 pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
     use {
         reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
-        reovim_module_whichkey::WhichKeyBridge,
+        reovim_module_notification::NotificationBridge, reovim_module_whichkey::WhichKeyBridge,
     };
 
     let mut registry = BridgeRegistry::new();
     registry.register(CmdlineBridge);
     registry.register(WhichKeyBridge);
+    registry.register(NotificationBridge);
     registry
 }
 
@@ -198,6 +199,8 @@ fn extract_registries(
                         mode_id,
                         keys.clone(),
                         binding.command_id.clone(),
+                        binding.description,
+                        binding.category,
                     );
                     wired += 1;
                 } else {

@@ -14,9 +14,9 @@ use {
         GetRegistersRequest, GetRegistersResponse, GetScreenContentRequest,
         GetScreenContentResponse, GetSelectionRequest, GetSelectionResponse,
         GetVisibleLinesRequest, GetVisibleLinesResponse, Notification, Position, RegisterEntry,
-        SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, WindowLeaf, WindowNode,
-        WindowRect, WindowSplit, notification::Payload, state_service_server::StateService,
-        window_node::Node,
+        SplitDirection, SubmitCaptureRequest, SubmitCaptureResponseReply, TabPageInfo, WindowLeaf,
+        WindowNode, WindowRect, WindowSplit, notification::Payload,
+        state_service_server::StateService, window_node::Node,
     },
     tonic::{Request, Response, Status},
 };
@@ -268,9 +268,24 @@ impl StateService for StateServiceImpl {
             }
         };
 
+        // #401 Phase 5: Populate tab info from per-client TabPageSet
+        let tab_set = &state.tabs;
+        let active_tab_id = Some(tab_set.active_tab_id().as_usize() as u64);
+        let tabs_info: Vec<TabPageInfo> = tab_set
+            .tab_info()
+            .into_iter()
+            .map(|(id, label, is_active)| TabPageInfo {
+                tab_id: id.as_usize() as u64,
+                label: label.to_string(),
+                active: is_active,
+            })
+            .collect();
+
         Ok(Response::new(GetLayoutResponse {
             root,
             focused_window_id: focused_id,
+            active_tab_id,
+            tabs: tabs_info,
         }))
     }
 

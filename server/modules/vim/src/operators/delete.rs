@@ -300,6 +300,7 @@ mod tests {
         let mut windows = WindowLayout::empty();
         let mut extensions = ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -310,6 +311,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,

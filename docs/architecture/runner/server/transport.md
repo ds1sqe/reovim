@@ -10,32 +10,33 @@ The server supports multiple transport protocols for client connections.
 
 | Transport | Flag | Use Case |
 |-----------|------|----------|
+| gRPC | `--grpc <PORT>` | gRPC over HTTP/2 (recommended) |
 | TCP | `--tcp <PORT>` | Network connections, multiple clients |
 | Unix Socket | `--socket <PATH>` | Local IPC, faster than TCP |
-| Stdio | `--stdio` | Subprocess communication, IDE integration |
 
-## TCP Transport (Default)
+## gRPC Transport (Recommended)
+
+gRPC over HTTP/2 is the primary transport for client-server communication.
 
 ```bash
-# Default port 12521
+# Default port 12540
 reovim server
 
 # Custom port
+reovim server --grpc 9000
+```
+
+## TCP Transport (Legacy)
+
+```bash
 reovim server --tcp 9000
 ```
 
 ### Port Fallback
 
 When the default port is in use:
-- Server tries 12522, 12523, ... up to 12530
-- Prints actual port to stderr: `Listening on 127.0.0.1:12522`
-
-### Port File Discovery
-
-Each server writes a port file:
-```
-~/.local/share/reovim/servers/<pid>.port
-```
+- Server tries 12541, 12542, ... up to 12549
+- Prints actual port to stderr: `Listening on 127.0.0.1:12541`
 
 ## Unix Socket Transport
 
@@ -45,17 +46,11 @@ reovim server --socket /tmp/reovim.sock
 
 Lower latency than TCP for local connections.
 
-## Stdio Transport
+## Transport Traits (Legacy TCP Path)
 
-```bash
-reovim server --stdio
-```
-
-- Single connection only (one-shot mode)
-- Used for IDE integration and subprocess communication
-- Exits when connection closes
-
-## Transport Traits
+The current primary transport is gRPC via `tonic`. The trait definitions below
+in `shared/net/src/traits.rs` are for the legacy TCP path and are not used by
+the gRPC transport:
 
 ```rust
 pub trait TransportReader: Send {

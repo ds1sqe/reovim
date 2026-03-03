@@ -34,6 +34,7 @@ pub mod annotation;
 mod border;
 pub mod builder;
 mod capabilities;
+pub mod color_blend;
 mod command;
 mod compositor;
 pub mod decoration;
@@ -187,9 +188,12 @@ pub use annotation::{
 // Each layer is a self-contained compositor with Tiled, Float, and Overlay zones.
 // ============================================================================
 
+pub use color_blend::{dim_style, lerp_color};
+
 pub use layout::{
     // Layer types
     Anchor,
+    CLICK_THROUGH_THRESHOLD,
     // View management and index types
     ColIndex,
     // Compositor traits

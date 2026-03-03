@@ -359,6 +359,7 @@ impl<O: TuiOutput> TuiApp<O> {
                 height: u64::from(content_height),
             }),
             focused: true,
+            opacity: None,
         };
 
         self.state.windows.push(window);
@@ -383,6 +384,7 @@ impl<O: TuiOutput> TuiApp<O> {
                             buffer_id: leaf.buffer_id,
                             rect: leaf.rect,
                             focused: leaf.window_id == self.state.focused_window_id,
+                            opacity: None,
                         });
                     }
                 }
@@ -508,6 +510,13 @@ impl<O: TuiOutput> TuiApp<O> {
 
                 // Redraw timer (both modes)
                 _ = redraw_timer.tick() => {
+                    // Tick extensions (e.g., which-key show-delay)
+                    for ext in &mut self.extensions {
+                        if ext.tick() {
+                            self.state.set_needs_redraw(true);
+                        }
+                    }
+
                     if self.state.needs_redraw() {
                         self.render()?;
                         self.state.set_needs_redraw(false);
@@ -659,6 +668,7 @@ impl<O: TuiOutput> TuiApp<O> {
             line_number_mode: self.state.line_number_mode,
             render_self_cursor: !self.output.uses_terminal_cursor(),
             gutter_width: self.calculate_gutter_width(total_lines),
+            opacity: 1.0, // TODO(#400): read from server layout when compositor is wired
         };
 
         // Always render to FrameBuffer (common output)

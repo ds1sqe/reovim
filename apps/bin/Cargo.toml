@@ -35,6 +35,7 @@ reovim-module-defaults = { workspace = true }
 # Module bridges (gRPC bridge registration, #468)
 reovim-module-cmdline = { workspace = true }
 reovim-module-whichkey = { workspace = true }
+reovim-module-notification = { workspace = true }
 
 # Extra modules available via REOVIM_EXTRA_MODULES env var
 reovim-module-textobjects = { workspace = true }

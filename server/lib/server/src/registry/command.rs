@@ -419,6 +419,7 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -432,6 +433,7 @@ mod tests {
                 windows: &mut client_windows,
                 extensions: &mut client_extensions,
                 compositor: &mut client_compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -620,6 +622,7 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -633,6 +636,7 @@ mod tests {
                 windows: &mut client_windows,
                 extensions: &mut client_extensions,
                 compositor: &mut client_compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -714,6 +718,7 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -727,6 +732,7 @@ mod tests {
                 windows: &mut client_windows,
                 extensions: &mut client_extensions,
                 compositor: &mut client_compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,

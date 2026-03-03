@@ -30,6 +30,7 @@ reovim-module-buffer-simple = { workspace = true }
 reovim-module-search = { workspace = true }
 reovim-module-clipboard = { workspace = true }
 reovim-module-cmdline = { workspace = true }
+reovim-module-notification = { workspace = true }
 
 # Syntax highlighting modules
 reovim-module-treesitter-rust = { workspace = true }

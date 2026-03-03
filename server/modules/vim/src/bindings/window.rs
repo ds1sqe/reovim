@@ -39,6 +39,10 @@
 //! - `f` - Toggle between tiled and floating
 //! - `]` - Raise float to front
 //! - `[` - Lower float to back
+//!
+//! # Tabs (T)
+//!
+//! - `T` - Move current window to new tab
 
 use {reovim_kernel::api::v1::KeybindingRegistration, reovim_module_window_ops::ids as window_ops};
 
@@ -171,6 +175,13 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:window"])
             .with_category("window")
             .with_description("Lower float to back"),
+        // ====================================================================
+        // Tabs (#401)
+        // ====================================================================
+        KeybindingRegistration::new("T", window_ops::MOVE_TO_NEW_TAB)
+            .with_modes(&["vim:window"])
+            .with_category("tab")
+            .with_description("Move current window to new tab"),
         // ====================================================================
         // Escape back to normal mode
         // ====================================================================
@@ -311,7 +322,7 @@ mod tests {
     fn test_bindings_count() {
         let b = bindings();
         // Navigation (4) + Arrows (4) + Cycling (3) + Split (3) + Close (3) +
-        // Resize (5) + Float (3) + Escape (1) = 26
-        assert_eq!(b.len(), 26);
+        // Resize (5) + Float (3) + Tabs (1) + Escape (1) = 27
+        assert_eq!(b.len(), 27);
     }
 }

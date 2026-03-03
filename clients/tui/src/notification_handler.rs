@@ -205,6 +205,9 @@ pub async fn handle_notification<C: NotificationContext>(
             if is_local {
                 // Local client: apply full layout update (windows + focus)
                 apply_layout_notification(state, layout.focused_window_id, layout.windows);
+                // #401 Phase 5: Store tab info from server
+                state.active_tab_id = layout.active_tab_id;
+                state.tabs = layout.tabs;
             } else {
                 // Remote client changed layout: update window list but keep our focus
                 let our_focus = state.focused_window_id;
@@ -733,15 +736,19 @@ mod tests {
                     buffer_id: Some(100),
                     rect: None,
                     focused: true,
+                    opacity: None,
                 },
                 WindowInfo {
                     window_id: 4,
                     buffer_id: Some(200),
                     rect: None,
                     focused: false,
+                    opacity: None,
                 },
             ],
             client_id: 1,
+            active_tab_id: None,
+            tabs: Vec::new(),
         }));
 
         let result = handle_notification(&mut ctx, notif).await.unwrap();

@@ -1,0 +1,23 @@
+[package]
+name = "reovim-tui-ext-notification"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Notification toast TUI extension for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Display driver (RenderBackend, TuiExtension, Style)
+reovim-driver-display = { workspace = true }
+
+# Platform abstraction (Color, Clock)
+reovim-arch = { workspace = true }
+
+# JSON parsing for notification data
+serde_json = { workspace = true }

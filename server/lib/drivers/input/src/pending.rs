@@ -17,10 +17,10 @@
 
 use {
     reovim_driver_session::SessionExtension,
-    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
+    reovim_kernel::api::v1::{ModeId, ModuleId},
 };
 
-use crate::KeySequence;
+use crate::{BindingInfo, KeySequence};
 
 /// Sentinel module used for uninitialized `PendingBindings`.
 const PENDING_MODULE: ModuleId = ModuleId::new("__pending__");
@@ -43,8 +43,8 @@ pub struct PendingBindings {
     pub pending_keys: KeySequence,
     /// The mode in which the pending occurred.
     pub mode: ModeId,
-    /// Available continuations: each is a remaining key sequence + command.
-    pub continuations: Vec<(KeySequence, CommandId)>,
+    /// Available continuations: each is a remaining key sequence + binding metadata.
+    pub continuations: Vec<(KeySequence, BindingInfo)>,
 }
 
 impl SessionExtension for PendingBindings {
@@ -75,7 +75,7 @@ impl PendingBindings {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::BindingLayer, reovim_kernel::api::v1::CommandId};
 
     const TEST_MODULE: ModuleId = ModuleId::new("test");
 
@@ -83,12 +83,15 @@ mod tests {
         ModeId::new(TEST_MODULE, "normal")
     }
 
-    fn goto_top_cmd() -> CommandId {
-        CommandId::new(TEST_MODULE, "goto-top")
+    fn goto_top_info() -> BindingInfo {
+        BindingInfo::from_command(CommandId::new(TEST_MODULE, "goto-top"), BindingLayer::Policy)
     }
 
-    fn goto_def_cmd() -> CommandId {
-        CommandId::new(TEST_MODULE, "goto-definition")
+    fn goto_def_info() -> BindingInfo {
+        BindingInfo::from_command(
+            CommandId::new(TEST_MODULE, "goto-definition"),
+            BindingLayer::Policy,
+        )
     }
 
     #[test]
@@ -105,7 +108,7 @@ mod tests {
         let mut pb = PendingBindings::create();
         assert!(!pb.is_active());
 
-        pb.continuations.push((KeySequence::new(), goto_top_cmd()));
+        pb.continuations.push((KeySequence::new(), goto_top_info()));
         assert!(pb.is_active());
     }
 
@@ -116,7 +119,7 @@ mod tests {
         pb.pending_keys =
             KeySequence::from_keys(&[crate::KeyEvent::new(crate::KeyCode::Char('g'))]);
         pb.mode = test_mode();
-        pb.continuations.push((KeySequence::new(), goto_top_cmd()));
+        pb.continuations.push((KeySequence::new(), goto_top_info()));
 
         assert!(pb.is_active());
 
@@ -132,7 +135,7 @@ mod tests {
         let mut pb = PendingBindings::create();
         let d_key = crate::KeyEvent::new(crate::KeyCode::Char('d'));
         pb.mode_prefix = KeySequence::from_keys(&[d_key]);
-        pb.continuations.push((KeySequence::new(), goto_top_cmd()));
+        pb.continuations.push((KeySequence::new(), goto_top_info()));
 
         assert!(pb.is_active());
         assert!(!pb.mode_prefix.is_empty());
@@ -145,7 +148,7 @@ mod tests {
         pb.mode_prefix = KeySequence::from_keys(&[crate::KeyEvent::new(crate::KeyCode::Char('d'))]);
         pb.pending_keys =
             KeySequence::from_keys(&[crate::KeyEvent::new(crate::KeyCode::Char('i'))]);
-        pb.continuations.push((KeySequence::new(), goto_top_cmd()));
+        pb.continuations.push((KeySequence::new(), goto_top_info()));
 
         assert!(pb.is_active());
         assert!(!pb.mode_prefix.is_empty());
@@ -157,11 +160,11 @@ mod tests {
         let mut pb = PendingBindings::create();
         pb.continuations.push((
             KeySequence::from_keys(&[crate::KeyEvent::new(crate::KeyCode::Char('g'))]),
-            goto_top_cmd(),
+            goto_top_info(),
         ));
         pb.continuations.push((
             KeySequence::from_keys(&[crate::KeyEvent::new(crate::KeyCode::Char('d'))]),
-            goto_def_cmd(),
+            goto_def_info(),
         ));
 
         assert!(pb.is_active());

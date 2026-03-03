@@ -12,7 +12,9 @@
 //! The compositor handles the actual layout logic; commands just invoke it.
 
 use {
-    reovim_driver_command::{ArgSpec, Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_command::{
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
+    },
     reovim_driver_display::{NavigateDirection, SplitDirection},
     reovim_driver_session::{CompositorApi, SessionRuntime},
     reovim_kernel::api::v1::CommandId,
@@ -595,6 +597,283 @@ impl CommandHandler for LowerFloat {
 }
 
 // =============================================================================
+// Layer Opacity Commands (#400)
+// =============================================================================
+
+/// Set layer opacity to a specific percentage (0-100).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LayerOpacitySet;
+
+impl Command for LayerOpacitySet {
+    fn id(&self) -> CommandId {
+        ids::LAYER_OPACITY_SET
+    }
+
+    fn description(&self) -> &'static str {
+        "Set layer opacity (0-100)"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::required(
+            "percentage",
+            ArgKind::Count,
+            "Opacity percentage (0-100)",
+        )]
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["LayerOpacity"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for LayerOpacitySet {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
+        let pct = ctx.count().unwrap_or(100);
+        #[allow(clippy::cast_precision_loss)]
+        let opacity = (pct as f32 / 100.0).clamp(0.0, 1.0);
+        match runtime.set_active_layer_opacity(opacity) {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Increase layer opacity by 10%.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LayerOpacityIncrease;
+
+impl Command for LayerOpacityIncrease {
+    fn id(&self) -> CommandId {
+        ids::LAYER_OPACITY_INCREASE
+    }
+
+    fn description(&self) -> &'static str {
+        "Increase layer opacity by 10%"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["LayerOpacityUp"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for LayerOpacityIncrease {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.adjust_active_layer_opacity(0.1) {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Decrease layer opacity by 10%.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LayerOpacityDecrease;
+
+impl Command for LayerOpacityDecrease {
+    fn id(&self) -> CommandId {
+        ids::LAYER_OPACITY_DECREASE
+    }
+
+    fn description(&self) -> &'static str {
+        "Decrease layer opacity by 10%"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["LayerOpacityDown"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for LayerOpacityDecrease {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.adjust_active_layer_opacity(-0.1) {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+// =============================================================================
+// Tab Page Commands (#401)
+// =============================================================================
+
+/// Create a new tab page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TabNew;
+
+impl Command for TabNew {
+    fn id(&self) -> CommandId {
+        ids::TAB_NEW
+    }
+
+    fn description(&self) -> &'static str {
+        "Create a new tab page"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["tabnew"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for TabNew {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.tab_new() {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Close the current tab page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TabClose;
+
+impl Command for TabClose {
+    fn id(&self) -> CommandId {
+        ids::TAB_CLOSE
+    }
+
+    fn description(&self) -> &'static str {
+        "Close the current tab page"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["tabclose", "tabc"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for TabClose {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.tab_close() {
+            Ok(()) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Switch to the next tab page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TabNext;
+
+impl Command for TabNext {
+    fn id(&self) -> CommandId {
+        ids::TAB_NEXT
+    }
+
+    fn description(&self) -> &'static str {
+        "Switch to the next tab page"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["tabnext", "tabn"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for TabNext {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.tab_next() {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Switch to the previous tab page.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TabPrev;
+
+impl Command for TabPrev {
+    fn id(&self) -> CommandId {
+        ids::TAB_PREV
+    }
+
+    fn description(&self) -> &'static str {
+        "Switch to the previous tab page"
+    }
+
+    fn names(&self) -> &[&'static str] {
+        &["tabprev", "tabp"]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for TabPrev {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.tab_prev() {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Switch to a tab page by index.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TabGoto;
+
+impl Command for TabGoto {
+    fn id(&self) -> CommandId {
+        ids::TAB_GOTO
+    }
+
+    fn description(&self) -> &'static str {
+        "Switch to tab page by index"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::required(
+            "index",
+            ArgKind::Count,
+            "Tab index (1-based)",
+        )]
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for TabGoto {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
+        let index = ctx.count().unwrap_or(1);
+        // Convert from 1-based (user) to 0-based (internal)
+        match runtime.tab_goto(index.saturating_sub(1)) {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+/// Move the current window to a new tab page.
+///
+/// Creates a new tab page and switches to it. In vim, `<C-w>T` moves the
+/// current window to a new tab; here the new tab starts empty and the
+/// compositor will assign the default window on next layout.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MoveToNewTab;
+
+impl Command for MoveToNewTab {
+    fn id(&self) -> CommandId {
+        ids::MOVE_TO_NEW_TAB
+    }
+
+    fn description(&self) -> &'static str {
+        "Move current window to new tab"
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+impl CommandHandler for MoveToNewTab {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        match runtime.tab_new() {
+            Ok(_) => CommandResult::Success,
+            Err(e) => CommandResult::Error(e.to_string()),
+        }
+    }
+}
+
+// =============================================================================
 // Command Collection
 // =============================================================================
 
@@ -629,6 +908,17 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
         Box::new(ToggleFloat),
         Box::new(RaiseFloat),
         Box::new(LowerFloat),
+        // Layer opacity (#400)
+        Box::new(LayerOpacitySet),
+        Box::new(LayerOpacityIncrease),
+        Box::new(LayerOpacityDecrease),
+        // Tab pages (#401)
+        Box::new(TabNew),
+        Box::new(TabClose),
+        Box::new(TabNext),
+        Box::new(TabPrev),
+        Box::new(TabGoto),
+        Box::new(MoveToNewTab),
     ]
 }
 
@@ -910,9 +1200,9 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_all_commands_returns_19_handlers() {
+    fn test_all_commands_returns_28_handlers() {
         let commands = all_commands();
-        assert_eq!(commands.len(), 19);
+        assert_eq!(commands.len(), 28);
     }
 
     #[test]
@@ -941,23 +1231,43 @@ mod tests {
 
     #[test]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_all_commands_have_no_args() {
+    fn test_commands_with_args_are_expected() {
+        // Only these commands should have args
+        let expected_with_args = ["layer-opacity-set", "tab-goto"];
         let commands = all_commands();
         for cmd in &commands {
-            assert!(cmd.args().is_empty(), "Command '{}' unexpectedly has args", cmd.id().name());
+            let has_args = !cmd.args().is_empty();
+            let name = cmd.id().name();
+            if expected_with_args.contains(&name) {
+                assert!(has_args, "Command '{name}' should have args");
+            } else {
+                assert!(!has_args, "Command '{name}' unexpectedly has args");
+            }
         }
     }
 
     #[test]
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_all_commands_have_no_aliases() {
+    fn test_commands_with_aliases_are_expected() {
+        // Only these commands should have aliases (ex-command names)
+        let expected_with_aliases = [
+            "layer-opacity-set",
+            "layer-opacity-increase",
+            "layer-opacity-decrease",
+            "tab-new",
+            "tab-close",
+            "tab-next",
+            "tab-prev",
+        ];
         let commands = all_commands();
         for cmd in &commands {
-            assert!(
-                cmd.names().is_empty(),
-                "Command '{}' unexpectedly has aliases",
-                cmd.id().name()
-            );
+            let has_aliases = !cmd.names().is_empty();
+            let name = cmd.id().name();
+            if expected_with_aliases.contains(&name) {
+                assert!(has_aliases, "Command '{name}' should have aliases");
+            } else {
+                assert!(!has_aliases, "Command '{name}' unexpectedly has aliases");
+            }
         }
     }
 
@@ -1318,6 +1628,7 @@ mod tests {
         assert!(!format!("{ToggleFloat:?}").is_empty());
         assert!(!format!("{RaiseFloat:?}").is_empty());
         assert!(!format!("{LowerFloat:?}").is_empty());
+        assert!(!format!("{MoveToNewTab:?}").is_empty());
     }
 
     // =========================================================================
@@ -1348,6 +1659,10 @@ mod tests {
         assert_eq!(a.id(), b.id());
 
         let a = ToggleFloat;
+        let b = a;
+        assert_eq!(a.id(), b.id());
+
+        let a = MoveToNewTab;
         let b = a;
         assert_eq!(a.id(), b.id());
     }
@@ -1387,6 +1702,7 @@ mod tests {
         assert_default::<ToggleFloat>();
         assert_default::<RaiseFloat>();
         assert_default::<LowerFloat>();
+        assert_default::<MoveToNewTab>();
     }
 
     // =========================================================================
@@ -1415,6 +1731,7 @@ mod tests {
         assert_clone::<ToggleFloat>();
         assert_clone::<RaiseFloat>();
         assert_clone::<LowerFloat>();
+        assert_clone::<MoveToNewTab>();
     }
 
     // =========================================================================

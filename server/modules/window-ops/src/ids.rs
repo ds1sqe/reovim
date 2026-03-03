@@ -128,6 +128,38 @@ pub const RAISE_FLOAT: CommandId = CommandId::new(MODULE, "raise-float");
 /// Lower floating window to back of float zone.
 pub const LOWER_FLOAT: CommandId = CommandId::new(MODULE, "lower-float");
 
+// =============================================================================
+// Layer Opacity Operations (#400)
+// =============================================================================
+
+/// Set layer opacity to a specific percentage.
+pub const LAYER_OPACITY_SET: CommandId = CommandId::new(MODULE, "layer-opacity-set");
+
+/// Increase layer opacity by 10%.
+pub const LAYER_OPACITY_INCREASE: CommandId = CommandId::new(MODULE, "layer-opacity-increase");
+
+/// Decrease layer opacity by 10%.
+pub const LAYER_OPACITY_DECREASE: CommandId = CommandId::new(MODULE, "layer-opacity-decrease");
+
+// =============================================================================
+// Tab Operations (#401)
+// =============================================================================
+
+/// Create a new tab page.
+pub const TAB_NEW: CommandId = CommandId::new(MODULE, "tab-new");
+
+/// Close the current tab page.
+pub const TAB_CLOSE: CommandId = CommandId::new(MODULE, "tab-close");
+
+/// Switch to the next tab page.
+pub const TAB_NEXT: CommandId = CommandId::new(MODULE, "tab-next");
+
+/// Switch to the previous tab page.
+pub const TAB_PREV: CommandId = CommandId::new(MODULE, "tab-prev");
+
+/// Switch to tab page by index.
+pub const TAB_GOTO: CommandId = CommandId::new(MODULE, "tab-goto");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,6 +380,62 @@ mod tests {
     }
 
     // =========================================================================
+    // Layer Opacity Operations IDs (#400)
+    // =========================================================================
+
+    #[test]
+    fn test_layer_opacity_set_id() {
+        assert_eq!(LAYER_OPACITY_SET.module(), &MODULE);
+        assert_eq!(LAYER_OPACITY_SET.name(), "layer-opacity-set");
+    }
+
+    #[test]
+    fn test_layer_opacity_increase_id() {
+        assert_eq!(LAYER_OPACITY_INCREASE.module(), &MODULE);
+        assert_eq!(LAYER_OPACITY_INCREASE.name(), "layer-opacity-increase");
+    }
+
+    #[test]
+    fn test_layer_opacity_decrease_id() {
+        assert_eq!(LAYER_OPACITY_DECREASE.module(), &MODULE);
+        assert_eq!(LAYER_OPACITY_DECREASE.name(), "layer-opacity-decrease");
+    }
+
+    // =========================================================================
+    // Tab Operations IDs (#401)
+    // =========================================================================
+
+    #[test]
+    fn test_tab_new_id() {
+        assert_eq!(TAB_NEW.module(), &MODULE);
+        assert_eq!(TAB_NEW.name(), "tab-new");
+    }
+
+    #[test]
+    fn test_tab_close_id() {
+        assert_eq!(TAB_CLOSE.module(), &MODULE);
+        assert_eq!(TAB_CLOSE.name(), "tab-close");
+    }
+
+    #[test]
+    fn test_tab_next_id() {
+        assert_eq!(TAB_NEXT.module(), &MODULE);
+        assert_eq!(TAB_NEXT.name(), "tab-next");
+    }
+
+    #[test]
+    fn test_tab_prev_id() {
+        assert_eq!(TAB_PREV.module(), &MODULE);
+        assert_eq!(TAB_PREV.name(), "tab-prev");
+    }
+
+    #[test]
+    fn test_tab_goto_id() {
+        assert_eq!(TAB_GOTO.module(), &MODULE);
+        assert_eq!(TAB_GOTO.name(), "tab-goto");
+    }
+
+    // =========================================================================
     // Uniqueness and equality
     // =========================================================================
 
@@ -383,6 +471,14 @@ mod tests {
             &TOGGLE_FLOAT,
             &RAISE_FLOAT,
             &LOWER_FLOAT,
+            &LAYER_OPACITY_SET,
+            &LAYER_OPACITY_INCREASE,
+            &LAYER_OPACITY_DECREASE,
+            &TAB_NEW,
+            &TAB_CLOSE,
+            &TAB_NEXT,
+            &TAB_PREV,
+            &TAB_GOTO,
         ];
         // Check that all IDs are unique (no duplicates)
         for (i, a) in all_ids.iter().enumerate() {
@@ -427,6 +523,14 @@ mod tests {
             &TOGGLE_FLOAT,
             &RAISE_FLOAT,
             &LOWER_FLOAT,
+            &LAYER_OPACITY_SET,
+            &LAYER_OPACITY_INCREASE,
+            &LAYER_OPACITY_DECREASE,
+            &TAB_NEW,
+            &TAB_CLOSE,
+            &TAB_NEXT,
+            &TAB_PREV,
+            &TAB_GOTO,
         ];
         for id in &all_ids {
             assert_eq!(

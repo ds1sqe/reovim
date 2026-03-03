@@ -282,6 +282,8 @@ pub struct ClientContext<'a> {
     pub extensions: &'a mut ExtensionMap,
     /// Per-client compositor for window layout geometry.
     pub compositor: &'a mut Option<Box<dyn RootCompositor>>,
+    /// Per-client tab pages (#401).
+    pub tabs: &'a mut crate::TabPageSet,
     /// Per-client register storage (unnamed, named a-z/A-Z).
     pub registers: &'a mut RegisterBank,
     /// Per-client clipboard history ring (numbered registers 0-9).

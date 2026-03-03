@@ -418,6 +418,7 @@ impl SessionState {
         let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
+        let mut temp_tabs = reovim_driver_session::TabPageSet::new();
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
@@ -429,6 +430,7 @@ impl SessionState {
                 windows: &mut temp_windows,
                 extensions: &mut runtime_ext,
                 compositor: &mut temp_compositor,
+                tabs: &mut temp_tabs,
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
@@ -516,6 +518,7 @@ impl SessionState {
             windows: client_windows,
             extensions: client_extensions,
             compositor: client_compositor,
+            tabs: client_tabs,
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
@@ -541,6 +544,7 @@ impl SessionState {
                 windows: client_windows,
                 extensions: &mut runtime_ext,
                 compositor: client_compositor,
+                tabs: client_tabs,
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
@@ -668,6 +672,7 @@ impl SessionState {
         let mut runtime_ext = reovim_driver_session::ExtensionMap::new();
         let mut temp_client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut temp_compositor = None;
+        let mut temp_tabs = reovim_driver_session::TabPageSet::new();
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
@@ -679,6 +684,7 @@ impl SessionState {
                 windows: &mut temp_windows,
                 extensions: &mut runtime_ext,
                 compositor: &mut temp_compositor,
+                tabs: &mut temp_tabs,
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
@@ -732,6 +738,7 @@ impl SessionState {
             windows: client_windows,
             extensions: client_extensions,
             compositor: client_compositor,
+            tabs: client_tabs,
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
@@ -754,6 +761,7 @@ impl SessionState {
                 windows: client_windows,
                 extensions: &mut runtime_ext,
                 compositor: client_compositor,
+                tabs: client_tabs,
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
@@ -899,6 +907,7 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
 
         // #491: Use home_mode() instead of removed current_mode()
         // Verify initial states
@@ -920,6 +929,7 @@ mod tests {
                 windows: &mut client_windows,
                 extensions: &mut client_extensions,
                 compositor: &mut client_compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1141,6 +1151,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1152,6 +1163,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1172,6 +1184,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1189,6 +1202,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1342,6 +1356,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1354,6 +1369,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1612,6 +1628,7 @@ mod tests {
         let mut client_windows = reovim_driver_session::WindowLayout::empty();
         let mut client_extensions = reovim_driver_session::ExtensionMap::new();
         let mut client_compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1624,6 +1641,7 @@ mod tests {
                 windows: &mut client_windows,
                 extensions: &mut client_extensions,
                 compositor: &mut client_compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -1680,6 +1698,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -1692,6 +1711,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2129,6 +2149,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2140,6 +2161,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2231,6 +2253,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2242,6 +2265,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2339,6 +2363,7 @@ mod tests {
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2351,6 +2376,7 @@ mod tests {
                 windows: &mut windows,
                 extensions: &mut extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2520,6 +2546,7 @@ mod tests {
         let mut mode_stack = ModeStack::new(state.home_mode().clone());
         let mut windows = reovim_driver_session::WindowLayout::empty();
         let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
@@ -2531,6 +2558,7 @@ mod tests {
                 windows: &mut windows,
                 extensions,
                 compositor: &mut compositor,
+                tabs: &mut tabs,
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
@@ -2741,8 +2769,13 @@ mod tests {
         let mut extensions = reovim_driver_session::ExtensionMap::new();
         let pb = extensions.get_or_insert::<PendingBindings>();
         let cmd = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "dummy");
-        pb.continuations
-            .push((reovim_driver_input::KeySequence::new(), cmd));
+        pb.continuations.push((
+            reovim_driver_input::KeySequence::new(),
+            reovim_driver_input::BindingInfo::from_command(
+                cmd,
+                reovim_driver_input::BindingLayer::Policy,
+            ),
+        ));
         assert!(extensions.get::<PendingBindings>().unwrap().is_active());
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));

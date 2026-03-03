@@ -3,6 +3,12 @@
 //! Adapts [`PendingBindings`] to JSON for gRPC transmission to clients.
 //! Shows the accumulated pending key prefix and available continuations
 //! so the client can display a which-key popup.
+//!
+//! # Filtering (#459)
+//!
+//! When a [`WhichKeyFilterConfig`] extension is present in the
+//! `ExtensionMap`, the bridge applies its filters before emitting hints.
+//! This allows filtering by category, key pattern, and binding layer.
 
 use {
     reovim_driver_input::PendingBindings,
@@ -11,6 +17,8 @@ use {
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
 };
+
+use crate::filter::WhichKeyFilterConfig;
 
 /// Bridge for which-key popup state.
 ///
@@ -50,15 +58,29 @@ impl ExtensionStateBridge for WhichKeyBridge {
         } else {
             format!("{}{}", pb.mode_prefix, pb.pending_keys)
         };
+
+        // Read optional filter config
+        let filter = extensions.get::<WhichKeyFilterConfig>();
+
+        let hints: Vec<_> = pb
+            .continuations
+            .iter()
+            .filter(|(keys, info)| filter.is_none_or(|f| f.matches(keys, info)))
+            .map(|(keys, info)| {
+                serde_json::json!({
+                    "key": format!("{keys}"),
+                    "command": format!("{}", info.command),
+                    "description": info.description,
+                    "category": info.category.unwrap_or(""),
+                    "layer": info.layer.name(),
+                })
+            })
+            .collect();
+
         Some(serde_json::json!({
             "active": true,
             "prefix": prefix,
-            "hints": pb.continuations.iter().map(|(keys, cmd)| {
-                serde_json::json!({
-                    "key": format!("{keys}"),
-                    "command": format!("{cmd}"),
-                })
-            }).collect::<Vec<_>>(),
+            "hints": hints,
         }))
     }
 
@@ -73,11 +95,25 @@ impl ExtensionStateBridge for WhichKeyBridge {
 mod tests {
     use {
         super::*,
-        reovim_driver_input::KeySequence,
+        crate::filter::BindingLayerFilter,
+        reovim_driver_input::{BindingInfo, BindingLayer, KeySequence},
         reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
     const TEST_MODULE: ModuleId = ModuleId::new("test");
+
+    fn info(name: &'static str, desc: &'static str, cat: Option<&'static str>) -> BindingInfo {
+        BindingInfo::new(CommandId::new(TEST_MODULE, name), desc, cat, BindingLayer::Policy)
+    }
+
+    fn info_at_layer(
+        name: &'static str,
+        desc: &'static str,
+        cat: Option<&'static str>,
+        layer: BindingLayer,
+    ) -> BindingInfo {
+        BindingInfo::new(CommandId::new(TEST_MODULE, name), desc, cat, layer)
+    }
 
     #[test]
     fn test_whichkey_bridge_kind() {
@@ -121,13 +157,13 @@ mod tests {
             KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
                 reovim_driver_input::KeyCode::Char('g'),
             )]),
-            CommandId::new(TEST_MODULE, "goto-top"),
+            info("goto-top", "Go to first line", Some("motion")),
         ));
         pb.continuations.push((
             KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
                 reovim_driver_input::KeyCode::Char('d'),
             )]),
-            CommandId::new(TEST_MODULE, "goto-definition"),
+            info("goto-definition", "Go to definition", Some("motion")),
         ));
 
         let snap = WhichKeyBridge.snapshot(&map).unwrap();
@@ -137,6 +173,9 @@ mod tests {
         let hints = snap["hints"].as_array().unwrap();
         assert_eq!(hints.len(), 2);
         assert!(hints[0]["command"].as_str().unwrap().contains("goto-top"));
+        assert_eq!(hints[0]["description"], "Go to first line");
+        assert_eq!(hints[0]["category"], "motion");
+        assert_eq!(hints[0]["layer"], "policy");
         assert!(
             hints[1]["command"]
                 .as_str()
@@ -158,7 +197,7 @@ mod tests {
             KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
                 reovim_driver_input::KeyCode::Char('w'),
             )]),
-            CommandId::new(TEST_MODULE, "delete-word"),
+            info("delete-word", "Delete word", Some("operator")),
         ));
 
         let snap = WhichKeyBridge.snapshot(&map).unwrap();
@@ -182,7 +221,7 @@ mod tests {
             KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
                 reovim_driver_input::KeyCode::Char('w'),
             )]),
-            CommandId::new(TEST_MODULE, "inner-word"),
+            info("inner-word", "Inner word", Some("textobject")),
         ));
 
         let snap = WhichKeyBridge.snapshot(&map).unwrap();
@@ -208,7 +247,7 @@ mod tests {
         let mut map = ExtensionMap::new();
         let pb = map.get_or_insert::<PendingBindings>();
         pb.continuations
-            .push((KeySequence::new(), CommandId::new(TEST_MODULE, "test-cmd")));
+            .push((KeySequence::new(), info("test-cmd", "", None)));
         assert!(WhichKeyBridge.is_active(&map));
     }
 
@@ -217,11 +256,196 @@ mod tests {
         let mut map = ExtensionMap::new();
         let pb = map.get_or_insert::<PendingBindings>();
         pb.continuations
-            .push((KeySequence::new(), CommandId::new(TEST_MODULE, "test-cmd")));
+            .push((KeySequence::new(), info("test-cmd", "", None)));
         assert!(WhichKeyBridge.is_active(&map));
 
         let pb = map.get_or_insert::<PendingBindings>();
         pb.clear();
         assert!(!WhichKeyBridge.is_active(&map));
+    }
+
+    // ========================================================================
+    // Filter tests (#459)
+    // ========================================================================
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_no_filter_passes_all() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info("goto-top", "Top", Some("motion")),
+        ));
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('d'),
+            )]),
+            info("goto-def", "Def", Some("navigation")),
+        ));
+
+        // No WhichKeyFilterConfig in extensions → all hints pass
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        assert_eq!(hints.len(), 2);
+    }
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_filter_by_category() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info("goto-top", "Top", Some("motion")),
+        ));
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('d'),
+            )]),
+            info("goto-def", "Def", Some("navigation")),
+        ));
+
+        // Set category filter to "motion"
+        let filter = map.get_or_insert::<WhichKeyFilterConfig>();
+        filter.categories = Some(vec!["motion".to_owned()]);
+
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        assert_eq!(hints.len(), 1);
+        assert!(hints[0]["command"].as_str().unwrap().contains("goto-top"));
+    }
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_filter_by_layer() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info_at_layer("goto-top", "Top", Some("motion"), BindingLayer::Policy),
+        ));
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('d'),
+            )]),
+            info_at_layer("custom-goto", "Custom", None, BindingLayer::User),
+        ));
+
+        // Filter to user-only
+        let filter = map.get_or_insert::<WhichKeyFilterConfig>();
+        filter.layer_filter = Some(BindingLayerFilter::UserOnly);
+
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        assert_eq!(hints.len(), 1);
+        assert!(
+            hints[0]["command"]
+                .as_str()
+                .unwrap()
+                .contains("custom-goto")
+        );
+    }
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_filter_defaults_only() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info_at_layer("goto-top", "Top", None, BindingLayer::Policy),
+        ));
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('d'),
+            )]),
+            info_at_layer("custom", "Custom", None, BindingLayer::User),
+        ));
+
+        // Filter to defaults only (Policy + Base, not User)
+        let filter = map.get_or_insert::<WhichKeyFilterConfig>();
+        filter.layer_filter = Some(BindingLayerFilter::DefaultsOnly);
+
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        assert_eq!(hints.len(), 1);
+        assert!(hints[0]["command"].as_str().unwrap().contains("goto-top"));
+    }
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_no_category_field() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info("goto-top", "Top", None),
+        ));
+
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        // No category → empty string in JSON
+        assert_eq!(hints[0]["category"], "");
+    }
+
+    #[test]
+    fn test_whichkey_bridge_snapshot_combined_filter() {
+        let mut map = ExtensionMap::new();
+        let pb = map.get_or_insert::<PendingBindings>();
+        pb.pending_keys = KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+            reovim_driver_input::KeyCode::Char('g'),
+        )]);
+        // motion at Policy
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('g'),
+            )]),
+            info_at_layer("goto-top", "Top", Some("motion"), BindingLayer::Policy),
+        ));
+        // motion at User
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('j'),
+            )]),
+            info_at_layer("user-motion", "User motion", Some("motion"), BindingLayer::User),
+        ));
+        // operator at Policy
+        pb.continuations.push((
+            KeySequence::from_keys(&[reovim_driver_input::KeyEvent::new(
+                reovim_driver_input::KeyCode::Char('d'),
+            )]),
+            info_at_layer("delete", "Delete", Some("operator"), BindingLayer::Policy),
+        ));
+
+        // Filter: motion + defaults only → only "goto-top"
+        let filter = map.get_or_insert::<WhichKeyFilterConfig>();
+        filter.categories = Some(vec!["motion".to_owned()]);
+        filter.layer_filter = Some(BindingLayerFilter::DefaultsOnly);
+
+        let snap = WhichKeyBridge.snapshot(&map).unwrap();
+        let hints = snap["hints"].as_array().unwrap();
+        assert_eq!(hints.len(), 1);
+        assert!(hints[0]["command"].as_str().unwrap().contains("goto-top"));
     }
 }

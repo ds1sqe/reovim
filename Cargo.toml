@@ -45,6 +45,7 @@ members = [
     "server/modules/treesitter-rust",
     "server/modules/cmdline",
     "server/modules/whichkey",
+    "server/modules/notification",
     "server/modules/treesitter-markdown",
 
     # Client layer - TUI
@@ -55,6 +56,7 @@ members = [
     # Client extensions - TUI
     "clients/tui/extensions/which-key",
     "clients/tui/extensions/cmdline",
+    "clients/tui/extensions/notification",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -196,6 +198,7 @@ reovim-module-defaults = { path = "./server/modules/defaults", version = "0.9.5-
 reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.9.5-dev" }
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.9.5-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.9.5-dev" }
+reovim-module-notification = { path = "./server/modules/notification", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
 
 # CLI

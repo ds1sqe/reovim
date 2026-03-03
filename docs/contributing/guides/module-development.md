@@ -241,104 +241,23 @@ impl Module for MyModule {
 5. **Reject future versions** - return error if version > current
 6. **Limit state size** - MAX_STATE_SIZE is 16 MiB
 
-## RPC Commands
+## gRPC Module Management
 
-### module/load
+Module lifecycle is managed via the `ModuleService` gRPC service (defined in `shared/protocol/proto/reovim/v2/module.proto`):
 
-Load a module from a file path.
+| RPC | Description |
+|-----|-------------|
+| `List` | List all loaded modules |
+| `Load` | Load a module from a file path |
+| `Unload` | Unload a module by ID |
+| `Reload` | Hot reload a module (preserves state) |
 
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "method": "module/load",
-  "params": {
-    "path": "/path/to/libmodule.so"
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "module": {
-      "id": "my-module",
-      "name": "My Module",
-      "version": "1.0.0",
-      "state": "Running",
-      "path": "/path/to/libmodule.so",
-      "is_static": false,
-      "dependencies": []
-    }
-  }
-}
-```
-
-### module/unload
-
-Unload a module by ID.
-
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 2,
-  "method": "module/unload",
-  "params": {
-    "id": "my-module"
-  }
-}
-```
-
-### module/reload
-
-Hot reload a module (preserves state).
-
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 3,
-  "method": "module/reload",
-  "params": {
-    "id": "my-module"
-  }
-}
-```
-
-### module/list
-
-List all loaded modules.
-
-**Request:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 4,
-  "method": "module/list"
-}
-```
-
-**Response:**
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 4,
-  "result": {
-    "modules": [
-      {
-        "id": "my-module",
-        "name": "My Module",
-        "version": "1.0.0",
-        "state": "Running",
-        "is_static": false
-      }
-    ]
-  }
+```protobuf
+service ModuleService {
+  rpc List(ListModulesRequest) returns (ListModulesResponse);
+  rpc Load(LoadModuleRequest) returns (LoadModuleResponse);
+  rpc Unload(UnloadModuleRequest) returns (UnloadModuleResponse);
+  rpc Reload(ReloadModuleRequest) returns (ReloadModuleResponse);
 }
 ```
 
@@ -369,7 +288,7 @@ extra = [
 
 # Skip specific default modules
 skip = [
-  "operators"
+  "scratch-buffer"
 ]
 
 # Skip all default modules
@@ -499,19 +418,10 @@ fn test_module_load_dynamic() {
 
 All FFI trampolines use `catch_unwind` to prevent panics from crossing the FFI boundary. Panics return `-2` to the caller.
 
-## Example: Hot Reload Demo
+## Example
 
-See `modules/hot-reload-demo/` for a complete working example that demonstrates:
+See the existing modules in `server/modules/` for working examples. The `scratch-buffer` module is a simple starting point that demonstrates:
 
 - Module lifecycle (init/exit)
-- Hot reload with state preservation
-- Command registration
-- Version-compatible state format
-
-```bash
-# Build the demo module
-cargo build -p reovim-module-hot-reload-demo
-
-# The module is at:
-target/debug/libreovim_module_hot_reload_demo.so
-```
+- Minimal state management
+- Integration with the kernel API

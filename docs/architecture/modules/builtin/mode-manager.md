@@ -64,7 +64,7 @@ When mode changes occur, this module can:
 - Update cursor style (block vs line)
 - Update status line display
 - Update available keybindings
-- Request render updates via `ctx.request_render()`
+- Trigger notifications to connected clients
 
 ## Related Documents
 

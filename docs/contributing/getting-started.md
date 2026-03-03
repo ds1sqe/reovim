@@ -73,7 +73,7 @@ reovim/
 │   ├── lib/
 │   │   ├── kernel/        # reovim-kernel - core mechanisms (mm/, ipc/, core/)
 │   │   ├── server/        # reovim-server - gRPC handlers, session management
-│   │   └── drivers/       # Server drivers (13 crates)
+│   │   └── drivers/       # Server drivers (14 crates)
 │   │       ├── command/       # Command trait and registry
 │   │       ├── input/         # Key events and input parsing
 │   │       ├── syntax/        # Tree-sitter integration
@@ -82,7 +82,7 @@ reovim/
 │   │       ├── session/       # Session management
 │   │       ├── buffer/        # Buffer operations
 │   │       └── ...            # (undo, search, clipboard, ffi, etc.)
-│   └── modules/           # Policy modules (17 loadable modules)
+│   └── modules/           # Policy modules (21 loadable modules)
 │       ├── vim/               # Core Vim-like behavior
 │       ├── editor/            # Editor core operations
 │       ├── motions/           # Movement commands
@@ -92,8 +92,9 @@ reovim/
 │       └── ...                # (options, buffer-ops, clipboard, search, etc.)
 ├── clients/               # Client applications
 │   ├── cli/               # CLI client (gRPC v2)
-│   └── tui/               # TUI client (gRPC v2)
-│       └── lib/drivers/   # TUI-specific drivers (tui, display)
+│   ├── tui/               # TUI client (gRPC v2)
+│   │   └── lib/drivers/   # TUI-specific drivers (tui, display)
+│   └── web/               # Web client (gRPC-Web, WASM)
 ├── shared/                # Shared libraries
 │   ├── protocol/          # gRPC v2 protocol definitions
 │   ├── arch/              # Platform abstraction (unix/, windows/)

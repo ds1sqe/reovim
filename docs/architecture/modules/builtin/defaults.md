@@ -1,6 +1,6 @@
 # defaults Module
 
-Meta-module that aggregates 13 default modules for standard editor functionality.
+Meta-module that aggregates 14 default modules for standard editor functionality.
 
 ## Source Location
 
@@ -21,9 +21,10 @@ This module aggregates:
 - `vfs-local` - Local filesystem VFS
 - `clipboard` - Clipboard operations
 
-**Utility modules (2):**
+**Utility modules (3):**
 - `keymap` - Keymap utilities
 - `commands` - Ex-commands
+- `cmdline` - Command-line mode input
 
 **Policy modules (3):**
 - `editor` - Core editing operations
@@ -76,7 +77,7 @@ pub fn keybindings() -> Vec<KeybindingRegistration>;
 
 ## Dependencies
 
-All 13 sub-modules plus:
+All 14 sub-modules plus:
 - `reovim_kernel::api::v1` - Module trait
 
 ## Example Usage
@@ -97,9 +98,7 @@ registry.load(Box::new(defaults))?;
 
 ## Note on Client-Side Modules
 
-Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
-were removed in Epic #465 Phase 11. These will be reimplemented as client-side
-plugins.
+Client-side UI modules (layout, pair, statusline, undotree) were removed in Epic #465 Phase 11. Their functionality is now handled by client extensions (e.g., cmdline and which-key are server modules that expose state via `ExtensionService`).
 
 ## Related Documents
 

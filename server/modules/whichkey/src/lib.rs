@@ -14,8 +14,12 @@
 //! The bridge is registered via [`BridgeProvider`] during `init()`.
 
 mod bridge;
+pub mod filter;
 
-pub use bridge::WhichKeyBridge;
+pub use {
+    bridge::WhichKeyBridge,
+    filter::{BindingLayerFilter, WhichKeyFilterConfig},
+};
 
 use {
     reovim_driver_session::bridges::BridgeProvider,

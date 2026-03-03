@@ -5,25 +5,32 @@ Reovim can run as a gRPC server for programmatic control, enabling integration w
 ## Quick Start
 
 ```bash
-# Start server on default port (12521)
+# Terminal 1: Start server on default port (12540)
 reovim server
 
-# Connect with CLI client
-reovim cli keys 'iHello<Esc>'
+# Terminal 2: Connect with CLI client
+reovim cli --grpc 127.0.0.1:12540 keys 'iHello<Esc>' --client 1
 
-# Connect with TUI client
-reovim tui
+# Terminal 3: Connect with TUI client
+reovim tui --grpc 127.0.0.1:12540
 ```
 
 ## Transport Options
 
-### TCP (Default)
+### gRPC (Default, Recommended)
 
 ```bash
-# Default: 127.0.0.1:12521
+# Default: 127.0.0.1:12540
 reovim server
 
-# Custom port
+# Custom gRPC port
+reovim server --grpc 9000
+```
+
+### TCP (Legacy)
+
+```bash
+# Custom TCP port
 reovim server --tcp 9000
 ```
 
@@ -33,81 +40,75 @@ reovim server --tcp 9000
 reovim server --socket /tmp/reovim.sock
 ```
 
-### Stdio
-
-For process piping and subprocess communication:
-
-```bash
-reovim server --stdio
-```
-
-Note: `--stdio` mode always exits when the connection closes (one-shot mode).
-
 ## Multi-Instance Support
 
 Multiple reovim servers can run concurrently on the same machine.
 
 ### Port Fallback
 
-When the default port (12521) is in use, the server automatically tries:
-- 12522, 12523, ... up to 12530
+When the default port (12540) is in use, the server automatically tries:
+- 12541, 12542, ... up to 12549
 
 The server prints the bound port to stderr on startup:
 ```
-Listening on 127.0.0.1:12522
+Listening on 127.0.0.1:12541
 ```
 
-### Port File Discovery
+### Named Sessions
 
-Each server writes a port file for discovery:
-```
-~/.local/share/reovim/servers/<pid>.port
-```
-
-Port files are automatically removed when the server exits cleanly.
-
-### Listing Running Servers
+Use `--session` to create named editing contexts:
 
 ```bash
-$ reovim cli list
-127.0.0.1:12521 (pid: 123456)
-127.0.0.1:12522 (pid: 123789)
+reovim server --session project-a
+reovim server --session project-b --grpc 12541
 ```
 
-### Auto-Discovery
+## Multi-Client Architecture
 
-When using CLI/TUI without specifying a server:
-- **Single server**: Connects automatically
-- **Multiple servers**: Connects to first found
-- **No servers**: Returns an error
+Reovim supports multiple clients connected to the same server session (tmux-like model).
+
+### Joining a Session
+
+Clients join via `PresenceService.Join` and receive:
+- A unique `client_id` for identification
+- A `session_token` for authentication
+
+All subsequent RPC calls include the token via `x-reovim-token` metadata header.
+
+### Per-Client State
+
+Each client has isolated:
+- Cursor position
+- Mode state
+- Visual selection
+- Viewport
+- Register bank
+
+Shared across clients:
+- Buffer content
+- File system state
+- Module configuration
+
+### Client Management
 
 ```bash
-# Auto-connect to available server
-reovim cli keys 'j'
+# List connected clients
+reovim cli --grpc 127.0.0.1:12540 clients
 
-# Specify server explicitly
-reovim cli --tcp 127.0.0.1:12522 keys 'j'
+# Target a specific client
+reovim cli --grpc 127.0.0.1:12540 mode --client 1
+reovim cli --grpc 127.0.0.1:12540 cursor --client 2
 ```
-
-## Server Modes
-
-### Persistent Mode (Default)
-
-Server runs indefinitely, accepting multiple sequential connections:
-
-```bash
-reovim server
-```
-
-Clients can connect, disconnect, and reconnect without restarting the server.
 
 ## Server Options Reference
 
 | Flag | Description |
 |------|-------------|
-| `--tcp <PORT>` | Listen on custom TCP port (default: 12521) |
+| `--grpc <PORT>` | Listen on gRPC port (default: 12540) |
+| `--tcp <PORT>` | Listen on legacy TCP port |
 | `--socket <PATH>` | Listen on Unix socket |
-| `--stdio` | Use stdio transport (always one-shot) |
+| `--session <NAME>` | Named session identifier |
+| `--instance <NAME>` | Named instance identifier |
 
 ## CLI Client
 
@@ -116,162 +117,96 @@ The built-in CLI client provides command-line access to reovim servers.
 ### Commands
 
 ```bash
-# List running servers
-reovim cli list
+# Inject keys (requires --client)
+reovim cli --grpc 127.0.0.1:12540 keys 'iHello<Esc>' --client 1
 
-# Inject keys
-reovim cli keys 'iHello<Esc>'
+# Query state (requires --client)
+reovim cli --grpc 127.0.0.1:12540 mode --client 1
+reovim cli --grpc 127.0.0.1:12540 cursor --client 1
 
-# Query state
-reovim cli mode                           # Get current mode
-reovim cli cursor                         # Get cursor position
+# List clients
+reovim cli --grpc 127.0.0.1:12540 clients
 
 # JSON output format
-reovim cli --format json mode
+reovim cli --grpc 127.0.0.1:12540 --format json mode --client 1
 
-# Kill server
-reovim cli kill
-
-# Interactive REPL mode
-reovim cli -i
+# Health check
+reovim cli --grpc 127.0.0.1:12540 ping
 ```
 
 ### Debug Commands
 
 ```bash
-# Get/set log level dynamically
-reovim cli log-level                      # Get current level
-reovim cli log-level debug                # Set to debug
-
 # View recent log entries
-reovim cli log-tail                       # Last 50 entries
-reovim cli log-tail --count 100           # Last 100 entries
+reovim cli --grpc 127.0.0.1:12540 log-tail
+reovim cli --grpc 127.0.0.1:12540 log-tail --count 100
 
 # Filter logs
-reovim cli log-tail --level warn          # WARN and above
-reovim cli log-tail --target runner       # Filter by module
-reovim cli log-tail --grep "error"        # Search messages
-
-# Stream logs in real-time (like tail -f)
-reovim cli log-tail --follow
-reovim cli log-tail --follow --level warn # Stream with filter
+reovim cli --grpc 127.0.0.1:12540 log-tail --level warn
+reovim cli --grpc 127.0.0.1:12540 log-tail --target runner
+reovim cli --grpc 127.0.0.1:12540 log-tail --grep "error"
 ```
 
-### Connection Options
-
-```bash
-# TCP connection (explicit)
-reovim cli --tcp localhost:12521 keys 'j'
-
-# Unix socket connection
-reovim cli --socket /tmp/reovim.sock keys 'j'
-```
-
-### Interactive REPL
-
-```bash
-$ reovim cli -i
-reovim> keys iHello<Esc>
-ok: true
-reovim> mode
-Mode: NORMAL
-reovim> cursor
-Cursor: line 0, column 5
-reovim> quit
-```
-
-## TUI Client
-
-Connect to a running server with a full terminal UI:
-
-```bash
-# Auto-discover and connect
-reovim tui
-
-# Connect to specific server
-reovim tui --tcp 127.0.0.1:12521
-reovim tui --socket /tmp/reovim.sock
-```
-
-### TUI Debug Mode
-
-Enable debug mode for TUI diagnostics:
-
-```bash
-# Enable debug statusline and frame capture
-reovim tui --debug
-
-# Custom log directory
-reovim tui --debug --debug-dir /tmp/reovim-debug
-
-# Custom session name
-reovim tui --debug --debug-name mysession
-```
-
-**Debug Features:**
-
-1. **Statusline**: Shows current time, server address, mode, and module count at the bottom of the screen
-   ```
-   [26-01-18 12:34:56 KST] [server: 127.0.0.1:12521] [mode: NORMAL] [modules: 5]
-   ```
-
-2. **Frame Buffer Capture**: Captures rendered frames every 5 seconds
-   - Path: `~/.local/share/reovim/logs/tui/frame-buffer/{name}-{timestamp}.frame`
-
-3. **Session Log**: Records key events (mode changes, resize, etc.)
-   - Path: `~/.local/share/reovim/logs/tui/{name}_{start_time}.log`
-
-**TUI Debug Options:**
-
-| Flag | Description |
-|------|-------------|
-| `--debug` | Enable debug mode (statusline + frame capture) |
-| `--debug-dir <DIR>` | Custom log directory (default: `~/.local/share/reovim/logs/tui/`) |
-| `--debug-name <NAME>` | Session name for filenames (default: `default`) |
+See [CLI Reference](./cli-reference.md) for the complete command list.
 
 ## gRPC Protocol
 
-Reovim uses gRPC v2 protocol for client-server communication. The protocol definitions are in `shared/protocol/proto/reovim/v2/`.
+Reovim uses gRPC v2 protocol (Protocol Buffers over HTTP/2) for client-server communication. The protocol definitions are in `shared/protocol/proto/reovim/v2/` (13 proto files).
 
 ### Available Services
 
-| Service | Purpose |
-|---------|---------|
-| `InputService` | Key injection (SendKeys) |
-| `StateService` | Query mode, cursor, layout, selection |
-| `BufferService` | Buffer content access |
-| `NotificationService` | Server-to-client streaming |
-| `PresenceService` | Multi-client collaboration |
-| `SyntaxService` | Syntax token queries |
-| `DebugService` | Log level and log tail access |
-| `ServerService` | Ping, info, kill |
+| Service | Proto File | Purpose |
+|---------|-----------|---------|
+| `InputService` | `input.proto` | Key injection |
+| `StateService` | `state.proto` | Mode, cursor, layout, selection, screen capture, registers |
+| `BufferService` | `buffer.proto` | Buffer content, annotations, file I/O |
+| `EditorService` | `editor.proto` | Resize, quit, active buffer |
+| `NotificationService` | `notification.proto` | Server streaming (17 event types) |
+| `ServerService` | `server.proto` | Ping, info, kill |
+| `DebugService` | `debug.proto` | Log tail, debug queries (no auth required) |
+| `ModuleService` | `module.proto` | Module lifecycle (list, load, unload, reload) |
+| `CommandService` | `command.proto` | Command search and argument completion |
+| `SyntaxService` | `syntax.proto` | Syntax tokens and language info |
+| `PresenceService` | `presence.proto` | Multi-client presence and collaboration |
+| `ExtensionService` | `extension.proto` | Extension state queries |
 
-### Key Methods
+### Streaming RPCs
 
-| Method | Service | Description |
-|--------|---------|-------------|
-| `SendKeys` | InputService | Inject key sequence |
-| `GetMode` | StateService | Get current mode |
-| `GetCursor` | StateService | Get cursor position |
-| `GetLayout` | StateService | Get window layout |
-| `GetSelection` | StateService | Get visual selection |
-| `GetRawContent` | BufferService | Get buffer content |
-| `SubscribeNotifications` | NotificationService | Stream notifications |
-| `LogTail` | DebugService | Get log entries |
-| `Kill` | ServerService | Terminate server |
+Three services use server streaming for real-time updates:
+
+| Service | RPC | Purpose |
+|---------|-----|---------|
+| `NotificationService` | `Subscribe` | Editor state changes (17 event types) |
+| `SyntaxService` | `StreamTokens` | Syntax token updates on buffer edits |
+| `PresenceService` | `StreamPresence` | Peer presence changes (join/leave/update) |
+
+### Authentication
+
+After `PresenceService.Join`, clients receive a `session_token`. All authenticated requests include:
+
+```
+x-reovim-token: <session_token>
+```
+
+The `DebugService` bypasses authentication, allowing the stateless CLI to target specific clients without joining.
 
 ### Protocol Files
 
 ```
 shared/protocol/proto/reovim/v2/
+├── common.proto         # Shared types (Position, Selection, WindowRect)
 ├── input.proto          # InputService
 ├── state.proto          # StateService
 ├── buffer.proto         # BufferService
-├── notification.proto   # NotificationService, payloads
-├── presence.proto       # PresenceService
-├── syntax.proto         # SyntaxService
+├── editor.proto         # EditorService
+├── notification.proto   # NotificationService + 17 payload types
+├── server.proto         # ServerService
 ├── debug.proto          # DebugService
-└── server.proto         # ServerService
+├── module.proto         # ModuleService
+├── command.proto        # CommandService
+├── syntax.proto         # SyntaxService
+├── presence.proto       # PresenceService
+└── extension.proto      # ExtensionService
 ```
 
 ## Use Cases
@@ -281,97 +216,96 @@ shared/protocol/proto/reovim/v2/
 ```bash
 #!/bin/bash
 # Start server
-reovim server &
+reovim server --grpc 12530 &
 SERVER_PID=$!
 sleep 1
 
+# Start headless TUI
+reovim tui --grpc 127.0.0.1:12530 --headless &
+TUI_PID=$!
+sleep 1
+
 # Run test sequence
-reovim cli keys 'iTest content<Esc>'
+reovim cli --grpc 127.0.0.1:12530 keys 'iTest content<Esc>' --client 1
 
 # Verify mode
-if reovim cli mode | grep -q "NORMAL"; then
+if reovim cli --grpc 127.0.0.1:12530 mode --client 1 | grep -q "NORMAL"; then
   echo "PASS"
 fi
 
 # Clean up
-reovim cli kill
+kill $TUI_PID $SERVER_PID
 ```
 
-### IDE Integration
+### IDE Integration (gRPC)
 
 ```python
-import socket
-import json
+import grpc
+from reovim.v2 import input_pb2, input_pb2_grpc
 
-def send_keys(keys):
-    sock = socket.create_connection(('127.0.0.1', 12521))
-    request = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "keys",
-        "params": {"keys": keys}
-    }
-    sock.send(json.dumps(request).encode() + b'\n')
-    response = sock.recv(4096)
-    sock.close()
-    return json.loads(response)
+channel = grpc.insecure_channel('127.0.0.1:12540')
+stub = input_pb2_grpc.InputServiceStub(channel)
+
+# Inject keys (token set via metadata)
+metadata = [('x-reovim-token', session_token)]
+request = input_pb2.SendKeysRequest(keys='iHello<Esc>')
+response = stub.SendKeys(request, metadata=metadata)
 ```
 
 ### Scripting
 
 ```bash
 # Navigate and edit
-reovim cli keys '100gg'
+reovim cli --grpc 127.0.0.1:12540 keys '100gg' --client 1
 
 # Search and replace
-reovim cli keys ':%s/foo/bar/g<CR>'
+reovim cli --grpc 127.0.0.1:12540 keys ':%s/foo/bar/g<CR>' --client 1
 
 # Save and quit
-reovim cli keys ':wq<CR>'
+reovim cli --grpc 127.0.0.1:12540 keys ':wq<CR>' --client 1
 ```
 
 ## Troubleshooting
 
 ### Connection Refused
 
-1. Check if server is running: `reovim cli list`
-2. Verify port: Server prints `Listening on <host>:<port>` on startup
+1. Check if server is running: look for the `Listening on` message in server stderr
+2. Verify port: `reovim cli --grpc 127.0.0.1:12540 ping`
 3. Check firewall/network settings if connecting remotely
-
-### Multiple Server Conflicts
-
-If you have stale port files:
-```bash
-# Clean up orphaned port files
-rm ~/.local/share/reovim/servers/*.port
-```
 
 ### Server Not Responding
 
-Check server logs:
+Check server logs via the debug service:
 ```bash
-tail -f $(ls -t ~/.local/share/reovim/reovim-*.log | head -1)
+reovim cli --grpc 127.0.0.1:12540 log-tail --level warn
 ```
 
 ## Implementation Details
 
 ### Default Port
 
-The default port `12521` is derived from ASCII: `'r'×100 + 'e'×10 + 'o' = 114×100 + 101×10 + 111 = 12521`
+The default gRPC port is `12540`, with fallback range `12541-12549`.
 
 ### Architecture
 
-- gRPC services handle client requests
-- `TransportConfig` selects transport: Stdio, UnixSocket, Tcp
-- `TransportReader`/`TransportWriter` provide async I/O abstraction
-- `TransportListener` accepts connections for socket/TCP
-- `ChannelKeySource` injects keys from RPC into the runtime
-- `FrameBufferHandle` provides unified capture for all RPC formats
+- gRPC services handle client requests via `tonic`
+- `TransportConfig` selects transport: UnixSocket, Tcp, gRPC
+- Token-based authentication via `x-reovim-token` header
+- Per-client state isolation with shared buffer content
+- Notification streaming via `tokio::sync::broadcast` channel
 
 ### Source Files
 
 - `server/lib/server/` - Server implementation (gRPC handlers, sessions)
 - `clients/tui/` - TUI client implementation
 - `clients/cli/` - CLI client implementation
-- `shared/protocol/` - gRPC v2 protocol definitions
+- `shared/protocol/` - gRPC v2 protocol definitions (13 proto files)
 - `shared/net/` - Network transport layer
+
+## Related Documents
+
+- [CLI Reference](./cli-reference.md) - Complete CLI command reference
+- [Frame Capture](./frame-capture.md) - Frame capture for testing/debugging
+- [gRPC Protocol](../architecture/runner/server/rpc-protocol.md) - Full protocol specification
+- [Notifications](../architecture/runner/server/notifications.md) - Notification payload types
+- [Sessions](../architecture/runner/server/sessions.md) - Per-client state architecture

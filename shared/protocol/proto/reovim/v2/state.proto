@@ -109,6 +109,10 @@ message GetLayoutResponse {
   // Optional: None when no windows exist, Some(id) when a window is focused.
   // Phase #479: Use optional to eliminate ID ambiguity (0 vs "no focus").
   optional uint64 focused_window_id = 2;
+  // #401: Active tab page ID (absent = no tabs / single tab)
+  optional uint64 active_tab_id = 3;
+  // #401: Tab page list (empty = no tabs / single tab)
+  repeated TabPageInfo tabs = 4;
 }
 
 message WindowNode {

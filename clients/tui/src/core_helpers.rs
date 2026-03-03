@@ -38,6 +38,7 @@ pub fn collect_windows(node: &WindowNode, focused_id: u64, out: &mut Vec<WindowI
                         buffer_id: leaf.buffer_id,
                         rect: leaf.rect,
                         focused: leaf.window_id == focused_id,
+                        opacity: None,
                     });
                 } else {
                     tracing::debug!(window_id = leaf.window_id, "Skipping window with no buffer");
@@ -70,6 +71,10 @@ pub fn apply_layout(state: &mut TuiCoreState, layout: &GetLayoutResponse) {
     if let Some(root) = &layout.root {
         collect_windows(root, state.focused_window_id, &mut state.windows);
     }
+
+    // #401 Phase 5: Store tab info from server
+    state.active_tab_id = layout.active_tab_id;
+    state.tabs.clone_from(&layout.tabs);
 
     // Mark if we need to create a default window
     state.set_needs_default_window(state.windows.is_empty());
@@ -143,6 +148,7 @@ pub fn create_default_window(state: &mut TuiCoreState, buffer_id: u64, width: u1
             height: u64::from(content_height),
         }),
         focused: true,
+        opacity: None,
     };
 
     state.windows.push(window);
@@ -281,6 +287,8 @@ mod tests {
         let layout = GetLayoutResponse {
             focused_window_id: None,
             root: None,
+            active_tab_id: None,
+            tabs: Vec::new(),
         };
 
         apply_layout(&mut state, &layout);
@@ -296,6 +304,8 @@ mod tests {
         let layout = GetLayoutResponse {
             focused_window_id: Some(5),
             root: Some(make_leaf_node(5, Some(100))),
+            active_tab_id: None,
+            tabs: Vec::new(),
         };
 
         apply_layout(&mut state, &layout);
@@ -329,12 +339,14 @@ mod tests {
                 buffer_id: Some(10),
                 rect: None,
                 focused: false,
+                opacity: None,
             },
             WindowInfo {
                 window_id: 2,
                 buffer_id: Some(20),
                 rect: None,
                 focused: false,
+                opacity: None,
             },
         ];
 
@@ -356,12 +368,14 @@ mod tests {
                 buffer_id: Some(100),
                 rect: None,
                 focused: false,
+                opacity: None,
             },
             WindowInfo {
                 window_id: 20,
                 buffer_id: Some(200),
                 rect: None,
                 focused: false,
+                opacity: None,
             },
         ];
 
@@ -397,6 +411,7 @@ mod tests {
             buffer_id: Some(10),
             rect: None,
             focused: true,
+            opacity: None,
         }];
 
         apply_layout_notification(&mut state, Some(1), windows);
@@ -459,6 +474,8 @@ mod tests {
         let layout1 = GetLayoutResponse {
             focused_window_id: Some(1),
             root: Some(make_leaf_node(1, Some(10))),
+            active_tab_id: None,
+            tabs: Vec::new(),
         };
         apply_layout(&mut state, &layout1);
         assert_eq!(state.windows.len(), 1);
@@ -467,6 +484,8 @@ mod tests {
         let layout2 = GetLayoutResponse {
             focused_window_id: Some(2),
             root: Some(make_leaf_node(2, Some(20))),
+            active_tab_id: None,
+            tabs: Vec::new(),
         };
         apply_layout(&mut state, &layout2);
         assert_eq!(state.windows.len(), 1);

@@ -97,6 +97,10 @@ message LayoutChangedPayload {
   repeated WindowInfo windows = 2;
   // Client ID that triggered this layout change (for multi-client filtering)
   uint64 client_id = 3;
+  // #401: Active tab page ID (absent = no tabs / single tab)
+  optional uint64 active_tab_id = 4;
+  // #401: Tab page list (empty = no tabs / single tab)
+  repeated TabPageInfo tabs = 5;
 }
 
 message WindowInfo {
@@ -105,6 +109,9 @@ message WindowInfo {
   optional uint64 buffer_id = 2;
   WindowRect rect = 3;  // WindowRect imported from common.proto
   bool focused = 4;
+  // #400: Layer opacity (0.0 = transparent, 1.0 = opaque).
+  // Uses optional to avoid proto3 zero-default ambiguity: absent = fully opaque (1.0).
+  optional float opacity = 5;
 }
 
 // Option changed

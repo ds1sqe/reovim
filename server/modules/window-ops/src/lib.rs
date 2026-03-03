@@ -254,7 +254,7 @@ mod tests {
     fn test_command_provider_returns_handlers() {
         let module = WindowOps::new();
         let handlers = module.command_handlers();
-        assert_eq!(handlers.len(), 19);
+        assert_eq!(handlers.len(), 28);
     }
 
     #[test]

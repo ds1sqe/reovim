@@ -20,24 +20,36 @@ Implements the standard ex-commands (colon commands) for the editor:
 
 Following mechanism vs policy:
 - **Mechanism (Kernel)**: Buffer management, position types
-- **Policy (This Module)**: `ExCommandHandler` trait, what commands do
+- **Mechanism (Driver)**: `ExCommandHandler` trait definition (`reovim-driver-command`)
+- **Policy (This Module)**: Implements `ExCommandHandler` for each command
 
 ## Key Types
 
 ```rust
-/// Trait for implementing ex-commands
+/// Trait for implementing ex-commands (defined in reovim-driver-command)
 pub trait ExCommandHandler: Send + Sync {
     fn id(&self) -> &'static str;
-    fn names(&self) -> Vec<&'static str>;
-    fn execute(&self, ctx: &ExCommandContext) -> Result<(), CommandError>;
+    fn names(&self) -> &[&'static str];
+    fn execute(&self, ctx: &mut ExCommandContext<'_>, args: &[&str])
+        -> Result<(), ExCommandError>;
+    fn complete(&self, _partial: &str) -> Vec<String> { vec![] }
+    fn help(&self) -> &'static str { "" }
 }
 
 /// Context passed to command execution
-pub struct ExCommandContext {
-    pub range: Option<Range>,
-    pub args: Vec<String>,
+pub struct ExCommandContext<'a> {
+    pub kernel: &'a KernelContext,
+    pub buffer_id: Option<BufferId>,
+    pub window_id: Option<WindowId>,
     pub bang: bool,
-    // ...
+    pub range: Option<ExCommandRange>,
+    pub vfs: Option<Arc<dyn VfsDriver>>,
+}
+
+/// Text range for command execution (line-based)
+pub struct ExCommandRange {
+    pub start: Position,
+    pub end: Position,
 }
 
 /// Commands module instance
@@ -61,6 +73,24 @@ impl Module for CommandsModule {
 | `detach` | - | Detach client from session |
 | `servers` | - | List running servers |
 | `kill-server` | - | Terminate server |
+
+## CommandQueryService (gRPC)
+
+The `CommandService` gRPC service (defined in `shared/protocol/proto/reovim/v2/command.proto`)
+provides command-line tab completion and discovery for clients:
+
+| RPC | Purpose |
+|-----|---------|
+| `SearchCommands` | Search commands by name prefix for tab completion |
+| `CompleteArgs` | Complete arguments for a specific ex-command |
+
+`SearchCommands` accepts a `CommandSource` filter to narrow results to ex-commands
+(`COMMAND_SOURCE_EX`), keybinding commands (`COMMAND_SOURCE_KEYBINDING`), or both
+(`COMMAND_SOURCE_ALL`). It returns matching `ExCommandEntry` and
+`KeybindingCommandEntry` records containing id, names/aliases, and help text.
+
+`CompleteArgs` delegates to the handler's `complete()` method, enabling per-command
+argument suggestions (e.g., file paths for `:e`, theme names for `:colorscheme`).
 
 ## Dependencies
 

@@ -88,14 +88,14 @@ Commands use the format `module:command`:
 "<C-s>" = "buffer:save"       # buffer module, save command
 "j" = "editor:cursor-down"    # editor module, cursor-down command
 "w" = "motions:word-forward"  # motions module, word-forward command
-"d" = "operators:delete"      # operators module, delete command
+"d" = "vim:delete"            # vim module, delete command
 ```
 
 Common modules:
 - `editor` - Basic cursor movement and mode switching
 - `buffer` - Buffer operations (save, close)
 - `motions` - Word, line, and search motions
-- `operators` - Delete, yank, change operators
+- `vim` - Delete, yank, change operators
 - `mode` - Mode transitions
 - `app` - Application commands (quit)
 
@@ -201,7 +201,7 @@ Use the command palette or check module documentation:
 
 ```bash
 # List all registered commands
-reovim cli command/list
+reovim cli --grpc 127.0.0.1:12540 extensions
 ```
 
 ### Config Not Loading

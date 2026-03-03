@@ -19,3 +19,4 @@ reovim-driver-display = { workspace = true }
 # Concrete extensions
 reovim-tui-ext-whichkey = { path = "../which-key" }
 reovim-tui-ext-cmdline = { path = "../cmdline" }
+reovim-tui-ext-notification = { path = "../notification" }

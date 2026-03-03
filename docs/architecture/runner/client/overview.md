@@ -29,8 +29,8 @@ reovim cli keys 'iHello<Esc>'
 reovim cli mode
 reovim cli cursor
 
-# Interactive REPL
-reovim cli -i
+# List connected clients
+reovim cli clients
 ```
 
 See [CLI Documentation](./cli.md) for details.
@@ -44,34 +44,28 @@ Full terminal interface with rendering:
 reovim tui
 
 # Connect to specific server
-reovim tui --tcp 127.0.0.1:12521
+reovim tui --grpc 127.0.0.1:12540
 ```
 
 See [TUI Documentation](./tui.md) for details.
 
-## Server Discovery
+## Connecting to Servers
 
-Clients auto-discover servers via port files:
-
-```
-~/.local/share/reovim/servers/<pid>.port
-```
+Clients connect to servers via gRPC:
 
 ```bash
-# List running servers
-reovim cli list
-127.0.0.1:12521 (pid: 123456)
-127.0.0.1:12522 (pid: 123789)
+# Connect to default address
+reovim cli --grpc 127.0.0.1:12540 clients
+reovim tui --grpc 127.0.0.1:12540
 ```
+
+The default server port is 12540 (fallback range: 12540-12549).
 
 ## Connection Options
 
 ```bash
-# TCP connection
-reovim cli --tcp localhost:12521 keys 'j'
-
-# Unix socket
-reovim cli --socket /tmp/reovim.sock keys 'j'
+# gRPC connection
+reovim cli --grpc 127.0.0.1:12540 keys 'j' --client 1
 ```
 
 ## Related Documents

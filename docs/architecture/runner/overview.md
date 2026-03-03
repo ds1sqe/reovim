@@ -82,10 +82,10 @@ The runner's only job: **dispatch events and render results**.
 
 ## Server Mode
 
-The runner can operate as a JSON-RPC 2.0 server:
+The runner can operate as a gRPC v2 server:
 
 ```bash
-# Start server on default port (12521)
+# Start server on default port (12540)
 reovim server
 
 # Connect with CLI client

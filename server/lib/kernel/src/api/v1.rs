@@ -44,7 +44,7 @@ pub use super::context::{KernelContext, ModuleContext};
 // ============================================================================
 
 pub use crate::mm::{
-    Buffer, BufferId, Cursor, Edit, Position, TextDimensions, WindowId, delete_end,
+    Buffer, BufferId, Cursor, Edit, Position, TabId, TextDimensions, WindowId, delete_end,
     text_dimensions, transform_position,
 };
 

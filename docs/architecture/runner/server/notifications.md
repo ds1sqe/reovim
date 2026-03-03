@@ -1,98 +1,99 @@
 # Notifications
 
-Server notifications inform clients of state changes.
+Server-to-client streaming notifications for real-time state updates.
 
 ## Source Location
 
-`server/lib/server/src/grpc/notification.rs` (moved from `runner/` in Phase 8)
+- Proto: `shared/protocol/proto/reovim/v2/notification.proto`
+- Implementation: `server/lib/server/src/grpc/notification.rs`
 
-## Notification Scoping
+## Transport
 
-Notifications are scoped based on relevance:
+Clients subscribe via `NotificationService.Subscribe`, which returns a gRPC server stream of `Notification` messages.
 
-| Scope | Description | Example |
-|-------|-------------|---------|
-| Session-wide | All clients in session | Mode change |
-| Buffer-scoped | Clients viewing specific buffer | Cursor moved |
-| Except-sender | All clients except triggering one | Buffer modified |
-
-## NotificationBroadcaster
-
-```rust
-pub struct NotificationBroadcaster;
-
-impl NotificationBroadcaster {
-    /// Broadcast to ALL clients in session
-    pub async fn broadcast_to_session(session: &Session, notification: &str);
-
-    /// Broadcast to all clients EXCEPT one
-    pub async fn broadcast_except(session: &Session, notification: &str, except: ClientId);
-
-    /// Broadcast to clients viewing a specific buffer
-    pub async fn broadcast_to_buffer(session: &Session, buffer_id: BufferId, notification: &str);
+```protobuf
+service NotificationService {
+  rpc Subscribe(SubscribeRequest) returns (stream Notification);
 }
 ```
 
-## Buffer-Scoped Notifications
+### Filtering
 
-Only clients viewing a buffer receive buffer-specific notifications:
+Clients can filter events by type in `SubscribeRequest.event_types`. An empty list subscribes to all events.
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  Session                                                      │
-│  ├── Client 1 (viewing Buffer A) ← Receives notification     │
-│  ├── Client 2 (viewing Buffer B) ← Does NOT receive          │
-│  └── Client 3 (viewing Buffer A) ← Receives notification     │
-└──────────────────────────────────────────────────────────────┘
-
-NotificationBroadcaster::broadcast_to_buffer(&session, buffer_a, "cursor/moved");
-// Only Client 1 and Client 3 receive this notification
-```
-
-## Lock Safety
-
-The broadcaster briefly acquires viewport locks to check active buffers, but drops them before I/O:
-
-```rust
-for client in session.clients().iter() {
-    let is_viewing = {
-        let viewport = client.viewport().read().await;
-        viewport.active_buffer == Some(buffer_id)
-    }; // Lock dropped before I/O
-
-    if is_viewing {
-        client.send_line(notification).await;
-    }
+```protobuf
+message SubscribeRequest {
+  repeated string event_types = 1;  // empty = all events
 }
 ```
 
-## Notification Types
+## Notification Payloads
 
-### Session-Wide
+Each `Notification` contains a `oneof payload` with one of 17 typed payloads:
 
-```json
-{"jsonrpc":"2.0","method":"mode/changed","params":{"mode":"Insert"}}
-```
+### Editor State
 
-Sent to all clients when the editor mode changes.
+| Payload | Key Fields | Description |
+|---------|-----------|-------------|
+| `mode_changed` | `name`, `display`, `is_insert`, `client_id` | Editor mode changed |
+| `cursor_moved` | `window_id`, `position`, `client_id` | Cursor position changed |
+| `buffer_modified` | `buffer_id`, `change` (optional) | Buffer content changed |
+| `layout_changed` | `focused_window_id`, `windows[]`, `client_id` | Window layout changed |
+| `option_changed` | `name`, value (`bool`/`int`/`string`) | Editor option changed |
+| `selection_changed` | `window_id`, `has_selection`, `selection`, `visual_mode`, `client_id` | Visual selection changed |
+| `buffer_list_changed` | `action` ("added"/"removed"/"modified"), `buffer_id` | Buffer list changed |
+| `render_complete` | `frame_id` | Frame ready signal for TUI |
+| `detach` | `reason` | Client should disconnect |
 
-### Buffer-Scoped
+### Viewport
 
-```json
-{"jsonrpc":"2.0","method":"cursor/moved","params":{"line":10,"column":5,"buffer_id":1}}
-```
+| Payload | Key Fields | Description |
+|---------|-----------|-------------|
+| `viewport_updated` | `viewport_id`, `top_line`, `left_col`, `cursor_line`, `cursor_col` | Incremental scroll/cursor tracking (Phase 11.1) |
 
-Sent only to clients viewing the affected buffer.
+### Capture Relay
 
-### Except-Sender
+Screen capture flows: CLI -> Server -> TUI -> Server -> CLI.
 
-```json
-{"jsonrpc":"2.0","method":"buffer/modified","params":{"buffer_id":1}}
-```
+| Payload | Key Fields | Description |
+|---------|-----------|-------------|
+| `capture_request` | `request_id`, `format`, `target_client_id` | Server requests TUI to capture frame |
+| `capture_response` | `request_id`, `width`, `height`, `format`, `content` | TUI responds with captured frame |
+| `resize_request` | `width`, `height`, `target_client_id` | CLI tells TUI to resize |
 
-Sent to all clients except the one that made the modification (they already know).
+### Presence (Multi-Client)
+
+| Payload | Key Fields | Description |
+|---------|-----------|-------------|
+| `presence_joined` | `ClientPresence` | New client joined session |
+| `presence_left` | `client_id`, `display_name` | Client left session |
+| `presence_updated` | `ClientPresence` | Client presence state changed |
+
+### Extensions
+
+| Payload | Key Fields | Description |
+|---------|-----------|-------------|
+| `extension_updated` | `kind`, `data` (JSON), `client_id` | Extension state changed (#514) |
+
+## Per-Client Scoping
+
+Notifications are broadcast to all subscribers via a `tokio::sync::broadcast` channel (capacity 256). Per-client scoping is handled via `client_id` fields in the payloads:
+
+- `mode_changed.client_id` - which client's mode changed
+- `cursor_moved.client_id` - which client's cursor moved
+- `selection_changed.client_id` - which client's selection changed
+- `layout_changed.client_id` - which client triggered the layout change
+
+Clients filter for their own `client_id` to show their own state, or use other client IDs to render peer cursors/selections.
+
+## Auto-Cleanup on Disconnect
+
+The notification stream doubles as a heartbeat. When a client's stream drops (disconnect, crash), the server automatically:
+1. Revokes the client's session token
+2. Removes the client from the client map
+3. Broadcasts `presence_left` to remaining clients
 
 ## Related Documents
 
-- [Server Overview](./overview.md) - Server architecture
-- [Sessions](./sessions.md) - Per-client viewport architecture
+- [gRPC Protocol](./rpc-protocol.md) - Full service reference
+- [Sessions](./sessions.md) - Per-client state architecture

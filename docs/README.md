@@ -80,8 +80,8 @@ Component architecture documentation.
 |----------|-------------|
 | [Server Overview](./architecture/runner/server/overview.md) | RPC server components |
 | [Sessions & Viewports](./architecture/runner/server/sessions.md) | Multi-client architecture |
-| [Transport](./architecture/runner/server/transport.md) | TCP, Unix socket, stdio |
-| [RPC Protocol](./architecture/runner/server/rpc-protocol.md) | JSON-RPC 2.0 spec |
+| [Transport](./architecture/runner/server/transport.md) | gRPC, TCP, Unix socket |
+| [gRPC Protocol](./architecture/runner/server/rpc-protocol.md) | gRPC v2 protocol spec |
 | [Notifications](./architecture/runner/server/notifications.md) | Client notifications |
 | [Client Overview](./architecture/runner/client/overview.md) | CLI/TUI clients |
 | [CLI](./architecture/runner/client/cli.md) | Command-line interface |

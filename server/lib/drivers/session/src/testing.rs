@@ -89,6 +89,8 @@ pub struct TestSessionRuntime {
     ///
     /// `None` for tests that don't need compositor. Matches `EditingState.compositor`.
     compositor: Option<Box<dyn reovim_driver_display::layout::RootCompositor>>,
+    /// Per-client tab pages (#401).
+    tabs: crate::TabPageSet,
     /// Per-client register storage (#515).
     registers: RegisterBank,
     /// Per-client clipboard history ring (#515).
@@ -135,6 +137,7 @@ impl TestSessionRuntime {
             windows: WindowLayout::empty(),                             // Per-client state
             extensions: ExtensionMap::new(),                            // Per-client state
             compositor: None,                                           // Per-client (#474)
+            tabs: crate::TabPageSet::new(),                             // Per-client (#401)
             registers: RegisterBank::new(),                             // Per-client (#515)
             clipboard_history: HistoryRing::new(),                      // Per-client (#515)
             local_marks: MarkBank::new(),                               // Per-client (#515)
@@ -153,6 +156,7 @@ impl TestSessionRuntime {
             windows: WindowLayout::empty(),                        // Per-client state
             extensions: ExtensionMap::new(),                       // Per-client state
             compositor: None,                                      // Per-client (#474)
+            tabs: crate::TabPageSet::new(),                        // Per-client (#401)
             registers: RegisterBank::new(),                        // Per-client (#515)
             clipboard_history: HistoryRing::new(),                 // Per-client (#515)
             local_marks: MarkBank::new(),                          // Per-client (#515)
@@ -214,6 +218,7 @@ impl TestSessionRuntime {
             windows: &mut self.windows,
             extensions: &mut self.extensions,
             compositor: &mut self.compositor,
+            tabs: &mut self.tabs,
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
@@ -241,6 +246,7 @@ impl TestSessionRuntime {
             windows: &mut self.windows,
             extensions: &mut self.extensions,
             compositor: &mut self.compositor,
+            tabs: &mut self.tabs,
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,

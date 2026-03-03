@@ -19,8 +19,8 @@ use std::collections::HashMap;
 
 use {
     reovim_driver_input::{
-        BindingLayer, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence, KeymapQuery,
-        VimLookupPolicy,
+        BindingInfo, BindingLayer, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence,
+        KeymapQuery, VimLookupPolicy,
     },
     reovim_kernel::{
         api::v1::{CommandId, ModeId, ModuleId},
@@ -39,6 +39,10 @@ struct KeybindingEntry {
     owner: Option<ModuleId>,
     /// Whether this entry marks the binding as removed.
     removed: bool,
+    /// Human-readable description for which-key / help display.
+    description: &'static str,
+    /// Category for which-key grouping/filtering (e.g., "motion", "operator").
+    category: Option<&'static str>,
 }
 
 /// Registry for keybindings with layered composition.
@@ -72,6 +76,8 @@ impl KeymapRegistry {
         mode: &ModeId,
         keys: KeySequence,
         command: CommandId,
+        description: &'static str,
+        category: Option<&'static str>,
     ) {
         let mode_entries = self.entries.entry(mode.clone()).or_default();
         let key_entries = mode_entries.entry(keys).or_default();
@@ -85,6 +91,8 @@ impl KeymapRegistry {
             layer,
             owner: None,
             removed: false,
+            description,
+            category,
         });
 
         // Sort by layer (highest first) for efficient lookup
@@ -94,22 +102,23 @@ impl KeymapRegistry {
     /// Register a keybinding at a specific layer with module ownership.
     pub fn register_at_layer_for_module(
         &mut self,
-        layer: BindingLayer,
         mode: &ModeId,
         keys: KeySequence,
-        command: CommandId,
+        info: BindingInfo,
         owner: ModuleId,
     ) {
         let mode_entries = self.entries.entry(mode.clone()).or_default();
         let key_entries = mode_entries.entry(keys).or_default();
 
-        key_entries.retain(|e| e.layer != layer);
+        key_entries.retain(|e| e.layer != info.layer);
 
         key_entries.push(KeybindingEntry {
-            command,
-            layer,
+            command: info.command,
+            layer: info.layer,
             owner: Some(owner),
             removed: false,
+            description: info.description,
+            category: info.category,
         });
 
         key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
@@ -176,6 +185,8 @@ impl KeymapRegistry {
             layer,
             owner: None,
             removed: true,
+            description: "",
+            category: None,
         });
 
         key_entries.sort_by_key(|entry| std::cmp::Reverse(entry.layer));
@@ -198,9 +209,12 @@ impl KeymapRegistry {
     }
 
     /// Register a keybinding from a string at the Policy layer.
+    ///
+    /// Uses empty description and no category. For rich metadata, use
+    /// [`register_at_layer()`] directly.
     pub fn register_str(&mut self, mode: &ModeId, keys: &str, command: CommandId) -> bool {
         KeySequence::parse(keys).is_some_and(|seq| {
-            self.register_at_layer(BindingLayer::Policy, mode, seq, command);
+            self.register_at_layer(BindingLayer::Policy, mode, seq, command, "", None);
             true
         })
     }
@@ -242,12 +256,15 @@ impl KeymapRegistry {
     }
 
     /// Get all bindings that start with a given prefix.
+    ///
+    /// Returns `BindingInfo` with full metadata (command, description,
+    /// category, layer) for each matching binding.
     #[must_use]
     pub fn bindings_with_prefix(
         &self,
         mode: &ModeId,
         prefix: &KeySequence,
-    ) -> Vec<(KeySequence, CommandId)> {
+    ) -> Vec<(KeySequence, BindingInfo)> {
         self.entries
             .get(mode)
             .map(|mode_entries| {
@@ -259,7 +276,15 @@ impl KeymapRegistry {
                             if entry.removed {
                                 None
                             } else {
-                                Some((keys.clone(), entry.command.clone()))
+                                Some((
+                                    keys.clone(),
+                                    BindingInfo::new(
+                                        entry.command.clone(),
+                                        entry.description,
+                                        entry.category,
+                                        entry.layer,
+                                    ),
+                                ))
                             }
                         })
                     })
@@ -330,7 +355,7 @@ impl KeymapQuery for KeymapRegistry {
         &self,
         mode: &ModeId,
         prefix: &KeySequence,
-    ) -> Vec<(KeySequence, CommandId)> {
+    ) -> Vec<(KeySequence, BindingInfo)> {
         Self::bindings_with_prefix(self, mode, prefix)
     }
 }
@@ -363,7 +388,7 @@ mod tests {
         let keys = KeySequence::parse("j").unwrap();
         let cmd = test_command("cursor-down");
 
-        registry.register_at_layer(BindingLayer::Policy, &mode, keys, cmd);
+        registry.register_at_layer(BindingLayer::Policy, &mode, keys, cmd, "", None);
 
         assert_eq!(registry.binding_count(&mode), 1);
         assert!(!registry.is_empty());
@@ -440,6 +465,8 @@ mod tests {
             &mode,
             keys.clone(),
             test_command("delete"),
+            "",
+            None,
         );
 
         // User layer (overrides)
@@ -448,6 +475,8 @@ mod tests {
             &mode,
             keys.clone(),
             test_command("custom-delete"),
+            "",
+            None,
         );
 
         // User layer wins
@@ -464,22 +493,27 @@ mod tests {
         let j = KeySequence::parse("j").unwrap();
         let k = KeySequence::parse("k").unwrap();
         registry.register_at_layer_for_module(
-            BindingLayer::Policy,
             &mode,
             j.clone(),
-            test_command("down"),
+            BindingInfo::from_command(test_command("down"), BindingLayer::Policy),
             owner.clone(),
         );
         registry.register_at_layer_for_module(
-            BindingLayer::Policy,
             &mode,
             k,
-            test_command("up"),
+            BindingInfo::from_command(test_command("up"), BindingLayer::Policy),
             owner.clone(),
         );
 
         let l = KeySequence::parse("l").unwrap();
-        registry.register_at_layer(BindingLayer::Policy, &mode, l.clone(), test_command("right"));
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            l.clone(),
+            test_command("right"),
+            "",
+            None,
+        );
 
         assert_eq!(registry.binding_count(&mode), 3);
 
@@ -503,8 +537,17 @@ mod tests {
             &mode,
             j.clone(),
             test_command("policy-down"),
+            "",
+            None,
         );
-        registry.register_at_layer(BindingLayer::User, &mode, j.clone(), test_command("user-down"));
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            j.clone(),
+            test_command("user-down"),
+            "",
+            None,
+        );
 
         assert_eq!(registry.binding_count(&mode), 1);
 
@@ -528,6 +571,8 @@ mod tests {
             &mode,
             keys.clone(),
             test_command("delete-char"),
+            "",
+            None,
         );
 
         // Mark as removed at user layer
@@ -586,6 +631,8 @@ mod tests {
             &mode,
             gg.clone(),
             test_command("goto-top"),
+            "",
+            None,
         );
         registry.remove_at_layer(BindingLayer::User, &mode, gg);
 
@@ -594,6 +641,55 @@ mod tests {
 
         // Removed binding should not appear
         assert!(bindings.is_empty());
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_returns_metadata() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_at_layer(
+            BindingLayer::Policy,
+            &mode,
+            KeySequence::parse("gg").unwrap(),
+            test_command("goto-top"),
+            "Go to first line",
+            Some("motion"),
+        );
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        assert_eq!(bindings.len(), 1);
+        let (_, info) = &bindings[0];
+        assert_eq!(info.command, test_command("goto-top"));
+        assert_eq!(info.description, "Go to first line");
+        assert_eq!(info.category, Some("motion"));
+        assert_eq!(info.layer, BindingLayer::Policy);
+    }
+
+    #[test]
+    fn test_bindings_with_prefix_user_layer_metadata() {
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            KeySequence::parse("gg").unwrap(),
+            test_command("custom-goto"),
+            "Custom goto",
+            Some("custom"),
+        );
+
+        let g = KeySequence::parse("g").unwrap();
+        let bindings = registry.bindings_with_prefix(&mode, &g);
+
+        assert_eq!(bindings.len(), 1);
+        let (_, info) = &bindings[0];
+        assert_eq!(info.layer, BindingLayer::User);
+        assert_eq!(info.description, "Custom goto");
+        assert_eq!(info.category, Some("custom"));
     }
 
     #[test]
@@ -771,19 +867,17 @@ mod tests {
 
         // Register first
         registry.register_at_layer_for_module(
-            BindingLayer::Policy,
             &mode,
             keys.clone(),
-            test_command("delete1"),
+            BindingInfo::from_command(test_command("delete1"), BindingLayer::Policy),
             owner.clone(),
         );
 
         // Register again at same layer - should replace
         registry.register_at_layer_for_module(
-            BindingLayer::Policy,
             &mode,
             keys.clone(),
-            test_command("delete2"),
+            BindingInfo::from_command(test_command("delete2"), BindingLayer::Policy),
             owner,
         );
 
@@ -797,7 +891,7 @@ mod tests {
         let mode = test_mode();
         let keys = KeySequence::parse("j").unwrap();
 
-        registry.register_at_layer(BindingLayer::User, &mode, keys, test_command("down"));
+        registry.register_at_layer(BindingLayer::User, &mode, keys, test_command("down"), "", None);
 
         assert!(!registry.is_empty());
 
@@ -815,10 +909,9 @@ mod tests {
         let keys = KeySequence::parse("j").unwrap();
 
         registry.register_at_layer_for_module(
-            BindingLayer::Policy,
             &mode,
             keys,
-            test_command("down"),
+            BindingInfo::from_command(test_command("down"), BindingLayer::Policy),
             owner.clone(),
         );
 
@@ -886,13 +979,29 @@ mod tests {
         let keys = KeySequence::parse("x").unwrap();
 
         // Add in reverse order
-        registry.register_at_layer(BindingLayer::Base, &mode, keys.clone(), test_command("base"));
-        registry.register_at_layer(BindingLayer::User, &mode, keys.clone(), test_command("user"));
+        registry.register_at_layer(
+            BindingLayer::Base,
+            &mode,
+            keys.clone(),
+            test_command("base"),
+            "",
+            None,
+        );
+        registry.register_at_layer(
+            BindingLayer::User,
+            &mode,
+            keys.clone(),
+            test_command("user"),
+            "",
+            None,
+        );
         registry.register_at_layer(
             BindingLayer::Policy,
             &mode,
             keys.clone(),
             test_command("policy"),
+            "",
+            None,
         );
 
         // User layer should win
@@ -912,7 +1021,7 @@ mod tests {
         let mode = test_mode();
         let j = KeySequence::parse("j").unwrap();
 
-        registry.register_at_layer(BindingLayer::Policy, &mode, j, test_command("down"));
+        registry.register_at_layer(BindingLayer::Policy, &mode, j, test_command("down"), "", None);
         assert_eq!(registry.total_bindings(), 1);
 
         // Clearing the only layer should remove the mode entry entirely

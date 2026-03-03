@@ -2576,6 +2576,7 @@ mod tests {
                     z_order: ZOrder::new(0),
                     visible: true,
                     focusable: true,
+                    opacity: 1.0,
                 }],
                 focused: Some(WindowId::from_raw(1)),
                 active_layer: Some(LayerId::new(0)),

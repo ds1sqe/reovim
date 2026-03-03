@@ -6,6 +6,60 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Which-key filter command refinement (#459)**: Threads binding metadata
+  (description, category, layer) through the full input pipeline from
+  `KeybindingRegistration` to `WhichKeyBridge`. Introduces `BindingInfo` struct
+  in `reovim-driver-input` as the mechanism-layer metadata carrier. Adds
+  `WhichKeyFilterConfig` session extension with three filter axes: command
+  category (e.g., "motion", "operator"), key display pattern (substring match),
+  and binding layer (`UserOnly`, `DefaultsOnly`, `Specific`). `WhichKeyBridge`
+  applies active filters before emitting JSON hints, and emits richer fields
+  (description, category, layer) alongside existing key/command data.
+  `KeymapRegistry::bindings_with_prefix()` now returns `Vec<(KeySequence,
+  BindingInfo)>`. 88 tests cover all filter combinations and metadata
+  round-trips.
+
+- **Which-key popup color styling (#461)**: Makes which-key popup colors
+  configurable in both TUI and web clients. TUI: adds `WhichKeyStyleConfig`
+  struct with 5 color fields (border, title, key, desc, category) replacing
+  hardcoded `Color::*` constants. Defaults preserve original appearance.
+  `WhichKeyExtension::with_style()` constructor accepts custom configs.
+  Web: introduces `--whichkey-*` CSS custom properties on `.whichkey-popup`
+  with fallbacks to theme variables, enabling per-element color overrides.
+  8 new TUI tests + 2 new web tests cover all color slots.
+
+- **Which-key binding category grouping (#460)**: Groups keybinding hints by
+  category in the which-key popup for both TUI and web clients. Hints are sorted
+  by a fixed category order (motion, operator, textobject, window, buffer) with
+  unknown categories sorted alphabetically after. Category headers render above
+  each group; when all hints lack categories, headers are suppressed for backward
+  compatibility. TUI uses `grouped_hints()` pure function with `BTreeMap`-based
+  grouping; web uses `Map`-based grouping with DOM `.whichkey-group-header`
+  elements. 12 new TUI tests and 3 new web tests cover all grouping paths.
+
+- **Notification plugin - toast messages and progress indicators (#443)**:
+  Non-blocking notification system with server-side state management and
+  client-side rendering. Server module (`server/modules/notification/`) provides
+  `NotificationState` session extension with `push()`, `push_with_body()`,
+  `push_progress()`, `update_progress()`, and `dismiss()` API. `NotificationBridge`
+  serializes state to JSON for gRPC transmission via `ExtensionStateBridge`.
+  TUI extension (`clients/tui/extensions/notification/`) renders stacked toasts
+  in top-right corner with four levels (info, success, warning, error), auto-dismiss
+  after 4s (configurable), progress bars with percentage and detail text, and
+  MAX_VISIBLE=5 cap. Web extension (`clients/web/src/extensions/notification.ts`)
+  provides TypeScript equivalent with DOM rendering and `setInterval`-based
+  auto-dismiss. Deterministic testing via `TestClock` injection (same pattern as
+  #462 which-key). 45 server tests + 48 TUI tests + 27 web tests, 100% coverage.
+
+- **Which-key show-delay with testable clock injection (#462)**: Adds a
+  configurable 500ms delay before showing the which-key popup, preventing
+  visual noise during fast key sequences. Introduces `Clock` trait,
+  `SystemClock`, and `TestClock` in `reovim-arch` for deterministic time
+  testing. TUI extension uses a state machine (IDLE/WAITING/SHOWING) driven
+  by a new `TuiExtension::tick()` method called on the 16ms redraw timer.
+  Web client uses `setTimeout`/`clearTimeout` for equivalent behavior.
+  22 Rust tests and 33 web tests cover all timing paths with zero real sleeps.
+
 - **Per-client register isolation and type-safe Register enum (#515)**: Refactors
   shared state to an explicit local/shared model. Registers (`RegisterBank`),
   clipboard history (`HistoryRing`), and local marks (`MarkBank`) move from
@@ -20,6 +74,31 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `OperatorContext` with `char_to_register`/`option_char_to_register` bridge
   functions. E2E register and clipboard tests relocated to their policy module
   crates (`reovim-module-vim`, `reovim-module-clipboard`).
+
+- **Layer transparency and color passthrough (#400)**: Adds per-window opacity
+  support for layered rendering. Introduces `color_blend` module in the TUI
+  display driver with `blend_cell_colors()` for alpha-compositing foreground
+  and background colors against a configurable default background. Adds
+  `ansi_to_rgb()` and `rgb_lerp()` utility functions for 256-color and
+  true-color blending. `RenderConfig` struct encapsulates line number mode and
+  opacity for clean parameter passing. `render_line_number()` and cell
+  rendering paths use opacity-aware blending when opacity < 1.0. Includes
+  30 unit tests covering all color variants, edge cases, and opacity levels.
+
+- **Tab pages for window layout grouping (#401)**: Implements a tmux-like tab
+  page system for organizing window layouts. Adds `TabPageSet` and `TabPage`
+  types in the session driver with full lifecycle management (create, close,
+  switch, reorder). Each tab owns an independent set of `WindowId`s. Tab
+  operations (`tab_new`, `tab_close`, `tab_next`, `tab_prev`, `tab_goto`)
+  wired into `SessionRuntime` and `CompositorApi`. New command IDs in
+  `reovim-module-window-ops`: `TAB_NEW`, `TAB_CLOSE`, `TAB_NEXT`, `TAB_PREV`,
+  `TAB_GOTO`, `TAB_COUNT`, `MOVE_TO_NEW_TAB`. Normal mode keybindings `gt`
+  (next tab) and `gT` (previous tab), window mode `T` (move to new tab).
+  `TabPageInfo` proto message added to gRPC v2 protocol with `active_tab_id`
+  and `tabs` fields in `LayoutChanged` notifications and `GetLayoutResponse`.
+  TUI stores tab state from server notifications. Per-client `TabPageSet`
+  stored in `EditingState` and threaded through `ClientContext`. 263 unit
+  tests across all layers.
 
 - **Headless web capture via Playwright (#516)**: `reovim cli capture --format png
   --web-url URL` produces pixel-perfect screenshots by running the real web client
