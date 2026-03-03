@@ -16,7 +16,10 @@ use {
     reovim_driver_lsp::{
         LspKey, LspProvider, LspProviderRegistry, LspRequest, LspServerConfig, uri_from_path,
     },
-    reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
+    reovim_driver_session::{
+        BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
+        TransitionContext,
+    },
     reovim_kernel::api::v1::{CommandId, Position, ServiceRegistry, oneshot},
     tracing::{debug, info, warn},
 };
@@ -168,46 +171,114 @@ impl reovim_driver_command::Command for Confirm {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Confirm {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Extract needed data from state before closing.
         let state = runtime.ext_mut::<CompletionState>();
-        if !state.active {
-            return CommandResult::Success;
-        }
-
-        // Extract what we need before closing.
-        let Some(item) = state.selected_item() else {
+        let Some(selected) = state.selected_item().cloned() else {
             state.close();
             return CommandResult::Success;
         };
-        let insert_text = item.insert_text.clone();
         let prefix_len = state.prefix.len();
         state.close();
 
-        // Get buffer and cursor position.
+        // Get buffer and cursor.
         let Some(buffer_id) = runtime.active_buffer() else {
             return CommandResult::Success;
         };
         let Some(window) = runtime.windows().active() else {
             return CommandResult::Success;
         };
-        let cursor_line = window.cursor.line;
-        let cursor_col = window.cursor.column;
+        let cursor = Position::new(window.cursor.line, window.cursor.column);
 
-        // Delete the typed prefix and insert the completion text.
-        let start_col = cursor_col.saturating_sub(prefix_len);
-        let delete_start = Position::new(cursor_line, start_col);
-        let delete_end = Position::new(cursor_line, cursor_col);
-        runtime.delete_range(buffer_id, delete_start, delete_end);
+        // Delete the typed prefix.
+        if prefix_len > 0 && cursor.column >= prefix_len {
+            let prefix_start = Position::new(cursor.line, cursor.column - prefix_len);
+            runtime.delete_range(buffer_id, prefix_start, cursor);
+        }
+        let insert_pos = Position::new(cursor.line, cursor.column.saturating_sub(prefix_len));
 
-        let insert_pos = Position::new(cursor_line, start_col);
-        runtime.insert_text(buffer_id, insert_pos, &insert_text);
-
-        // Update cursor to end of inserted text.
-        let new_col = start_col + insert_text.len();
-        if let Some(w) = runtime.windows_mut().active_mut() {
-            w.cursor.column = new_col;
+        if selected.is_snippet {
+            confirm_snippet(runtime, buffer_id, insert_pos, &selected.insert_text);
+        } else {
+            // Plain text: insert directly.
+            runtime.insert_text(buffer_id, insert_pos, &selected.insert_text);
+            // Move cursor to end of inserted text.
+            let mut end_line = insert_pos.line;
+            let mut end_col = insert_pos.column;
+            for ch in selected.insert_text.chars() {
+                if ch == '\n' {
+                    end_line += 1;
+                    end_col = 0;
+                } else {
+                    end_col += 1;
+                }
+            }
+            if let Some(w) = runtime.windows_mut().active_mut() {
+                w.cursor.line = end_line;
+                w.cursor.column = end_col;
+            }
+            runtime.record_cursor_move(buffer_id);
         }
 
         CommandResult::Success
+    }
+}
+
+/// Handle snippet insertion from completion confirm.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn confirm_snippet(
+    runtime: &mut SessionRuntime<'_>,
+    buffer_id: reovim_kernel::api::v1::BufferId,
+    insert_pos: Position,
+    snippet_body: &str,
+) {
+    use reovim_module_snippet::{
+        engine::ActiveSnippet, ids as snippet_ids, parser, state::SnippetSessionState,
+        variables::VariableContext,
+    };
+
+    // Parse the snippet body.
+    let Ok(body) = parser::parse(snippet_body) else {
+        // Fallback: insert raw text if parsing fails.
+        runtime.insert_text(buffer_id, insert_pos, snippet_body);
+        return;
+    };
+
+    // Build variable context.
+    let var_ctx = VariableContext {
+        file_path: runtime.buffer_file_path(buffer_id),
+        line_number: insert_pos.line,
+        ..VariableContext::empty()
+    };
+
+    // Expand the snippet.
+    let (expanded_text, active_snippet) = ActiveSnippet::expand(&body, insert_pos, &var_ctx);
+    runtime.insert_text(buffer_id, insert_pos, &expanded_text);
+
+    let has_tab_stops = !active_snippet.is_done();
+    let first_stop_range = active_snippet.current().map(|ts| (ts.start, ts.end));
+
+    // Store active snippet state.
+    let state = runtime.ext_mut::<SnippetSessionState>();
+    state.active = Some(active_snippet);
+
+    // Enter snippet navigation mode if there are tab stops.
+    if has_tab_stops {
+        runtime.push_mode(snippet_ids::NAVIGATING_MODE, TransitionContext::new());
+        if let Some((start, end)) = first_stop_range {
+            if let Some(w) = runtime.windows_mut().active_mut() {
+                w.cursor.line = start.line;
+                w.cursor.column = start.column;
+                if start == end {
+                    w.selection = None;
+                } else {
+                    w.selection = Some(Selection::character(start, end));
+                }
+            }
+            runtime.record_cursor_move(buffer_id);
+            if start != end {
+                runtime.record_selection_change(buffer_id);
+            }
+        }
     }
 }
 

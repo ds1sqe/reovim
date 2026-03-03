@@ -11,13 +11,16 @@ use {
 
 /// Snapshot of a completion item for bridge serialization.
 ///
-/// Lightweight copy of driver `CompletionItem` fields needed by the UI.
+/// Lightweight copy of driver `CompletionItem` fields needed by the UI
+/// and the confirm handler.
 #[derive(Debug, Clone)]
 pub struct CompletionItemSnapshot {
     /// Primary display text.
     pub label: String,
-    /// Text to insert when confirmed (may differ from label for snippets).
+    /// Text to insert on confirmation (may differ from label).
     pub insert_text: String,
+    /// Whether `insert_text` uses snippet syntax (`$1`, `${2:default}`).
+    pub is_snippet: bool,
     /// Kind abbreviation (e.g., "fn", "va", "kw").
     pub kind_abbrev: String,
     /// Kind for styling.
@@ -35,6 +38,7 @@ impl CompletionItemSnapshot {
         Self {
             label: item.label.clone(),
             insert_text: item.insert_text.clone(),
+            is_snippet: item.is_snippet,
             kind_abbrev: item.kind.abbreviation().to_owned(),
             kind: item.kind,
             detail: item.detail.clone(),
@@ -126,6 +130,7 @@ mod tests {
         CompletionItemSnapshot {
             label: label.to_owned(),
             insert_text: label.to_owned(),
+            is_snippet: false,
             kind_abbrev: kind.abbreviation().to_owned(),
             kind,
             detail: None,
@@ -300,6 +305,7 @@ mod tests {
         let snap = CompletionItemSnapshot::from_item(&item);
         assert_eq!(snap.label, "my_func");
         assert_eq!(snap.insert_text, "my_func");
+        assert!(!snap.is_snippet);
         assert_eq!(snap.kind_abbrev, "fn");
         assert_eq!(snap.kind, CompletionKind::Function);
         assert_eq!(snap.detail.as_deref(), Some("fn()"));

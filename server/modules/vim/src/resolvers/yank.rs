@@ -801,6 +801,10 @@ mod tests {
         fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> {
             Ok(())
         }
+        fn set_active_selection(&mut self, _selection: Option<reovim_driver_session::Selection>) {}
+        fn active_selection(&self) -> Option<&reovim_driver_session::Selection> {
+            None
+        }
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

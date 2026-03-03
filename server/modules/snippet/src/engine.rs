@@ -5,7 +5,11 @@
 
 use reovim_kernel::api::v1::{Edit, Position, transform_position};
 
-use crate::ast::{SnippetBody, SnippetElement, TabStopId};
+use crate::{
+    ast::{SnippetBody, SnippetElement, TabStopId},
+    transform::apply_transform,
+    variables::{VariableContext, resolve_variable},
+};
 
 /// A resolved tab stop with its position range in the buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,8 +42,15 @@ impl ActiveSnippet {
     ///
     /// Returns the expanded text string and the snippet tracker with
     /// tab stop positions computed relative to `insert_pos`.
+    ///
+    /// The `var_ctx` provides context for resolving built-in variables
+    /// like `$TM_FILENAME` or `$CURRENT_YEAR` during expansion.
     #[must_use]
-    pub fn expand(body: &SnippetBody, insert_pos: Position) -> (String, Self) {
+    pub fn expand(
+        body: &SnippetBody,
+        insert_pos: Position,
+        var_ctx: &VariableContext,
+    ) -> (String, Self) {
         let mut text = String::new();
         let mut raw_stops: Vec<TabStopRange> = Vec::new();
 
@@ -47,7 +58,7 @@ impl ActiveSnippet {
         let mut line = insert_pos.line;
         let mut col = insert_pos.column;
 
-        collect_tab_stops(body.elements(), &mut text, &mut raw_stops, &mut line, &mut col);
+        collect_tab_stops(body.elements(), &mut text, &mut raw_stops, &mut line, &mut col, var_ctx);
 
         // Sort: numbered stops (1, 2, ..., N) first, then $0 last
         raw_stops.sort_by_key(|ts| if ts.id == 0 { (1, 0) } else { (0, ts.id) });
@@ -152,6 +163,43 @@ impl ActiveSnippet {
         self.update_positions(&edit);
     }
 
+    /// Get the current tab stop index.
+    #[must_use]
+    pub const fn current_index(&self) -> usize {
+        self.current_index
+    }
+
+    /// Find indices of tab stops that share the same ID, excluding `exclude_index`.
+    ///
+    /// Used for mirroring: when the user leaves a tab stop, all other tab stops
+    /// with the same ID are updated to match the typed text.
+    #[must_use]
+    pub fn mirror_indices(&self, id: TabStopId, exclude_index: usize) -> Vec<usize> {
+        self.tab_stops
+            .iter()
+            .enumerate()
+            .filter(|&(i, ts)| ts.id == id && i != exclude_index)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Update a tab stop's position range and placeholder text.
+    ///
+    /// Used after mirroring to reflect the new text at a mirrored tab stop.
+    pub fn update_tab_stop(
+        &mut self,
+        index: usize,
+        start: Position,
+        end: Position,
+        placeholder: String,
+    ) {
+        if let Some(ts) = self.tab_stops.get_mut(index) {
+            ts.start = start;
+            ts.end = end;
+            ts.placeholder = placeholder;
+        }
+    }
+
     /// Check if the cursor is within the snippet body range.
     ///
     /// Returns `false` if cursor has moved outside the snippet,
@@ -206,6 +254,7 @@ fn collect_tab_stops(
     stops: &mut Vec<TabStopRange>,
     line: &mut usize,
     col: &mut usize,
+    var_ctx: &VariableContext,
 ) {
     for elem in elements {
         match elem {
@@ -225,7 +274,7 @@ fn collect_tab_stops(
                 let start = Position::new(*line, *col);
                 // Render the placeholder body text
                 let body_start = text.len();
-                collect_tab_stops(body, text, stops, line, col);
+                collect_tab_stops(body, text, stops, line, col, var_ctx);
                 let placeholder_text = text[body_start..].to_string();
                 let end = Position::new(*line, *col);
                 stops.push(TabStopRange {
@@ -235,9 +284,39 @@ fn collect_tab_stops(
                     placeholder: placeholder_text,
                 });
             }
-            // Phase 3+: Variable, Choice handled here
-            SnippetElement::Variable { .. } | SnippetElement::Choice { .. } => {
-                // Unimplemented variants: emit nothing
+            SnippetElement::Variable {
+                name,
+                default,
+                transform,
+            } => {
+                // Try to resolve the variable.
+                if let Some(value) = resolve_variable(name, var_ctx) {
+                    // Apply transform if present.
+                    let output = if let Some(t) = transform {
+                        apply_transform(&value, t)
+                    } else {
+                        value
+                    };
+                    append_text(text, &output, line, col);
+                } else if let Some(default_body) = default {
+                    // Variable unknown: use default body.
+                    collect_tab_stops(default_body, text, stops, line, col, var_ctx);
+                }
+                // If no value and no default, emit nothing.
+            }
+            SnippetElement::Choice { id, choices } => {
+                // Insert first choice as default text, create a tab stop
+                // spanning the choice text.
+                let first = choices.first().map_or("", |s| s.as_str());
+                let start = Position::new(*line, *col);
+                append_text(text, first, line, col);
+                let end = Position::new(*line, *col);
+                stops.push(TabStopRange {
+                    id: *id,
+                    start,
+                    end,
+                    placeholder: first.to_owned(),
+                });
             }
         }
     }
@@ -259,12 +338,15 @@ fn append_text(text: &mut String, s: &str, line: &mut usize, col: &mut usize) {
 #[cfg(test)]
 #[allow(clippy::literal_string_with_formatting_args)]
 mod tests {
-    use {super::*, crate::parser};
+    use {
+        super::*,
+        crate::{parser, variables::VariableContext},
+    };
 
     /// Helper: parse and expand a snippet at a given position.
     fn expand_at(input: &str, pos: Position) -> (String, ActiveSnippet) {
         let body = parser::parse(input).unwrap();
-        ActiveSnippet::expand(&body, pos)
+        ActiveSnippet::expand(&body, pos, &VariableContext::empty())
     }
 
     // =========================================================================
@@ -636,7 +718,8 @@ mod tests {
     #[test]
     fn test_expand_empty_body() {
         let body = SnippetBody::new(vec![]);
-        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin());
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
         assert!(text.is_empty());
         assert!(snippet.is_done());
         assert_eq!(snippet.snippet_start(), Position::origin());
@@ -648,7 +731,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_expand_variable_ignored() {
+    fn test_expand_variable_resolved() {
         use crate::ast::SnippetElement;
         let body = SnippetBody::new(vec![
             SnippetElement::Text("before ".to_string()),
@@ -659,14 +742,48 @@ mod tests {
             },
             SnippetElement::Text(" after".to_string()),
         ]);
-        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin());
-        // Variable is skipped entirely — no text emitted for it
+        let ctx = VariableContext {
+            file_path: Some("/src/main.rs".to_string()),
+            ..VariableContext::empty()
+        };
+        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin(), &ctx);
+        assert_eq!(text, "before main.rs after");
+        assert!(snippet.tab_stops.is_empty());
+    }
+
+    #[test]
+    fn test_expand_variable_unresolved_no_default() {
+        use crate::ast::SnippetElement;
+        let body = SnippetBody::new(vec![
+            SnippetElement::Text("before ".to_string()),
+            SnippetElement::Variable {
+                name: "TM_FILENAME".to_string(),
+                default: None,
+                transform: None,
+            },
+            SnippetElement::Text(" after".to_string()),
+        ]);
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        // No file_path, no default → variable emits nothing
         assert_eq!(text, "before  after");
         assert!(snippet.tab_stops.is_empty());
     }
 
     #[test]
-    fn test_expand_choice_ignored() {
+    fn test_expand_variable_unresolved_with_default() {
+        use crate::ast::SnippetElement;
+        let body = SnippetBody::new(vec![SnippetElement::Variable {
+            name: "TM_FILENAME".to_string(),
+            default: Some(vec![SnippetElement::Text("untitled".to_string())]),
+            transform: None,
+        }]);
+        let (text, _) = ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        assert_eq!(text, "untitled");
+    }
+
+    #[test]
+    fn test_expand_choice_first_default() {
         use crate::ast::SnippetElement;
         let body = SnippetBody::new(vec![
             SnippetElement::Choice {
@@ -675,10 +792,36 @@ mod tests {
             },
             SnippetElement::Text("end".to_string()),
         ]);
-        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin());
-        // Choice is skipped — only "end" emitted
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        // First choice "a" is inserted as default text
+        assert_eq!(text, "aend");
+        assert_eq!(snippet.tab_stops.len(), 1);
+        let ts = &snippet.tab_stops[0];
+        assert_eq!(ts.id, 1);
+        assert_eq!(ts.start, Position::origin());
+        assert_eq!(ts.end, Position::new(0, 1));
+        assert_eq!(ts.placeholder, "a");
+    }
+
+    #[test]
+    fn test_expand_choice_empty() {
+        use crate::ast::SnippetElement;
+        let body = SnippetBody::new(vec![
+            SnippetElement::Choice {
+                id: 1,
+                choices: vec![],
+            },
+            SnippetElement::Text("end".to_string()),
+        ]);
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        // Empty choices — tab stop with no text
         assert_eq!(text, "end");
-        assert!(snippet.tab_stops.is_empty());
+        assert_eq!(snippet.tab_stops.len(), 1);
+        let ts = &snippet.tab_stops[0];
+        assert_eq!(ts.start, Position::origin());
+        assert_eq!(ts.end, Position::origin()); // start == end
     }
 
     // =========================================================================
@@ -778,5 +921,188 @@ mod tests {
         assert!(snippet.is_done());
         // Should not panic when current_index is past end
         snippet.reconcile_typing(Position::new(0, 5));
+    }
+
+    // =========================================================================
+    // Phase 2: current_index, mirror_indices, update_tab_stop
+    // =========================================================================
+
+    #[test]
+    fn test_current_index_initial() {
+        let (_, snippet) = expand_at("$1 $2 $0", Position::origin());
+        assert_eq!(snippet.current_index(), 0);
+    }
+
+    #[test]
+    fn test_current_index_after_next() {
+        let (_, mut snippet) = expand_at("$1 $2 $0", Position::origin());
+        snippet.next();
+        assert_eq!(snippet.current_index(), 1);
+        snippet.next();
+        assert_eq!(snippet.current_index(), 2);
+    }
+
+    #[test]
+    fn test_current_index_after_prev() {
+        let (_, mut snippet) = expand_at("$1 $2 $0", Position::origin());
+        snippet.next();
+        snippet.next();
+        snippet.prev();
+        assert_eq!(snippet.current_index(), 1);
+    }
+
+    #[test]
+    fn test_mirror_indices_no_duplicates() {
+        let (_, snippet) = expand_at("$1 $2 $0", Position::origin());
+        // Each ID is unique — no mirrors
+        let mirrors = snippet.mirror_indices(1, 0);
+        assert!(mirrors.is_empty());
+    }
+
+    #[test]
+    fn test_mirror_indices_with_duplicates() {
+        // Build a snippet with duplicate tab stop IDs manually
+        let body = crate::ast::SnippetBody::new(vec![
+            crate::ast::SnippetElement::Placeholder {
+                id: 1,
+                body: vec![crate::ast::SnippetElement::Text("name".to_string())],
+            },
+            crate::ast::SnippetElement::Text(" = ".to_string()),
+            crate::ast::SnippetElement::TabStop {
+                id: 1,
+                transform: None,
+            },
+            crate::ast::SnippetElement::Text(";".to_string()),
+        ]);
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        assert_eq!(text, "name = ;");
+
+        // Tab stop $1 appears twice — indices 0 and 1 (sorted by id)
+        let tab_stops = snippet.tab_stops();
+        assert_eq!(tab_stops.len(), 2);
+        assert_eq!(tab_stops[0].id, 1);
+        assert_eq!(tab_stops[1].id, 1);
+
+        // Mirror of index 0 should return index 1
+        let mirrors = snippet.mirror_indices(1, 0);
+        assert_eq!(mirrors, vec![1]);
+
+        // Mirror of index 1 should return index 0
+        let mirrors = snippet.mirror_indices(1, 1);
+        assert_eq!(mirrors, vec![0]);
+    }
+
+    #[test]
+    fn test_mirror_indices_excludes_self() {
+        let body = crate::ast::SnippetBody::new(vec![
+            crate::ast::SnippetElement::TabStop {
+                id: 1,
+                transform: None,
+            },
+            crate::ast::SnippetElement::Text(" ".to_string()),
+            crate::ast::SnippetElement::TabStop {
+                id: 1,
+                transform: None,
+            },
+            crate::ast::SnippetElement::Text(" ".to_string()),
+            crate::ast::SnippetElement::TabStop {
+                id: 1,
+                transform: None,
+            },
+        ]);
+        let (_, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        assert_eq!(snippet.tab_stops().len(), 3);
+
+        // Excluding index 1, mirrors are [0, 2]
+        let mirrors = snippet.mirror_indices(1, 1);
+        assert_eq!(mirrors, vec![0, 2]);
+    }
+
+    #[test]
+    fn test_update_tab_stop() {
+        let (_, mut snippet) = expand_at("${1:name} $2", Position::origin());
+        let ts = &snippet.tab_stops()[0];
+        assert_eq!(ts.placeholder, "name");
+        assert_eq!(ts.start, Position::origin());
+        assert_eq!(ts.end, Position::new(0, 4));
+
+        // Update the tab stop
+        snippet.update_tab_stop(0, Position::new(0, 0), Position::new(0, 5), "hello".to_string());
+
+        let ts = &snippet.tab_stops()[0];
+        assert_eq!(ts.placeholder, "hello");
+        assert_eq!(ts.end, Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_update_tab_stop_out_of_bounds() {
+        let (_, mut snippet) = expand_at("$1", Position::origin());
+        // Should not panic on out-of-bounds index
+        snippet.update_tab_stop(99, Position::origin(), Position::new(0, 5), "test".to_string());
+    }
+
+    // =========================================================================
+    // Phase 5: Variable with transform
+    // =========================================================================
+
+    #[test]
+    fn test_expand_variable_with_transform() {
+        use crate::ast::{FormatItem, SnippetElement, Transform};
+        let body = SnippetBody::new(vec![SnippetElement::Variable {
+            name: "TM_FILENAME".to_string(),
+            default: None,
+            transform: Some(Transform {
+                regex: "(.*)\\..*".to_string(),
+                replacement: vec![FormatItem::Capture(1)],
+                options: String::new(),
+            }),
+        }]);
+        let ctx = VariableContext {
+            file_path: Some("/src/main.rs".to_string()),
+            ..VariableContext::empty()
+        };
+        let (text, _) = ActiveSnippet::expand(&body, Position::origin(), &ctx);
+        // Transform strips file extension
+        assert_eq!(text, "main");
+    }
+
+    #[test]
+    fn test_expand_variable_with_transform_no_match() {
+        use crate::ast::{FormatItem, SnippetElement, Transform};
+        let body = SnippetBody::new(vec![SnippetElement::Variable {
+            name: "TM_FILENAME".to_string(),
+            default: None,
+            transform: Some(Transform {
+                regex: "xyz".to_string(),
+                replacement: vec![FormatItem::Text("replaced".to_string())],
+                options: String::new(),
+            }),
+        }]);
+        let ctx = VariableContext {
+            file_path: Some("/src/main.rs".to_string()),
+            ..VariableContext::empty()
+        };
+        let (text, _) = ActiveSnippet::expand(&body, Position::origin(), &ctx);
+        // No match — original value preserved
+        assert_eq!(text, "main.rs");
+    }
+
+    // =========================================================================
+    // Phase 5: Choice expansion via parser
+    // =========================================================================
+
+    #[test]
+    fn test_expand_choice_via_parser() {
+        let body = parser::parse("type ${1|public,private|} $0").unwrap();
+        let (text, snippet) =
+            ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+        assert_eq!(text, "type public ");
+        // $1 choice + $0
+        assert_eq!(snippet.tab_stop_count(), 2);
+        assert_eq!(snippet.tab_stops()[0].id, 1);
+        assert_eq!(snippet.tab_stops()[0].placeholder, "public");
+        assert_eq!(snippet.tab_stops()[1].id, 0);
     }
 }

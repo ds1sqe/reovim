@@ -21,6 +21,8 @@
 
 use reovim_kernel::api::v1::{BufferId, Position, WindowId};
 
+use super::Selection;
+
 /// Window management and focus operations.
 ///
 /// Provides access to window layout, focus, and buffer association
@@ -66,6 +68,16 @@ pub trait WindowApi: Send {
     ///
     /// Returns error if window or buffer doesn't exist.
     fn set_window_buffer(&mut self, window: WindowId, buffer: BufferId) -> Result<(), WindowError>;
+
+    /// Set or clear the selection on the active window.
+    ///
+    /// Pass `None` to clear any existing selection.
+    /// Used by snippet navigation and visual mode for programmatic
+    /// selection control through the trait interface.
+    fn set_active_selection(&mut self, selection: Option<Selection>);
+
+    /// Get the selection on the active window, if any.
+    fn active_selection(&self) -> Option<&Selection>;
 }
 
 /// Errors from window operations.

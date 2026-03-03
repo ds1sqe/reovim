@@ -23,6 +23,7 @@ reovim-driver-input = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-module-lsp = { workspace = true }
 reovim-module-macros = { workspace = true }
+reovim-module-snippet = { workspace = true }
 lsp-types = "0.97"
 tokio = { workspace = true, features = ["rt"] }
 serde_json = { workspace = true }

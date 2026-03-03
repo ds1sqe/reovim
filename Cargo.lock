@@ -2200,6 +2200,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-lsp",
  "reovim-module-macros",
+ "reovim-module-snippet",
  "serde_json",
  "tokio",
  "tracing",
@@ -2396,6 +2397,7 @@ dependencies = [
 name = "reovim-module-snippet"
 version = "0.9.5-dev"
 dependencies = [
+ "regex",
  "reovim-driver-command",
  "reovim-driver-input",
  "reovim-driver-session",

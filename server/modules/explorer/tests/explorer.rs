@@ -23,7 +23,7 @@ async fn test_toggle_explorer_enters_browse_mode() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -39,9 +39,9 @@ async fn test_toggle_explorer_off_returns_normal() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("<Space>e")
-            .expect_mode_contains("NORMAL")
+        .expect_mode_contains("NORMAL")
         .run()
         .await;
 
@@ -57,9 +57,9 @@ async fn test_close_explorer_with_q() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("q")
-            .expect_mode_contains("NORMAL")
+        .expect_mode_contains("NORMAL")
         .run()
         .await;
 
@@ -75,9 +75,9 @@ async fn test_close_explorer_with_escape() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("<Esc>")
-            .expect_mode_contains("NORMAL")
+        .expect_mode_contains("NORMAL")
         .run()
         .await;
 
@@ -97,11 +97,11 @@ async fn test_jk_navigation_stays_in_explorer() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("j")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("k")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -117,11 +117,11 @@ async fn test_gg_and_big_g_navigation() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("G")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("gg")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -141,11 +141,11 @@ async fn test_expand_collapse_with_l_h() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("l")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("h")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -165,9 +165,9 @@ async fn test_create_file_enters_input_mode() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("a")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .run()
         .await;
 
@@ -183,11 +183,11 @@ async fn test_escape_from_input_returns_to_browse() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("a")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("<Esc>")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -203,11 +203,11 @@ async fn test_create_dir_enters_input_mode() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("A")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("<Esc>")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -223,11 +223,11 @@ async fn test_rename_enters_input_mode() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("r")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("<Esc>")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -243,11 +243,11 @@ async fn test_delete_enters_input_mode() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("d")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("<Esc>")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -267,19 +267,19 @@ async fn test_input_mode_typing_stays_in_input() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("a")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("t")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("e")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("s")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("t")
-            .expect_mode_contains("EXPLORER_INPUT")
+        .expect_mode_contains("EXPLORER_INPUT")
         .step("<Esc>")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -299,9 +299,9 @@ async fn test_toggle_hidden() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("H")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -317,9 +317,9 @@ async fn test_refresh() {
         .with_buffer("hello")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .step("R")
-            .expect_mode_contains("EXPLORER")
+        .expect_mode_contains("EXPLORER")
         .run()
         .await;
 
@@ -339,13 +339,13 @@ async fn test_explorer_does_not_modify_buffer() {
         .with_buffer("hello world")
         .with_delay(80)
         .step("<Space>e")
-            .expect_mode_contains("EXPLORER")
-            .expect_buffer("hello world")
+        .expect_mode_contains("EXPLORER")
+        .expect_buffer("hello world")
         .step("jjkl")
-            .expect_buffer("hello world")
+        .expect_buffer("hello world")
         .step("q")
-            .expect_mode_contains("NORMAL")
-            .expect_buffer("hello world")
+        .expect_mode_contains("NORMAL")
+        .expect_buffer("hello world")
         .run()
         .await;
 

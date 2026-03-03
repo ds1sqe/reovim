@@ -76,6 +76,7 @@ mod tests {
         CompletionItemSnapshot {
             label: label.to_owned(),
             insert_text: label.to_owned(),
+            is_snippet: false,
             kind_abbrev: kind.abbreviation().to_owned(),
             kind,
             detail: None,
@@ -136,6 +137,7 @@ mod tests {
             CompletionItemSnapshot {
                 label: "println".to_owned(),
                 insert_text: "println".to_owned(),
+                is_snippet: false,
                 kind_abbrev: "fn".to_owned(),
                 kind: CompletionKind::Function,
                 detail: Some("macro".to_owned()),

@@ -53,7 +53,7 @@ use {
 };
 
 use crate::{
-    Session, SessionExtension, Window,
+    Selection, Session, SessionExtension, Window,
     api::{
         BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
         CompositorApi, CompositorError, ExtensionApi, ModeApi, ModeError, RegisterApi,
@@ -798,6 +798,16 @@ impl WindowApi for SessionRuntime<'_> {
         } else {
             Err(WindowError::NotFound(window))
         }
+    }
+
+    fn set_active_selection(&mut self, selection: Option<Selection>) {
+        if let Some(w) = self.windows.active_mut() {
+            w.selection = selection;
+        }
+    }
+
+    fn active_selection(&self) -> Option<&Selection> {
+        self.windows.active().and_then(|w| w.selection.as_ref())
     }
 }
 
@@ -2597,6 +2607,52 @@ mod tests {
 
         let result = harness.with_runtime(|runtime| runtime.set_window_buffer(window_id, fake_buf));
         assert!(matches!(result, Err(WindowError::BufferNotFound(_))));
+    }
+
+    #[test]
+    fn test_set_active_selection() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello world");
+
+        // Initially no selection.
+        let sel = harness.with_runtime(|runtime| runtime.active_selection().cloned());
+        assert!(sel.is_none());
+
+        // Set a selection.
+        let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
+        harness.with_runtime(|runtime| {
+            runtime.set_active_selection(Some(selection.clone()));
+        });
+
+        let sel = harness.with_runtime(|runtime| runtime.active_selection().cloned());
+        assert_eq!(sel.as_ref(), Some(&selection));
+
+        // Clear it.
+        harness.with_runtime(|runtime| {
+            runtime.set_active_selection(None);
+        });
+
+        let sel = harness.with_runtime(|runtime| runtime.active_selection().cloned());
+        assert!(sel.is_none());
+    }
+
+    #[test]
+    fn test_active_selection_no_window() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new(); // No windows
+
+        let sel = harness.with_runtime(|runtime| runtime.active_selection().cloned());
+        assert!(sel.is_none());
+
+        // set_active_selection on no window — should be no-op, not panic.
+        harness.with_runtime(|runtime| {
+            runtime.set_active_selection(Some(Selection::character(
+                Position::new(0, 0),
+                Position::new(0, 1),
+            )));
+        });
     }
 
     // =========================================================================

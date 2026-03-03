@@ -22,6 +22,7 @@ reovim-driver-session = { workspace = true }
 reovim-module-macros = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 reovim-testing = { workspace = true }

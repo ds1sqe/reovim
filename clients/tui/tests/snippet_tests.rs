@@ -134,8 +134,11 @@ async fn test_tui_expand_function() {
     match result {
         Ok(frame) => {
             assert!(frame.contains("fn "), "Should contain 'fn '");
-            // $1 placeholder "name" is deleted on expansion (cursor lands at $1)
-            assert!(!frame.contains("name"), "Placeholder 'name' should be deleted on expand");
+            // Phase 2: $1 placeholder "name" is selected (not deleted) on expansion
+            assert!(
+                frame.contains("name"),
+                "Placeholder 'name' should be selected (visible) on expand"
+            );
             // $2 placeholder "params" remains (not yet navigated to)
             assert!(frame.contains("params"), "Should contain placeholder 'params'");
             assert!(frame.contains('{'), "Should contain opening brace");
@@ -304,10 +307,10 @@ async fn test_tui_tab_navigates_cursor() {
 
     // Buffer content should be preserved (function template still there)
     assert!(frame_after.contains("fn "), "Function template should persist after Tab");
-    // After Tab to $2, its placeholder "params" is also deleted
+    // Phase 2: After Tab to $2, "params" is selected (not deleted)
     assert!(
-        !frame_after.contains("params"),
-        "Placeholder 'params' should be deleted after Tab"
+        frame_after.contains("params"),
+        "Placeholder 'params' should be selected (visible) after Tab"
     );
 
     eprintln!("[snippet] Tab navigation - before:\n{frame_before}");

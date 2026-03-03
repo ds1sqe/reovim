@@ -59,38 +59,26 @@ impl ModeKeyResolver for BrowseResolver {
         input: &ResolveInput<'_>,
     ) -> ResolveResult {
         // Accumulate key into pending sequence
-        self.pending_keys
-            .write()
-            .expect("lock poisoned")
-            .push(*key);
+        self.pending_keys.write().expect("lock poisoned").push(*key);
         let keys = self.pending_keys.read().expect("lock poisoned").clone();
 
         match input.keymap.query(self.mode_id(), &keys) {
             KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd } => {
                 // Clear pending keys on match
-                self.pending_keys
-                    .write()
-                    .expect("lock poisoned")
-                    .clear();
+                self.pending_keys.write().expect("lock poisoned").clear();
                 ResolveResult::Execute(cmd, ResolveContext::new())
             }
             KeyLookupState::PrefixOnly => ResolveResult::Pending,
             KeyLookupState::NotFound => {
                 // Clear pending keys on mismatch
-                self.pending_keys
-                    .write()
-                    .expect("lock poisoned")
-                    .clear();
+                self.pending_keys.write().expect("lock poisoned").clear();
                 ResolveResult::NotHandled
             }
         }
     }
 
     fn reset(&mut self) {
-        self.pending_keys
-            .write()
-            .expect("lock poisoned")
-            .clear();
+        self.pending_keys.write().expect("lock poisoned").clear();
     }
 
     fn pending_keys(&self) -> KeySequence {
@@ -168,8 +156,10 @@ impl ModeKeyResolver for InputResolver {
 
 #[cfg(test)]
 mod tests {
-    use reovim_driver_input::{KeyCode, KeymapQuery};
-    use reovim_kernel::api::v1::CommandId;
+    use {
+        reovim_driver_input::{KeyCode, KeymapQuery},
+        reovim_kernel::api::v1::CommandId,
+    };
 
     use super::*;
 

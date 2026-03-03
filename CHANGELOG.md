@@ -67,20 +67,36 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   trait shifts editor content right to accommodate the sidebar. 203 tests
   across both crates, zero clippy warnings.
 
-- **Snippet expansion module - Phase 1 infrastructure (#136)**: Full
-  implementation of TextMate/LSP-compatible snippet expansion with tab stop
-  navigation. Recursive descent parser handles the VSCode/LSP EBNF grammar
-  ($N, ${N}, ${N:default}, nested placeholders, escape sequences) with graceful
-  fallback for unknown syntax. Active snippet engine tracks tab stops with
-  position updates through buffer edits via `transform_position()`.
-  `SnippetProvider` trait and `SnippetRegistry` aggregate snippet sources
-  (Phase 1: JSON files from `~/.local/share/reovim/snippets/`; future: LSP,
-  completion). Per-client session state via `SessionExtension`. Mode
-  `snippet:navigating` inherits from `vim:insert` via `ModeKeyResolver`. Four
-  commands: expand (`<C-s>`), jump-next (`<Tab>`), jump-prev (`<S-Tab>`),
-  cancel (`<Esc>`). Full AST covers the complete EBNF grammar for incremental
-  parser extension in later phases (variables, choices, transforms). Zero kernel
-  modifications. 203 unit tests, zero clippy warnings.
+- **Snippet expansion module - Phases 1-5 complete (#136)**: Full
+  TextMate/LSP-compatible snippet system with expansion, tab stop navigation,
+  placeholder selection, mirroring, variables, completion integration,
+  transforms, and choices. Phase 1: recursive descent parser for VSCode/LSP
+  EBNF grammar ($N, ${N}, ${N:default}, nested placeholders, escape sequences),
+  active snippet engine with tab stop tracking and position updates via
+  `transform_position()`, `SnippetProvider` trait and `SnippetRegistry` for
+  extensible snippet sources (JSON from `~/.local/share/reovim/snippets/`),
+  per-client `SessionExtension` state, mode `snippet:navigating` inheriting
+  `vim:insert` via `ModeKeyResolver`, four commands: expand (`<C-s>`),
+  jump-next (`<Tab>`), jump-prev (`<S-Tab>`), cancel (`<Esc>`). Phase 2:
+  placeholder text selected visually on arrival instead of deleted, typing
+  replaces selection, Tab preserves default, `resolve_with_session` override
+  for selection-aware character insertion, on-jump mirroring syncs same-ID tab
+  stops (`mirror_indices`, `update_tab_stop`), selection cleared on cancel.
+  Phase 3: variable syntax (`$VAR`, `${VAR}`, `${VAR:default}`,
+  `${VAR/transform}`), 16 built-in variables resolved during expansion
+  (TM_FILENAME, TM_FILEPATH, TM_DIRECTORY, TM_LINE_NUMBER, TM_SELECTED_TEXT,
+  CLIPBOARD, CURRENT_YEAR/MONTH/DATE/HOUR/MINUTE/SECOND, RANDOM, RANDOM_HEX,
+  UUID) with zero external dependencies (pure `std::time::SystemTime`).
+  Phase 4: completion confirm handler inserts selected item text, snippet-type
+  completions parsed and expanded via snippet engine entering navigating mode,
+  `CompletionItemSnapshot` extended with `insert_text` and `is_snippet` fields.
+  Phase 5: regex transform execution (`${N/regex/replacement/flags}`) with
+  capture groups, global flag, 7 case modifiers (upcase, downcase, capitalize,
+  camelCase, PascalCase, snake_case, kebab-case), conditional insertions
+  (`${1:+if}`, `${1:?if:else}`); choice syntax (`${N|a,b,c|}`) with first
+  choice as default text; full AST activated (zero `#[allow(dead_code)]`).
+  Zero kernel modifications. 443 tests (341 snippet unit + 86 completion unit
+  + 7 E2E + 9 TUI integration), zero clippy warnings.
 
 - **Fuzzy finder infrastructure (#522)**: Full-stack fuzzy finder (microscope)
   with pluggable picker architecture powered by nucleo. Driver layer

@@ -1,7 +1,7 @@
 //! Snippet AST types covering the full VSCode/LSP EBNF grammar (#136).
 //!
-//! Phase 1 uses `Text`, `TabStop`, and `Placeholder`. Future phases
-//! activate `Variable`, `Choice`, and `Transform` support.
+//! All element types are active: `Text`, `TabStop`, `Placeholder`,
+//! `Variable`, `Choice`, and `Transform`.
 //!
 //! # EBNF Reference
 //!
@@ -29,7 +29,6 @@ pub enum SnippetElement {
         /// Tab stop number (0 = final position).
         id: TabStopId,
         /// Regex transform applied to the tab stop value.
-        #[allow(dead_code)] // Phase 5: transform support
         transform: Option<Transform>,
     },
 
@@ -42,7 +41,6 @@ pub enum SnippetElement {
     },
 
     /// A variable reference: `$TM_FILENAME`, `${VAR:default}`.
-    #[allow(dead_code)] // Phase 3: variable resolution
     Variable {
         /// Variable name (e.g., `TM_FILENAME`, `CURRENT_YEAR`).
         name: String,
@@ -53,7 +51,6 @@ pub enum SnippetElement {
     },
 
     /// A choice: `${1|one,two,three|}`.
-    #[allow(dead_code)] // Phase 5: choice syntax
     Choice {
         /// Tab stop number.
         id: TabStopId,
@@ -64,7 +61,6 @@ pub enum SnippetElement {
 
 /// Regex transform: `/${regex}/${replacement}/${options}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)] // Phase 5: transform support
 pub struct Transform {
     /// Regex pattern string.
     pub regex: String,
@@ -81,15 +77,12 @@ pub enum FormatItem {
     Text(String),
 
     /// Capture group reference: `$1`, `${1}`.
-    #[allow(dead_code)] // Phase 5: transform support
     Capture(usize),
 
     /// Case-changing capture: `${1:/upcase}`.
-    #[allow(dead_code)] // Phase 5: transform support
     CaseChange(usize, CaseModifier),
 
     /// Conditional insertion: `${1:+if}`, `${1:?if:else}`, `${1:-else}`.
-    #[allow(dead_code)] // Phase 5: transform support
     Conditional {
         /// Capture group number.
         capture: usize,
@@ -102,7 +95,6 @@ pub enum FormatItem {
 
 /// Case modifier for transform format items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Phase 5: transform support
 pub enum CaseModifier {
     /// `/upcase` - convert to uppercase.
     Upcase,

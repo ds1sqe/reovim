@@ -28,6 +28,10 @@ impl CommandHandler for CancelSnippet {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<SnippetSessionState>();
         state.active = None;
+        // Clear any placeholder selection
+        if let Some(w) = runtime.windows_mut().active_mut() {
+            w.selection = None;
+        }
         runtime.set_mode(ids::VIM_INSERT_MODE, TransitionContext::new());
         CommandResult::Success
     }

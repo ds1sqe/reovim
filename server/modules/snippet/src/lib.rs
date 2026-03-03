@@ -2,14 +2,16 @@
 //! Snippet expansion module for reovim (#136).
 //!
 //! Provides TextMate/LSP-compatible snippet expansion with intelligent
-//! tab stop navigation. Designed for future extensibility (LSP providers,
-//! completion integration, transforms).
+//! tab stop navigation, placeholder mirroring, variable resolution,
+//! regex transforms, and choice support.
 //!
 //! # Architecture
 //!
 //! - `ast` - Snippet element types (full EBNF grammar coverage)
-//! - `parser` - Recursive descent parser (Phase 1: tabstops + placeholders)
+//! - `parser` - Recursive descent parser (full TextMate/LSP grammar)
 //! - `engine` - Active snippet tracking with position updates
+//! - `transform` - Regex transform execution with case modifiers
+//! - `variables` - Built-in variable resolver (`TM_FILENAME`, etc.)
 //! - `provider` - Snippet provider trait and registry
 //! - `loader` - JSON file loader (VSCode-compatible format)
 //! - `resolver` - Mode key resolver for snippet navigation mode
@@ -32,6 +34,8 @@ pub mod parser;
 pub mod provider;
 pub mod resolver;
 pub mod state;
+pub mod transform;
+pub mod variables;
 
 use std::sync::Arc;
 
@@ -109,7 +113,7 @@ impl Module for SnippetModule {
             display_name: "SNIPPET",
             cursor_style: CursorStyle::Bar,
             accepts_char_input: true,
-            has_selection: false,
+            has_selection: true,
             inherits_from: Some(ids::VIM_INSERT_MODE),
             is_entry: false,
         });

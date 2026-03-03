@@ -7,13 +7,15 @@ use std::sync::Arc;
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
+        BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
+        TransitionContext,
     },
-    reovim_kernel::api::v1::{CommandId, Edit, Position},
+    reovim_kernel::api::v1::{CommandId, Position},
 };
 
 use crate::{
     engine::ActiveSnippet, ids, parser, provider::SnippetRegistry, state::SnippetSessionState,
+    variables::VariableContext,
 };
 
 /// Expand snippet at cursor.
@@ -83,49 +85,51 @@ impl CommandHandler for ExpandSnippet {
         let trigger_start = Position::new(cursor.line, cursor.column - prefix.len());
         runtime.delete_range(buffer_id, trigger_start, cursor);
 
+        // Build variable context from runtime
+        let var_ctx = VariableContext {
+            file_path: runtime.buffer_file_path(buffer_id),
+            line_number: cursor.line,
+            ..VariableContext::empty()
+        };
+
         // Expand the snippet body
-        let (expanded_text, mut active_snippet) = ActiveSnippet::expand(&body, trigger_start);
+        let (expanded_text, active_snippet) = ActiveSnippet::expand(&body, trigger_start, &var_ctx);
 
         // Insert expanded text at trigger position
         runtime.insert_text(buffer_id, trigger_start, &expanded_text);
 
-        // Extract first tab stop info and delete its placeholder if present.
-        // This must happen before storing the snippet so positions are correct.
+        // Extract first tab stop info for cursor positioning / selection.
         let has_tab_stops = !active_snippet.is_done();
         let first_stop_range = active_snippet.current().map(|ts| {
             let start = ts.start;
             let end = ts.end;
-            let placeholder = ts.placeholder.clone();
-            (start, end, placeholder)
+            (start, end)
         });
 
-        // If first tab stop has a placeholder, pre-adjust all positions
-        if let Some((start, end, ref placeholder)) = first_stop_range
-            && start != end
-        {
-            let edit = Edit::delete(start, placeholder);
-            active_snippet.update_positions(&edit);
-        }
-
-        // Store active snippet state (with adjusted positions)
+        // Store active snippet state
         let state = runtime.ext_mut::<SnippetSessionState>();
         state.active = Some(active_snippet);
 
         // If there are tab stops, enter snippet navigation mode
         if has_tab_stops {
             runtime.push_mode(ids::NAVIGATING_MODE, TransitionContext::new());
-            if let Some((start, end, _)) = first_stop_range {
-                // Delete placeholder text from buffer
-                if start != end {
-                    runtime.delete_range(buffer_id, start, end);
-                }
-                // Position cursor at tab stop
+            if let Some((start, end)) = first_stop_range {
+                // Position cursor at tab stop start
                 if let Some(w) = runtime.windows_mut().active_mut() {
                     w.cursor.line = start.line;
                     w.cursor.column = start.column;
+                    // Select placeholder text if present
+                    if start == end {
+                        w.selection = None;
+                    } else {
+                        w.selection = Some(Selection::character(start, end));
+                    }
+                }
+                runtime.record_cursor_move(buffer_id);
+                if start != end {
+                    runtime.record_selection_change(buffer_id);
                 }
             }
-            runtime.record_cursor_move(buffer_id);
         }
 
         CommandResult::Success
