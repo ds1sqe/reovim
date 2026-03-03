@@ -601,4 +601,55 @@ mod tests {
         assert_eq!(snippet.snippet_start(), Position::origin());
         assert_eq!(snippet.snippet_end(), Position::origin());
     }
+
+    // =========================================================================
+    // Unimplemented variants (Variable, Choice) are no-ops
+    // =========================================================================
+
+    #[test]
+    fn test_expand_variable_ignored() {
+        use crate::ast::SnippetElement;
+        let body = SnippetBody::new(vec![
+            SnippetElement::Text("before ".to_string()),
+            SnippetElement::Variable {
+                name: "TM_FILENAME".to_string(),
+                default: None,
+                transform: None,
+            },
+            SnippetElement::Text(" after".to_string()),
+        ]);
+        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin());
+        // Variable is skipped entirely — no text emitted for it
+        assert_eq!(text, "before  after");
+        assert!(snippet.tab_stops.is_empty());
+    }
+
+    #[test]
+    fn test_expand_choice_ignored() {
+        use crate::ast::SnippetElement;
+        let body = SnippetBody::new(vec![
+            SnippetElement::Choice {
+                id: 1,
+                choices: vec!["a".to_string(), "b".to_string()],
+            },
+            SnippetElement::Text("end".to_string()),
+        ]);
+        let (text, snippet) = ActiveSnippet::expand(&body, Position::origin());
+        // Choice is skipped — only "end" emitted
+        assert_eq!(text, "end");
+        assert!(snippet.tab_stops.is_empty());
+    }
+
+    // =========================================================================
+    // next() on empty snippet
+    // =========================================================================
+
+    #[test]
+    fn test_next_on_empty_returns_none() {
+        let (_, mut snippet) = expand_at("plain text", Position::origin());
+        assert!(snippet.tab_stops.is_empty());
+        // Calling next() on empty snippet should be a no-op
+        assert!(snippet.next().is_none());
+        assert!(snippet.is_done());
+    }
 }

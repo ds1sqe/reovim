@@ -424,4 +424,59 @@ mod tests {
         let provider = JsonSnippetProvider::default();
         assert!(provider.snippets_for_filetype("unknown").is_empty());
     }
+
+    #[test]
+    fn test_load_directory_empty_json_skipped() {
+        let dir = make_temp_dir();
+        // An empty JSON object {} parses to zero snippets
+        let path = dir.path().join("empty.json");
+        std::fs::write(&path, "{}").unwrap();
+
+        let provider = JsonSnippetProvider::load_directory(dir.path()).unwrap();
+        // The "empty" filetype should not be registered (defs.is_empty() → skip)
+        assert!(provider.snippets_for_filetype("empty").is_empty());
+        assert!(provider.snippets.is_empty());
+    }
+
+    #[test]
+    fn test_load_directory_multiple_filetypes() {
+        let dir = make_temp_dir();
+
+        let rust_path = dir.path().join("rust.json");
+        std::fs::write(
+            &rust_path,
+            r#"{ "function": { "prefix": "fn", "body": "fn $1() {}" } }"#,
+        )
+        .unwrap();
+
+        let python_path = dir.path().join("python.json");
+        std::fs::write(
+            &python_path,
+            r#"{ "defn": { "prefix": "def", "body": "def $1():" } }"#,
+        )
+        .unwrap();
+
+        let provider = JsonSnippetProvider::load_directory(dir.path()).unwrap();
+        assert_eq!(provider.snippets_for_filetype("rust").len(), 1);
+        assert_eq!(provider.snippets_for_filetype("python").len(), 1);
+        assert!(provider.snippet_by_prefix("rust", "fn").is_some());
+        assert!(provider.snippet_by_prefix("python", "def").is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_load_directory_non_utf8_stem_skipped() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = make_temp_dir();
+
+        // Create a file with non-UTF8 stem: \xff.json
+        let bad_name = std::ffi::OsString::from(std::ffi::OsStr::from_bytes(b"\xff.json"));
+        let bad_path = dir.path().join(bad_name);
+        std::fs::write(&bad_path, r#"{ "test": { "prefix": "t", "body": "$1" } }"#).unwrap();
+
+        let provider = JsonSnippetProvider::load_directory(dir.path()).unwrap();
+        // Non-UTF8 stem cannot be converted to String → skipped
+        assert!(provider.snippets.is_empty());
+    }
 }

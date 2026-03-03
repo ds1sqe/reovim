@@ -220,6 +220,60 @@ mod tests {
     use super::*;
 
     // =========================================================================
+    // Test helpers — extract enum variants (coverage(off) for unreachable arms)
+    // =========================================================================
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_placeholder(elem: &SnippetElement) -> (TabStopId, &Vec<SnippetElement>) {
+        match elem {
+            SnippetElement::Placeholder { id, body } => (*id, body),
+            other => panic!("expected Placeholder, got {other:?}"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_variable(
+        elem: &SnippetElement,
+    ) -> (&str, &Option<Vec<SnippetElement>>, &Option<Transform>) {
+        match elem {
+            SnippetElement::Variable {
+                name,
+                default,
+                transform,
+            } => (name, default, transform),
+            other => panic!("expected Variable, got {other:?}"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_choice(elem: &SnippetElement) -> (TabStopId, &Vec<String>) {
+        match elem {
+            SnippetElement::Choice { id, choices } => (*id, choices),
+            other => panic!("expected Choice, got {other:?}"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_tabstop(elem: &SnippetElement) -> (TabStopId, &Option<Transform>) {
+        match elem {
+            SnippetElement::TabStop { id, transform } => (*id, transform),
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_conditional(item: &FormatItem) -> (usize, &str, &str) {
+        match item {
+            FormatItem::Conditional {
+                capture,
+                if_text,
+                else_text,
+            } => (*capture, if_text, else_text),
+            other => panic!("expected Conditional, got {other:?}"),
+        }
+    }
+
+    // =========================================================================
     // SnippetElement construction and equality
     // =========================================================================
 
@@ -250,12 +304,9 @@ mod tests {
             id: 1,
             body: vec![SnippetElement::Text("default".to_string())],
         };
-        if let SnippetElement::Placeholder { id, body } = &elem {
-            assert_eq!(*id, 1);
-            assert_eq!(body.len(), 1);
-        } else {
-            panic!("expected Placeholder");
-        }
+        let (id, body) = as_placeholder(&elem);
+        assert_eq!(id, 1);
+        assert_eq!(body.len(), 1);
     }
 
     #[test]
@@ -265,18 +316,10 @@ mod tests {
             default: None,
             transform: None,
         };
-        if let SnippetElement::Variable {
-            name,
-            default,
-            transform,
-        } = &elem
-        {
-            assert_eq!(name, "TM_FILENAME");
-            assert!(default.is_none());
-            assert!(transform.is_none());
-        } else {
-            panic!("expected Variable");
-        }
+        let (name, default, transform) = as_variable(&elem);
+        assert_eq!(name, "TM_FILENAME");
+        assert!(default.is_none());
+        assert!(transform.is_none());
     }
 
     #[test]
@@ -286,12 +329,9 @@ mod tests {
             default: Some(vec![SnippetElement::Text("fallback".to_string())]),
             transform: None,
         };
-        if let SnippetElement::Variable { default, .. } = &elem {
-            assert!(default.is_some());
-            assert_eq!(default.as_ref().unwrap().len(), 1);
-        } else {
-            panic!("expected Variable");
-        }
+        let (_, default, _) = as_variable(&elem);
+        assert!(default.is_some());
+        assert_eq!(default.as_ref().unwrap().len(), 1);
     }
 
     #[test]
@@ -300,12 +340,9 @@ mod tests {
             id: 1,
             choices: vec!["one".to_string(), "two".to_string(), "three".to_string()],
         };
-        if let SnippetElement::Choice { id, choices } = &elem {
-            assert_eq!(*id, 1);
-            assert_eq!(choices.len(), 3);
-        } else {
-            panic!("expected Choice");
-        }
+        let (id, choices) = as_choice(&elem);
+        assert_eq!(id, 1);
+        assert_eq!(choices.len(), 3);
     }
 
     #[test]
@@ -344,18 +381,10 @@ mod tests {
             if_text: "yes".to_string(),
             else_text: "no".to_string(),
         };
-        if let FormatItem::Conditional {
-            capture,
-            if_text,
-            else_text,
-        } = &item
-        {
-            assert_eq!(*capture, 1);
-            assert_eq!(if_text, "yes");
-            assert_eq!(else_text, "no");
-        } else {
-            panic!("expected Conditional");
-        }
+        let (capture, if_text, else_text) = as_conditional(&item);
+        assert_eq!(capture, 1);
+        assert_eq!(if_text, "yes");
+        assert_eq!(else_text, "no");
     }
 
     // =========================================================================
@@ -615,12 +644,9 @@ mod tests {
             id: 1,
             transform: Some(t.clone()),
         };
-        if let SnippetElement::TabStop { id, transform } = &elem {
-            assert_eq!(*id, 1);
-            assert_eq!(transform.as_ref().unwrap(), &t);
-        } else {
-            panic!("expected TabStop");
-        }
+        let (id, transform) = as_tabstop(&elem);
+        assert_eq!(id, 1);
+        assert_eq!(transform.as_ref().unwrap(), &t);
     }
 
     #[test]
@@ -635,10 +661,7 @@ mod tests {
             default: None,
             transform: Some(t),
         };
-        if let SnippetElement::Variable { transform, .. } = &elem {
-            assert!(transform.is_some());
-        } else {
-            panic!("expected Variable");
-        }
+        let (_, _, transform) = as_variable(&elem);
+        assert!(transform.is_some());
     }
 }

@@ -37,7 +37,7 @@ use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_input::{ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,
@@ -113,6 +113,10 @@ impl Module for SnippetModule {
             inherits_from: Some(ids::VIM_INSERT_MODE),
             is_entry: false,
         });
+
+        // 5. Register keybindings
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
 
         pr_info!(
             "Snippet module initialized with {} commands",

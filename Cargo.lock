@@ -2347,8 +2347,10 @@ dependencies = [
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-testing",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]

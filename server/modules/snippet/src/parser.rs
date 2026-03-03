@@ -268,6 +268,14 @@ fn merge_adjacent_text(elements: Vec<SnippetElement>) -> Vec<SnippetElement> {
 mod tests {
     use super::*;
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn as_placeholder(elem: &SnippetElement) -> (TabStopId, &Vec<SnippetElement>) {
+        match elem {
+            SnippetElement::Placeholder { id, body } => (*id, body),
+            other => panic!("expected Placeholder, got {other:?}"),
+        }
+    }
+
     // =========================================================================
     // ParseError
     // =========================================================================
@@ -452,21 +460,18 @@ mod tests {
     #[test]
     fn test_parse_placeholder_with_tabstop() {
         let body = parse("${1:hello $2 world}").unwrap();
-        if let SnippetElement::Placeholder { id, body } = &body.elements()[0] {
-            assert_eq!(*id, 1);
-            assert_eq!(body.len(), 3);
-            assert_eq!(body[0], SnippetElement::Text("hello ".to_string()));
-            assert_eq!(
-                body[1],
-                SnippetElement::TabStop {
-                    id: 2,
-                    transform: None,
-                }
-            );
-            assert_eq!(body[2], SnippetElement::Text(" world".to_string()));
-        } else {
-            panic!("expected Placeholder");
-        }
+        let (id, inner) = as_placeholder(&body.elements()[0]);
+        assert_eq!(id, 1);
+        assert_eq!(inner.len(), 3);
+        assert_eq!(inner[0], SnippetElement::Text("hello ".to_string()));
+        assert_eq!(
+            inner[1],
+            SnippetElement::TabStop {
+                id: 2,
+                transform: None,
+            }
+        );
+        assert_eq!(inner[2], SnippetElement::Text(" world".to_string()));
     }
 
     // =========================================================================
@@ -476,42 +481,23 @@ mod tests {
     #[test]
     fn test_parse_nested_placeholder() {
         let body = parse("${1:outer ${2:inner}}").unwrap();
-        if let SnippetElement::Placeholder { id, body } = &body.elements()[0] {
-            assert_eq!(*id, 1);
-            assert_eq!(body.len(), 2);
-            assert_eq!(body[0], SnippetElement::Text("outer ".to_string()));
-            if let SnippetElement::Placeholder {
-                id: inner_id,
-                body: inner_body,
-            } = &body[1]
-            {
-                assert_eq!(*inner_id, 2);
-                assert_eq!(inner_body, &[SnippetElement::Text("inner".to_string())]);
-            } else {
-                panic!("expected nested Placeholder");
-            }
-        } else {
-            panic!("expected Placeholder");
-        }
+        let (id, inner) = as_placeholder(&body.elements()[0]);
+        assert_eq!(id, 1);
+        assert_eq!(inner.len(), 2);
+        assert_eq!(inner[0], SnippetElement::Text("outer ".to_string()));
+        let (inner_id, inner_body) = as_placeholder(&inner[1]);
+        assert_eq!(inner_id, 2);
+        assert_eq!(inner_body, &[SnippetElement::Text("inner".to_string())]);
     }
 
     #[test]
     fn test_parse_deeply_nested() {
         let body = parse("${1:${2:${3:deep}}}").unwrap();
-        if let SnippetElement::Placeholder { body, .. } = &body.elements()[0] {
-            if let SnippetElement::Placeholder { body, .. } = &body[0] {
-                if let SnippetElement::Placeholder { id, body } = &body[0] {
-                    assert_eq!(*id, 3);
-                    assert_eq!(body, &[SnippetElement::Text("deep".to_string())]);
-                } else {
-                    panic!("expected depth 3 Placeholder");
-                }
-            } else {
-                panic!("expected depth 2 Placeholder");
-            }
-        } else {
-            panic!("expected depth 1 Placeholder");
-        }
+        let (_, depth1) = as_placeholder(&body.elements()[0]);
+        let (_, depth2) = as_placeholder(&depth1[0]);
+        let (id, depth3) = as_placeholder(&depth2[0]);
+        assert_eq!(id, 3);
+        assert_eq!(depth3, &[SnippetElement::Text("deep".to_string())]);
     }
 
     // =========================================================================
@@ -551,11 +537,8 @@ mod tests {
     #[test]
     fn test_parse_escape_in_placeholder() {
         let body = parse("${1:price \\$5}").unwrap();
-        if let SnippetElement::Placeholder { body, .. } = &body.elements()[0] {
-            assert_eq!(body, &[SnippetElement::Text("price $5".to_string())]);
-        } else {
-            panic!("expected Placeholder");
-        }
+        let (_, inner) = as_placeholder(&body.elements()[0]);
+        assert_eq!(inner, &[SnippetElement::Text("price $5".to_string())]);
     }
 
     // =========================================================================
@@ -743,5 +726,40 @@ mod tests {
     fn test_parse_escaped_in_text_context() {
         let body = parse("a\\$b\\}c\\\\d").unwrap();
         assert_eq!(body.elements(), &[SnippetElement::Text("a$b}c\\d".to_string())]);
+    }
+
+    // =========================================================================
+    // Braced fallback: unknown syntax after number
+    // =========================================================================
+
+    #[test]
+    fn test_parse_braced_choice_syntax_fallback() {
+        // ${1|one,two|} — choice syntax triggers Some(_) fallback in parse_braced
+        let body = parse("${1|one,two|}").unwrap();
+        // Phase 1 treats this as literal text (fallback)
+        assert_eq!(
+            body.elements(),
+            &[SnippetElement::Text("${1|one,two|}".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_parse_braced_unknown_char_after_number() {
+        // ${1x} — 'x' after number triggers Some(_) in parse_braced
+        let body = parse("${1x}").unwrap();
+        assert_eq!(
+            body.elements(),
+            &[SnippetElement::Text("${1x}".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_parse_braced_no_closing_brace() {
+        // ${foo — non-numeric, no closing brace
+        let body = parse("${foo").unwrap();
+        assert_eq!(
+            body.elements(),
+            &[SnippetElement::Text("${foo".to_string())]
+        );
     }
 }
