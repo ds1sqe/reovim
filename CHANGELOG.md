@@ -6,6 +6,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Fuzzy finder infrastructure (#522)**: Full-stack fuzzy finder (microscope)
+  with pluggable picker architecture powered by nucleo. Driver layer
+  (`reovim-driver-picker`) provides `Picker` trait, `PickerItem`/`PickerData`/
+  `PickerAction` types, `PickerEngine` wrapping nucleo for streaming fuzzy
+  matching, and `PickerRegistry` for extensible picker registration. Module
+  layer (`reovim-module-microscope`) provides `MicroscopeState` session
+  extension with `TextInputSink` for query input, `MicroscopeBridge` for
+  JSON serialization, dedicated `MicroscopeMode` with `accepts_char_input()`,
+  9 command handlers (open-files/buffers/grep/commands, next/prev/select/
+  close/backspace), 11 keybindings (`<Space>f/b/g/;` in normal mode,
+  `<C-n>/<C-p>/<CR>/<Esc>/<BS>` in picker mode), and 4 built-in pickers
+  (files with .gitignore via `ignore` crate, buffers, grep via `rg` subprocess,
+  commands). TUI extension (`reovim-tui-ext-microscope`) renders Helix-style
+  bottom-anchored layout with query row, results list, preview pane, and
+  adaptive layout for narrow screens. Web extension
+  (`clients/web/src/extensions/microscope.ts`) provides DOM-based equivalent
+  with CSS grid layout. 200+ Rust tests + 19 web tests, zero clippy warnings.
+
 - **Which-key filter command refinement (#459)**: Threads binding metadata
   (description, category, layer) through the full input pipeline from
   `KeybindingRegistration` to `WhichKeyBridge`. Introduces `BindingInfo` struct

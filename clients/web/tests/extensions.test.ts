@@ -15,6 +15,7 @@ import {
   CmdlineExtension,
   WhichKeyExtension,
   NotificationExtension,
+  MicroscopeExtension,
 } from "../src/extensions/index.js";
 
 // ============ Test Fixtures ============
@@ -93,20 +94,59 @@ const NOTIFICATION_EMPTY = JSON.stringify({ active: true, entries: [] });
 
 const NOTIFICATION_DEACTIVATE = JSON.stringify({ active: false, entries: [] });
 
+const MICROSCOPE_ACTIVE = JSON.stringify({
+  active: true,
+  query: "main",
+  cursor: 4,
+  selected: 0,
+  scrollOffset: 0,
+  pickerName: "files",
+  pickerTitle: "Files",
+  prompt: "> ",
+  items: [
+    { display: "main.rs", detail: "src/", icon: "f" },
+    { display: "main.go", detail: "cmd/" },
+  ],
+  totalCount: 100,
+  matchedCount: 2,
+});
+
+const MICROSCOPE_WITH_PREVIEW = JSON.stringify({
+  active: true,
+  query: "main",
+  cursor: 4,
+  selected: 0,
+  scrollOffset: 0,
+  pickerName: "files",
+  pickerTitle: "Files",
+  prompt: "> ",
+  items: [{ display: "main.rs" }],
+  totalCount: 1,
+  matchedCount: 1,
+  preview: {
+    lines: ["fn main() {", "    println!(\"hello\");", "}"],
+    highlightLine: 0,
+    filePath: "src/main.rs",
+  },
+});
+
+const MICROSCOPE_DEACTIVATE = JSON.stringify({ active: false });
+
 /** Default show-delay matches WhichKeyExtension default (500ms). */
 const DEFAULT_DELAY_MS = 500;
 
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 3 extensions with correct kinds", () => {
+  it("createExtensions returns 4 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(3);
+    expect(extensions).toHaveLength(4);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
     expect(kinds).toContain("whichkey");
     expect(kinds).toContain("notification");
+    expect(kinds).toContain("microscope");
   });
 
   it("extensions start inactive", () => {
@@ -951,5 +991,239 @@ describe("NotificationExtension DOM rendering", () => {
   it("empty toasts does not render container", () => {
     ext.render(container);
     expect(container.querySelector(".notification-container")).toBeNull();
+  });
+});
+
+// ============ 8i: MicroscopeExtension ============
+
+describe("MicroscopeExtension payload parsing", () => {
+  let ext: MicroscopeExtension;
+
+  beforeEach(() => {
+    ext = new MicroscopeExtension();
+  });
+
+  it("starts inactive", () => {
+    expect(ext.isActive()).toBe(false);
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("kind returns microscope", () => {
+    expect(ext.kind()).toBe("microscope");
+  });
+
+  it("parses active payload", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    expect(ext.isActive()).toBe(true);
+
+    const state = ext.getState();
+    expect(state?.query).toBe("main");
+    expect(state?.cursor).toBe(4);
+    expect(state?.selected).toBe(0);
+    expect(state?.pickerName).toBe("files");
+    expect(state?.pickerTitle).toBe("Files");
+    expect(state?.matchedCount).toBe(2);
+    expect(state?.totalCount).toBe(100);
+    expect((state?.items as unknown[]).length).toBe(2);
+  });
+
+  it("parses payload with preview", () => {
+    ext.applyNotification(MICROSCOPE_WITH_PREVIEW);
+    const state = ext.getState();
+    const preview = state?.preview as Record<string, unknown>;
+    expect(preview).not.toBeNull();
+    expect((preview.lines as string[]).length).toBe(3);
+    expect(preview.highlightLine).toBe(0);
+    expect(preview.filePath).toBe("src/main.rs");
+  });
+
+  it("activates and deactivates", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    expect(ext.isActive()).toBe(true);
+
+    ext.applyNotification(MICROSCOPE_DEACTIVATE);
+    expect(ext.isActive()).toBe(false);
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("invalid JSON retains previous state", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    expect(ext.isActive()).toBe(true);
+
+    ext.applyNotification("{broken!!}");
+    expect(ext.isActive()).toBe(true);
+    expect(ext.getState()?.query).toBe("main");
+  });
+
+  it("empty string does not throw", () => {
+    expect(() => ext.applyNotification("")).not.toThrow();
+  });
+
+  it("deactivation resets state", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.applyNotification(MICROSCOPE_DEACTIVATE);
+
+    // Re-activate with different data
+    const newPayload = JSON.stringify({
+      active: true,
+      query: "",
+      pickerName: "buffers",
+      pickerTitle: "Buffers",
+      items: [],
+      totalCount: 0,
+      matchedCount: 0,
+    });
+    ext.applyNotification(newPayload);
+    expect(ext.getState()?.query).toBe("");
+    expect(ext.getState()?.pickerName).toBe("buffers");
+  });
+});
+
+describe("MicroscopeExtension DOM rendering", () => {
+  let ext: MicroscopeExtension;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = "";
+    ext = new MicroscopeExtension();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("renders overlay with correct CSS classes", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    expect(container.querySelector(".microscope-overlay")).toBeTruthy();
+    expect(
+      container.querySelector(".microscope-overlay")?.classList.contains("overlay"),
+    ).toBe(true);
+  });
+
+  it("renders query row with prompt and counter", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    expect(container.querySelector(".microscope-prompt")?.textContent).toBe("> ");
+    expect(container.querySelector(".microscope-query")?.textContent).toBe("main");
+    expect(container.querySelector(".microscope-counter")?.textContent).toBe("2/100");
+  });
+
+  it("renders results with items", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    const items = container.querySelectorAll(".microscope-item");
+    expect(items.length).toBe(2);
+    expect(items[0]?.classList.contains("selected")).toBe(true);
+    expect(items[1]?.classList.contains("selected")).toBe(false);
+  });
+
+  it("renders item display text", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    const displays = container.querySelectorAll(".microscope-item-display");
+    expect(displays[0]?.textContent).toBe("main.rs");
+    expect(displays[1]?.textContent).toBe("main.go");
+  });
+
+  it("renders item icon when present", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    const icons = container.querySelectorAll(".microscope-item-icon");
+    expect(icons.length).toBe(1);
+    expect(icons[0]?.textContent).toBe("f");
+  });
+
+  it("renders item detail when present", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    const details = container.querySelectorAll(".microscope-item-detail");
+    expect(details.length).toBe(2);
+    expect(details[0]?.textContent).toBe("src/");
+    expect(details[1]?.textContent).toBe("cmd/");
+  });
+
+  it("renders preview pane", () => {
+    ext.applyNotification(MICROSCOPE_WITH_PREVIEW);
+    ext.render(container);
+
+    expect(container.querySelector(".microscope-preview")).toBeTruthy();
+    expect(container.querySelector(".microscope-preview-path")?.textContent).toBe("src/main.rs");
+
+    const lines = container.querySelectorAll(".microscope-preview-line");
+    expect(lines.length).toBe(3);
+    expect(lines[0]?.classList.contains("highlighted")).toBe(true);
+    expect(lines[1]?.classList.contains("highlighted")).toBe(false);
+  });
+
+  it("renders line numbers in preview", () => {
+    ext.applyNotification(MICROSCOPE_WITH_PREVIEW);
+    ext.render(container);
+
+    const lineNums = container.querySelectorAll(".microscope-line-number");
+    expect(lineNums[0]?.textContent).toBe("1");
+    expect(lineNums[1]?.textContent).toBe("2");
+    expect(lineNums[2]?.textContent).toBe("3");
+  });
+
+  it("does not render preview when absent", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+
+    expect(container.querySelector(".microscope-preview")).toBeNull();
+  });
+
+  it("hide removes overlay from DOM", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+    expect(container.querySelector(".microscope-overlay")).toBeTruthy();
+
+    ext.hide();
+    expect(container.querySelector(".microscope-overlay")).toBeNull();
+  });
+
+  it("re-render replaces overlay instead of duplicating", () => {
+    ext.applyNotification(MICROSCOPE_ACTIVE);
+    ext.render(container);
+    ext.render(container);
+
+    const overlays = container.querySelectorAll(".microscope-overlay");
+    expect(overlays.length).toBe(1);
+  });
+
+  it("inactive state does not render", () => {
+    ext.render(container);
+    expect(container.querySelector(".microscope-overlay")).toBeNull();
+  });
+
+  it("hide without prior render does not throw", () => {
+    expect(() => ext.hide()).not.toThrow();
+  });
+
+  it("state isolation: microscope notification does not affect other extensions", () => {
+    const extensions = createExtensions();
+
+    const notification = {
+      kind: "microscope",
+      data: MICROSCOPE_ACTIVE,
+    };
+    for (const e of extensions) {
+      if (e.kind() === notification.kind) {
+        e.applyNotification(notification.data);
+      }
+    }
+
+    const cmdline = extensions.find((e) => e.kind() === "cmdline")!;
+    expect(cmdline.isActive()).toBe(false);
+    const whichkey = extensions.find((e) => e.kind() === "whichkey")!;
+    expect(whichkey.isActive()).toBe(false);
   });
 });

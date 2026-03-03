@@ -23,6 +23,7 @@ members = [
     "server/lib/drivers/clipboard",
     "server/lib/drivers/ffi",
     "server/lib/drivers/ffi-python",
+    "server/lib/drivers/picker",
 
     # Server modules
     "server/modules/vim",
@@ -46,6 +47,7 @@ members = [
     "server/modules/cmdline",
     "server/modules/whichkey",
     "server/modules/notification",
+    "server/modules/microscope",
     "server/modules/treesitter-markdown",
 
     # Client layer - TUI
@@ -57,6 +59,7 @@ members = [
     "clients/tui/extensions/which-key",
     "clients/tui/extensions/cmdline",
     "clients/tui/extensions/notification",
+    "clients/tui/extensions/microscope",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -159,6 +162,7 @@ reovim-driver-search = { path = "./server/lib/drivers/search", version = "0.9.5-
 reovim-driver-clipboard = { path = "./server/lib/drivers/clipboard", version = "0.9.5-dev" }
 reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.9.5-dev" }
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.9.5-dev" }
+reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.9.5-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.9.5-dev" }
@@ -199,6 +203,7 @@ reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", ver
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.9.5-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.9.5-dev" }
 reovim-module-notification = { path = "./server/modules/notification", version = "0.9.5-dev" }
+reovim-module-microscope = { path = "./server/modules/microscope", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
 
 # CLI
@@ -211,3 +216,7 @@ toml = "0.8"
 
 # Clipboard
 arboard = "3"
+
+# Fuzzy matching
+nucleo = "0.5"
+ignore = "0.4"

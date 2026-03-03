@@ -228,6 +228,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
+name = "bstr"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -812,6 +822,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "globset"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52dfc19153a48bde0cbd630453615c8151bce3a5adfac7a0aebfbf0a1e1f57e3"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "gloo-utils"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1002,6 +1025,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "ignore"
+version = "0.4.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3d782a365a015e0f5c04902246139249abf769125006fbe7649e2ee88169b4a"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
 ]
 
 [[package]]
@@ -1232,6 +1271,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "nucleo"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5262af4c94921c2646c5ac6ff7900c2af9cbb08dc26a797e18130a7019c039d4"
+dependencies = [
+ "nucleo-matcher",
+ "parking_lot",
+ "rayon",
+]
+
+[[package]]
+name = "nucleo-matcher"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
+dependencies = [
+ "memchr",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1956,6 +2016,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-picker"
+version = "0.9.5-dev"
+dependencies = [
+ "nucleo",
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-search"
 version = "0.9.5-dev"
 dependencies = [
@@ -2112,6 +2180,7 @@ dependencies = [
  "reovim-module-editor",
  "reovim-module-keymap",
  "reovim-module-macros",
+ "reovim-module-microscope",
  "reovim-module-motions",
  "reovim-module-notification",
  "reovim-module-scratch-buffer",
@@ -2154,6 +2223,22 @@ dependencies = [
  "quote",
  "reovim-kernel",
  "syn",
+]
+
+[[package]]
+name = "reovim-module-microscope"
+version = "0.9.5-dev"
+dependencies = [
+ "ignore",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -2399,8 +2484,18 @@ version = "0.9.5-dev"
 dependencies = [
  "reovim-driver-display",
  "reovim-tui-ext-cmdline",
+ "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
  "reovim-tui-ext-whichkey",
+]
+
+[[package]]
+name = "reovim-tui-ext-microscope"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
 ]
 
 [[package]]
