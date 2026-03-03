@@ -46,6 +46,7 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
+    reovim_module_explorer as explorer,
     reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_microscope as microscope, reovim_module_motions as motions,
     reovim_module_notification as notification, reovim_module_range_finder as range_finder,
@@ -121,6 +122,8 @@ impl DefaultsModule {
             Box::new(range_finder::RangeFinderModule::new()),
             // Completion engine (#521)
             Box::new(completion::CompletionModule::new()),
+            // File explorer (#523)
+            Box::new(explorer::ExplorerModule::new()),
         ]
     }
 }
@@ -180,6 +183,8 @@ impl Module for DefaultsModule {
             ModuleId::new("range-finder"),
             // Completion engine (#521)
             ModuleId::new("completion"),
+            // File explorer (#523)
+            ModuleId::new("explorer"),
         ]
     }
 
@@ -252,8 +257,9 @@ mod tests {
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
-        // Total: 21 modules
-        assert_eq!(deps.len(), 21);
+        // Explorer (1): explorer
+        // Total: 22 modules
+        assert_eq!(deps.len(), 22);
     }
 
     #[test]
@@ -269,8 +275,9 @@ mod tests {
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
-        // Total: 21 modules
-        assert_eq!(modules.len(), 21);
+        // Explorer (1): explorer
+        // Total: 22 modules
+        assert_eq!(modules.len(), 22);
     }
 
     #[test]

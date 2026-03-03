@@ -48,6 +48,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   coverage, 8 E2E integration tests, 3 headless TUI tests, 8 web client tests.
   Zero kernel modifications, zero clippy warnings.
 
+- **File explorer sidebar with tree navigation (#523)**: Full-stack file
+  explorer sidebar (nvim-tree style) with server module and TUI extension.
+  Server module (`reovim-module-explorer`) provides `ExplorerState` session
+  extension with `FileTree` data structure, `ExplorerBridge` for JSON
+  serialization, two modes (Browse with keybinding-driven navigation, Input
+  with `TextInputSink` for text entry), and 20 command handlers: toggle
+  (`<Space>e`), close (`q`/`<Esc>`), navigation (`j`/`k`/`gg`/`G`/`-`),
+  expand/collapse (`l`/`h`/`<CR>`), file operations (create file `a`, create
+  directory `A`, rename `r`, delete `d` with `y/n` confirmation), toggle
+  hidden files (`H`), refresh (`R`), and yank path to clipboard (`y`). Tree
+  nodes support files, directories, and symlinks with VFS-backed operations
+  (`VfsDriver` trait). Box-drawing tree prefixes with vertical continuation
+  lines for proper tree structure rendering. TUI extension
+  (`reovim-tui-ext-explorer`) renders a sidebar with dark background, colored
+  directory/file/symlink names, cursor highlighting, tree prefix characters,
+  input prompt, and status messages. `content_offset_left()` on `TuiExtension`
+  trait shifts editor content right to accommodate the sidebar. 203 tests
+  across both crates, zero clippy warnings.
+
 - **Snippet expansion module - Phase 1 infrastructure (#136)**: Full
   implementation of TextMate/LSP-compatible snippet expansion with tab stop
   navigation. Recursive descent parser handles the VSCode/LSP EBNF grammar

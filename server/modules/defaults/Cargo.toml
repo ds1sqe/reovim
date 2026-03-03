@@ -36,6 +36,9 @@ reovim-module-notification = { workspace = true }
 # Picker modules
 reovim-module-microscope = { workspace = true }
 
+# Explorer module
+reovim-module-explorer = { workspace = true }
+
 # Syntax highlighting modules
 reovim-module-treesitter-rust = { workspace = true }
 reovim-module-treesitter-markdown = { workspace = true }

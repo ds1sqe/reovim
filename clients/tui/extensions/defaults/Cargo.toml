@@ -22,3 +22,4 @@ reovim-tui-ext-cmdline = { path = "../cmdline" }
 reovim-tui-ext-notification = { path = "../notification" }
 reovim-tui-ext-microscope = { path = "../microscope" }
 reovim-tui-ext-completion = { path = "../completion" }
+reovim-tui-ext-explorer = { path = "../explorer" }

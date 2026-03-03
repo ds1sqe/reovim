@@ -195,18 +195,26 @@ pub fn render_frame<B: RenderBackend>(
     // Reserve space for statusline only (cmdline floats on top)
     let content_height = height.saturating_sub(1);
 
+    // Compute sidebar offset from active extensions
+    let sidebar_width: u16 = extensions
+        .iter()
+        .filter(|e| e.is_active())
+        .map(|e| e.content_offset_left())
+        .sum();
+    let content_x = config.gutter_width + sidebar_width;
+
     // Render buffer content
-    render_buffer_content(backend, state, config, content_height);
+    render_buffer_content(backend, state, config, content_height, sidebar_width);
 
     // Render selections (behind cursors — background overlay)
-    render_remote_selections(backend, state, config.gutter_width, content_height);
-    render_local_selection(backend, state, config.gutter_width, content_height);
+    render_remote_selections(backend, state, content_x, content_height);
+    render_local_selection(backend, state, content_x, content_height);
 
     // Render cursors (on top of selections)
-    render_remote_cursors(backend, state, config.gutter_width, content_height);
-    render_remote_cursor_labels(backend, state, config.gutter_width, content_height);
+    render_remote_cursors(backend, state, content_x, content_height);
+    render_remote_cursor_labels(backend, state, content_x, content_height);
     if config.render_self_cursor {
-        render_self_cursor(backend, state, config.gutter_width, content_height);
+        render_self_cursor(backend, state, content_x, content_height);
     }
 
     // Render statusline
@@ -234,10 +242,11 @@ fn render_buffer_content<B: RenderBackend>(
     state: &TuiCoreState,
     config: &RenderConfig,
     content_height: u16,
+    sidebar_width: u16,
 ) {
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
-    let content_x = gutter_width;
+    let content_x = sidebar_width + gutter_width;
     let opacity = config.opacity;
 
     // TODO(#494): Multi-window — iterate all windows with tiling layout
@@ -256,7 +265,15 @@ fn render_buffer_content<B: RenderBackend>(
         if config.show_line_numbers && gutter_width > 0 {
             // Use cursor line for highlighting; default to 0 if no cursor data yet
             let cursor_line = state.get_focused_cursor().map_or(0, |c| c.line as usize);
-            render_line_number(backend, 0, screen_y, gutter_width, line_idx, cursor_line, config);
+            render_line_number(
+                backend,
+                sidebar_width,
+                screen_y,
+                gutter_width,
+                line_idx,
+                cursor_line,
+                config,
+            );
         }
 
         // Render line content
