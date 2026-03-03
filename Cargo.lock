@@ -1855,6 +1855,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-bench-utils"
+version = "0.9.5-dev"
+dependencies = [
+ "criterion",
+ "reovim-driver-vfs",
+ "serde_json",
+]
+
+[[package]]
 name = "reovim-client-cli"
 version = "0.9.5-dev"
 dependencies = [
@@ -2245,6 +2254,7 @@ dependencies = [
 name = "reovim-module-explorer"
 version = "0.9.5-dev"
 dependencies = [
+ "reovim-bench-utils",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",

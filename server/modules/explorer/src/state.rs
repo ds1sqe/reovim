@@ -6,7 +6,7 @@
 
 use {
     reovim_driver_session::{SessionExtension, TextInputSink},
-    std::path::PathBuf,
+    std::{path::PathBuf, sync::Mutex},
 };
 
 use crate::tree::FileTree;
@@ -69,20 +69,79 @@ pub struct ExplorerState {
     pub root_path: PathBuf,
     /// The file tree (populated on first toggle via VFS).
     pub tree: Option<FileTree>,
+    /// Cached visible node count (invalidated when tree structure changes).
+    cached_visible_count: Mutex<Option<usize>>,
+    /// Cached serialized nodes for bridge snapshot (invalidated with tree).
+    cached_nodes_json: Mutex<Option<Vec<serde_json::Value>>>,
 }
 
 impl ExplorerState {
     /// Get the number of visible (flattened) nodes.
+    ///
+    /// Uses a cached value when available. The cache is invalidated by
+    /// [`invalidate_tree_cache()`](Self::invalidate_tree_cache) when the
+    /// tree structure changes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal cache mutex is poisoned.
     #[must_use]
     pub fn node_count(&self) -> usize {
-        self.tree
+        let mut guard = self.cached_visible_count.lock().unwrap();
+        if let Some(count) = *guard {
+            return count;
+        }
+        let count = self
+            .tree
             .as_ref()
-            .map_or(0, |t| t.flatten(self.show_hidden).len())
+            .map_or(0, |t| t.flatten(self.show_hidden).len());
+        *guard = Some(count);
+        count
+    }
+
+    /// Invalidate cached tree data (node count and serialized nodes).
+    ///
+    /// Call this whenever the tree structure changes: expand, collapse,
+    /// toggle hidden, refresh, or any file operation (create/rename/delete).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal cache mutex is poisoned.
+    pub fn invalidate_tree_cache(&self) {
+        *self.cached_visible_count.lock().unwrap() = None;
+        *self.cached_nodes_json.lock().unwrap() = None;
+    }
+
+    /// Get the cached serialized nodes, if available.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal cache mutex is poisoned.
+    #[must_use]
+    pub fn cached_nodes_json(&self) -> Option<Vec<serde_json::Value>> {
+        self.cached_nodes_json.lock().unwrap().clone()
+    }
+
+    /// Store serialized nodes in the cache.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal cache mutex is poisoned.
+    pub fn set_cached_nodes_json(&self, nodes: Vec<serde_json::Value>) {
+        *self.cached_nodes_json.lock().unwrap() = Some(nodes);
     }
 
     /// Clamp cursor to valid range and adjust scroll to keep cursor visible.
     pub fn update_scroll(&mut self) {
         let count = self.node_count();
+        self.update_scroll_with_count(count);
+    }
+
+    /// Clamp cursor and adjust scroll using a pre-computed node count.
+    ///
+    /// Avoids a redundant `node_count()` call when the caller already
+    /// has the count.
+    pub const fn update_scroll_with_count(&mut self, count: usize) {
         if count == 0 {
             self.cursor_index = 0;
             self.scroll_offset = 0;
@@ -122,6 +181,8 @@ impl SessionExtension for ExplorerState {
             message: None,
             root_path: PathBuf::new(),
             tree: None,
+            cached_visible_count: Mutex::new(None),
+            cached_nodes_json: Mutex::new(None),
         }
     }
 
@@ -349,5 +410,113 @@ mod tests {
         state.cursor_index = 2;
         state.update_scroll();
         assert_eq!(state.scroll_offset, 2);
+    }
+
+    #[test]
+    fn node_count_uses_cache() {
+        use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+
+        let mock = Arc::new(MockVfs::new());
+        mock.create_dir(Path::new("/root")).unwrap();
+        mock.write(Path::new("/root/a.txt"), b"a").unwrap();
+        mock.write(Path::new("/root/b.txt"), b"b").unwrap();
+
+        let state = ExplorerState::create();
+        // No tree: cache should store 0
+        assert_eq!(state.node_count(), 0);
+        assert_eq!(*state.cached_visible_count.lock().unwrap(), Some(0));
+
+        // Second call returns cached value
+        assert_eq!(state.node_count(), 0);
+    }
+
+    #[test]
+    fn node_count_cache_populated_with_tree() {
+        use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+
+        let mock = Arc::new(MockVfs::new());
+        mock.create_dir(Path::new("/root")).unwrap();
+        mock.write(Path::new("/root/a.txt"), b"a").unwrap();
+
+        let mut state = ExplorerState::create();
+        state.tree = Some(FileTree::new(PathBuf::from("/root"), mock.as_ref()).unwrap());
+
+        // Cache starts empty
+        assert!(state.cached_visible_count.lock().unwrap().is_none());
+
+        // First call computes + caches
+        assert_eq!(state.node_count(), 2);
+        assert_eq!(*state.cached_visible_count.lock().unwrap(), Some(2));
+    }
+
+    #[test]
+    fn invalidate_clears_cache() {
+        use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+
+        let mock = Arc::new(MockVfs::new());
+        mock.create_dir(Path::new("/root")).unwrap();
+        mock.write(Path::new("/root/a.txt"), b"a").unwrap();
+
+        let mut state = ExplorerState::create();
+        state.tree = Some(FileTree::new(PathBuf::from("/root"), mock.as_ref()).unwrap());
+
+        // Populate caches
+        assert_eq!(state.node_count(), 2);
+        state.set_cached_nodes_json(vec![serde_json::json!({"test": true})]);
+        assert!(state.cached_nodes_json().is_some());
+
+        // Invalidate
+        state.invalidate_tree_cache();
+        assert!(state.cached_visible_count.lock().unwrap().is_none());
+        assert!(state.cached_nodes_json().is_none());
+    }
+
+    #[test]
+    fn update_scroll_with_count_same_as_update_scroll() {
+        use {reovim_driver_vfs::MockVfs, std::sync::Arc};
+
+        let mock = Arc::new(MockVfs::new());
+        mock.create_dir(Path::new("/root")).unwrap();
+        for i in 0..20 {
+            mock.write(Path::new(&format!("/root/{i:02}.txt")), b"x")
+                .unwrap();
+        }
+
+        // Test with update_scroll
+        let mut state1 = ExplorerState::create();
+        state1.tree = Some(FileTree::new(PathBuf::from("/root"), mock.as_ref()).unwrap());
+        state1.visible_height = 5;
+        state1.cursor_index = 15;
+        state1.update_scroll();
+
+        // Test with update_scroll_with_count
+        let mut state2 = ExplorerState::create();
+        state2.tree = Some(FileTree::new(PathBuf::from("/root"), mock.as_ref()).unwrap());
+        state2.visible_height = 5;
+        state2.cursor_index = 15;
+        let count = state2.node_count();
+        state2.update_scroll_with_count(count);
+
+        assert_eq!(state1.cursor_index, state2.cursor_index);
+        assert_eq!(state1.scroll_offset, state2.scroll_offset);
+    }
+
+    #[test]
+    fn cached_nodes_json_round_trip() {
+        let state = ExplorerState::create();
+
+        // Initially empty
+        assert!(state.cached_nodes_json().is_none());
+
+        // Set and get
+        let nodes = vec![
+            serde_json::json!({"name": "file.rs"}),
+            serde_json::json!({"name": "dir"}),
+        ];
+        state.set_cached_nodes_json(nodes);
+        let cached = state.cached_nodes_json().unwrap();
+        assert_eq!(cached.len(), 2);
+        assert_eq!(cached[0]["name"], "file.rs");
+        assert_eq!(cached[1]["name"], "dir");
     }
 }

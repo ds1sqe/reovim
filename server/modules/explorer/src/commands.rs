@@ -67,6 +67,7 @@ impl CommandHandler for Toggle {
                         Ok(tree) => {
                             state.root_path = root;
                             state.tree = Some(tree);
+                            state.invalidate_tree_cache();
                         }
                         Err(e) => {
                             state.message = Some(format!("Failed to load tree: {e}"));
@@ -128,10 +129,11 @@ impl reovim_driver_command::Command for CursorUp {
 impl CommandHandler for CursorUp {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
+        let count = state.node_count();
         if state.cursor_index > 0 {
             state.cursor_index -= 1;
         }
-        state.update_scroll();
+        state.update_scroll_with_count(count);
         CommandResult::Success
     }
 }
@@ -157,7 +159,7 @@ impl CommandHandler for CursorDown {
         if count > 0 && state.cursor_index < count - 1 {
             state.cursor_index += 1;
         }
-        state.update_scroll();
+        state.update_scroll_with_count(count);
         CommandResult::Success
     }
 }
@@ -179,8 +181,9 @@ impl reovim_driver_command::Command for GotoFirst {
 impl CommandHandler for GotoFirst {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
+        let count = state.node_count();
         state.cursor_index = 0;
-        state.update_scroll();
+        state.update_scroll_with_count(count);
         CommandResult::Success
     }
 }
@@ -206,7 +209,7 @@ impl CommandHandler for GotoLast {
         if count > 0 {
             state.cursor_index = count - 1;
         }
-        state.update_scroll();
+        state.update_scroll_with_count(count);
         CommandResult::Success
     }
 }
@@ -252,6 +255,7 @@ impl CommandHandler for Expand {
         {
             state.message = Some(format!("Expand failed: {e}"));
         }
+        state.invalidate_tree_cache();
 
         CommandResult::Success
     }
@@ -289,6 +293,7 @@ impl CommandHandler for Collapse {
             if let Some(tree) = &mut state.tree {
                 tree.collapse(&path);
             }
+            state.invalidate_tree_cache();
         } else if node.depth > 0 {
             let target_depth = node.depth - 1;
             let cursor = state.cursor_index;
@@ -347,6 +352,7 @@ impl CommandHandler for Open {
             {
                 state.message = Some(format!("Toggle failed: {e}"));
             }
+            state.invalidate_tree_cache();
         } else {
             match vfs.read(&path) {
                 Ok(content) => {
@@ -437,6 +443,7 @@ impl CommandHandler for ToggleHidden {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.show_hidden = !state.show_hidden;
+        state.invalidate_tree_cache();
         state.update_scroll();
         CommandResult::Success
     }
@@ -468,6 +475,7 @@ impl CommandHandler for Refresh {
         {
             state.message = Some(format!("Refresh failed: {e}"));
         }
+        state.invalidate_tree_cache();
         state.update_scroll();
         CommandResult::Success
     }
@@ -631,6 +639,7 @@ impl CommandHandler for ConfirmInput {
                 } else if let Some(tree) = &mut state.tree {
                     let _ = tree.refresh(vfs.as_ref());
                 }
+                state.invalidate_tree_cache();
             }
             crate::state::ExplorerInputMode::CreateDir => {
                 let parent = cursor_dir_path(&nodes, state.cursor_index);
@@ -641,6 +650,7 @@ impl CommandHandler for ConfirmInput {
                 } else if let Some(tree) = &mut state.tree {
                     let _ = tree.refresh(vfs.as_ref());
                 }
+                state.invalidate_tree_cache();
             }
             crate::state::ExplorerInputMode::Rename => {
                 if let Some(old_path) = cursor_path {
@@ -654,6 +664,7 @@ impl CommandHandler for ConfirmInput {
                     } else if let Some(tree) = &mut state.tree {
                         let _ = tree.refresh(vfs.as_ref());
                     }
+                    state.invalidate_tree_cache();
                 }
             }
             crate::state::ExplorerInputMode::ConfirmDelete => {
@@ -666,6 +677,7 @@ impl CommandHandler for ConfirmInput {
                     } else if let Some(tree) = &mut state.tree {
                         let _ = tree.refresh(vfs.as_ref());
                     }
+                    state.invalidate_tree_cache();
                     state.update_scroll();
                 }
             }

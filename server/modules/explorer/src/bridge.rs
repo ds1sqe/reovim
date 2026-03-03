@@ -46,35 +46,40 @@ impl ExtensionStateBridge for ExplorerBridge {
             ExplorerInputMode::ConfirmDelete => "confirmDelete",
         };
 
-        // Flatten tree nodes for serialization.
-        let nodes_json: Vec<serde_json::Value> = state
-            .tree
-            .as_ref()
-            .map(|tree| {
-                tree.flatten_with_metadata(state.show_hidden)
-                    .into_iter()
-                    .map(|flat| {
-                        let (is_dir, is_expanded, size) = match &flat.node.node_type {
-                            NodeType::File { size } => (false, false, *size),
-                            NodeType::Directory { expanded, .. } => (true, *expanded, 0),
-                            NodeType::Symlink { .. } => (false, false, 0),
-                        };
-                        let is_symlink = matches!(flat.node.node_type, NodeType::Symlink { .. });
-                        serde_json::json!({
-                            "name": flat.node.name,
-                            "depth": flat.node.depth,
-                            "isDir": is_dir,
-                            "isExpanded": is_expanded,
-                            "isHidden": flat.node.is_hidden,
-                            "isLast": flat.is_last_child,
-                            "verticalLines": flat.vertical_lines,
-                            "isSymlink": is_symlink,
-                            "size": size,
+        // Use cached nodes if available; otherwise flatten and cache.
+        let nodes_json = state.cached_nodes_json().unwrap_or_else(|| {
+            let nodes: Vec<serde_json::Value> = state
+                .tree
+                .as_ref()
+                .map(|tree| {
+                    tree.flatten_with_metadata(state.show_hidden)
+                        .into_iter()
+                        .map(|flat| {
+                            let (is_dir, is_expanded, size) = match &flat.node.node_type {
+                                NodeType::File { size } => (false, false, *size),
+                                NodeType::Directory { expanded, .. } => (true, *expanded, 0),
+                                NodeType::Symlink { .. } => (false, false, 0),
+                            };
+                            let is_symlink =
+                                matches!(flat.node.node_type, NodeType::Symlink { .. });
+                            serde_json::json!({
+                                "name": flat.node.name,
+                                "depth": flat.node.depth,
+                                "isDir": is_dir,
+                                "isExpanded": is_expanded,
+                                "isHidden": flat.node.is_hidden,
+                                "isLast": flat.is_last_child,
+                                "verticalLines": flat.vertical_lines,
+                                "isSymlink": is_symlink,
+                                "size": size,
+                            })
                         })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                        .collect()
+                })
+                .unwrap_or_default();
+            state.set_cached_nodes_json(nodes.clone());
+            nodes
+        });
 
         let mut json = serde_json::json!({
             "active": true,

@@ -284,6 +284,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Four text object integration tests (`diw`, `daw`, `di"`, `ci{`) un-ignored
   and passing.
 
+### Performance
+
+- **Explorer scroll RTT optimization (#523)**: Eliminated triple tree
+  flattening per key press during j/k scrolling. Added `Mutex`-based caches
+  for visible node count and serialized nodes JSON on `ExplorerState`.
+  `node_count()` returns cached value (O(1) at ~40ns), bridge `snapshot()`
+  reuses cached nodes (~35% faster). `update_scroll_with_count()` avoids
+  redundant double count. Caches invalidated on tree-mutating commands
+  (expand, collapse, toggle hidden, refresh, file operations). New shared
+  bench crate (`reovim-bench-utils`) provides VFS fixture factories, Criterion
+  re-exports, and scaling parameter sets for module-level benchmarks. Explorer
+  Criterion benchmark covers node_count, update_scroll, snapshot, and
+  snapshot_cached at 25/100/500 nodes.
+
 ## [0.9.4-dev]
 
 ### Added

@@ -85,6 +85,9 @@ members = [
     # Shared clients layer
     "shared/clients/model",
 
+    # Shared benchmarking utilities
+    "shared/bench",
+
     # Tools (Rust only - reovim-testing is Python)
     "tools/bench",
     "tools/perf-report",
@@ -147,6 +150,7 @@ reovim-arch = { path = "./shared/arch", version = "0.9.5-dev" }
 reovim-protocol = { path = "./shared/protocol", version = "0.9.5-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.9.5-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.9.5-dev" }
+reovim-bench-utils = { path = "./shared/bench", version = "0.9.5-dev" }
 reovim-net = { path = "./shared/net", version = "0.9.5-dev" }
 reovim-log = { path = "./shared/log", version = "0.9.5-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.9.5-dev" }
