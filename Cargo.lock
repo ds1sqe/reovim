@@ -2002,6 +2002,8 @@ dependencies = [
  "reovim-kernel",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2179,6 +2181,7 @@ dependencies = [
  "reovim-module-commands",
  "reovim-module-editor",
  "reovim-module-keymap",
+ "reovim-module-lsp",
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-motions",
@@ -2213,6 +2216,20 @@ version = "0.9.5-dev"
 dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-lsp"
+version = "0.9.5-dev"
+dependencies = [
+ "lsp-types",
+ "reovim-driver-lsp",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

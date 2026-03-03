@@ -46,7 +46,8 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_editor as editor, reovim_module_keymap as keymap,
-    reovim_module_microscope as microscope, reovim_module_motions as motions,
+    reovim_module_lsp as lsp, reovim_module_microscope as microscope,
+    reovim_module_motions as motions,
     reovim_module_notification as notification, reovim_module_scratch_buffer as scratch_buffer,
     reovim_module_search as search, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
@@ -109,6 +110,8 @@ impl DefaultsModule {
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
+            // Code intelligence modules (#520)
+            Box::new(lsp::LspModule::new()),
         ]
     }
 }
@@ -159,6 +162,8 @@ impl Module for DefaultsModule {
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
             ModuleId::new("treesitter-markdown"),
+            // Code intelligence modules (#520)
+            ModuleId::new("lsp"),
         ]
     }
 
@@ -226,8 +231,10 @@ mod tests {
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (2): cmdline, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 16 modules
-        assert_eq!(deps.len(), 16);
+        // Picker module (1): microscope
+        // Code intelligence modules (1): lsp
+        // Total: 17 modules
+        assert_eq!(deps.len(), 17);
     }
 
     #[test]
@@ -238,8 +245,10 @@ mod tests {
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (2): cmdline, notification
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 16 modules
-        assert_eq!(modules.len(), 16);
+        // Picker module (1): microscope
+        // Code intelligence modules (1): lsp
+        // Total: 17 modules
+        assert_eq!(modules.len(), 17);
     }
 
     #[test]
@@ -329,6 +338,14 @@ mod tests {
 
         assert!(dep_strs.contains(&"treesitter-rust"));
         assert!(dep_strs.contains(&"treesitter-markdown"));
+    }
+
+    #[test]
+    fn test_dependencies_contain_lsp_module() {
+        let module = DefaultsModule::new();
+        let deps = module.dependencies();
+
+        assert!(deps.iter().map(ModuleId::as_str).any(|x| x == "lsp"));
     }
 
     #[test]

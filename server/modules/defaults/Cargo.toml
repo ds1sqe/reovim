@@ -39,6 +39,9 @@ reovim-module-microscope = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
 reovim-module-treesitter-markdown = { workspace = true }
 
+# Code intelligence modules
+reovim-module-lsp = { workspace = true }
+
 # Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)
 

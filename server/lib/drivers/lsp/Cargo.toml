@@ -22,3 +22,9 @@ lsp-types = "0.97"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+# Async runtime (process spawn, stdio transport)
+tokio = { workspace = true }
+
+# Logging
+tracing.workspace = true
