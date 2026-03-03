@@ -392,6 +392,129 @@ mod tests {
     }
 
     #[test]
+    fn render_items_overflow_panel_height() {
+        // Many items exceeding panel_height triggers line 110 break.
+        let mut backend = MockBackend::new(80, 24);
+        let bounds = LayoutBounds::calculate(80, 24);
+        let many_items: Vec<super::super::ItemData> = (0..100)
+            .map(|i| super::super::ItemData {
+                display: format!("item_{i}"),
+                detail: None,
+            })
+            .collect();
+        let data = MicroscopeData {
+            active: true,
+            items: many_items,
+            matched_count: 100,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn render_long_display_text_truncated() {
+        // Display text wider than results_width triggers line 137 break.
+        let mut backend = MockBackend::new(30, 24);
+        let bounds = LayoutBounds::calculate(30, 24);
+        let data = MicroscopeData {
+            active: true,
+            items: vec![super::super::ItemData {
+                display: "a".repeat(200),
+                detail: None,
+            }],
+            matched_count: 1,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn render_long_detail_text_truncated() {
+        // Detail text overflow triggers line 151 break.
+        let mut backend = MockBackend::new(40, 24);
+        let bounds = LayoutBounds::calculate(40, 24);
+        let data = MicroscopeData {
+            active: true,
+            items: vec![super::super::ItemData {
+                display: "x".to_owned(),
+                detail: Some("d".repeat(200)),
+            }],
+            matched_count: 1,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn render_preview_overflow_panel_height() {
+        // Many preview lines exceeding panel_height triggers line 177 break.
+        let mut backend = MockBackend::new(100, 24);
+        let bounds = LayoutBounds::calculate(100, 24);
+        let data = MicroscopeData {
+            active: true,
+            preview: Some(super::super::PreviewData {
+                lines: (0..100).map(|i| format!("preview line {i}")).collect(),
+                highlight_line: Some(5),
+            }),
+            matched_count: 0,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn render_preview_long_line_truncated() {
+        // Preview line wider than preview_width triggers lines 193/202 break.
+        let mut backend = MockBackend::new(60, 24);
+        let bounds = LayoutBounds::calculate(60, 24);
+        let data = MicroscopeData {
+            active: true,
+            preview: Some(super::super::PreviewData {
+                lines: vec!["x".repeat(200)],
+                highlight_line: None,
+            }),
+            matched_count: 0,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn render_preview_line_num_overflow() {
+        // preview_width < 4 triggers line 193 break (line number is 4 chars).
+        let mut backend = MockBackend::new(100, 30);
+        let bounds = LayoutBounds {
+            x: 0,
+            y: 18,
+            width: 100,
+            total_height: 12,
+            query_row: 18,
+            panel_start_y: 20,
+            panel_height: 10,
+            results_width: 40,
+            show_preview: true,
+            preview_width: 2, // Narrower than a line number
+            preview_x: 41,
+        };
+        let data = MicroscopeData {
+            active: true,
+            preview: Some(super::super::PreviewData {
+                lines: vec!["hello".to_owned()],
+                highlight_line: None,
+            }),
+            matched_count: 0,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+    }
+
+    #[test]
     fn count_indicator_on_right() {
         let mut backend = MockBackend::new(80, 24);
         let data = make_data(true);

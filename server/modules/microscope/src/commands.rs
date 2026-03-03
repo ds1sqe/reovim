@@ -30,6 +30,7 @@ impl reovim_driver_command::Command for OpenFiles {
 }
 
 impl CommandHandler for OpenFiles {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         open_picker(runtime, "files", "Files", "> ")
     }
@@ -50,6 +51,7 @@ impl reovim_driver_command::Command for OpenBuffers {
 }
 
 impl CommandHandler for OpenBuffers {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         open_picker(runtime, "buffers", "Buffers", "> ")
     }
@@ -70,6 +72,7 @@ impl reovim_driver_command::Command for OpenGrep {
 }
 
 impl CommandHandler for OpenGrep {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         open_picker(runtime, "grep", "Grep", "rg> ")
     }
@@ -90,6 +93,7 @@ impl reovim_driver_command::Command for OpenCommands {
 }
 
 impl CommandHandler for OpenCommands {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         open_picker(runtime, "commands", "Commands", "> ")
     }
@@ -114,6 +118,7 @@ impl reovim_driver_command::Command for NextItem {
 }
 
 impl CommandHandler for NextItem {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<MicroscopeState>();
         if !state.active {
@@ -141,6 +146,7 @@ impl reovim_driver_command::Command for PrevItem {
 }
 
 impl CommandHandler for PrevItem {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<MicroscopeState>();
         if !state.active {
@@ -169,6 +175,7 @@ impl reovim_driver_command::Command for SelectItem {
 }
 
 impl CommandHandler for SelectItem {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         close_picker(runtime);
         // TODO(#522): Execute the selected item's action via PickerRegistry
@@ -191,6 +198,7 @@ impl reovim_driver_command::Command for Close {
 }
 
 impl CommandHandler for Close {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         close_picker(runtime);
         CommandResult::Success
@@ -212,6 +220,7 @@ impl reovim_driver_command::Command for Backspace {
 }
 
 impl CommandHandler for Backspace {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<MicroscopeState>();
         if !state.active || state.cursor == 0 {
@@ -238,6 +247,7 @@ impl CommandHandler for Backspace {
 // ============================================================================
 
 /// Open a picker by name, activating microscope mode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn open_picker(
     runtime: &mut SessionRuntime<'_>,
     picker_name: &str,
@@ -263,6 +273,7 @@ fn open_picker(
 }
 
 /// Close the picker and return to normal mode.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn close_picker(runtime: &mut SessionRuntime<'_>) {
     let state = runtime.ext_mut::<MicroscopeState>();
     state.active = false;

@@ -1,6 +1,9 @@
 //! Commands picker - command palette for registered commands.
 
-use reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem};
+use {
+    reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem},
+    reovim_kernel::api::v1::ServiceRegistry,
+};
 
 /// Picker that lists registered commands.
 ///
@@ -31,7 +34,7 @@ impl Picker for CommandsPicker {
         "Commands"
     }
 
-    fn items(&self, ctx: &PickerContext) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
         ctx.commands
             .iter()
             .map(|cmd| PickerItem {
@@ -58,6 +61,10 @@ mod tests {
     use reovim_driver_picker::CommandInfo;
 
     use super::*;
+
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
 
     fn empty_ctx() -> PickerContext {
         PickerContext {
@@ -90,7 +97,7 @@ mod tests {
     #[test]
     fn items_empty_context() {
         let picker = CommandsPicker::new();
-        let items = picker.items(&empty_ctx());
+        let items = picker.items(&empty_ctx(), &services());
         assert!(items.is_empty());
     }
 
@@ -113,7 +120,7 @@ mod tests {
             ],
         };
 
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
         assert_eq!(items.len(), 2);
 
         assert_eq!(items[0].display, "editor:save");
@@ -166,6 +173,6 @@ mod tests {
             data: PickerData::Command("x".to_owned()),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 }

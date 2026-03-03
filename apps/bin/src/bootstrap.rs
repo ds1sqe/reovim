@@ -56,6 +56,7 @@ use {
 pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
     use {
         reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
+        reovim_module_microscope::MicroscopeBridge,
         reovim_module_notification::NotificationBridge, reovim_module_whichkey::WhichKeyBridge,
     };
 
@@ -63,6 +64,7 @@ pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistr
     registry.register(CmdlineBridge);
     registry.register(WhichKeyBridge);
     registry.register(NotificationBridge);
+    registry.register(MicroscopeBridge);
     registry
 }
 

@@ -22,8 +22,8 @@ pub enum PickerData {
     BufferId(usize),
     /// A command to execute (qualified "module:command" string).
     Command(String),
-    /// A grep match with location.
-    GrepMatch {
+    /// A location in a file (e.g. grep match, diagnostic, reference).
+    GotoLocation {
         path: PathBuf,
         line: usize,
         col: usize,
@@ -109,14 +109,14 @@ mod tests {
     }
 
     #[test]
-    fn picker_data_grep_match() {
-        let data = PickerData::GrepMatch {
+    fn picker_data_goto_location() {
+        let data = PickerData::GotoLocation {
             path: PathBuf::from("src/lib.rs"),
             line: 10,
             col: 5,
         };
         let debug = format!("{data:?}");
-        assert!(debug.contains("GrepMatch"));
+        assert!(debug.contains("GotoLocation"));
     }
 
     #[test]
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn picker_data_clone() {
-        let data = PickerData::GrepMatch {
+        let data = PickerData::GotoLocation {
             path: PathBuf::from("a.rs"),
             line: 1,
             col: 2,
@@ -136,6 +136,6 @@ mod tests {
         #[allow(clippy::redundant_clone)]
         let cloned = data.clone();
         let debug = format!("{cloned:?}");
-        assert!(debug.contains("GrepMatch"));
+        assert!(debug.contains("GotoLocation"));
     }
 }

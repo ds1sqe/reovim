@@ -526,6 +526,7 @@ async fn test_range_finder_s_then_escape() {
     // Press s then Escape
     handle.send_keys("s").await.expect("Failed to send s");
     tokio::time::sleep(Duration::from_millis(50)).await;
+
     handle
         .send_keys("<Esc>")
         .await
@@ -540,6 +541,372 @@ async fn test_range_finder_s_then_escape() {
         .await;
 
     assert!(result.is_ok(), "Should be in normal mode after s + Escape");
+
+    handle.stop().await;
+}
+
+// ============================================================================
+// Microscope Picker Tests (#522)
+// ============================================================================
+
+/// Test that `<Space>f` opens the file picker with the prompt and title visible.
+#[tokio::test]
+async fn test_picker_opens_on_space_f() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Send <Space>f to open file picker
+    handle
+        .send_keys("<Space>f")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for the picker prompt "> " to appear in the frame
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("> "))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("> "),
+                "Frame should show picker prompt '> '"
+            );
+            eprintln!("[test] Picker opened with prompt visible");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Picker did not open: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that typing in the picker updates the query display.
+#[tokio::test]
+async fn test_picker_query_input() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open file picker and type a query
+    handle
+        .send_keys("<Space>f")
+        .await
+        .expect("Failed to send keys");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    handle.send_keys("m").await.expect("Failed to send m");
+    handle.send_keys("a").await.expect("Failed to send a");
+    handle.send_keys("i").await.expect("Failed to send i");
+    handle.send_keys("n").await.expect("Failed to send n");
+
+    // Wait for "main" to appear in the frame (query display)
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("main"))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("main"),
+                "Frame should show typed query 'main'"
+            );
+            eprintln!("[test] Picker query 'main' visible");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Picker query not visible: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that Escape closes the picker.
+#[tokio::test]
+async fn test_picker_closes_on_escape() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open file picker
+    handle
+        .send_keys("<Space>f")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for picker to open
+    let _ = handle
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("> "))
+        .await
+        .expect("Picker did not open");
+
+    // Close picker with Escape
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Escape");
+
+    // Wait for mode to return to NORMAL (no more MICROSCOPE)
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| {
+            let lower = frame.to_lowercase();
+            lower.contains("normal") && !lower.contains("microscope")
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.to_lowercase().contains("normal"),
+                "Should return to NORMAL mode after closing picker"
+            );
+            eprintln!("[test] Picker closed, returned to NORMAL");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Picker did not close: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that backspace removes characters from the picker query.
+#[tokio::test]
+async fn test_picker_backspace_removes_char() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open file picker and type "ab"
+    handle
+        .send_keys("<Space>f")
+        .await
+        .expect("Failed to send keys");
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    handle.send_keys("a").await.expect("Failed to send a");
+    handle.send_keys("b").await.expect("Failed to send b");
+
+    // Wait for "ab" to appear
+    let _ = handle
+        .wait_for(Duration::from_secs(2), |frame| frame.contains("ab"))
+        .await
+        .expect("Query 'ab' not visible");
+
+    // Press backspace to remove 'b'
+    handle
+        .send_keys("<BS>")
+        .await
+        .expect("Failed to send BS");
+
+    // Wait for 'b' to be gone while 'a' remains (check that "ab" is gone)
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| !frame.contains("ab"))
+        .await;
+
+    match result {
+        Ok(_) => {
+            eprintln!("[test] Backspace removed character from query");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Backspace did not remove character: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test that `<Space>g` opens the grep picker with the "rg> " prompt.
+#[tokio::test]
+async fn test_grep_picker_opens() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open grep picker
+    handle
+        .send_keys("<Space>g")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for the grep prompt "rg> " to appear
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| frame.contains("rg>"))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("rg>"),
+                "Frame should show grep prompt 'rg> '"
+            );
+            eprintln!("[test] Grep picker opened with rg> prompt");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Grep picker did not open: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    // Close with Escape
+    handle.send_keys("<Esc>").await.expect("Failed to close");
+    handle.stop().await;
+}
+
+/// Test that `<Space>b` opens the buffer picker.
+#[tokio::test]
+async fn test_buffer_picker_opens() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open buffer picker
+    handle
+        .send_keys("<Space>b")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for the picker prompt (buffer picker also uses "> ")
+    // Note: the picker overlay covers the statusline, so MICROSCOPE mode text
+    // is not visible. Check for the picker prompt and count indicator instead.
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| {
+            frame.contains("> ") && frame.contains('[')
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("> "),
+                "Frame should show buffer picker prompt"
+            );
+            eprintln!("[test] Buffer picker opened");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Buffer picker did not open: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    // Close with Escape
+    handle.send_keys("<Esc>").await.expect("Failed to close");
+    handle.stop().await;
+}
+
+/// Test that `<Space>;` opens the command picker.
+#[tokio::test]
+async fn test_command_picker_opens() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Open command picker
+    handle
+        .send_keys("<Space>;")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for picker prompt to appear (overlay covers statusline, so check
+    // for the prompt and count indicator instead of mode text).
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| {
+            frame.contains("> ") && frame.contains('[')
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("> "),
+                "Frame should show command picker prompt"
+            );
+            eprintln!("[test] Command picker opened");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Command picker did not open: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    // Close with Escape
+    handle.send_keys("<Esc>").await.expect("Failed to close");
     handle.stop().await;
 }
 

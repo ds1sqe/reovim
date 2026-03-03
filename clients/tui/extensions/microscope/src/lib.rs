@@ -177,7 +177,33 @@ impl TuiExtension for MicroscopeExtension {
 
 #[cfg(test)]
 mod tests {
+    use {reovim_arch::Color, reovim_driver_display::Style};
+
     use super::*;
+
+    struct MockBackend {
+        width: u16,
+        height: u16,
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    impl RenderBackend for MockBackend {
+        fn size(&self) -> (u16, u16) {
+            (self.width, self.height)
+        }
+
+        fn set_cell(&mut self, _x: u16, _y: u16, _ch: char, _style: &Style) {}
+
+        fn apply_style(&mut self, _x: u16, _y: u16, _style: &Style) {}
+
+        fn write_str(&mut self, x: u16, _y: u16, text: &str, _style: &Style) -> u16 {
+            text.len().min((self.width.saturating_sub(x)) as usize) as u16
+        }
+
+        fn clear(&mut self) {}
+
+        fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
+    }
 
     #[test]
     fn extension_kind() {
@@ -275,5 +301,32 @@ mod tests {
         // Very small screen.
         let pos = ext.cursor_position(10, 3);
         assert!(pos.is_none());
+    }
+
+    #[test]
+    fn render_active() {
+        let mut ext = MicroscopeExtension::new();
+        ext.apply_notification(
+            r#"{"active":true,"query":"test","cursor":4,"selected":0,"scrollOffset":0,"pickerName":"files","pickerTitle":"Files","prompt":"> ","items":[{"display":"main.rs"}],"totalCount":10,"matchedCount":1}"#,
+        );
+        let mut backend = MockBackend {
+            width: 80,
+            height: 24,
+        };
+        ext.render(&mut backend);
+    }
+
+    #[test]
+    fn render_too_small_screen() {
+        let mut ext = MicroscopeExtension::new();
+        ext.apply_notification(
+            r#"{"active":true,"query":"","cursor":0,"selected":0,"scrollOffset":0,"pickerName":"f","pickerTitle":"F","prompt":"> ","items":[],"totalCount":0,"matchedCount":0}"#,
+        );
+        let mut backend = MockBackend {
+            width: 10,
+            height: 3,
+        };
+        // Should return early without panicking.
+        ext.render(&mut backend);
     }
 }

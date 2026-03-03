@@ -135,7 +135,7 @@ async fn test_tui_expand_function() {
 
     let result = handle
         .wait_for(Duration::from_secs(3), |frame| {
-            frame.contains("fn ") && frame.contains("{") && frame.contains("}")
+            frame.contains("fn ") && frame.contains('{') && frame.contains('}')
         })
         .await;
 
@@ -146,8 +146,8 @@ async fn test_tui_expand_function() {
             assert!(!frame.contains("name"), "Placeholder 'name' should be deleted on expand");
             // $2 placeholder "params" remains (not yet navigated to)
             assert!(frame.contains("params"), "Should contain placeholder 'params'");
-            assert!(frame.contains("{"), "Should contain opening brace");
-            assert!(frame.contains("}"), "Should contain closing brace");
+            assert!(frame.contains('{'), "Should contain opening brace");
+            assert!(frame.contains('}'), "Should contain closing brace");
             eprintln!("[snippet] Function template rendered correctly");
         }
         Err(e) => {
@@ -409,8 +409,8 @@ async fn test_tui_expand_multiline_for() {
         Ok(frame) => {
             assert!(frame.contains("for "), "Should contain 'for '");
             assert!(frame.contains("in "), "Should contain 'in '");
-            assert!(frame.contains("{"), "Should contain opening brace");
-            assert!(frame.contains("}"), "Should contain closing brace");
+            assert!(frame.contains('{'), "Should contain opening brace");
+            assert!(frame.contains('}'), "Should contain closing brace");
             eprintln!("[snippet] Multi-line for loop rendered correctly");
         }
         Err(e) => {

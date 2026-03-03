@@ -390,3 +390,224 @@ describe("Extension Audit: State Isolation", () => {
     await client.sendKeys("<Esc>");
   });
 });
+
+// ========== 2A: Microscope Picker Activation ==========
+
+interface MicroscopeState {
+  active: boolean;
+  query: string;
+  cursor: number;
+  selected: number;
+  pickerName: string;
+  pickerTitle: string;
+  prompt: string;
+  items: Array<{ display: string; detail?: string; icon?: string }>;
+  totalCount: number;
+  matchedCount: number;
+  preview?: {
+    lines: string[];
+    highlightLine?: number;
+    filePath?: string;
+  };
+}
+
+describe("Extension Audit: Microscope File Picker", () => {
+  let test: WebIntegrationTest;
+  let client: HeadlessWebClient;
+
+  beforeEach(async () => {
+    test = await WebIntegrationTest.create();
+    client = await test.connect();
+  }, 15000);
+
+  afterEach(async () => {
+    await test.cleanup();
+  });
+
+  it("<Space>f activates microscope with file picker", async () => {
+    await client.sendKeys("<Space>f");
+    const state = (await waitForExtension(
+      client,
+      "microscope",
+    )) as unknown as MicroscopeState;
+
+    expect(state.active).toBe(true);
+    expect(state.pickerName).toBe("files");
+    expect(state.pickerTitle).toBe("Files");
+    expect(state.prompt).toBe("> ");
+    expect(state.query).toBe("");
+    expect(state.cursor).toBe(0);
+
+    await client.sendKeys("<Esc>");
+  });
+
+  it("Escape deactivates microscope", async () => {
+    await client.sendKeys("<Space>f");
+    await waitForExtension(client, "microscope");
+
+    await client.sendKeys("<Esc>");
+    await waitForExtensionClear(client, "microscope");
+
+    expect(client.getExtensionState("microscope")).toBeNull();
+  });
+
+  it("typing updates query in microscope state", async () => {
+    await client.sendKeys("<Space>f");
+    await waitForExtension(client, "microscope");
+
+    await client.sendKeys("main");
+    const state = (await waitForExtensionState(
+      client,
+      "microscope",
+      (s) => (s as unknown as MicroscopeState).query === "main",
+    )) as unknown as MicroscopeState;
+
+    expect(state.query).toBe("main");
+    expect(state.cursor).toBe(4);
+
+    await client.sendKeys("<Esc>");
+  });
+
+  it("backspace removes character from query", async () => {
+    await client.sendKeys("<Space>f");
+    await waitForExtension(client, "microscope");
+
+    await client.sendKeys("ab");
+    await waitForExtensionState(
+      client,
+      "microscope",
+      (s) => (s as unknown as MicroscopeState).query === "ab",
+    );
+
+    await client.sendKeys("<BS>");
+    const state = (await waitForExtensionState(
+      client,
+      "microscope",
+      (s) => (s as unknown as MicroscopeState).query === "a",
+    )) as unknown as MicroscopeState;
+
+    expect(state.query).toBe("a");
+    expect(state.cursor).toBe(1);
+
+    await client.sendKeys("<Esc>");
+  });
+});
+
+// ========== 2B: Microscope Grep Picker ==========
+
+describe("Extension Audit: Microscope Grep Picker", () => {
+  let test: WebIntegrationTest;
+  let client: HeadlessWebClient;
+
+  beforeEach(async () => {
+    test = await WebIntegrationTest.create();
+    client = await test.connect();
+  }, 15000);
+
+  afterEach(async () => {
+    await test.cleanup();
+  });
+
+  it("<Space>g activates microscope with grep picker", async () => {
+    await client.sendKeys("<Space>g");
+    const state = (await waitForExtension(
+      client,
+      "microscope",
+    )) as unknown as MicroscopeState;
+
+    expect(state.active).toBe(true);
+    expect(state.pickerName).toBe("grep");
+    expect(state.pickerTitle).toBe("Grep");
+    expect(state.prompt).toBe("rg> ");
+
+    await client.sendKeys("<Esc>");
+  });
+});
+
+// ========== 2C: Microscope Buffer Picker ==========
+
+describe("Extension Audit: Microscope Buffer Picker", () => {
+  let test: WebIntegrationTest;
+  let client: HeadlessWebClient;
+
+  beforeEach(async () => {
+    test = await WebIntegrationTest.create();
+    client = await test.connect();
+  }, 15000);
+
+  afterEach(async () => {
+    await test.cleanup();
+  });
+
+  it("<Space>b activates microscope with buffer picker", async () => {
+    await client.sendKeys("<Space>b");
+    const state = (await waitForExtension(
+      client,
+      "microscope",
+    )) as unknown as MicroscopeState;
+
+    expect(state.active).toBe(true);
+    expect(state.pickerName).toBe("buffers");
+    expect(state.pickerTitle).toBe("Buffers");
+    expect(state.prompt).toBe("> ");
+
+    await client.sendKeys("<Esc>");
+  });
+});
+
+// ========== 2D: Microscope Command Picker ==========
+
+describe("Extension Audit: Microscope Command Picker", () => {
+  let test: WebIntegrationTest;
+  let client: HeadlessWebClient;
+
+  beforeEach(async () => {
+    test = await WebIntegrationTest.create();
+    client = await test.connect();
+  }, 15000);
+
+  afterEach(async () => {
+    await test.cleanup();
+  });
+
+  it("<Space>; activates microscope with command picker", async () => {
+    await client.sendKeys("<Space>;");
+    const state = (await waitForExtension(
+      client,
+      "microscope",
+    )) as unknown as MicroscopeState;
+
+    expect(state.active).toBe(true);
+    expect(state.pickerName).toBe("commands");
+    expect(state.pickerTitle).toBe("Commands");
+    expect(state.prompt).toBe("> ");
+
+    await client.sendKeys("<Esc>");
+  });
+});
+
+// ========== 2E: Microscope State Isolation ==========
+
+describe("Extension Audit: Microscope State Isolation", () => {
+  let test: WebIntegrationTest;
+  let client: HeadlessWebClient;
+
+  beforeEach(async () => {
+    test = await WebIntegrationTest.create();
+    client = await test.connect();
+  }, 15000);
+
+  afterEach(async () => {
+    await test.cleanup();
+  });
+
+  it("microscope does not activate cmdline or which-key", async () => {
+    await client.sendKeys("<Space>f");
+    await waitForExtension(client, "microscope");
+
+    expect(client.getExtensionState("cmdline")).toBeNull();
+    expect(client.getExtensionState("whichkey")).toBeNull();
+
+    await client.sendKeys("<Esc>");
+  });
+});

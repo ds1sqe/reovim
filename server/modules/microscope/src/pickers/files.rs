@@ -8,8 +8,11 @@ use std::{
     path::PathBuf,
 };
 
-use reovim_driver_picker::{
-    Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent,
+use {
+    reovim_driver_picker::{
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent,
+    },
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 /// Maximum number of preview lines to read from a file.
@@ -44,7 +47,7 @@ impl Picker for FilesPicker {
         "Files"
     }
 
-    fn items(&self, ctx: &PickerContext) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
         let walker = ignore::WalkBuilder::new(&ctx.cwd)
             .hidden(true)
             .git_ignore(true)
@@ -76,7 +79,7 @@ impl Picker for FilesPicker {
         }
     }
 
-    fn preview(&self, item: &PickerItem) -> Option<PreviewContent> {
+    fn preview(&self, item: &PickerItem, _services: &ServiceRegistry) -> Option<PreviewContent> {
         let PickerData::FilePath(path) = &item.data else {
             return None;
         };
@@ -120,6 +123,10 @@ mod tests {
     use std::fs;
 
     use super::*;
+
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
 
     fn temp_dir_with_files(files: &[(&str, &str)]) -> tempfile::TempDir {
         let dir = tempfile::tempdir().expect("Failed to create temp dir");
@@ -171,7 +178,7 @@ mod tests {
         ]);
         let picker = FilesPicker::new();
         let ctx = ctx_for(dir.path());
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
 
         assert_eq!(items.len(), 3);
         let displays: Vec<&str> = items.iter().map(|i| i.display.as_str()).collect();
@@ -185,7 +192,7 @@ mod tests {
         let dir = temp_dir_with_files(&[("a/b/c.txt", "hello")]);
         let picker = FilesPicker::new();
         let ctx = ctx_for(dir.path());
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].display, "a/b/c.txt");
@@ -208,7 +215,7 @@ mod tests {
 
         let picker = FilesPicker::new();
         let ctx = ctx_for(dir.path());
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
 
         let displays: Vec<&str> = items.iter().map(|i| i.display.as_str()).collect();
         assert!(displays.contains(&"main.rs"));
@@ -255,7 +262,7 @@ mod tests {
             data: PickerData::FilePath(path.clone()),
             icon: None,
         };
-        let preview = picker.preview(&item);
+        let preview = picker.preview(&item, &services());
         assert!(preview.is_some());
         let preview = preview.unwrap();
         assert_eq!(preview.lines.len(), 3);
@@ -273,7 +280,7 @@ mod tests {
             data: PickerData::FilePath(PathBuf::from("/tmp/nonexistent_file_12345.rs")),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -289,7 +296,7 @@ mod tests {
             data: PickerData::FilePath(path),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -301,7 +308,7 @@ mod tests {
             data: PickerData::Text("y".to_owned()),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -317,6 +324,6 @@ mod tests {
             data: PickerData::FilePath(path),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 }

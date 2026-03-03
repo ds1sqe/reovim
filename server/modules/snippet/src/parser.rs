@@ -737,29 +737,20 @@ mod tests {
         // ${1|one,two|} — choice syntax triggers Some(_) fallback in parse_braced
         let body = parse("${1|one,two|}").unwrap();
         // Phase 1 treats this as literal text (fallback)
-        assert_eq!(
-            body.elements(),
-            &[SnippetElement::Text("${1|one,two|}".to_string())]
-        );
+        assert_eq!(body.elements(), &[SnippetElement::Text("${1|one,two|}".to_string())]);
     }
 
     #[test]
     fn test_parse_braced_unknown_char_after_number() {
         // ${1x} — 'x' after number triggers Some(_) in parse_braced
         let body = parse("${1x}").unwrap();
-        assert_eq!(
-            body.elements(),
-            &[SnippetElement::Text("${1x}".to_string())]
-        );
+        assert_eq!(body.elements(), &[SnippetElement::Text("${1x}".to_string())]);
     }
 
     #[test]
     fn test_parse_braced_no_closing_brace() {
         // ${foo — non-numeric, no closing brace
         let body = parse("${foo").unwrap();
-        assert_eq!(
-            body.elements(),
-            &[SnippetElement::Text("${foo".to_string())]
-        );
+        assert_eq!(body.elements(), &[SnippetElement::Text("${foo".to_string())]);
     }
 }

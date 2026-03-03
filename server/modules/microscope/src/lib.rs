@@ -15,13 +15,14 @@ pub mod commands;
 pub mod ids;
 pub mod modes;
 pub mod pickers;
+pub mod resolver;
 pub mod state;
 
 pub use {bridge::MicroscopeBridge, state::MicroscopeState};
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore},
+    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_driver_picker::PickerRegistry,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
@@ -80,6 +81,10 @@ impl Module for MicroscopeModule {
         for mode in modes::MicroscopeMode::ALL {
             mode_store.add(ModeInfo::from_mode(*mode));
         }
+
+        // Register resolver for microscope picker mode.
+        let resolver_registry = ctx.services.get_or_create::<ResolverRegistry>();
+        resolver_registry.register(resolver::MicroscopeResolver::new());
 
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
@@ -225,6 +230,12 @@ mod tests {
         // Verify keybindings were registered.
         let keybinding_store = services.get::<KeybindingStore>();
         assert!(keybinding_store.is_some());
+
+        // Verify resolver was registered.
+        let resolver_registry = services.get::<ResolverRegistry>();
+        assert!(resolver_registry.is_some());
+        let reg = resolver_registry.unwrap();
+        assert!(reg.get(&modes::MicroscopeMode::PICKER_ID).is_some());
     }
 
     #[test]

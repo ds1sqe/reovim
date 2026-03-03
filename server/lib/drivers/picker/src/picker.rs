@@ -1,3 +1,5 @@
+use reovim_kernel::api::v1::ServiceRegistry;
+
 use crate::{PickerAction, PickerContext, PickerItem, PreviewContent};
 
 /// Trait for pluggable data sources in the fuzzy finder.
@@ -10,6 +12,12 @@ use crate::{PickerAction, PickerContext, PickerItem, PreviewContent};
 /// `items()` is synchronous. For expensive data sources (file walk, grep),
 /// the caller should spawn a background task that feeds items into the
 /// engine's `Injector` directly, bypassing `items()`.
+///
+/// # Service Access
+///
+/// Both `items()` and `preview()` receive a reference to [`ServiceRegistry`],
+/// allowing pickers to pull domain-specific data (buffers, commands, history)
+/// without coupling the driver layer to specific data sources.
 pub trait Picker: Send + Sync {
     /// Unique name for this picker (e.g. "files", "buffers").
     fn name(&self) -> &'static str;
@@ -26,13 +34,16 @@ pub trait Picker: Send + Sync {
     ///
     /// For static sources (buffers, commands), returns all items.
     /// For dynamic sources (grep), returns results for current query.
-    fn items(&self, ctx: &PickerContext) -> Vec<PickerItem>;
+    /// Use `services` to access domain data (e.g. buffer list, command registry).
+    fn items(&self, ctx: &PickerContext, services: &ServiceRegistry) -> Vec<PickerItem>;
 
     /// Resolve the action when a user selects an item.
     fn on_select(&self, item: &PickerItem) -> PickerAction;
 
     /// Optional: provide preview content for the highlighted item.
-    fn preview(&self, _item: &PickerItem) -> Option<PreviewContent> {
+    ///
+    /// Use `services` to access domain data (e.g. VFS for file reading).
+    fn preview(&self, _item: &PickerItem, _services: &ServiceRegistry) -> Option<PreviewContent> {
         None
     }
 
@@ -53,6 +64,10 @@ mod tests {
 
     use super::*;
 
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
+
     struct MockPicker;
 
     impl Picker for MockPicker {
@@ -64,7 +79,7 @@ mod tests {
             "Mock Picker"
         }
 
-        fn items(&self, ctx: &PickerContext) -> Vec<PickerItem> {
+        fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
             if ctx.query.is_empty() {
                 vec![PickerItem {
                     display: "item1".to_owned(),
@@ -97,7 +112,7 @@ mod tests {
             "rg> "
         }
 
-        fn items(&self, _ctx: &PickerContext) -> Vec<PickerItem> {
+        fn items(&self, _ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
             vec![]
         }
 
@@ -105,7 +120,11 @@ mod tests {
             PickerAction::Close
         }
 
-        fn preview(&self, _item: &PickerItem) -> Option<PreviewContent> {
+        fn preview(
+            &self,
+            _item: &PickerItem,
+            _services: &ServiceRegistry,
+        ) -> Option<PreviewContent> {
             Some(PreviewContent {
                 lines: vec!["preview line".to_owned()],
                 highlight_line: Some(0),
@@ -140,7 +159,7 @@ mod tests {
             buffers: vec![],
             commands: vec![],
         };
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].display, "item1");
     }
@@ -154,7 +173,7 @@ mod tests {
             buffers: vec![],
             commands: vec![],
         };
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
         assert!(items.is_empty());
     }
 
@@ -180,7 +199,7 @@ mod tests {
             data: PickerData::Text("x".to_owned()),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -201,7 +220,7 @@ mod tests {
             data: PickerData::Text("x".to_owned()),
             icon: None,
         };
-        let preview = picker.preview(&item);
+        let preview = picker.preview(&item, &services());
         assert!(preview.is_some());
         let preview = preview.unwrap();
         assert_eq!(preview.lines.len(), 1);

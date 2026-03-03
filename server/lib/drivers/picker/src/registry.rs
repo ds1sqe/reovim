@@ -106,7 +106,10 @@ impl Default for PickerRegistry {
 
 #[cfg(test)]
 mod tests {
-    use crate::{PickerAction, PickerContext, PickerItem};
+    use {
+        crate::{PickerAction, PickerContext, PickerItem},
+        reovim_kernel::api::v1::ServiceRegistry,
+    };
 
     use super::*;
 
@@ -123,7 +126,7 @@ mod tests {
             "Test"
         }
 
-        fn items(&self, _ctx: &PickerContext) -> Vec<PickerItem> {
+        fn items(&self, _ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
             vec![]
         }
 

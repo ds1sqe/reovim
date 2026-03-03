@@ -74,8 +74,10 @@ impl ModeKeyResolver for SnippetResolver {
 
 #[cfg(test)]
 mod tests {
-    use reovim_driver_input::{KeyCode, KeymapQuery};
-    use reovim_kernel::api::v1::CommandId;
+    use {
+        reovim_driver_input::{KeyCode, KeymapQuery},
+        reovim_kernel::api::v1::CommandId,
+    };
 
     use super::*;
 
@@ -109,7 +111,9 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl KeymapQuery for ExactWithLongerKeymap {
         fn query(&self, _mode: &ModeId, _keys: &KeySequence) -> KeyLookupState {
-            KeyLookupState::ExactWithLonger { exact: self.0.clone() }
+            KeyLookupState::ExactWithLonger {
+                exact: self.0.clone(),
+            }
         }
     }
 

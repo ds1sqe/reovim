@@ -1,6 +1,9 @@
 //! Buffers picker - switch between open buffers.
 
-use reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem};
+use {
+    reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem},
+    reovim_kernel::api::v1::ServiceRegistry,
+};
 
 /// Picker that lists open buffers.
 ///
@@ -31,7 +34,7 @@ impl Picker for BuffersPicker {
         "Buffers"
     }
 
-    fn items(&self, ctx: &PickerContext) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
         ctx.buffers
             .iter()
             .map(|buf| {
@@ -61,6 +64,10 @@ mod tests {
     use reovim_driver_picker::BufferInfo;
 
     use super::*;
+
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
 
     fn empty_ctx() -> PickerContext {
         PickerContext {
@@ -93,7 +100,7 @@ mod tests {
     #[test]
     fn items_empty_context() {
         let picker = BuffersPicker::new();
-        let items = picker.items(&empty_ctx());
+        let items = picker.items(&empty_ctx(), &services());
         assert!(items.is_empty());
     }
 
@@ -118,7 +125,7 @@ mod tests {
             commands: vec![],
         };
 
-        let items = picker.items(&ctx);
+        let items = picker.items(&ctx, &services());
         assert_eq!(items.len(), 2);
 
         assert_eq!(items[0].display, "main.rs");
@@ -172,6 +179,6 @@ mod tests {
             data: PickerData::BufferId(1),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 }

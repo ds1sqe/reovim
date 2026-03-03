@@ -443,18 +443,12 @@ mod tests {
         let dir = make_temp_dir();
 
         let rust_path = dir.path().join("rust.json");
-        std::fs::write(
-            &rust_path,
-            r#"{ "function": { "prefix": "fn", "body": "fn $1() {}" } }"#,
-        )
-        .unwrap();
+        std::fs::write(&rust_path, r#"{ "function": { "prefix": "fn", "body": "fn $1() {}" } }"#)
+            .unwrap();
 
         let python_path = dir.path().join("python.json");
-        std::fs::write(
-            &python_path,
-            r#"{ "defn": { "prefix": "def", "body": "def $1():" } }"#,
-        )
-        .unwrap();
+        std::fs::write(&python_path, r#"{ "defn": { "prefix": "def", "body": "def $1():" } }"#)
+            .unwrap();
 
         let provider = JsonSnippetProvider::load_directory(dir.path()).unwrap();
         assert_eq!(provider.snippets_for_filetype("rust").len(), 1);

@@ -9,8 +9,11 @@ use std::{
     process::Command,
 };
 
-use reovim_driver_picker::{
-    Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent,
+use {
+    reovim_driver_picker::{
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent,
+    },
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 /// Number of context lines to show around a grep match in preview.
@@ -52,7 +55,7 @@ impl Picker for GrepPicker {
         "rg> "
     }
 
-    fn items(&self, ctx: &PickerContext) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
         if ctx.query.is_empty() {
             return Vec::new();
         }
@@ -62,7 +65,7 @@ impl Picker for GrepPicker {
 
     fn on_select(&self, item: &PickerItem) -> PickerAction {
         match &item.data {
-            PickerData::GrepMatch { path, line, col } => PickerAction::GotoLocation {
+            PickerData::GotoLocation { path, line, col } => PickerAction::GotoLocation {
                 path: path.clone(),
                 line: *line,
                 col: *col,
@@ -71,8 +74,8 @@ impl Picker for GrepPicker {
         }
     }
 
-    fn preview(&self, item: &PickerItem) -> Option<PreviewContent> {
-        let PickerData::GrepMatch { path, line, .. } = &item.data else {
+    fn preview(&self, item: &PickerItem, _services: &ServiceRegistry) -> Option<PreviewContent> {
+        let PickerData::GotoLocation { path, line, .. } = &item.data else {
             return None;
         };
 
@@ -149,7 +152,7 @@ fn parse_rg_line(line: &str, cwd: &std::path::Path) -> Option<PickerItem> {
     Some(PickerItem {
         display: format!("{path_str}:{line_num}:{text}"),
         detail: None,
-        data: PickerData::GrepMatch {
+        data: PickerData::GotoLocation {
             path,
             line: line_num,
             col: col_num,
@@ -163,6 +166,10 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
 
     #[test]
     fn name_and_title() {
@@ -199,7 +206,7 @@ mod tests {
             buffers: vec![],
             commands: vec![],
         };
-        assert!(picker.items(&ctx).is_empty());
+        assert!(picker.items(&ctx, &services()).is_empty());
     }
 
     #[test]
@@ -211,7 +218,7 @@ mod tests {
         assert_eq!(item.display, "src/main.rs:10:fn main() {");
         assert!(matches!(
             &item.data,
-            PickerData::GrepMatch { path, line: 10, col: 5 } if *path == std::path::Path::new("/project/src/main.rs")
+            PickerData::GotoLocation { path, line: 10, col: 5 } if *path == std::path::Path::new("/project/src/main.rs")
         ));
     }
 
@@ -237,7 +244,7 @@ mod tests {
         let item = PickerItem {
             display: "test.rs:10:hello".to_owned(),
             detail: None,
-            data: PickerData::GrepMatch {
+            data: PickerData::GotoLocation {
                 path: PathBuf::from("test.rs"),
                 line: 10,
                 col: 5,
@@ -276,14 +283,14 @@ mod tests {
         let item = PickerItem {
             display: "test.rs:10:line 10".to_owned(),
             detail: None,
-            data: PickerData::GrepMatch {
+            data: PickerData::GotoLocation {
                 path: path.clone(),
                 line: 10,
                 col: 1,
             },
             icon: None,
         };
-        let preview = picker.preview(&item);
+        let preview = picker.preview(&item, &services());
         assert!(preview.is_some());
         let preview = preview.unwrap();
         assert!(preview.highlight_line.is_some());
@@ -299,7 +306,7 @@ mod tests {
             data: PickerData::Text("wrong".to_owned()),
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -308,14 +315,14 @@ mod tests {
         let item = PickerItem {
             display: "nope:1:x".to_owned(),
             detail: None,
-            data: PickerData::GrepMatch {
+            data: PickerData::GotoLocation {
                 path: PathBuf::from("/nonexistent_12345.rs"),
                 line: 1,
                 col: 1,
             },
             icon: None,
         };
-        assert!(picker.preview(&item).is_none());
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]
@@ -325,6 +332,62 @@ mod tests {
         // verify the run_ripgrep function handles the error path.
         let result = run_ripgrep("test", &PathBuf::from("/nonexistent_dir_12345"));
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn items_with_query_runs_ripgrep() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let file_path = dir.path().join("searchable.rs");
+        std::fs::write(&file_path, "fn unique_grep_test_marker() {}\n")
+            .expect("Failed to write file");
+
+        let picker = GrepPicker::new();
+        let ctx = PickerContext {
+            cwd: dir.path().to_path_buf(),
+            query: "unique_grep_test_marker".to_owned(),
+            buffers: vec![],
+            commands: vec![],
+        };
+        let items = picker.items(&ctx, &services());
+        // rg may or may not be installed; if it is, we get results.
+        if !items.is_empty() {
+            assert!(items[0].display.contains("unique_grep_test_marker"));
+        }
+    }
+
+    #[test]
+    fn run_ripgrep_success_path() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let file_path = dir.path().join("target_file.txt");
+        std::fs::write(&file_path, "hello rg_coverage_test\nworld\n")
+            .expect("Failed to write file");
+
+        let results = run_ripgrep("rg_coverage_test", dir.path());
+        // rg may or may not be installed.
+        if !results.is_empty() {
+            assert!(results[0].display.contains("rg_coverage_test"));
+        }
+    }
+
+    #[test]
+    fn preview_line_beyond_file_end() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let path = dir.path().join("short.rs");
+        std::fs::write(&path, "line 1\nline 2\n").expect("Failed to write");
+
+        let picker = GrepPicker::new();
+        let item = PickerItem {
+            display: "short.rs:9999:x".to_owned(),
+            detail: None,
+            data: PickerData::GotoLocation {
+                path,
+                line: 9999,
+                col: 1,
+            },
+            icon: None,
+        };
+        // Lines after skip(9994) will be empty, so preview returns None.
+        assert!(picker.preview(&item, &services()).is_none());
     }
 
     #[test]

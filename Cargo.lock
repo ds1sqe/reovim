@@ -1829,6 +1829,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-cmdline",
  "reovim-module-defaults",
+ "reovim-module-microscope",
  "reovim-module-notification",
  "reovim-module-textobjects",
  "reovim-module-whichkey",

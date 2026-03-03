@@ -75,11 +75,11 @@ async fn test_tab_navigation() {
         .await
         .with_buffer("")
         .step("ifn<C-s>")
-            .expect_buffer_contains("fn ")
-        .step("<Tab>")       // Jump from $1 to $2
-            .expect_buffer_contains("fn ")
-        .step("<Tab>")       // Jump from $2 to $0 (final position)
-            .expect_buffer_contains("fn ")
+        .expect_buffer_contains("fn ")
+        .step("<Tab>") // Jump from $1 to $2
+        .expect_buffer_contains("fn ")
+        .step("<Tab>") // Jump from $2 to $0 (final position)
+        .expect_buffer_contains("fn ")
         .run()
         .await;
 
@@ -94,9 +94,9 @@ async fn test_escape_cancels_snippet() {
         .await
         .with_buffer("")
         .step("ifn<C-s>")
-            .expect_buffer_contains("fn ")
+        .expect_buffer_contains("fn ")
         .step("<Esc>")
-            .expect_mode_contains("INSERT")
+        .expect_mode_contains("INSERT")
         .run()
         .await;
 
@@ -111,11 +111,11 @@ async fn test_shift_tab_backward() {
         .await
         .with_buffer("")
         .step("ifn<C-s>")
-            .expect_buffer_contains("fn ")
-        .step("<Tab>")       // $1 → $2
-            .expect_buffer_contains("fn ")
-        .step("<S-Tab>")     // $2 → $1 (back to first)
-            .expect_buffer_contains("fn ")
+        .expect_buffer_contains("fn ")
+        .step("<Tab>") // $1 → $2
+        .expect_buffer_contains("fn ")
+        .step("<S-Tab>") // $2 → $1 (back to first)
+        .expect_buffer_contains("fn ")
         .run()
         .await;
 

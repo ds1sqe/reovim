@@ -36,6 +36,7 @@ reovim-module-defaults = { workspace = true }
 reovim-module-cmdline = { workspace = true }
 reovim-module-whichkey = { workspace = true }
 reovim-module-notification = { workspace = true }
+reovim-module-microscope = { workspace = true }
 
 # Extra modules available via REOVIM_EXTRA_MODULES env var
 reovim-module-textobjects = { workspace = true }
