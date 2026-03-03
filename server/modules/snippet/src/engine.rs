@@ -111,6 +111,47 @@ impl ActiveSnippet {
         self.snippet_end = transform_position(self.snippet_end, edit);
     }
 
+    /// Reconcile tab stop positions after user typing at the current stop.
+    ///
+    /// The insert-mode fallback handler bypasses the snippet engine when
+    /// inserting characters, so subsequent tab stop positions become stale.
+    /// Call this before navigating away from the current tab stop: it
+    /// synthesizes an `Edit::insert` from the tab stop start to the actual
+    /// cursor position and shifts all remaining positions accordingly.
+    pub fn reconcile_typing(&mut self, cursor: Position) {
+        let Some(ts) = self.tab_stops.get(self.current_index) else {
+            return;
+        };
+        let start = ts.start;
+
+        // Build a synthetic text whose dimensions match the cursor delta.
+        // `transform_position` only cares about newline count and last-line
+        // length, not the actual characters.
+        let synthetic = match cursor.line.cmp(&start.line) {
+            std::cmp::Ordering::Equal => {
+                if cursor.column > start.column {
+                    " ".repeat(cursor.column - start.column)
+                } else {
+                    return; // cursor didn't advance (or moved left via backspace)
+                }
+            }
+            std::cmp::Ordering::Greater => {
+                let newlines = cursor.line - start.line;
+                let mut s = "\n".repeat(newlines);
+                for _ in 0..cursor.column {
+                    s.push(' ');
+                }
+                s
+            }
+            std::cmp::Ordering::Less => {
+                return; // cursor moved above start line — unusual, bail
+            }
+        };
+
+        let edit = Edit::insert(start, &synthetic);
+        self.update_positions(&edit);
+    }
+
     /// Check if the cursor is within the snippet body range.
     ///
     /// Returns `false` if cursor has moved outside the snippet,
@@ -651,5 +692,91 @@ mod tests {
         // Calling next() on empty snippet should be a no-op
         assert!(snippet.next().is_none());
         assert!(snippet.is_done());
+    }
+
+    // =========================================================================
+    // reconcile_typing
+    // =========================================================================
+
+    #[test]
+    fn test_reconcile_typing_same_line() {
+        // "fn $1()" — $1 at col 3, $0-like paren at col 3 (after)
+        let (_, mut snippet) = expand_at("$1 $2", Position::origin());
+        // $1 at col 0, $2 at col 1
+        let ts2_before = snippet.tab_stops()[1].start;
+        assert_eq!(ts2_before, Position::new(0, 1));
+
+        // Simulate user typing 5 chars at $1 (cursor moved from col 0 to col 5)
+        snippet.reconcile_typing(Position::new(0, 5));
+
+        // $2 should shift right by 5
+        let ts2_after = snippet.tab_stops()[1].start;
+        assert_eq!(ts2_after, Position::new(0, 6));
+    }
+
+    #[test]
+    fn test_reconcile_typing_cursor_at_start_no_change() {
+        let (_, mut snippet) = expand_at("$1 $2", Position::origin());
+        let ts2_before = snippet.tab_stops()[1].start;
+
+        // Cursor still at $1 start (no typing)
+        snippet.reconcile_typing(Position::new(0, 0));
+
+        assert_eq!(snippet.tab_stops()[1].start, ts2_before);
+    }
+
+    #[test]
+    fn test_reconcile_typing_cursor_before_start_no_change() {
+        // $1 at col 3
+        let (_, mut snippet) = expand_at("abc$1 $2", Position::origin());
+        let ts2_before = snippet.tab_stops()[1].start;
+
+        // Cursor moved left of $1 start (unusual, e.g. backspace past start)
+        snippet.reconcile_typing(Position::new(0, 2));
+
+        assert_eq!(snippet.tab_stops()[1].start, ts2_before);
+    }
+
+    #[test]
+    fn test_reconcile_typing_multiline() {
+        // $1 at col 0, $2 at col 1
+        let (_, mut snippet) = expand_at("$1 $2", Position::origin());
+        let ts2_before = snippet.tab_stops()[1].start;
+        assert_eq!(ts2_before, Position::new(0, 1));
+
+        // Simulate user typing text with a newline (cursor now on line 1, col 3)
+        snippet.reconcile_typing(Position::new(1, 3));
+
+        // $2 should be pushed down to line 1
+        let ts2_after = snippet.tab_stops()[1].start;
+        assert_eq!(ts2_after.line, 1);
+    }
+
+    #[test]
+    fn test_reconcile_typing_cursor_above_start_no_change() {
+        // $1 at line 1
+        let (_, mut snippet) = expand_at("\n$1 $2", Position::origin());
+        let ts2_before = snippet.tab_stops()[1].start;
+
+        // Cursor above $1 start line (unusual)
+        snippet.reconcile_typing(Position::new(0, 0));
+
+        assert_eq!(snippet.tab_stops()[1].start, ts2_before);
+    }
+
+    #[test]
+    fn test_reconcile_typing_no_tabstops() {
+        let (_, mut snippet) = expand_at("plain text", Position::origin());
+        // Should not panic when no tab stops exist
+        snippet.reconcile_typing(Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_reconcile_typing_past_last_stop() {
+        let (_, mut snippet) = expand_at("$1", Position::origin());
+        snippet.next(); // exhaust all stops
+        assert!(snippet.is_done());
+        // Should not panic when current_index is past end
+        snippet.reconcile_typing(Position::new(0, 5));
     }
 }

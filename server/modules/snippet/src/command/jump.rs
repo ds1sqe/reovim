@@ -5,9 +5,9 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
+        BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
     },
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, Edit, Position},
 };
 
 use crate::{ids, state::SnippetSessionState};
@@ -32,24 +32,35 @@ impl CommandHandler for JumpNext {
             return CommandResult::error("no active buffer");
         };
 
-        let state = runtime.ext_mut::<SnippetSessionState>();
-        let Some(active) = &mut state.active else {
-            return CommandResult::Success; // no active snippet
+        // Read cursor position before taking the ext_mut borrow.
+        let cursor = runtime
+            .windows()
+            .active()
+            .map_or(Position::origin(), |w| {
+                Position::new(w.cursor.line, w.cursor.column)
+            });
+
+        // Extract tab stop info while holding ext_mut borrow.
+        // Reconciles any user typing, then navigates and pre-adjusts
+        // positions for the upcoming placeholder deletion.
+        let jump_info = {
+            let state = runtime.ext_mut::<SnippetSessionState>();
+            let Some(active) = &mut state.active else {
+                return CommandResult::Success;
+            };
+            extract_jump_info(active, Direction::Next, cursor)
         };
 
-        if let Some(ts) = active.next() {
-            let start = ts.start;
-            // Move cursor to the tab stop position
-            if let Some(w) = runtime.windows_mut().active_mut() {
-                w.cursor.line = start.line;
-                w.cursor.column = start.column;
+        match jump_info {
+            JumpAction::GoTo { start, end } => {
+                delete_placeholder_and_move(runtime, buffer_id, start, end);
             }
-            runtime.record_cursor_move(buffer_id);
-        } else {
-            // All tab stops visited: exit snippet mode
-            let state = runtime.ext_mut::<SnippetSessionState>();
-            state.active = None;
-            runtime.set_mode(ids::VIM_INSERT_MODE, TransitionContext::new());
+            JumpAction::Done => {
+                let state = runtime.ext_mut::<SnippetSessionState>();
+                state.active = None;
+                runtime.set_mode(ids::VIM_INSERT_MODE, TransitionContext::new());
+            }
+            JumpAction::NoOp => {}
         }
 
         CommandResult::Success
@@ -76,23 +87,106 @@ impl CommandHandler for JumpPrev {
             return CommandResult::error("no active buffer");
         };
 
-        let state = runtime.ext_mut::<SnippetSessionState>();
-        let Some(active) = &mut state.active else {
-            return CommandResult::Success; // no active snippet
+        let cursor = runtime
+            .windows()
+            .active()
+            .map_or(Position::origin(), |w| {
+                Position::new(w.cursor.line, w.cursor.column)
+            });
+
+        let jump_info = {
+            let state = runtime.ext_mut::<SnippetSessionState>();
+            let Some(active) = &mut state.active else {
+                return CommandResult::Success;
+            };
+            extract_jump_info(active, Direction::Prev, cursor)
         };
 
-        if let Some(ts) = active.prev() {
-            let start = ts.start;
-            if let Some(w) = runtime.windows_mut().active_mut() {
-                w.cursor.line = start.line;
-                w.cursor.column = start.column;
-            }
-            runtime.record_cursor_move(buffer_id);
+        if let JumpAction::GoTo { start, end } = jump_info {
+            delete_placeholder_and_move(runtime, buffer_id, start, end);
         }
-        // If None (at first): no-op
+        // NoOp/Done: no-op for prev
 
         CommandResult::Success
     }
+}
+
+// ============================================================================
+// Shared helpers
+// ============================================================================
+
+#[derive(Clone, Copy)]
+enum Direction {
+    Next,
+    Prev,
+}
+
+enum JumpAction {
+    /// Jump to a tab stop. If `start != end`, the placeholder must be deleted.
+    GoTo { start: Position, end: Position },
+    /// All tab stops exhausted (next only).
+    Done,
+    /// No movement (prev at first stop).
+    NoOp,
+}
+
+/// Navigate to the next/prev tab stop, extract its range, and pre-adjust
+/// all remaining positions if a placeholder deletion is needed.
+///
+/// `cursor` is the current cursor position — used to reconcile any text
+/// the user typed at the departing tab stop before `update_positions`
+/// was aware of it.
+fn extract_jump_info(
+    active: &mut crate::engine::ActiveSnippet,
+    direction: Direction,
+    cursor: Position,
+) -> JumpAction {
+    // Reconcile any text typed at the current tab stop so that
+    // subsequent tab stop positions reflect the actual buffer state.
+    active.reconcile_typing(cursor);
+
+    let ts = match direction {
+        Direction::Next => active.next(),
+        Direction::Prev => active.prev(),
+    };
+
+    let Some(ts) = ts else {
+        return match direction {
+            Direction::Next => JumpAction::Done,
+            Direction::Prev => JumpAction::NoOp,
+        };
+    };
+
+    let start = ts.start;
+    let end = ts.end;
+    let placeholder = ts.placeholder.clone();
+    // NLL: ts borrow is dropped here
+
+    // If placeholder text exists, update all tab stop positions to account
+    // for the deletion that will happen after we release the ext_mut borrow.
+    if start != end {
+        let edit = Edit::delete(start, &placeholder);
+        active.update_positions(&edit);
+    }
+
+    JumpAction::GoTo { start, end }
+}
+
+/// Delete placeholder text (if any) and position cursor at the tab stop.
+fn delete_placeholder_and_move(
+    runtime: &mut SessionRuntime<'_>,
+    buffer_id: reovim_kernel::api::v1::BufferId,
+    start: Position,
+    end: Position,
+) {
+    if start != end {
+        runtime.delete_range(buffer_id, start, end);
+    }
+    if let Some(w) = runtime.windows_mut().active_mut() {
+        w.cursor.line = start.line;
+        w.cursor.column = start.column;
+    }
+    runtime.record_cursor_move(buffer_id);
 }
 
 #[cfg(test)]

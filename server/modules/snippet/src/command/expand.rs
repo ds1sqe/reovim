@@ -9,7 +9,7 @@ use {
     reovim_driver_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
     },
-    reovim_kernel::api::v1::{CommandId, Position},
+    reovim_kernel::api::v1::{CommandId, Edit, Position},
 };
 
 use crate::{
@@ -84,28 +84,46 @@ impl CommandHandler for ExpandSnippet {
         runtime.delete_range(buffer_id, trigger_start, cursor);
 
         // Expand the snippet body
-        let (expanded_text, active_snippet) = ActiveSnippet::expand(&body, trigger_start);
+        let (expanded_text, mut active_snippet) = ActiveSnippet::expand(&body, trigger_start);
 
         // Insert expanded text at trigger position
         runtime.insert_text(buffer_id, trigger_start, &expanded_text);
 
-        // Extract navigation info before storing active snippet
+        // Extract first tab stop info and delete its placeholder if present.
+        // This must happen before storing the snippet so positions are correct.
         let has_tab_stops = !active_snippet.is_done();
-        let first_stop_pos = active_snippet.current().map(|ts| ts.start);
+        let first_stop_range = active_snippet.current().map(|ts| {
+            let start = ts.start;
+            let end = ts.end;
+            let placeholder = ts.placeholder.clone();
+            (start, end, placeholder)
+        });
 
-        // Store active snippet state
+        // If first tab stop has a placeholder, pre-adjust all positions
+        if let Some((start, end, ref placeholder)) = first_stop_range
+            && start != end
+        {
+            let edit = Edit::delete(start, placeholder);
+            active_snippet.update_positions(&edit);
+        }
+
+        // Store active snippet state (with adjusted positions)
         let state = runtime.ext_mut::<SnippetSessionState>();
         state.active = Some(active_snippet);
 
         // If there are tab stops, enter snippet navigation mode
         if has_tab_stops {
             runtime.push_mode(ids::NAVIGATING_MODE, TransitionContext::new());
-            // Move cursor to first tab stop
-            if let Some(pos) = first_stop_pos
-                && let Some(w) = runtime.windows_mut().active_mut()
-            {
-                w.cursor.line = pos.line;
-                w.cursor.column = pos.column;
+            if let Some((start, end, _)) = first_stop_range {
+                // Delete placeholder text from buffer
+                if start != end {
+                    runtime.delete_range(buffer_id, start, end);
+                }
+                // Position cursor at tab stop
+                if let Some(w) = runtime.windows_mut().active_mut() {
+                    w.cursor.line = start.line;
+                    w.cursor.column = start.column;
+                }
             }
             runtime.record_cursor_move(buffer_id);
         }
