@@ -106,13 +106,7 @@ impl LspSaturator {
         let cache_clone = Arc::clone(&cache);
         let active_clone = Arc::clone(&active);
         let client_clone = Arc::clone(&client);
-        tokio::spawn(Self::run(
-            client_clone,
-            stdout_reader,
-            request_rx,
-            cache_clone,
-            active_clone,
-        ));
+        tokio::spawn(Self::run(client_clone, stdout_reader, request_rx, cache_clone, active_clone));
 
         // Spawn stderr reader if available
         if let Some(stderr) = stderr {
@@ -220,10 +214,7 @@ impl LspSaturator {
     }
 
     /// Handle server-to-client requests that require a response.
-    fn handle_server_request(
-        client: &Arc<Client>,
-        request: reovim_driver_lsp::jsonrpc::Request,
-    ) {
+    fn handle_server_request(client: &Arc<Client>, request: reovim_driver_lsp::jsonrpc::Request) {
         debug!(method = %request.method, id = ?request.id, "Server request");
 
         let response = match request.method.as_str() {
@@ -298,9 +289,7 @@ impl LspSaturator {
                 debug!(uri = %uri.as_str(), position = ?position, "Spawning references task");
                 let client = Arc::clone(client);
                 tokio::spawn(async move {
-                    let result = client
-                        .references(uri, position, include_declaration)
-                        .await;
+                    let result = client.references(uri, position, include_declaration).await;
                     debug!(success = result.is_ok(), "references completed");
                     let _ = response_tx.send(result);
                 });
@@ -435,8 +424,7 @@ mod tests {
             root_path: PathBuf::from("/tmp"),
             workspace_folders: vec![],
         };
-        let (client, _reader, _stderr) =
-            Client::spawn(config).expect("cat should be available");
+        let (client, _reader, _stderr) = Client::spawn(config).expect("cat should be available");
         Arc::new(client)
     }
 
@@ -609,8 +597,7 @@ mod tests {
         let client = make_test_client();
         let cache = Arc::new(DiagnosticCache::new());
 
-        let notification =
-            jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
+        let notification = jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
         let message = jsonrpc::Message::Notification(notification);
 
         LspSaturator::handle_server_message(&client, &cache, message).await;
@@ -651,8 +638,7 @@ mod tests {
         let client = make_test_client();
         let cache = Arc::new(DiagnosticCache::new());
 
-        let request =
-            jsonrpc::Request::new(1_i64, "client/registerCapability", None);
+        let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
         let message = jsonrpc::Message::Request(request);
 
         LspSaturator::handle_server_message(&client, &cache, message).await;
@@ -661,19 +647,14 @@ mod tests {
     #[tokio::test]
     async fn test_handle_server_request_register_capability_direct() {
         let client = make_test_client();
-        let request =
-            jsonrpc::Request::new(1_i64, "client/registerCapability", None);
+        let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
         LspSaturator::handle_server_request(&client, request);
     }
 
     #[tokio::test]
     async fn test_handle_server_request_work_done_progress() {
         let client = make_test_client();
-        let request = jsonrpc::Request::new(
-            2_i64,
-            "window/workDoneProgress/create",
-            None,
-        );
+        let request = jsonrpc::Request::new(2_i64, "window/workDoneProgress/create", None);
         LspSaturator::handle_server_request(&client, request);
     }
 
@@ -701,12 +682,7 @@ mod tests {
     async fn test_handle_did_change_sends_notification() {
         let client = make_test_client();
         let uri: Uri = "file:///test.rs".parse().unwrap();
-        LspSaturator::handle_did_change(
-            &client,
-            uri,
-            2,
-            "fn main() { println!(); }".to_string(),
-        );
+        LspSaturator::handle_did_change(&client, uri, 2, "fn main() { println!(); }".to_string());
     }
 
     /// Create a client whose writer channel is already dead.
@@ -720,16 +696,12 @@ mod tests {
             root_path: PathBuf::from("/tmp"),
             workspace_folders: vec![],
         };
-        let (client, _reader, _stderr) =
-            Client::spawn(config).expect("true should be available");
+        let (client, _reader, _stderr) = Client::spawn(config).expect("true should be available");
         let client = Arc::new(client);
 
         // Force the writer task to detect the broken pipe
         for _ in 0..20 {
-            if client
-                .notify("dummy", serde_json::Value::Null)
-                .is_err()
-            {
+            if client.notify("dummy", serde_json::Value::Null).is_err() {
                 break;
             }
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
@@ -756,12 +728,7 @@ mod tests {
     async fn test_handle_did_change_with_closed_channel() {
         let client = make_dead_client().await;
         let uri: Uri = "file:///test.rs".parse().unwrap();
-        LspSaturator::handle_did_change(
-            &client,
-            uri,
-            2,
-            "fn main() { println!(); }".to_string(),
-        );
+        LspSaturator::handle_did_change(&client, uri, 2, "fn main() { println!(); }".to_string());
     }
 
     #[tokio::test]

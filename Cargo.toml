@@ -50,6 +50,7 @@ members = [
     "server/modules/microscope",
     "server/modules/treesitter-markdown",
     "server/modules/lsp",
+    "server/modules/snippet",
 
     # Client layer - TUI
     "clients/tui",
@@ -207,6 +208,7 @@ reovim-module-notification = { path = "./server/modules/notification", version =
 reovim-module-microscope = { path = "./server/modules/microscope", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
 reovim-module-lsp = { path = "./server/modules/lsp", version = "0.9.5-dev" }
+reovim-module-snippet = { path = "./server/modules/snippet", version = "0.9.5-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

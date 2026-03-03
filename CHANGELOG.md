@@ -6,6 +6,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Snippet expansion module - Phase 1 infrastructure (#136)**: Full
+  implementation of TextMate/LSP-compatible snippet expansion with tab stop
+  navigation. Recursive descent parser handles the VSCode/LSP EBNF grammar
+  ($N, ${N}, ${N:default}, nested placeholders, escape sequences) with graceful
+  fallback for unknown syntax. Active snippet engine tracks tab stops with
+  position updates through buffer edits via `transform_position()`.
+  `SnippetProvider` trait and `SnippetRegistry` aggregate snippet sources
+  (Phase 1: JSON files from `~/.local/share/reovim/snippets/`; future: LSP,
+  completion). Per-client session state via `SessionExtension`. Mode
+  `snippet:navigating` inherits from `vim:insert` via `ModeKeyResolver`. Four
+  commands: expand (`<C-s>`), jump-next (`<Tab>`), jump-prev (`<S-Tab>`),
+  cancel (`<Esc>`). Full AST covers the complete EBNF grammar for incremental
+  parser extension in later phases (variables, choices, transforms). Zero kernel
+  modifications. 203 unit tests, zero clippy warnings.
+
 - **Fuzzy finder infrastructure (#522)**: Full-stack fuzzy finder (microscope)
   with pluggable picker architecture powered by nucleo. Driver layer
   (`reovim-driver-picker`) provides `Picker` trait, `PickerItem`/`PickerData`/

@@ -45,11 +45,11 @@ use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
-    reovim_module_editor as editor, reovim_module_keymap as keymap,
-    reovim_module_lsp as lsp, reovim_module_microscope as microscope,
-    reovim_module_motions as motions,
+    reovim_module_editor as editor, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
+    reovim_module_microscope as microscope, reovim_module_motions as motions,
     reovim_module_notification as notification, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
 };
@@ -112,6 +112,8 @@ impl DefaultsModule {
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
             // Code intelligence modules (#520)
             Box::new(lsp::LspModule::new()),
+            // Snippet expansion (#136)
+            Box::new(snippet::SnippetModule::new()),
         ]
     }
 }
@@ -164,6 +166,8 @@ impl Module for DefaultsModule {
             ModuleId::new("treesitter-markdown"),
             // Code intelligence modules (#520)
             ModuleId::new("lsp"),
+            // Snippet expansion (#136)
+            ModuleId::new("snippet"),
         ]
     }
 
@@ -233,8 +237,9 @@ mod tests {
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
-        // Total: 17 modules
-        assert_eq!(deps.len(), 17);
+        // Snippet (1): snippet
+        // Total: 18 modules
+        assert_eq!(deps.len(), 18);
     }
 
     #[test]
@@ -247,8 +252,9 @@ mod tests {
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Picker module (1): microscope
         // Code intelligence modules (1): lsp
-        // Total: 17 modules
-        assert_eq!(modules.len(), 17);
+        // Snippet (1): snippet
+        // Total: 18 modules
+        assert_eq!(modules.len(), 18);
     }
 
     #[test]

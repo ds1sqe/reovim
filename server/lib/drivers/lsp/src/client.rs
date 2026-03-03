@@ -421,11 +421,7 @@ impl Client {
     /// # Errors
     ///
     /// Returns an error if the request fails.
-    pub async fn hover(
-        &self,
-        uri: Uri,
-        position: Position,
-    ) -> Result<Option<Hover>, LspError> {
+    pub async fn hover(&self, uri: Uri, position: Position) -> Result<Option<Hover>, LspError> {
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri },
@@ -599,8 +595,7 @@ mod tests {
             pending.insert(Id::Number(42), tx);
         }
 
-        let response =
-            Response::success(Id::Number(42), serde_json::json!("hello"));
+        let response = Response::success(Id::Number(42), serde_json::json!("hello"));
         client.handle_response(response).await;
 
         let result = rx_oneshot.await.unwrap().unwrap();
@@ -715,10 +710,7 @@ mod tests {
         };
 
         client
-            .handle_response(Response::success(
-                request_id,
-                serde_json::json!("result"),
-            ))
+            .handle_response(Response::success(request_id, serde_json::json!("result")))
             .await;
 
         let result = task.await.unwrap().unwrap();
@@ -790,8 +782,7 @@ mod tests {
         let uri: Uri = "file:///test.rs".parse().unwrap();
         let position = Position::new(0, 0);
 
-        let task =
-            tokio::spawn(async move { client_clone.goto_definition(uri, position).await });
+        let task = tokio::spawn(async move { client_clone.goto_definition(uri, position).await });
 
         let msg = rx.recv().await.unwrap();
         let request_id = match msg {
@@ -819,9 +810,7 @@ mod tests {
         let uri: Uri = "file:///test.rs".parse().unwrap();
         let position = Position::new(1, 5);
 
-        let task = tokio::spawn(async move {
-            client_clone.references(uri, position, true).await
-        });
+        let task = tokio::spawn(async move { client_clone.references(uri, position, true).await });
 
         let msg = rx.recv().await.unwrap();
         let request_id = match msg {
@@ -849,8 +838,7 @@ mod tests {
         let uri: Uri = "file:///test.rs".parse().unwrap();
         let position = Position::new(2, 10);
 
-        let task =
-            tokio::spawn(async move { client_clone.hover(uri, position).await });
+        let task = tokio::spawn(async move { client_clone.hover(uri, position).await });
 
         let msg = rx.recv().await.unwrap();
         let request_id = match msg {

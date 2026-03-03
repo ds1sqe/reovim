@@ -63,9 +63,7 @@ pub use {
 pub use cache::{BufferDiagnostics, DiagnosticCache};
 
 // Provider trait and registry (Epic #520)
-pub use key::LspKey;
-pub use provider::LspProvider;
-pub use registry::LspProviderRegistry;
+pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
 
 // Re-export essential LSP types
 pub mod lsp_types {

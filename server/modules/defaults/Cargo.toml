@@ -42,6 +42,9 @@ reovim-module-treesitter-markdown = { workspace = true }
 # Code intelligence modules
 reovim-module-lsp = { workspace = true }
 
+# Snippet expansion module (#136)
+reovim-module-snippet = { workspace = true }
+
 # Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)
 

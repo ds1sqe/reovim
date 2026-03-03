@@ -2188,6 +2188,7 @@ dependencies = [
  "reovim-module-notification",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
+ "reovim-module-snippet",
  "reovim-module-treesitter-markdown",
  "reovim-module-treesitter-rust",
  "reovim-module-undo",
@@ -2315,6 +2316,19 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-snippet"
+version = "0.9.5-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

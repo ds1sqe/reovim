@@ -10,9 +10,11 @@ mod saturator;
 
 pub use saturator::{LspSaturator, LspSaturatorHandle};
 
-use reovim_driver_lsp::LspProviderRegistry;
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
+use {
+    reovim_driver_lsp::LspProviderRegistry,
+    reovim_kernel::api::v1::{
+        Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
+    },
 };
 
 /// LSP module instance.
@@ -138,9 +140,6 @@ mod tests {
 
         // Verify that LspProviderRegistry was created in services
         let registry = services.get::<LspProviderRegistry>();
-        assert!(
-            registry.is_some(),
-            "LspProviderRegistry should be registered in services"
-        );
+        assert!(registry.is_some(), "LspProviderRegistry should be registered in services");
     }
 }

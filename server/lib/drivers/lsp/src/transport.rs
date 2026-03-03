@@ -84,9 +84,7 @@ impl Transport {
     /// - The message body cannot be read
     /// - The JSON cannot be parsed
     /// - The connection is closed (EOF)
-    pub async fn recv<R: AsyncBufRead + Unpin>(
-        reader: &mut R,
-    ) -> Result<Message, TransportError> {
+    pub async fn recv<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Message, TransportError> {
         let mut content_length: Option<usize> = None;
         let mut line = String::new();
 
@@ -215,8 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_recv_notification() {
-        let input =
-            b"Content-Length: 40\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}";
+        let input = b"Content-Length: 40\r\n\r\n{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}";
         let mut reader = Cursor::new(input);
 
         let message = Transport::recv(&mut reader).await.unwrap();
@@ -267,10 +264,7 @@ mod tests {
         let mut reader = Cursor::new(input);
 
         let result = Transport::recv(&mut reader).await;
-        assert!(matches!(
-            result,
-            Err(TransportError::InvalidContentLength(_))
-        ));
+        assert!(matches!(result, Err(TransportError::InvalidContentLength(_))));
     }
 
     #[tokio::test]
@@ -330,8 +324,7 @@ mod tests {
         let io_err = TransportError::Io(io::Error::new(io::ErrorKind::BrokenPipe, "broken"));
         assert!(format!("{io_err}").contains("broken"));
 
-        let json_err =
-            TransportError::Json(serde_json::from_str::<Value>("invalid").unwrap_err());
+        let json_err = TransportError::Json(serde_json::from_str::<Value>("invalid").unwrap_err());
         assert!(format!("{json_err}").contains("JSON error"));
 
         let missing = TransportError::MissingContentLength;
@@ -351,8 +344,7 @@ mod tests {
         let io_err = TransportError::Io(io::Error::other("test"));
         assert!(io_err.source().is_some());
 
-        let json_err =
-            TransportError::Json(serde_json::from_str::<Value>("invalid").unwrap_err());
+        let json_err = TransportError::Json(serde_json::from_str::<Value>("invalid").unwrap_err());
         assert!(json_err.source().is_some());
 
         let missing = TransportError::MissingContentLength;
