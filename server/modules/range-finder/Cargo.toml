@@ -27,6 +27,8 @@ tracing = { workspace = true }
 [dev-dependencies]
 parking_lot = { workspace = true }
 reovim-driver-buffer = { workspace = true }
+reovim-testing = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

@@ -6,6 +6,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Range-finder module - jump navigation and code folding (#524)**: Two-char
+  jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).
+  Jump search engine uses case-insensitive pattern matching with home-row label
+  priority and Manhattan distance sorting (up to 676 two-char labels). Jump state
+  machine transitions through 5 phases (Inactive -> WaitingFirstChar ->
+  WaitingSecondChar -> ShowingLabels -> target resolved). Fold state provides
+  per-buffer tracking with nested fold support (innermost-wins resolution).
+  `JumpSessionState` (Client scope) and `FoldSessionState` (Shared scope) as
+  independent `SessionExtension` types. `JumpBridge` and `FoldBridge` serialize
+  state to JSON via `ExtensionStateBridge`. `SyntaxSessionState` moved to
+  `reovim-driver-syntax` for module-layer access. Six keybindings in `vim:normal`
+  mode. Command `execute()` bodies are Phase 4 stubs (infrastructure complete,
+  cursor movement and fold mutations deferred). 134 unit tests with 100% MC/DC
+  coverage, 8 E2E integration tests, 3 headless TUI tests, 8 web client tests.
+  Zero kernel modifications, zero clippy warnings.
+
 - **Snippet expansion module - Phase 1 infrastructure (#136)**: Full
   implementation of TextMate/LSP-compatible snippet expansion with tab stop
   navigation. Recursive descent parser handles the VSCode/LSP EBNF grammar

@@ -2312,7 +2312,9 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-testing",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 

@@ -79,11 +79,10 @@ impl Module for RangeFinderModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Jump navigation
-            KeybindingRegistration::new("s", jump::ids::JUMP_SEARCH)
-                .with_modes(&["vim:normal"])
-                .with_category("navigation")
-                .with_description("Jump search (two-char pattern)"),
+            // NOTE: Jump search keybinding ("s") is deferred until the command
+            // execute() body is implemented. Registering a no-op stub for "s"
+            // would swallow the key in vim:normal mode, breaking user input.
+            //
             // Fold operations
             KeybindingRegistration::new("za", fold::ids::FOLD_TOGGLE)
                 .with_modes(&["vim:normal"])
@@ -185,30 +184,24 @@ mod tests {
     fn test_keybindings() {
         let module = RangeFinderModule::new();
         let bindings = module.keybindings();
-        assert_eq!(bindings.len(), 6); // s + za/zo/zc/zR/zM
-
-        // Jump
-        assert_eq!(bindings[0].keys, "s");
-        assert_eq!(bindings[0].command_id, crate::jump::ids::JUMP_SEARCH);
-        assert_eq!(bindings[0].modes, &["vim:normal"]);
-        assert_eq!(bindings[0].category, Some("navigation"));
+        assert_eq!(bindings.len(), 5); // za/zo/zc/zR/zM (s deferred)
 
         // Fold
-        assert_eq!(bindings[1].keys, "za");
-        assert_eq!(bindings[1].command_id, crate::fold::ids::FOLD_TOGGLE);
-        assert_eq!(bindings[1].category, Some("folding"));
+        assert_eq!(bindings[0].keys, "za");
+        assert_eq!(bindings[0].command_id, crate::fold::ids::FOLD_TOGGLE);
+        assert_eq!(bindings[0].category, Some("folding"));
 
-        assert_eq!(bindings[2].keys, "zo");
-        assert_eq!(bindings[2].command_id, crate::fold::ids::FOLD_OPEN);
+        assert_eq!(bindings[1].keys, "zo");
+        assert_eq!(bindings[1].command_id, crate::fold::ids::FOLD_OPEN);
 
-        assert_eq!(bindings[3].keys, "zc");
-        assert_eq!(bindings[3].command_id, crate::fold::ids::FOLD_CLOSE);
+        assert_eq!(bindings[2].keys, "zc");
+        assert_eq!(bindings[2].command_id, crate::fold::ids::FOLD_CLOSE);
 
-        assert_eq!(bindings[4].keys, "zR");
-        assert_eq!(bindings[4].command_id, crate::fold::ids::FOLD_OPEN_ALL);
+        assert_eq!(bindings[3].keys, "zR");
+        assert_eq!(bindings[3].command_id, crate::fold::ids::FOLD_OPEN_ALL);
 
-        assert_eq!(bindings[5].keys, "zM");
-        assert_eq!(bindings[5].command_id, crate::fold::ids::FOLD_CLOSE_ALL);
+        assert_eq!(bindings[4].keys, "zM");
+        assert_eq!(bindings[4].command_id, crate::fold::ids::FOLD_CLOSE_ALL);
     }
 
     /// Create a minimal `ModuleContext` for testing.

@@ -412,6 +412,137 @@ async fn test_cmdline_deactivates_on_escape() {
     handle.stop().await;
 }
 
+// ============================================================================
+// Range-Finder Module Tests (#524)
+// ============================================================================
+
+/// Test that pressing `s` (jump search) does not crash and stays in normal mode.
+///
+/// The command `execute()` is a stub, so `s` should dispatch the command
+/// and return to normal mode without visible change.
+#[tokio::test]
+async fn test_range_finder_s_key_no_crash() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Type some text first
+    handle
+        .send_keys("ihello world<Esc>")
+        .await
+        .expect("Failed to send keys");
+
+    // Wait for text
+    handle
+        .wait_for(Duration::from_secs(2), |f| f.contains("hello"))
+        .await
+        .expect("Text should appear");
+
+    // Press `s` (jump search) - should not crash, stays in normal
+    handle.send_keys("s").await.expect("Failed to send s");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Verify server still responds and text is intact
+    let frame = handle
+        .capture("plain_text")
+        .await
+        .expect("Failed to capture after s");
+    assert!(frame.contains("hello"), "Buffer should still contain text after s key");
+
+    handle.stop().await;
+}
+
+/// Test that fold keys (`za`, `zo`, `zc`, `zR`, `zM`) don't crash the TUI.
+///
+/// All fold commands are stubs, so they should dispatch and return
+/// without visible change. Tests that the `z` prefix is handled correctly.
+#[tokio::test]
+async fn test_range_finder_fold_keys_no_crash() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Type some multi-line text
+    handle
+        .send_keys("ifn main() {<CR>    println!(\"hello\");<CR>}<Esc>")
+        .await
+        .expect("Failed to send keys");
+
+    handle
+        .wait_for(Duration::from_secs(2), |f| f.contains("main"))
+        .await
+        .expect("Text should appear");
+
+    // Test each fold key - none should crash
+    for keys in &["za", "zo", "zc", "zR", "zM"] {
+        handle
+            .send_keys(keys)
+            .await
+            .unwrap_or_else(|_| panic!("Failed to send {keys}"));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Verify server still responds
+    let frame = handle
+        .capture("plain_text")
+        .await
+        .expect("Failed to capture after fold keys");
+    assert!(frame.contains("main"), "Buffer should still contain text after fold keys");
+
+    handle.stop().await;
+}
+
+/// Test that `s` key followed by Escape recovers to normal mode.
+///
+/// When the `execute()` is wired, `s` will enter jump-input mode.
+/// For now (stub), it just returns Success and stays in normal mode.
+#[tokio::test]
+async fn test_range_finder_s_then_escape() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Press s then Escape
+    handle.send_keys("s").await.expect("Failed to send s");
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Escape");
+
+    // Should be in normal mode
+    let result = handle
+        .wait_for(Duration::from_secs(2), |frame| {
+            let lower = frame.to_lowercase();
+            lower.contains("normal") || !lower.contains("insert")
+        })
+        .await;
+
+    assert!(result.is_ok(), "Should be in normal mode after s + Escape");
+    handle.stop().await;
+}
+
 /// Test that `/` activates search cmdline with `/` prompt.
 #[tokio::test]
 async fn test_cmdline_search_prompt() {
