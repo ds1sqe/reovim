@@ -152,7 +152,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:window"])
             .with_category("window")
             .with_description("Increase window width"),
-        KeybindingRegistration::new("<", window_ops::RESIZE_WIDTH_DECREASE)
+        KeybindingRegistration::new("<lt>", window_ops::RESIZE_WIDTH_DECREASE)
             .with_modes(&["vim:window"])
             .with_category("window")
             .with_description("Decrease window width"),
@@ -246,7 +246,7 @@ mod tests {
         assert!(keys.contains(&"+"), "Should have '+' for increase height");
         assert!(keys.contains(&"-"), "Should have '-' for decrease height");
         assert!(keys.contains(&">"), "Should have '>' for increase width");
-        assert!(keys.contains(&"<"), "Should have '<' for decrease width");
+        assert!(keys.contains(&"<lt>"), "Should have '<lt>' for decrease width");
         assert!(keys.contains(&"="), "Should have '=' for equalize");
     }
 
