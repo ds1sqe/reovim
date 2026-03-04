@@ -56,6 +56,11 @@ struct Cli {
     /// Enable verbose logging (debug level).
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Log file path (default: ~/.local/share/reovim/reovim.log for
+    /// integrated/TUI mode, stderr for server/CLI mode).
+    #[arg(long, global = true, value_name = "PATH")]
+    log: Option<std::path::PathBuf>,
 }
 
 /// Available subcommands.
@@ -224,7 +229,10 @@ fn main() -> std::io::Result<()> {
 
     // Initialize tracing
     // Priority: RUST_LOG env var > --verbose flag > default (info)
-    // Note: We use stderr so test harness can capture logs (stdout is piped to null)
+    //
+    // In integrated/TUI mode, logs go to a file to avoid corrupting the TUI
+    // display (stderr shares the terminal fd with stdout in raw mode).
+    // In server/CLI mode, logs go to stderr as usual.
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| {
         if cli.verbose {
             "debug".to_string()
@@ -232,10 +240,44 @@ fn main() -> std::io::Result<()> {
             "info".to_string()
         }
     });
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(&filter)
-        .init();
+
+    // Modes that own the terminal need file logging to avoid corruption.
+    let needs_file_logging = match &cli.command {
+        // Integrated mode and standalone TUI own the terminal.
+        None | Some(Commands::Tui { .. }) => true,
+        // Server and CLI don't have a TUI — stderr is safe.
+        Some(Commands::Server { .. } | Commands::Cli { .. }) => false,
+    };
+
+    if needs_file_logging || cli.log.is_some() {
+        let log_path = cli.log.clone().unwrap_or_else(default_log_path);
+        if let Some(parent) = log_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let config = reovim_driver_log::LogConfig {
+            level: if cli.verbose {
+                reovim_driver_log::Level::Debug
+            } else {
+                reovim_driver_log::Level::Info
+            },
+            output: reovim_driver_log::LogOutput::File,
+            format: reovim_driver_log::LogFormat::Plain,
+            file_path: Some(log_path),
+            rotation: reovim_driver_log::RotationPolicy::Never,
+        };
+        if let Err(e) = reovim_driver_log::init_logging(&config) {
+            eprintln!("Failed to init file logging: {e}, falling back to stderr");
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_env_filter(&filter)
+                .init();
+        }
+    } else {
+        tracing_subscriber::fmt()
+            .with_writer(std::io::stderr)
+            .with_env_filter(&filter)
+            .init();
+    }
 
     // Initialize debug infrastructure (Phase #478)
     init_debug_infrastructure();
@@ -245,6 +287,21 @@ fn main() -> std::io::Result<()> {
         .enable_all()
         .build()?
         .block_on(run(cli))
+}
+
+/// Default log file path following XDG Base Directory specification.
+///
+/// Returns `$XDG_DATA_HOME/reovim/reovim.log` or `~/.local/share/reovim/reovim.log`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn default_log_path() -> std::path::PathBuf {
+    let base = std::env::var("XDG_DATA_HOME").map_or_else(
+        |_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+            std::path::PathBuf::from(home).join(".local/share")
+        },
+        std::path::PathBuf::from,
+    );
+    base.join("reovim").join("reovim.log")
 }
 
 /// Initialize debug infrastructure for crash reports.
