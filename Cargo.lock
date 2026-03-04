@@ -2263,9 +2263,11 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "reovim-protocol",
  "reovim-testing",
  "serde_json",
  "tokio",
+ "tonic",
 ]
 
 [[package]]

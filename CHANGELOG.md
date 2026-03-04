@@ -302,17 +302,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Performance
 
-- **Explorer scroll RTT optimization (#523)**: Eliminated triple tree
-  flattening per key press during j/k scrolling. Added `Mutex`-based caches
-  for visible node count and serialized nodes JSON on `ExplorerState`.
-  `node_count()` returns cached value (O(1) at ~40ns), bridge `snapshot()`
-  reuses cached nodes (~35% faster). `update_scroll_with_count()` avoids
-  redundant double count. Caches invalidated on tree-mutating commands
-  (expand, collapse, toggle hidden, refresh, file operations). New shared
-  bench crate (`reovim-bench-utils`) provides VFS fixture factories, Criterion
-  re-exports, and scaling parameter sets for module-level benchmarks. Explorer
-  Criterion benchmark covers node_count, update_scroll, snapshot, and
-  snapshot_cached at 25/100/500 nodes.
+- **Explorer scroll RTT optimization (#523)**: Two-phase optimization for
+  explorer scroll latency. Phase 1 eliminated triple tree flattening per key
+  press with `Mutex`-based caches for visible node count and serialized nodes
+  JSON. Phase 2 added delta snapshots: `tree_generation` counter on
+  `ExplorerState` (bumped by `invalidate_tree_cache()`) compared with
+  `snapshot_generation` in `ExplorerBridge::snapshot()`. When generations
+  match (cursor-only movement), the bridge omits the `"nodes"` array entirely,
+  reducing payload from ~1KB to 136 bytes. TUI client preserves existing nodes
+  when `"nodes"` key is absent. Delta snapshots are O(1) at ~860ns regardless
+  of tree size. RTT integration benchmark (`scroll_rtt`) measures real
+  end-to-end latency via `TestServerHarness` + gRPC v2 stubs: burst scroll
+  (30 keys) improved from 776ms to 62ms (12.5x). Criterion benchmark covers
+  node_count, update_scroll, snapshot (full), snapshot_cached (full with
+  cached nodes), and snapshot_delta (metadata-only) at 25/100/500 nodes.
+  New shared bench crate (`reovim-bench-utils`) provides VFS fixture factories,
+  Criterion re-exports, and scaling parameter sets.
 
 ## [0.9.4-dev]
 

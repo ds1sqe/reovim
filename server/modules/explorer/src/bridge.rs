@@ -46,40 +46,11 @@ impl ExtensionStateBridge for ExplorerBridge {
             ExplorerInputMode::ConfirmDelete => "confirmDelete",
         };
 
-        // Use cached nodes if available; otherwise flatten and cache.
-        let nodes_json = state.cached_nodes_json().unwrap_or_else(|| {
-            let nodes: Vec<serde_json::Value> = state
-                .tree
-                .as_ref()
-                .map(|tree| {
-                    tree.flatten_with_metadata(state.show_hidden)
-                        .into_iter()
-                        .map(|flat| {
-                            let (is_dir, is_expanded, size) = match &flat.node.node_type {
-                                NodeType::File { size } => (false, false, *size),
-                                NodeType::Directory { expanded, .. } => (true, *expanded, 0),
-                                NodeType::Symlink { .. } => (false, false, 0),
-                            };
-                            let is_symlink =
-                                matches!(flat.node.node_type, NodeType::Symlink { .. });
-                            serde_json::json!({
-                                "name": flat.node.name,
-                                "depth": flat.node.depth,
-                                "isDir": is_dir,
-                                "isExpanded": is_expanded,
-                                "isHidden": flat.node.is_hidden,
-                                "isLast": flat.is_last_child,
-                                "verticalLines": flat.vertical_lines,
-                                "isSymlink": is_symlink,
-                                "size": size,
-                            })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            state.set_cached_nodes_json(nodes.clone());
-            nodes
-        });
+        // Delta detection: if tree_generation matches snapshot_generation,
+        // the client already has the current nodes — emit metadata only.
+        let tree_gen = state.tree_generation();
+        let snap_gen = state.snapshot_generation();
+        let is_delta = tree_gen == snap_gen;
 
         let mut json = serde_json::json!({
             "active": true,
@@ -94,8 +65,46 @@ impl ExtensionStateBridge for ExplorerBridge {
             "inputMode": input_mode_str,
             "inputBuffer": state.input_buffer,
             "showHidden": state.show_hidden,
-            "nodes": nodes_json,
         });
+
+        if !is_delta {
+            // Full snapshot: include nodes and record the generation.
+            let nodes_json = state.cached_nodes_json().unwrap_or_else(|| {
+                let nodes: Vec<serde_json::Value> = state
+                    .tree
+                    .as_ref()
+                    .map(|tree| {
+                        tree.flatten_with_metadata(state.show_hidden)
+                            .into_iter()
+                            .map(|flat| {
+                                let (is_dir, is_expanded, size) = match &flat.node.node_type {
+                                    NodeType::File { size } => (false, false, *size),
+                                    NodeType::Directory { expanded, .. } => (true, *expanded, 0),
+                                    NodeType::Symlink { .. } => (false, false, 0),
+                                };
+                                let is_symlink =
+                                    matches!(flat.node.node_type, NodeType::Symlink { .. });
+                                serde_json::json!({
+                                    "name": flat.node.name,
+                                    "depth": flat.node.depth,
+                                    "isDir": is_dir,
+                                    "isExpanded": is_expanded,
+                                    "isHidden": flat.node.is_hidden,
+                                    "isLast": flat.is_last_child,
+                                    "verticalLines": flat.vertical_lines,
+                                    "isSymlink": is_symlink,
+                                    "size": size,
+                                })
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                state.set_cached_nodes_json(nodes.clone());
+                nodes
+            });
+            json["nodes"] = serde_json::json!(nodes_json);
+            state.set_snapshot_generation(tree_gen);
+        }
 
         if let Some(ref msg) = state.message {
             json["message"] = serde_json::json!(msg);
@@ -282,6 +291,46 @@ mod tests {
         assert!(nodes[1]["isDir"].as_bool().unwrap());
         assert_eq!(nodes[2]["name"], "main.rs");
         assert!(!nodes[2]["isDir"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn snapshot_delta_omits_nodes() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<ExplorerState>();
+        state.active = true;
+        state.root_path = PathBuf::from("/root");
+
+        // First snapshot: includes nodes (tree_gen=0, snap_gen=MAX)
+        let snap1 = ExplorerBridge.snapshot(&map).unwrap();
+        assert!(snap1.get("nodes").is_some(), "first snapshot should include nodes");
+
+        // Second snapshot: delta (tree_gen == snap_gen now)
+        let snap2 = ExplorerBridge.snapshot(&map).unwrap();
+        assert!(snap2.get("nodes").is_none(), "delta snapshot should omit nodes");
+        assert_eq!(snap2["cursorIndex"], 0);
+        assert_eq!(snap2["active"], true);
+    }
+
+    #[test]
+    fn snapshot_after_invalidate_includes_nodes() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<ExplorerState>();
+        state.active = true;
+        state.root_path = PathBuf::from("/root");
+
+        // First snapshot: full
+        ExplorerBridge.snapshot(&map);
+
+        // Second: delta (no nodes)
+        let snap_delta = ExplorerBridge.snapshot(&map).unwrap();
+        assert!(snap_delta.get("nodes").is_none());
+
+        // Invalidate tree (simulates expand/collapse)
+        map.get::<ExplorerState>().unwrap().invalidate_tree_cache();
+
+        // Third: full again (tree_gen bumped)
+        let snap_full = ExplorerBridge.snapshot(&map).unwrap();
+        assert!(snap_full.get("nodes").is_some(), "snapshot after invalidate should include nodes");
     }
 
     #[test]

@@ -97,10 +97,10 @@ fn bench_snapshot(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark `ExplorerBridge::snapshot()` on cache hit.
+/// Benchmark `ExplorerBridge::snapshot()` on cache hit (full nodes).
 ///
-/// Measures the cost when nodes JSON is already cached — only the
-/// top-level JSON envelope is rebuilt.
+/// Nodes JSON is already cached but `snapshot_generation` is reset before
+/// each iteration, forcing full node inclusion in the output JSON.
 fn bench_snapshot_cached(c: &mut Criterion) {
     let mut group = c.benchmark_group("explorer/snapshot_cached");
 
@@ -108,7 +108,36 @@ fn bench_snapshot_cached(c: &mut Criterion) {
         let fixture = TreeFixture::flat(size);
         let map = make_active_map(&fixture);
 
-        // Prime the cache
+        // Prime the nodes cache
+        ExplorerBridge.snapshot(&map);
+
+        group.bench_with_input(BenchmarkId::new("nodes", size), &size, |b, _| {
+            b.iter(|| {
+                // Reset snapshot_generation to force full-nodes output
+                map.get::<ExplorerState>()
+                    .unwrap()
+                    .set_snapshot_generation(u64::MAX);
+                ExplorerBridge.snapshot(&map)
+            });
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmark `ExplorerBridge::snapshot()` delta (metadata-only).
+///
+/// When `tree_generation == snapshot_generation`, the bridge omits the
+/// `"nodes"` array entirely — only cursor/scroll metadata is serialized.
+/// This is the hot path for cursor-only movements (j/k).
+fn bench_snapshot_delta(c: &mut Criterion) {
+    let mut group = c.benchmark_group("explorer/snapshot_delta");
+
+    for &size in SIZES_MEDIUM {
+        let fixture = TreeFixture::flat(size);
+        let map = make_active_map(&fixture);
+
+        // Prime the cache and set snapshot_generation
         ExplorerBridge.snapshot(&map);
 
         group.bench_with_input(BenchmarkId::new("nodes", size), &size, |b, _| {
@@ -125,5 +154,6 @@ criterion_group!(
     bench_update_scroll,
     bench_snapshot,
     bench_snapshot_cached,
+    bench_snapshot_delta,
 );
 criterion_main!(benches);

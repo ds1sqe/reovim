@@ -130,27 +130,27 @@ impl TuiExtension for ExplorerExtension {
             _ => String::new(),
         };
 
-        self.data.nodes = json["nodes"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .map(|item| NodeData {
-                        name: item["name"].as_str().unwrap_or("").to_owned(),
-                        depth: item["depth"].as_u64().unwrap_or(0) as usize,
-                        is_dir: item["isDir"].as_bool().unwrap_or(false),
-                        is_expanded: item["isExpanded"].as_bool().unwrap_or(false),
-                        is_hidden: item["isHidden"].as_bool().unwrap_or(false),
-                        is_last: item["isLast"].as_bool().unwrap_or(false),
-                        vertical_lines: item["verticalLines"]
-                            .as_array()
-                            .map(|a| a.iter().filter_map(serde_json::Value::as_bool).collect())
-                            .unwrap_or_default(),
-                        is_symlink: item["isSymlink"].as_bool().unwrap_or(false),
-                        size: item["size"].as_u64().unwrap_or(0),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Delta snapshot support: if the server omits "nodes", keep the
+        // existing node data (only metadata like cursorIndex changed).
+        if let Some(arr) = json["nodes"].as_array() {
+            self.data.nodes = arr
+                .iter()
+                .map(|item| NodeData {
+                    name: item["name"].as_str().unwrap_or("").to_owned(),
+                    depth: item["depth"].as_u64().unwrap_or(0) as usize,
+                    is_dir: item["isDir"].as_bool().unwrap_or(false),
+                    is_expanded: item["isExpanded"].as_bool().unwrap_or(false),
+                    is_hidden: item["isHidden"].as_bool().unwrap_or(false),
+                    is_last: item["isLast"].as_bool().unwrap_or(false),
+                    vertical_lines: item["verticalLines"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(serde_json::Value::as_bool).collect())
+                        .unwrap_or_default(),
+                    is_symlink: item["isSymlink"].as_bool().unwrap_or(false),
+                    size: item["size"].as_u64().unwrap_or(0),
+                })
+                .collect();
+        }
     }
 
     fn render(&self, backend: &mut dyn RenderBackend) {
@@ -336,6 +336,49 @@ mod tests {
         ext.render(&mut fb);
         // Verify header was rendered
         assert_eq!(fb.get(1, 0).map(|c| c.char), Some('p'));
+    }
+
+    #[test]
+    fn apply_delta_notification_keeps_existing_nodes() {
+        let mut ext = ExplorerExtension::new();
+
+        // First: full notification with nodes
+        ext.apply_notification(
+            r#"{"active":true,"rootName":"proj","cursorIndex":0,"scrollOffset":0,"width":30,"inputMode":"none","inputBuffer":"","showHidden":false,"nodes":[{"name":"src","depth":0,"isDir":true,"isExpanded":false,"isHidden":false,"isLast":true,"verticalLines":[],"isSymlink":false,"size":0}]}"#,
+        );
+        assert_eq!(ext.data.nodes.len(), 1);
+        assert_eq!(ext.data.nodes[0].name, "src");
+
+        // Second: delta notification (no "nodes" key), cursor moved
+        ext.apply_notification(
+            r#"{"active":true,"rootName":"proj","cursorIndex":5,"scrollOffset":2,"width":30,"inputMode":"none","inputBuffer":"","showHidden":false}"#,
+        );
+        // Nodes preserved from previous notification
+        assert_eq!(ext.data.nodes.len(), 1);
+        assert_eq!(ext.data.nodes[0].name, "src");
+        // Metadata updated
+        assert_eq!(ext.data.cursor_index, 5);
+        assert_eq!(ext.data.scroll_offset, 2);
+    }
+
+    #[test]
+    fn apply_full_notification_replaces_nodes() {
+        let mut ext = ExplorerExtension::new();
+
+        // Full notification with one node
+        ext.apply_notification(
+            r#"{"active":true,"rootName":"proj","cursorIndex":0,"scrollOffset":0,"width":30,"inputMode":"none","inputBuffer":"","showHidden":false,"nodes":[{"name":"old","depth":0,"isDir":false,"isExpanded":false,"isHidden":false,"isLast":true,"verticalLines":[],"isSymlink":false,"size":0}]}"#,
+        );
+        assert_eq!(ext.data.nodes.len(), 1);
+        assert_eq!(ext.data.nodes[0].name, "old");
+
+        // Full notification with different nodes
+        ext.apply_notification(
+            r#"{"active":true,"rootName":"proj","cursorIndex":0,"scrollOffset":0,"width":30,"inputMode":"none","inputBuffer":"","showHidden":false,"nodes":[{"name":"new1","depth":0,"isDir":true,"isExpanded":true,"isHidden":false,"isLast":false,"verticalLines":[],"isSymlink":false,"size":0},{"name":"new2","depth":1,"isDir":false,"isExpanded":false,"isHidden":false,"isLast":true,"verticalLines":[true],"isSymlink":false,"size":42}]}"#,
+        );
+        assert_eq!(ext.data.nodes.len(), 2);
+        assert_eq!(ext.data.nodes[0].name, "new1");
+        assert_eq!(ext.data.nodes[1].name, "new2");
     }
 
     #[test]

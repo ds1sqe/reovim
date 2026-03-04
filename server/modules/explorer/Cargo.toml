@@ -25,8 +25,10 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 reovim-bench-utils = { workspace = true }
+reovim-protocol = { workspace = true, features = ["grpc"] }
 reovim-testing = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tonic = { workspace = true }
 
 [[bench]]
 name = "explorer_scroll"

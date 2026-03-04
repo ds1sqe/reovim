@@ -6,7 +6,13 @@
 
 use {
     reovim_driver_session::{SessionExtension, TextInputSink},
-    std::{path::PathBuf, sync::Mutex},
+    std::{
+        path::PathBuf,
+        sync::{
+            Mutex,
+            atomic::{AtomicU64, Ordering},
+        },
+    },
 };
 
 use crate::tree::FileTree;
@@ -73,6 +79,15 @@ pub struct ExplorerState {
     cached_visible_count: Mutex<Option<usize>>,
     /// Cached serialized nodes for bridge snapshot (invalidated with tree).
     cached_nodes_json: Mutex<Option<Vec<serde_json::Value>>>,
+    /// Monotonic counter bumped on every tree-structure change.
+    ///
+    /// The bridge compares this with `snapshot_generation` to decide whether
+    /// to include the full `"nodes"` array or emit a delta (metadata-only).
+    tree_generation: AtomicU64,
+    /// The `tree_generation` value at the time of the last snapshot that
+    /// included the full `"nodes"` array. Starts at `u64::MAX` (sentinel)
+    /// so the first snapshot always includes nodes.
+    snapshot_generation: AtomicU64,
 }
 
 impl ExplorerState {
@@ -103,6 +118,8 @@ impl ExplorerState {
     ///
     /// Call this whenever the tree structure changes: expand, collapse,
     /// toggle hidden, refresh, or any file operation (create/rename/delete).
+    /// Also bumps `tree_generation` so the bridge knows to send full nodes
+    /// in the next snapshot.
     ///
     /// # Panics
     ///
@@ -110,6 +127,26 @@ impl ExplorerState {
     pub fn invalidate_tree_cache(&self) {
         *self.cached_visible_count.lock().unwrap() = None;
         *self.cached_nodes_json.lock().unwrap() = None;
+        self.tree_generation.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Current tree generation counter.
+    ///
+    /// Bumped by [`invalidate_tree_cache()`](Self::invalidate_tree_cache).
+    #[must_use]
+    pub fn tree_generation(&self) -> u64 {
+        self.tree_generation.load(Ordering::Relaxed)
+    }
+
+    /// Generation value of the last snapshot that included full nodes.
+    #[must_use]
+    pub fn snapshot_generation(&self) -> u64 {
+        self.snapshot_generation.load(Ordering::Relaxed)
+    }
+
+    /// Record that a full-nodes snapshot was emitted at the given generation.
+    pub fn set_snapshot_generation(&self, generation: u64) {
+        self.snapshot_generation.store(generation, Ordering::Relaxed);
     }
 
     /// Get the cached serialized nodes, if available.
@@ -183,6 +220,8 @@ impl SessionExtension for ExplorerState {
             tree: None,
             cached_visible_count: Mutex::new(None),
             cached_nodes_json: Mutex::new(None),
+            tree_generation: AtomicU64::new(0),
+            snapshot_generation: AtomicU64::new(u64::MAX),
         }
     }
 
@@ -499,6 +538,31 @@ mod tests {
 
         assert_eq!(state1.cursor_index, state2.cursor_index);
         assert_eq!(state1.scroll_offset, state2.scroll_offset);
+    }
+
+    #[test]
+    fn invalidate_bumps_tree_generation() {
+        let state = ExplorerState::create();
+        assert_eq!(state.tree_generation(), 0);
+
+        state.invalidate_tree_cache();
+        assert_eq!(state.tree_generation(), 1);
+
+        state.invalidate_tree_cache();
+        assert_eq!(state.tree_generation(), 2);
+    }
+
+    #[test]
+    fn snapshot_generation_starts_at_max() {
+        let state = ExplorerState::create();
+        assert_eq!(state.snapshot_generation(), u64::MAX);
+    }
+
+    #[test]
+    fn set_snapshot_generation_round_trip() {
+        let state = ExplorerState::create();
+        state.set_snapshot_generation(42);
+        assert_eq!(state.snapshot_generation(), 42);
     }
 
     #[test]
