@@ -2234,6 +2234,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-lsp",
  "reovim-module-macros",
+ "reovim-module-notification",
  "reovim-module-snippet",
  "serde_json",
  "tokio",

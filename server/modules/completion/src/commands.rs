@@ -27,6 +27,7 @@ use {
 use crate::{
     ids,
     lsp_source::{LspCompletionSource, map_lsp_item},
+    notification_queue::{PendingLevel, PendingNotificationQueue},
     state::{CompletionItemSnapshot, CompletionState},
 };
 
@@ -51,6 +52,9 @@ impl reovim_driver_command::Command for Trigger {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for Trigger {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        // Drain pending notifications from background threads.
+        drain_pending_notifications(runtime);
+
         // Build completion context from current buffer state.
         let Some(ctx) = build_context(runtime) else {
             return CommandResult::Success;
@@ -309,6 +313,38 @@ impl CommandHandler for Dismiss {
 // Helpers
 // ============================================================================
 
+/// Drain pending notifications from background threads into `NotificationState`.
+///
+/// Background threads (LSP completion, auto-start) push to
+/// `PendingNotificationQueue` in `ServiceRegistry`. This function drains the
+/// queue and forwards them to the per-client `NotificationState` so they
+/// appear as toast messages in the TUI/web client.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn drain_pending_notifications(runtime: &mut SessionRuntime<'_>) {
+    use reovim_module_notification::{NotificationLevel, NotificationState};
+
+    let queue = runtime.kernel().services.get::<PendingNotificationQueue>();
+    let Some(queue) = queue else { return };
+    let pending = queue.drain();
+    if pending.is_empty() {
+        return;
+    }
+
+    let state = runtime.ext_mut::<NotificationState>();
+    for notification in &pending {
+        let level = match notification.level {
+            PendingLevel::Info => NotificationLevel::Info,
+            PendingLevel::Success => NotificationLevel::Success,
+            PendingLevel::Warning => NotificationLevel::Warning,
+            PendingLevel::Error => NotificationLevel::Error,
+        };
+        state.push(level, &notification.title);
+    }
+    runtime
+        .take_changes()
+        .record_extension_change("notification".into());
+}
+
 /// Build a `CompletionContext` from the current buffer state.
 ///
 /// Returns `None` if there is no active buffer or window.
@@ -413,6 +449,7 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
 
     // Spawn a background thread to wait for the response and update cache.
     let lsp_source = services.get::<LspCompletionSource>();
+    let notify_queue = services.get::<PendingNotificationQueue>();
     std::thread::spawn(move || {
         let Some(source) = lsp_source else {
             return;
@@ -435,9 +472,15 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
             }
             Ok(Err(e)) => {
                 warn!("LSP completion error: {e}");
+                if let Some(q) = &notify_queue {
+                    q.push(PendingLevel::Warning, format!("LSP completion error: {e}"));
+                }
             }
             Err(_) => {
                 debug!("LSP completion response timed out");
+                if let Some(q) = &notify_queue {
+                    q.push(PendingLevel::Info, "LSP completion timed out");
+                }
             }
         }
     });
@@ -470,6 +513,11 @@ fn try_auto_start_lsp(
     let lang_owned = lang.to_owned();
     let file_path_owned = file_path.to_owned();
     let content_owned = buffer_content.to_owned();
+    let notify_queue = services.get::<PendingNotificationQueue>();
+
+    if let Some(q) = &notify_queue {
+        q.push(PendingLevel::Info, "Starting rust-analyzer...");
+    }
 
     // Use tokio runtime to spawn the async LSP server start.
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
@@ -490,9 +538,18 @@ fn try_auto_start_lsp(
                     let registry = services_clone.get_or_create::<LspProviderRegistry>();
                     registry.register(LspKey::Language(lang_owned), Arc::new(lsp_handle));
                     info!("rust-analyzer registered and ready");
+                    if let Some(q) = &notify_queue {
+                        q.push(PendingLevel::Success, "rust-analyzer ready");
+                    }
                 }
                 Err(e) => {
                     warn!("Failed to start rust-analyzer: {e}");
+                    if let Some(q) = &notify_queue {
+                        q.push(
+                            PendingLevel::Warning,
+                            format!("Failed to start rust-analyzer: {e}"),
+                        );
+                    }
                 }
             }
         });

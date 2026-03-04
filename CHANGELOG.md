@@ -33,6 +33,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   zero clippy warnings. Web client `CompletionExtension` renders the same popup
   via DOM (kind badge, label, detail, source columns) with CSS kind-specific
   colors, scroll windowing (max 10 visible items), and selection tracking.
+  LSP lifecycle toast notifications via `PendingNotificationQueue`: rust-analyzer
+  start/ready/error and LSP completion error/timeout events surface as user-visible
+  toasts through the notification system. 7 headless E2E integration tests verify
+  the full completion pipeline (trigger, confirm, dismiss, navigate, wraparound,
+  escape, no-match).
 
 - **Range-finder module - jump navigation and code folding (#524)**: Two-char
   jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).

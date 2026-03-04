@@ -15,6 +15,7 @@ pub mod buffer_words;
 pub mod commands;
 pub mod ids;
 pub mod lsp_source;
+pub mod notification_queue;
 pub mod state;
 
 pub use {bridge::CompletionBridge, state::CompletionState};
@@ -81,6 +82,9 @@ impl Module for CompletionModule {
             Arc::clone(&lsp_source) as Arc<dyn reovim_driver_completion::CompletionSource>
         );
         ctx.services.register(lsp_source);
+
+        // Register pending notification queue for background thread → UI bridge.
+        let _ = ctx.services.get_or_create::<notification_queue::PendingNotificationQueue>();
 
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
@@ -181,6 +185,10 @@ mod tests {
         // Verify LspCompletionSource is also in ServiceRegistry (for cache updates).
         let lsp_source = services.get::<lsp_source::LspCompletionSource>();
         assert!(lsp_source.is_some());
+
+        // Verify PendingNotificationQueue was registered.
+        let queue = services.get::<notification_queue::PendingNotificationQueue>();
+        assert!(queue.is_some());
 
         // Verify commands were registered.
         let command_store = services.get::<CommandHandlerStore>();
