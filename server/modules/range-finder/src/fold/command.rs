@@ -233,9 +233,7 @@ mod tests {
 
     use {
         reovim_driver_session::testing::TestSessionRuntime,
-        reovim_driver_syntax::{
-            FoldKind, FoldRange, HighlightSpan, SyntaxDriver, SyntaxEdit,
-        },
+        reovim_driver_syntax::{FoldKind, FoldRange, HighlightSpan, SyntaxDriver, SyntaxEdit},
         reovim_kernel::api::v1::BufferId,
     };
 

@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_picker::{PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, push_items},
+    reovim_driver_picker::{
+        PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, push_items,
+    },
     reovim_driver_session::{SessionExtension, TextInputSink},
     reovim_kernel::api::v1::ServiceRegistry,
 };

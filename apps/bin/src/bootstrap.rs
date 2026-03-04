@@ -26,7 +26,9 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_command::{CommandHandlerStore, ExCommandHandlerStore, ExCommandRegistry},
+    reovim_driver_command::{
+        CommandHandlerStore, CommandQueryService, ExCommandHandlerStore, ExCommandRegistry,
+    },
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
@@ -37,7 +39,6 @@ use {
         OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
-    reovim_driver_command::CommandQueryService,
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,

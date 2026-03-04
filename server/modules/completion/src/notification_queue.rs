@@ -7,10 +7,7 @@
 //! This avoids the problem that background threads lack `SessionRuntime`
 //! access needed for `NotificationState`.
 
-use {
-    parking_lot::Mutex,
-    reovim_kernel::api::v1::Service,
-};
+use {parking_lot::Mutex, reovim_kernel::api::v1::Service};
 
 /// Notification level matching [`reovim_module_notification::NotificationLevel`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

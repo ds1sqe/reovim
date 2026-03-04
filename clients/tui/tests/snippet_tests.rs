@@ -512,10 +512,7 @@ async fn test_tui_catalog_notification() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Enter normal mode, press <leader>sc (space + s + c)
-    handle
-        .send_keys("<Esc>")
-        .await
-        .expect("Failed to send Esc");
+    handle.send_keys("<Esc>").await.expect("Failed to send Esc");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -541,10 +538,7 @@ async fn test_tui_catalog_notification() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Catalog notification not visible: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Catalog notification not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -566,10 +560,7 @@ async fn test_tui_reload_notification() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Normal mode, press <leader>sr
-    handle
-        .send_keys("<Esc>")
-        .await
-        .expect("Failed to send Esc");
+    handle.send_keys("<Esc>").await.expect("Failed to send Esc");
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
@@ -594,10 +585,7 @@ async fn test_tui_reload_notification() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Reload notification not visible: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Reload notification not visible: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -638,10 +626,7 @@ async fn test_tui_global_snippet_always_available() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Global snippet expansion failed: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Global snippet expansion failed: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 

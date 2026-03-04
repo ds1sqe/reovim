@@ -566,9 +566,7 @@ mod tests {
         for row in bounds.panel_start_y..(bounds.panel_start_y + bounds.panel_height) {
             if backend.char_at(0, row) == '>' {
                 // Verify it's item_50 by checking display text starts after "> ".
-                let text: String = (2..10)
-                    .map(|col| backend.char_at(col, row))
-                    .collect();
+                let text: String = (2..10).map(|col| backend.char_at(col, row)).collect();
                 assert!(text.starts_with("item_50"), "selected row shows: {text}");
                 found_selected = true;
                 break;
@@ -613,17 +611,13 @@ mod tests {
 
         // First visible row should be item_03 (scroll offset = 3).
         let first_row = bounds.panel_start_y;
-        let text: String = (2..9)
-            .map(|col| backend.char_at(col, first_row))
-            .collect();
+        let text: String = (2..9).map(|col| backend.char_at(col, first_row)).collect();
         assert_eq!(text, "item_03");
 
         // Last visible row should be item_10 (selected, with '>').
         let last_row = bounds.panel_start_y + bounds.panel_height - 1;
         assert_eq!(backend.char_at(0, last_row), '>');
-        let text: String = (2..9)
-            .map(|col| backend.char_at(col, last_row))
-            .collect();
+        let text: String = (2..9).map(|col| backend.char_at(col, last_row)).collect();
         assert_eq!(text, "item_10");
     }
 
@@ -650,9 +644,7 @@ mod tests {
 
         // First item should be item_0 (no scroll).
         let first_row = bounds.panel_start_y;
-        let text: String = (2..8)
-            .map(|col| backend.char_at(col, first_row))
-            .collect();
+        let text: String = (2..8).map(|col| backend.char_at(col, first_row)).collect();
         assert_eq!(text, "item_0");
 
         // Third item (index 2) should have '>' indicator.

@@ -302,15 +302,17 @@ fn open_picker(
         .collect();
 
     // Collect command info from CommandQueryProvider (needed by command picker).
-    let commands: Vec<_> = services.get::<CommandQueryProvider>().map_or_else(Vec::new, |svc| {
-        svc.list_all()
-            .iter()
-            .map(|c| reovim_driver_picker::CommandInfo {
-                qualified_name: c.id.name().to_string(),
-                description: c.description.clone(),
-            })
-            .collect()
-    });
+    let commands: Vec<_> = services
+        .get::<CommandQueryProvider>()
+        .map_or_else(Vec::new, |svc| {
+            svc.list_all()
+                .iter()
+                .map(|c| reovim_driver_picker::CommandInfo {
+                    qualified_name: c.id.name().to_string(),
+                    description: c.description.clone(),
+                })
+                .collect()
+        });
 
     // Fetch items from the picker.
     let items = services

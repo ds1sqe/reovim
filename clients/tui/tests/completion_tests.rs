@@ -76,10 +76,7 @@ async fn test_completion_trigger_shows_popup() {
         }
         Err(e) => {
             let frame = handle.capture("plain_text").await.ok();
-            panic!(
-                "Completion popup not shown: {e}\nFrame:\n{}",
-                frame.unwrap_or_default()
-            );
+            panic!("Completion popup not shown: {e}\nFrame:\n{}", frame.unwrap_or_default());
         }
     }
 
@@ -117,10 +114,7 @@ async fn test_completion_confirm_inserts_text() {
         .expect("Popup should appear");
 
     // Confirm.
-    handle
-        .send_keys("<C-y>")
-        .await
-        .expect("Failed to confirm");
+    handle.send_keys("<C-y>").await.expect("Failed to confirm");
 
     // Wait for popup to disappear and text to be replaced.
     let frame = handle
@@ -130,10 +124,7 @@ async fn test_completion_confirm_inserts_text() {
         .await
         .expect("Confirm should replace prefix");
 
-    assert!(
-        frame.to_lowercase().contains("insert"),
-        "Should stay in INSERT mode"
-    );
+    assert!(frame.to_lowercase().contains("insert"), "Should stay in INSERT mode");
 
     handle.stop().await;
 }
@@ -168,10 +159,7 @@ async fn test_completion_dismiss_no_change() {
         .expect("Popup should appear");
 
     // Dismiss.
-    handle
-        .send_keys("<C-e>")
-        .await
-        .expect("Failed to dismiss");
+    handle.send_keys("<C-e>").await.expect("Failed to dismiss");
 
     // Wait for popup to disappear.
     let frame = handle
@@ -180,14 +168,8 @@ async fn test_completion_dismiss_no_change() {
         .expect("Popup should close on dismiss");
 
     // Text unchanged — "hel" is still there, not "hello".
-    assert!(
-        frame.contains("hel"),
-        "Text should not change on dismiss"
-    );
-    assert!(
-        frame.to_lowercase().contains("insert"),
-        "Should stay in INSERT mode"
-    );
+    assert!(frame.contains("hel"), "Text should not change on dismiss");
+    assert!(frame.to_lowercase().contains("insert"), "Should stay in INSERT mode");
 
     handle.stop().await;
 }
@@ -238,10 +220,7 @@ async fn test_completion_navigate_then_confirm() {
     // We can't predict exact order (depends on BufferWordsSource sort),
     // but the prefix "al" should be gone (replaced with a full word).
     let first_line = frame.lines().next().unwrap_or("");
-    assert!(
-        !first_line.ends_with("al"),
-        "Prefix 'al' should be replaced after confirm"
-    );
+    assert!(!first_line.ends_with("al"), "Prefix 'al' should be replaced after confirm");
 
     handle.stop().await;
 }
@@ -327,15 +306,10 @@ async fn test_completion_escape_dismisses() {
 
     // Escape exits insert mode. The popup may linger until the next
     // extension update cycle, so we verify mode change instead.
-    handle
-        .send_keys("<Esc>")
-        .await
-        .expect("Failed to send Esc");
+    handle.send_keys("<Esc>").await.expect("Failed to send Esc");
 
     let frame = handle
-        .wait_for(Duration::from_secs(2), |frame| {
-            frame.to_lowercase().contains("normal")
-        })
+        .wait_for(Duration::from_secs(2), |frame| frame.to_lowercase().contains("normal"))
         .await
         .expect("Should exit to NORMAL mode");
 
@@ -376,14 +350,8 @@ async fn test_completion_no_match_no_popup() {
         .await
         .expect("Failed to capture");
 
-    assert!(
-        !frame.contains('\u{256D}'),
-        "No popup should appear when no matches"
-    );
-    assert!(
-        frame.to_lowercase().contains("insert"),
-        "Should stay in INSERT mode"
-    );
+    assert!(!frame.contains('\u{256D}'), "No popup should appear when no matches");
+    assert!(frame.to_lowercase().contains("insert"), "Should stay in INSERT mode");
 
     handle.stop().await;
 }

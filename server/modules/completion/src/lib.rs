@@ -84,7 +84,9 @@ impl Module for CompletionModule {
         ctx.services.register(lsp_source);
 
         // Register pending notification queue for background thread → UI bridge.
-        let _ = ctx.services.get_or_create::<notification_queue::PendingNotificationQueue>();
+        let _ = ctx
+            .services
+            .get_or_create::<notification_queue::PendingNotificationQueue>();
 
         // Register command handlers.
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
