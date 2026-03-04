@@ -80,8 +80,10 @@ pub use provider::CommandProvider;
 // Re-export registry for ServiceRegistry (Epic #417 Part 3)
 pub use registry::CommandHandlerStore;
 
-// Re-export query service (#453)
-pub use query::{CommandInfo, CommandQueryService, ExCommandInfo, ExCommandQueryService};
+// Re-export query service (#453, #522)
+pub use query::{
+    CommandInfo, CommandQueryProvider, CommandQueryService, ExCommandInfo, ExCommandQueryService,
+};
 
 // Re-export ex-command dispatcher and registry (#465)
 pub use ex_dispatch::{ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext};

@@ -3,10 +3,10 @@
 //! Commands for opening pickers, navigating items, and selecting results.
 
 use {
-    reovim_driver_command::CommandHandler,
+    reovim_driver_command::{CommandHandler, CommandQueryProvider},
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_picker::{PickerAction, PickerContext, PickerRegistry, push_items},
-    reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
+    reovim_driver_session::{BufferApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
     reovim_kernel::api::v1::CommandId,
 };
 
@@ -281,9 +281,38 @@ fn open_picker(
     title: &str,
     prompt: &str,
 ) -> CommandResult {
-    // Fetch items from the picker before taking &mut state.
     // Clone the Arc<ServiceRegistry> to drop the &runtime borrow.
     let services = runtime.kernel().services.clone();
+
+    // Collect buffer info from kernel (needed by buffer picker).
+    let buffer_ids = runtime.kernel().buffers.list();
+    let buffers: Vec<_> = buffer_ids
+        .into_iter()
+        .map(|id| {
+            let name = runtime
+                .buffer_file_path(id)
+                .unwrap_or_else(|| format!("[{}]", id.as_usize()));
+            let modified = runtime.is_buffer_modified(id).unwrap_or(false);
+            reovim_driver_picker::BufferInfo {
+                id: id.as_usize(),
+                name,
+                modified,
+            }
+        })
+        .collect();
+
+    // Collect command info from CommandQueryProvider (needed by command picker).
+    let commands: Vec<_> = services.get::<CommandQueryProvider>().map_or_else(Vec::new, |svc| {
+        svc.list_all()
+            .iter()
+            .map(|c| reovim_driver_picker::CommandInfo {
+                qualified_name: c.id.name().to_string(),
+                description: c.description.clone(),
+            })
+            .collect()
+    });
+
+    // Fetch items from the picker.
     let items = services
         .get::<PickerRegistry>()
         .and_then(|registry| registry.get(picker_name))
@@ -292,8 +321,8 @@ fn open_picker(
                 let ctx = PickerContext {
                     cwd: std::env::current_dir().unwrap_or_default(),
                     query: String::new(),
-                    buffers: Vec::new(),
-                    commands: Vec::new(),
+                    buffers,
+                    commands,
                 };
                 picker.items(&ctx, &services)
             } else {
@@ -311,6 +340,7 @@ fn open_picker(
     title.clone_into(&mut state.picker_title);
     prompt.clone_into(&mut state.prompt);
     state.preview = None;
+    state.services = Some(services);
 
     // Feed items into the engine.
     state.engine.restart();
@@ -332,6 +362,7 @@ fn close_picker(runtime: &mut SessionRuntime<'_>) {
     state.full_items.clear();
     state.items.clear();
     state.engine.restart();
+    state.services = None;
 
     // Return to vim:normal mode (discriminant 0)
     let vim_normal = reovim_kernel::api::v1::ModeId::with_discriminant(

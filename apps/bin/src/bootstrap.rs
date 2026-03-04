@@ -37,6 +37,7 @@ use {
         OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
+    reovim_driver_command::CommandQueryService,
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
@@ -113,7 +114,12 @@ pub fn create_session_state() -> SessionState {
 
     // Register CommandQuerySnapshot for module command queries (#453)
     let command_query_snapshot = Arc::new(CommandQuerySnapshot::from_registry(&command_registry));
+    // Register CommandQueryProvider for module-level access (#522)
+    let command_query_provider = Arc::new(reovim_driver_command::CommandQueryProvider::new(
+        command_query_snapshot.list_all(),
+    ));
     services.register(command_query_snapshot);
+    services.register(command_query_provider);
 
     // Extract ex-command handlers and create registry (#465)
     extract_ex_command_registry(&services);

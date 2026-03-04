@@ -4,9 +4,12 @@
 //! Implements `TextInputSink` to receive character input from the
 //! input routing system when the microscope is active.
 
+use std::sync::Arc;
+
 use {
-    reovim_driver_picker::{PickerEngine, PickerItem, PreviewContent},
+    reovim_driver_picker::{PickerContext, PickerEngine, PickerItem, PickerRegistry, PreviewContent, push_items},
     reovim_driver_session::{SessionExtension, TextInputSink},
+    reovim_kernel::api::v1::ServiceRegistry,
 };
 
 /// Snapshot of a picker item for bridge serialization.
@@ -57,6 +60,8 @@ pub struct MicroscopeState {
     pub engine: PickerEngine,
     /// Full matched items (with `PickerData` for action dispatch).
     pub full_items: Vec<PickerItem>,
+    /// Service registry for dynamic picker re-fetch.
+    pub services: Option<Arc<ServiceRegistry>>,
 }
 
 impl SessionExtension for MicroscopeState {
@@ -76,6 +81,7 @@ impl SessionExtension for MicroscopeState {
             preview: None,
             engine: PickerEngine::new(),
             full_items: Vec::new(),
+            services: None,
         }
     }
 
@@ -122,7 +128,28 @@ impl MicroscopeState {
     ///
     /// Called after every query change (character insert, backspace) to
     /// refresh the fuzzy-matched result list from the engine.
+    /// For dynamic pickers (e.g. grep), re-fetches items on every query change.
     pub fn refresh_engine(&mut self) {
+        // For dynamic pickers, re-fetch items on every query change.
+        if let Some(services) = &self.services
+            && let Some(registry) = services.get::<PickerRegistry>()
+            && let Some(picker) = registry.get(&self.picker_name)
+            && !picker.is_static()
+        {
+            let ctx = PickerContext {
+                cwd: std::env::current_dir().unwrap_or_default(),
+                query: self.query.clone(),
+                buffers: Vec::new(),
+                commands: Vec::new(),
+            };
+            let items = picker.items(&ctx, services);
+            self.engine.restart();
+            if !items.is_empty() {
+                let injector = self.engine.injector();
+                push_items(&injector, items);
+            }
+        }
+
         self.engine.set_pattern(&self.query);
         // Tick until stable (bounded to avoid infinite loop).
         for _ in 0..100 {

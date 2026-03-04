@@ -120,6 +120,41 @@ pub trait CommandQueryService: Service + Send + Sync {
 }
 
 // ============================================================================
+// Command query provider for module access (#522)
+// ============================================================================
+
+/// Concrete service for module-level command discovery.
+///
+/// Stores a snapshot of command metadata so modules can list commands
+/// without depending on the server crate's `CommandQuerySnapshot`.
+/// Registered by the runner during bootstrap.
+pub struct CommandQueryProvider {
+    commands: Vec<CommandInfo>,
+}
+
+impl Service for CommandQueryProvider {}
+
+impl CommandQueryProvider {
+    /// Create from a list of command metadata.
+    #[must_use]
+    pub const fn new(commands: Vec<CommandInfo>) -> Self {
+        Self { commands }
+    }
+
+    /// List all registered commands.
+    #[must_use]
+    pub fn list_all(&self) -> &[CommandInfo] {
+        &self.commands
+    }
+
+    /// Get total command count.
+    #[must_use]
+    pub const fn count(&self) -> usize {
+        self.commands.len()
+    }
+}
+
+// ============================================================================
 // Ex-command query types (#453)
 // ============================================================================
 
@@ -366,5 +401,32 @@ mod tests {
     fn test_ex_command_query_service_object_safe() {
         fn _accepts_dyn(_: &dyn ExCommandQueryService) {}
         fn _accepts_box(_: Box<dyn ExCommandQueryService>) {}
+    }
+
+    // === CommandQueryProvider tests (#522) ===
+
+    #[test]
+    fn test_command_query_provider_empty() {
+        let provider = CommandQueryProvider::new(vec![]);
+        assert!(provider.list_all().is_empty());
+        assert_eq!(provider.count(), 0);
+    }
+
+    #[test]
+    fn test_command_query_provider_with_commands() {
+        let cmd = MockCommand::simple(&["w", "write"]);
+        let info = CommandInfo::from_command(&cmd);
+        let provider = CommandQueryProvider::new(vec![info]);
+        assert_eq!(provider.count(), 1);
+        assert_eq!(provider.list_all()[0].id.name(), "mock-cmd");
+    }
+
+    #[test]
+    fn test_command_query_provider_is_service() {
+        use reovim_kernel::api::v1::ServiceRegistry;
+        let provider = CommandQueryProvider::new(vec![]);
+        let registry = ServiceRegistry::new();
+        registry.register(std::sync::Arc::new(provider));
+        assert!(registry.get::<CommandQueryProvider>().is_some());
     }
 }
