@@ -242,6 +242,16 @@ fn execute_operator(
                     "Updated cursor after text-modifying operator"
                 );
             }
+
+            // Record buffer modification for notification pipeline.
+            // The operator writes directly to the kernel buffer via OperatorContext,
+            // bypassing SessionRuntime::delete_range() which normally calls
+            // record_buffer_modified(). We must record it explicitly so that
+            // StateChanges propagates to TUI for display refresh.
+            if operator.is_text_modifying() {
+                runtime.record_buffer_modified(buffer_id);
+            }
+
             CommandResult::Success
         }
         Err(e) => CommandResult::error(&e.to_string()),

@@ -386,6 +386,14 @@ impl<'a> SessionRuntime<'a> {
             .record_window_option_change(name, value, window_id);
     }
 
+    /// Record that a buffer was modified for notification emission.
+    ///
+    /// Call this after modifying buffer content directly (e.g., via `OperatorContext`
+    /// which bypasses `SessionRuntime`'s `BufferApi` methods like `delete_range()`).
+    pub fn record_buffer_modified(&mut self, buffer: BufferId) {
+        self.changes.record_buffer_modified(buffer);
+    }
+
     // === Per-Client Window Accessors (#471) ===
 
     /// Get the per-client windows.

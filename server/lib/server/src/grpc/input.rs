@@ -425,8 +425,10 @@ impl InputServiceImpl {
                     if let Some(transition) =
                         session.try_on_command_complete_for_client(client_id).await
                     {
-                        Self::apply_mode_transition_for_client(session, client_id, transition)
-                            .await;
+                        let pop_changes =
+                            Self::apply_mode_transition_for_client(session, client_id, transition)
+                                .await;
+                        changes.merge(pop_changes);
                     }
 
                     // Merge command changes into accumulated changes
@@ -470,7 +472,10 @@ impl InputServiceImpl {
                 ResolveResult::ModeTransition(transition) => {
                     // Per-client state (#471): Apply mode transition to per-client mode stack
                     tracing::debug!(?transition, %client_id, "Applying mode transition");
-                    Self::apply_mode_transition_for_client(session, client_id, transition).await;
+                    let pop_changes =
+                        Self::apply_mode_transition_for_client(session, client_id, transition)
+                            .await;
+                    changes.merge(pop_changes);
                     // Record mode change for notification
                     changes.record_mode_change();
                     (true, changes)
@@ -552,7 +557,7 @@ impl InputServiceImpl {
         session: &Session,
         client_id: ClientId,
         transition: ModeTransition,
-    ) {
+    ) -> StateChanges {
         // Update per-client mode stack via session's update_client_state
         let applied = session.update_client_state(client_id, |editing_state| {
             match transition.clone() {
@@ -591,11 +596,14 @@ impl InputServiceImpl {
         }
 
         // Handle pop result if provided (Phase #471: use per-client state)
+        // Returns StateChanges from command execution (e.g., buffer_modified from delete)
         if let ModeTransition::Pop {
             result: Some(pop_result),
         } = transition
         {
-            Self::handle_pop_result_for_client(session, client_id, pop_result);
+            Self::handle_pop_result_for_client(session, client_id, pop_result)
+        } else {
+            StateChanges::new()
         }
     }
 
@@ -603,7 +611,16 @@ impl InputServiceImpl {
     ///
     /// This ensures commands executed from pop results (like change operators)
     /// use per-client state for proper multi-client isolation.
-    fn handle_pop_result_for_client(session: &Session, client_id: ClientId, result: PopResult) {
+    ///
+    /// Returns `StateChanges` from command execution so the caller can merge
+    /// them into accumulated changes for notification emission.
+    fn handle_pop_result_for_client(
+        session: &Session,
+        client_id: ClientId,
+        result: PopResult,
+    ) -> StateChanges {
+        let mut changes = StateChanges::new();
+
         match result {
             PopResult::ExecuteCommand { command, args } => {
                 tracing::debug!(?command, %client_id, "Executing command from pop result (per-client)");
@@ -621,17 +638,22 @@ impl InputServiceImpl {
                 }
 
                 // Phase #471/#479: Execute with per-client state, log errors to ring buffer
-                if let Some((CommandResult::Error(ref e), _)) =
-                    session.execute_command_for_client(client_id, &command, &cmd_ctx)
-                {
-                    // Phase #479: Log command failure to ring buffer (visible, not silent)
-                    session.with_client_ring_buffer(client_id, |rb| {
-                        rb.log_event(
-                            ClientEventType::Error,
-                            format!("COMMAND_FAILED: cmd={command:?} error={e}"),
-                        );
-                    });
-                    tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                match session.execute_command_for_client(client_id, &command, &cmd_ctx) {
+                    Some((CommandResult::Error(ref e), cmd_changes)) => {
+                        changes.merge(cmd_changes);
+                        // Phase #479: Log command failure to ring buffer (visible, not silent)
+                        session.with_client_ring_buffer(client_id, |rb| {
+                            rb.log_event(
+                                ClientEventType::Error,
+                                format!("COMMAND_FAILED: cmd={command:?} error={e}"),
+                            );
+                        });
+                        tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                    }
+                    Some((_, cmd_changes)) => {
+                        changes.merge(cmd_changes);
+                    }
+                    None => {}
                 }
                 // Success/Quit/ForceQuit/Detach: handled elsewhere
                 // None (client not found or following): already logged in execute_command_for_client
@@ -646,6 +668,8 @@ impl InputServiceImpl {
                 tracing::trace!(?values, "Mode returned data");
             }
         }
+
+        changes
     }
 
     // NOTE (#471): `fallback_char_insert()` was REMOVED.
