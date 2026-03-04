@@ -177,14 +177,15 @@ mod tests {
     #[test]
     fn test_jump_search_starts_state_and_pushes_mode() {
         let cmd = JumpSearchCommand;
-        let mut harness = TestSessionRuntime::with_buffer("hello world");
+        let mut harness = TestSessionRuntime::with_buffer("hello world\nfoo bar");
+        let buffer_id = harness.active_buffer().unwrap();
         let mut args = CommandContext::new();
-        args.set_buffer_id(reovim_kernel::api::v1::BufferId::from_raw(0));
+        args.set_buffer_id(buffer_id);
 
         let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
         assert!(matches!(result, CommandResult::Success));
 
-        // Verify jump state was started.
+        // Verify jump state was started with buffer lines.
         harness.with_runtime(|rt| {
             let jump = rt.ext_mut::<JumpSessionState>();
             assert!(jump.is_active());
@@ -223,11 +224,29 @@ mod tests {
 
         // Verify cursor was moved.
         harness.with_runtime(|rt| {
-            if let Some(window) = rt.windows_mut().active_mut() {
-                assert_eq!(window.cursor.line, 0);
-                assert_eq!(window.cursor.column, 6);
-            }
+            let window = rt.windows_mut().active_mut().expect("active window");
+            assert_eq!(window.cursor.line, 0);
+            assert_eq!(window.cursor.column, 6);
         });
+    }
+
+    #[test]
+    fn test_jump_execute_no_window() {
+        let cmd = JumpExecuteCommand;
+        let mut harness = TestSessionRuntime::new();
+        let args = CommandContext::new();
+
+        // Set up a target without any window.
+        harness.with_runtime(|rt| {
+            let jump = rt.ext_mut::<JumpSessionState>();
+            jump.start(vec!["hello world".into()], 0, 0, Direction::Both);
+            jump.insert_char('w');
+            jump.insert_char('o');
+            assert!(jump.has_target());
+        });
+
+        let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
+        assert!(matches!(result, CommandResult::Success));
     }
 
     #[test]

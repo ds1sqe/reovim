@@ -220,6 +220,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_char_auto_jump_pops_with_execute() {
         let resolver = make_resolver();
         let mut ext = ExtensionMap::new();
@@ -230,15 +231,14 @@ mod tests {
         // "wo" has exactly one match -> auto-jump.
         resolve(&resolver, &make_char_key('w'), &mut ext);
         let result = resolve(&resolver, &make_char_key('o'), &mut ext);
-        if let ResolveResult::ModeTransition(ModeTransition::Pop {
+        let ResolveResult::ModeTransition(ModeTransition::Pop {
             result: Some(PopResult::ExecuteCommand { command, args }),
         }) = result
-        {
-            assert_eq!(command, ids::JUMP_EXECUTE);
-            assert!(args.is_empty());
-        } else {
-            panic!("expected ModeTransition::Pop with ExecuteCommand");
-        }
+        else {
+            panic!("expected Pop with ExecuteCommand");
+        };
+        assert_eq!(command, ids::JUMP_EXECUTE);
+        assert!(args.is_empty());
     }
 
     #[test]
@@ -275,6 +275,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_char_label_selection_completes() {
         let resolver = make_resolver();
         let mut ext = ExtensionMap::new();
@@ -295,14 +296,13 @@ mod tests {
 
         // Select the label.
         let result = resolve(&resolver, &make_char_key(first_label), &mut ext);
-        if let ResolveResult::ModeTransition(ModeTransition::Pop {
+        let ResolveResult::ModeTransition(ModeTransition::Pop {
             result: Some(PopResult::ExecuteCommand { command, .. }),
         }) = result
-        {
-            assert_eq!(command, ids::JUMP_EXECUTE);
-        } else {
-            panic!("expected ModeTransition::Pop with ExecuteCommand");
-        }
+        else {
+            panic!("expected Pop with ExecuteCommand");
+        };
+        assert_eq!(command, ids::JUMP_EXECUTE);
     }
 
     #[test]
