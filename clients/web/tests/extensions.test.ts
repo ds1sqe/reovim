@@ -138,15 +138,16 @@ const DEFAULT_DELAY_MS = 500;
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 4 extensions with correct kinds", () => {
+  it("createExtensions returns 5 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(4);
+    expect(extensions).toHaveLength(5);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
     expect(kinds).toContain("whichkey");
     expect(kinds).toContain("notification");
     expect(kinds).toContain("microscope");
+    expect(kinds).toContain("completion");
   });
 
   it("extensions start inactive", () => {

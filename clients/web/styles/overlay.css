@@ -91,6 +91,13 @@
   max-width: 150px;
 }
 
+.completion-source {
+  font-size: 0.75em;
+  color: var(--theme-text-muted);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .completion-empty {
   padding: 12px;
   text-align: center;

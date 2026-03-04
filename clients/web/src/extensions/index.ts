@@ -10,13 +10,15 @@ export { CmdlineExtension } from "./cmdline.js";
 export { WhichKeyExtension } from "./whichkey.js";
 export { NotificationExtension } from "./notification.js";
 export { MicroscopeExtension } from "./microscope.js";
+export { CompletionExtension } from "./completion.js";
 
 import type { WebExtension } from "./interface.js";
 import { CmdlineExtension } from "./cmdline.js";
 import { WhichKeyExtension } from "./whichkey.js";
 import { NotificationExtension } from "./notification.js";
 import { MicroscopeExtension } from "./microscope.js";
+import { CompletionExtension } from "./completion.js";
 
 export function createExtensions(): WebExtension[] {
-  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension()];
+  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension(), new CompletionExtension()];
 }

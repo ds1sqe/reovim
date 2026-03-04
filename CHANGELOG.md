@@ -30,7 +30,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `.rs` files (project root detection via `Cargo.toml`), background LSP completion
   requests with 10s timeout and cache update, and Confirm command (`<C-y>`)
   replaces typed prefix with selected item. 157 unit tests, 100% MC/DC coverage,
-  zero clippy warnings.
+  zero clippy warnings. Web client `CompletionExtension` renders the same popup
+  via DOM (kind badge, label, detail, source columns) with CSS kind-specific
+  colors, scroll windowing (max 10 visible items), and selection tracking.
 
 - **Range-finder module - jump navigation and code folding (#524)**: Two-char
   jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).
