@@ -90,6 +90,7 @@ impl InputService for InputServiceImpl {
     /// - State changes are accumulated and emitted as notifications
     ///
     /// When modules are NOT loaded (empty registries), falls back to character insertion.
+    #[allow(clippy::too_many_lines)]
     async fn send_keys(
         &self,
         request: Request<SendKeysRequest>,
@@ -198,20 +199,49 @@ impl InputService for InputServiceImpl {
         // Most key operations move the cursor (typing, motions, commands like `o`).
         // `record_cursor_move` is idempotent on `affected_buffers`, so calling it
         // even when InsertChar already recorded cursor_move is safe (#505).
-        #[allow(clippy::redundant_closure_for_method_calls)]
-        if any_handled && let Some(buffer_id) = session.with_state(|s| s.active_buffer()).await {
+        // Per-client active_buffer (#471)
+        if any_handled
+            && let Some(buffer_id) = session
+                .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
+        {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
+        // Viewport scroll tracking: adjust scroll_top so cursor stays visible.
+        if any_handled {
+            let scrolled_window = session.with_clients_mut(|clients| {
+                let client = clients.get_mut(&client_id)?;
+                let window = client.state.windows.active_mut()?;
+                if window.viewport.ensure_cursor_visible(window.cursor.line) {
+                    Some(window.id)
+                } else {
+                    None
+                }
+            });
+            if let Some(window_id) = scrolled_window {
+                accumulated_changes.record_scroll_change(window_id);
+            }
+        }
+
         // #474: Auto-detect selection changes (defense-in-depth).
-        #[allow(clippy::redundant_closure_for_method_calls)]
         if let Some(state) = session.client_state(client_id) {
-            let active_buffer = session.with_state(|s| s.active_buffer()).await;
             Self::ensure_selection_change_recorded(
                 &mut accumulated_changes,
                 &state.windows,
-                active_buffer,
+                state.active_buffer,
             );
+        }
+
+        // Auto-emit presence update on buffer/window change (#471).
+        if accumulated_changes.window_changed || accumulated_changes.focus_changed {
+            let new_buffer_id = session.with_clients(|clients| {
+                let window = clients.get(&client_id)?.state.windows.active()?;
+                Some(window.buffer_id?.as_usize())
+            });
+            session.presence().update(client_id, |p| {
+                p.buffer_id = new_buffer_id;
+            });
+            accumulated_changes.record_presence_change(client_id.as_usize());
         }
 
         // #514/#468/#469: Generic bridge change detection — emit on toggle AND on
@@ -632,8 +662,10 @@ impl InputServiceImpl {
                 }
 
                 // Set active buffer ID (required for operators like delete/yank)
-                #[allow(clippy::redundant_closure_for_method_calls)]
-                if let Some(buffer_id) = session.with_state_sync(|state| state.active_buffer()) {
+                // Per-client active_buffer (#471)
+                if let Some(buffer_id) = session
+                    .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
+                {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
@@ -1558,19 +1590,10 @@ mod tests {
         let client_id = ClientId::new(1);
         session.add_client(client_id);
 
-        // Set active buffer via session state
-        tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap()
-            .block_on(async {
-                session
-                    .with_state_mut(|state| {
-                        state
-                            .driver_session
-                            .set_active_buffer(Some(BufferId::from_raw(5)));
-                    })
-                    .await;
-            });
+        // Set active buffer via per-client state (#471)
+        session.update_client_state(client_id, |state| {
+            state.active_buffer = Some(BufferId::from_raw(5));
+        });
 
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),

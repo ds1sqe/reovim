@@ -292,8 +292,8 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
         EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
     };
 
-    // Only trigger if no buffers exist
-    if state.active_buffer().is_some() {
+    // Only trigger if no buffers exist (check kernel buffer list)
+    if !state.app.kernel.buffers.list().is_empty() {
         return;
     }
 

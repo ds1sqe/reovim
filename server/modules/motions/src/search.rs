@@ -564,6 +564,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -576,6 +578,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &ctx,
             &executor,
@@ -681,6 +685,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -693,6 +699,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -719,6 +727,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -731,6 +741,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -762,6 +774,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -774,6 +788,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -803,6 +819,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -815,6 +833,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -844,6 +864,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -856,6 +878,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -892,6 +916,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -904,6 +930,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -940,6 +968,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -952,6 +982,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1004,6 +1036,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1016,6 +1050,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1044,6 +1080,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1056,6 +1094,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1088,6 +1128,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1100,6 +1142,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1145,6 +1189,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1157,6 +1203,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1188,6 +1236,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1200,6 +1250,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1348,6 +1400,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1360,6 +1414,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1395,6 +1451,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1407,6 +1465,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1444,6 +1504,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1456,6 +1518,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1495,6 +1559,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1507,6 +1573,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1538,6 +1606,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1550,6 +1620,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1582,6 +1654,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1594,6 +1668,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1626,6 +1702,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1638,6 +1716,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1669,6 +1749,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1681,6 +1763,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1713,6 +1797,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1725,6 +1811,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1760,6 +1848,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1772,6 +1862,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1809,6 +1901,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1821,6 +1915,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1857,6 +1953,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1869,6 +1967,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1902,6 +2002,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1914,6 +2016,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -1946,6 +2050,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -1958,6 +2064,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2015,6 +2123,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2027,6 +2137,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2051,6 +2163,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2063,6 +2177,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2088,6 +2204,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2100,6 +2218,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2127,6 +2247,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2139,6 +2261,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2172,6 +2296,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2184,6 +2310,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2212,6 +2340,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2224,6 +2354,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2252,6 +2384,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2264,6 +2398,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2301,6 +2437,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2313,6 +2451,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -2344,6 +2484,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let executor = StubExecutor;
         let mut runtime = SessionRuntime::new(
             &mut session,
@@ -2356,6 +2498,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,

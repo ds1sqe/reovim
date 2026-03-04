@@ -321,6 +321,8 @@ mod tests {
         registers: RegisterBank,
         clipboard_history: HistoryRing,
         local_marks: MarkBank,
+        active_buffer: Option<BufferId>,
+        terminal_size: (u16, u16),
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -337,11 +339,13 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             };
             let mut window = Window::new();
             window.buffer_id = Some(buffer_id);
             state.windows.add(window);
-            state.session.set_active_buffer(Some(buffer_id));
+            state.active_buffer = Some(buffer_id);
             state
         }
 
@@ -361,6 +365,8 @@ mod tests {
                     registers: &mut self.registers,
                     clipboard_history: &mut self.clipboard_history,
                     local_marks: &mut self.local_marks,
+                    active_buffer: &mut self.active_buffer,
+                    terminal_size: &mut self.terminal_size,
                 },
                 kernel,
                 executor,
@@ -457,6 +463,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let mut runtime = SessionRuntime::new(
             &mut session,
             reovim_driver_session::ClientContext {
@@ -468,6 +476,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,
@@ -493,6 +503,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let mut runtime = SessionRuntime::new(
             &mut session,
             reovim_driver_session::ClientContext {
@@ -504,6 +516,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &kernel,
             &executor,

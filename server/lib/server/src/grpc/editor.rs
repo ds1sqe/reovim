@@ -114,46 +114,58 @@ impl EditorService for EditorServiceImpl {
     }
 
     /// Set the active buffer.
+    ///
+    /// Per-client `active_buffer` (#471): sets the calling client's active buffer.
     #[allow(clippy::cast_possible_truncation)]
     async fn set_active_buffer(
         &self,
         request: Request<SetActiveBufferRequest>,
     ) -> Result<Response<SetActiveBufferResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
 
         let buffer_id = BufferId::from_raw(req.buffer_id as usize);
 
-        // Verify buffer exists and set as active
-        let ok = session
-            .with_state_mut(|state| {
-                if state.buffer(buffer_id).is_some() {
-                    state.set_active_buffer(Some(buffer_id));
-                    true
-                } else {
-                    false
-                }
-            })
+        // Verify buffer exists
+        let exists = session
+            .with_state(|state| state.buffer(buffer_id).is_some())
             .await;
 
-        if ok {
-            Ok(Response::new(SetActiveBufferResponse { ok: true }))
-        } else {
-            Err(Status::not_found(format!("Buffer {} not found", req.buffer_id)))
+        if !exists {
+            return Err(Status::not_found(format!("Buffer {} not found", req.buffer_id)));
         }
+
+        // Set per-client active_buffer (#471)
+        if let Some(cid) = client_id {
+            session.update_client_state(cid, |state| {
+                state.active_buffer = Some(buffer_id);
+            });
+        }
+
+        Ok(Response::new(SetActiveBufferResponse { ok: true }))
     }
 
     /// Get the active buffer ID.
+    ///
+    /// Per-client `active_buffer` (#471): returns the calling client's active buffer.
     #[allow(clippy::cast_possible_truncation)]
     async fn get_active_buffer(
         &self,
-        _request: Request<GetActiveBufferRequest>,
+        request: Request<GetActiveBufferRequest>,
     ) -> Result<Response<GetActiveBufferResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
         let session = self.get_session()?;
 
-        let buffer_id = session
-            .with_state(|state| state.active_buffer().map(|id| id.as_usize() as u64))
-            .await;
+        // Per-client active_buffer (#471)
+        let buffer_id = client_id.and_then(|cid| {
+            session
+                .with_clients(|clients| {
+                    clients
+                        .get(&cid)
+                        .and_then(|c| c.state.active_buffer.map(|id| id.as_usize() as u64))
+                })
+        });
 
         Ok(Response::new(GetActiveBufferResponse { buffer_id }))
     }

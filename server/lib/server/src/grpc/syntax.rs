@@ -266,7 +266,7 @@ impl SyntaxService for SyntaxServiceImpl {
         session
             .with_state_mut(|state| {
                 let buffer_id = requested_buffer_id
-                    .or_else(|| state.active_buffer())
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {

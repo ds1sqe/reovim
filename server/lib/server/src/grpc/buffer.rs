@@ -66,7 +66,7 @@ impl BufferService for BufferServiceImpl {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -109,7 +109,7 @@ impl BufferService for BufferServiceImpl {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -139,7 +139,7 @@ impl BufferService for BufferServiceImpl {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 // Return empty annotations for now

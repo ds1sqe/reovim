@@ -97,6 +97,10 @@ pub struct TestSessionRuntime {
     clipboard_history: HistoryRing,
     /// Per-client local marks (#515).
     local_marks: MarkBank,
+    /// Per-client active buffer (#471).
+    active_buffer: Option<BufferId>,
+    /// Per-client terminal dimensions (#471).
+    terminal_size: (u16, u16),
     kernel: KernelContext,
     executor: StubExecutor,
     /// Accumulated changes from operations.
@@ -141,6 +145,8 @@ impl TestSessionRuntime {
             registers: RegisterBank::new(),                             // Per-client (#515)
             clipboard_history: HistoryRing::new(),                      // Per-client (#515)
             local_marks: MarkBank::new(),                               // Per-client (#515)
+            active_buffer: None,                                        // Per-client (#471)
+            terminal_size: (80, 24),                                    // Per-client (#471)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -160,6 +166,8 @@ impl TestSessionRuntime {
             registers: RegisterBank::new(),                        // Per-client (#515)
             clipboard_history: HistoryRing::new(),                 // Per-client (#515)
             local_marks: MarkBank::new(),                          // Per-client (#515)
+            active_buffer: None,                                   // Per-client (#471)
+            terminal_size: (80, 24),                               // Per-client (#471)
             kernel: Self::make_test_kernel(),
             executor: StubExecutor,
             changes: StateChanges::new(),
@@ -180,8 +188,8 @@ impl TestSessionRuntime {
         window.buffer_id = Some(buffer_id);
         test.windows.add(window); // Use self.windows, NOT self.session.windows
 
-        // Set the active buffer (SSOT for session state)
-        test.session.set_active_buffer(Some(buffer_id));
+        // Set the active buffer (per-client state)
+        test.active_buffer = Some(buffer_id);
 
         test
     }
@@ -222,6 +230,8 @@ impl TestSessionRuntime {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            active_buffer: &mut self.active_buffer,
+            terminal_size: &mut self.terminal_size,
         };
         let mut runtime =
             SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor);
@@ -250,6 +260,8 @@ impl TestSessionRuntime {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            active_buffer: &mut self.active_buffer,
+            terminal_size: &mut self.terminal_size,
         };
         SessionRuntime::new(&mut self.session, client, &self.kernel, &self.executor)
     }
@@ -334,8 +346,7 @@ impl TestSessionRuntime {
     /// Panics if no active buffer or content doesn't match.
     pub fn assert_buffer_content(&self, expected: &str) {
         let buffer_id = self
-            .session
-            .active_buffer()
+            .active_buffer
             .expect("No active buffer for content assertion");
         let buffer = self
             .kernel
@@ -356,8 +367,7 @@ impl TestSessionRuntime {
     /// Panics if no active buffer or line count doesn't match.
     pub fn assert_line_count(&self, expected: usize) {
         let buffer_id = self
-            .session
-            .active_buffer()
+            .active_buffer
             .expect("No active buffer for line count assertion");
         let buffer = self
             .kernel
@@ -389,7 +399,7 @@ impl TestSessionRuntime {
     /// Get the active buffer ID, if any.
     #[must_use]
     pub const fn active_buffer(&self) -> Option<BufferId> {
-        self.session.active_buffer()
+        self.active_buffer
     }
 
     /// Get the cursor position for the active buffer.
@@ -403,8 +413,7 @@ impl TestSessionRuntime {
     /// Get buffer content for the active buffer.
     #[must_use]
     pub fn buffer_content(&self) -> Option<String> {
-        self.session
-            .active_buffer()
+        self.active_buffer
             .and_then(|id| self.kernel.buffers.get(id).map(|b| b.read().content()))
     }
 
