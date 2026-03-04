@@ -50,6 +50,10 @@ members = [
     "server/modules/notification",
     "server/modules/microscope",
     "server/modules/explorer",
+    "server/modules/picker-files",
+    "server/modules/picker-buffers",
+    "server/modules/picker-commands",
+    "server/modules/picker-grep",
     "server/modules/treesitter-markdown",
     "server/modules/lsp",
     "server/modules/snippet",
@@ -219,6 +223,10 @@ reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.9.5-
 reovim-module-notification = { path = "./server/modules/notification", version = "0.9.5-dev" }
 reovim-module-microscope = { path = "./server/modules/microscope", version = "0.9.5-dev" }
 reovim-module-explorer = { path = "./server/modules/explorer", version = "0.9.5-dev" }
+reovim-picker-files = { path = "./server/modules/picker-files", version = "0.9.5-dev" }
+reovim-picker-buffers = { path = "./server/modules/picker-buffers", version = "0.9.5-dev" }
+reovim-picker-commands = { path = "./server/modules/picker-commands", version = "0.9.5-dev" }
+reovim-picker-grep = { path = "./server/modules/picker-grep", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
 reovim-module-lsp = { path = "./server/modules/lsp", version = "0.9.5-dev" }
 reovim-module-snippet = { path = "./server/modules/snippet", version = "0.9.5-dev" }

@@ -14,4 +14,5 @@ workspace = true
 
 [dependencies]
 reovim-kernel = { workspace = true }
+reovim-driver-session = { workspace = true }
 nucleo = { workspace = true }

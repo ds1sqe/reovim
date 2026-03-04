@@ -1,20 +1,23 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Microscope fuzzy finder module - POLICY layer.
 //!
-//! Orchestrates the fuzzy finder UI: registers built-in pickers, provides
-//! session state management, and bridges state to clients.
+//! Orchestrates the fuzzy finder UI: provides session state management,
+//! command handlers, and bridges state to clients.
 //!
 //! # Architecture (#522)
 //!
 //! This module reads from driver-picker's `PickerRegistry` and owns the
 //! per-client `MicroscopeState` stored in `ExtensionMap`. The bridge
 //! serializes state to JSON consumed by both TUI and Web extensions.
+//!
+//! Picker data sources (files, buffers, grep, commands) live in separate
+//! `reovim-picker-*` crates. Each picker implements `Picker::execute()`
+//! for its own action dispatch.
 
 pub mod bridge;
 pub mod commands;
 pub mod ids;
 pub mod modes;
-pub mod pickers;
 pub mod resolver;
 pub mod state;
 
@@ -23,7 +26,6 @@ pub use {bridge::MicroscopeBridge, state::MicroscopeState};
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
-    reovim_driver_picker::PickerRegistry,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
@@ -32,9 +34,9 @@ use {
 
 /// Microscope fuzzy finder module.
 ///
-/// Registers [`MicroscopeBridge`] and creates the [`PickerRegistry`]
-/// service during `init()`. Also registers commands, modes, and keybindings
-/// for the fuzzy finder.
+/// Registers [`MicroscopeBridge`] and commands, modes, and keybindings
+/// for the fuzzy finder. Picker data sources are registered by separate
+/// `reovim-picker-*` modules.
 pub struct MicroscopeModule;
 
 impl MicroscopeModule {
@@ -68,13 +70,6 @@ impl Module for MicroscopeModule {
         // Register MicroscopeBridge via BridgeProvider.
         let provider = ctx.services.get_or_create::<BridgeProvider>();
         provider.register(MicroscopeBridge);
-
-        // Register built-in pickers.
-        let registry = ctx.services.get_or_create::<PickerRegistry>();
-        registry.register(std::sync::Arc::new(pickers::files::FilesPicker));
-        registry.register(std::sync::Arc::new(pickers::buffers::BuffersPicker));
-        registry.register(std::sync::Arc::new(pickers::grep::GrepPicker));
-        registry.register(std::sync::Arc::new(pickers::commands::CommandsPicker));
 
         // Register modes.
         let mode_store = ctx.services.get_or_create::<ModeInfoStore>();
@@ -190,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn module_init_registers_bridge_and_registry() {
+    fn module_init_registers_bridge_and_services() {
         use {reovim_kernel::api::v1::ServiceRegistry, std::sync::Arc};
 
         let services = Arc::new(ServiceRegistry::new());
@@ -205,16 +200,6 @@ mod tests {
         let bridges = provider.take_bridges();
         assert_eq!(bridges.len(), 1);
         assert_eq!(bridges[0].kind(), "microscope");
-
-        // Verify PickerRegistry was created with built-in pickers.
-        let registry = services.get::<PickerRegistry>();
-        assert!(registry.is_some());
-        let reg = registry.unwrap();
-        assert_eq!(reg.len(), 4);
-        assert!(reg.get("files").is_some());
-        assert!(reg.get("buffers").is_some());
-        assert!(reg.get("grep").is_some());
-        assert!(reg.get("commands").is_some());
 
         // Verify modes were registered.
         let mode_store = services.get::<ModeInfoStore>();

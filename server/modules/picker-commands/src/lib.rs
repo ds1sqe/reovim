@@ -1,9 +1,26 @@
-//! Commands picker - command palette for registered commands.
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+//! Command picker module for reovim.
+//!
+//! Provides a command palette for registered commands.
+//! Registers `CommandsPicker` in the `PickerRegistry` during module init.
+
+use std::sync::Arc;
 
 use {
-    reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem},
-    reovim_kernel::api::v1::ServiceRegistry,
+    reovim_driver_command_types::CommandContext,
+    reovim_driver_picker::{
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
+        SessionRuntime,
+    },
+    reovim_driver_session::CommandApi,
+    reovim_kernel::api::v1::{
+        CommandId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    },
 };
+
+// ============================================================================
+// CommandsPicker
+// ============================================================================
 
 /// Picker that lists registered commands.
 ///
@@ -34,7 +51,7 @@ impl Picker for CommandsPicker {
         "Commands"
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
         ctx.commands
             .iter()
             .map(|cmd| PickerItem {
@@ -52,7 +69,66 @@ impl Picker for CommandsPicker {
             _ => PickerAction::Close,
         }
     }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, action: PickerAction, runtime: &mut SessionRuntime<'_>) {
+        if let PickerAction::ExecuteCommand(qualified) = action {
+            let cmd = CommandId::from_qualified_leaked(qualified);
+            let ctx = CommandContext::new();
+            runtime.execute_command(cmd, ctx);
+        }
+    }
 }
+
+// ============================================================================
+// Module implementation
+// ============================================================================
+
+/// Command picker module.
+///
+/// Registers `CommandsPicker` in `PickerRegistry` during init.
+pub struct PickerCommandsModule;
+
+impl PickerCommandsModule {
+    /// Create a new instance.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for PickerCommandsModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for PickerCommandsModule {
+    fn id(&self) -> ModuleId {
+        ModuleId::new("picker-commands")
+    }
+
+    fn name(&self) -> &'static str {
+        "Command Picker"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 1, 0)
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        let registry = ctx.services.get_or_create::<PickerRegistry>();
+        registry.register(Arc::new(CommandsPicker));
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(PickerCommandsModule);
 
 #[cfg(test)]
 mod tests {
@@ -62,8 +138,8 @@ mod tests {
 
     use super::*;
 
-    fn services() -> ServiceRegistry {
-        ServiceRegistry::new()
+    fn services() -> reovim_kernel::api::v1::ServiceRegistry {
+        reovim_kernel::api::v1::ServiceRegistry::new()
     }
 
     fn empty_ctx() -> PickerContext {
@@ -174,5 +250,60 @@ mod tests {
             icon: None,
         };
         assert!(picker.preview(&item, &services()).is_none());
+    }
+
+    // -- Module tests --
+
+    #[test]
+    fn module_id() {
+        let module = PickerCommandsModule::new();
+        assert_eq!(module.id().as_str(), "picker-commands");
+    }
+
+    #[test]
+    fn module_name() {
+        let module = PickerCommandsModule::new();
+        assert_eq!(module.name(), "Command Picker");
+    }
+
+    #[test]
+    fn module_version() {
+        let module = PickerCommandsModule::new();
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 1);
+    }
+
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn module_default() {
+        let module = PickerCommandsModule::default();
+        assert_eq!(module.id().as_str(), "picker-commands");
+    }
+
+    #[test]
+    fn module_exit() {
+        let mut module = PickerCommandsModule::new();
+        assert!(module.exit().is_ok());
+    }
+
+    #[test]
+    fn module_init_registers_picker() {
+        let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            reovim_kernel::api::v1::KernelContext::default(),
+            services.clone(),
+            PathBuf::from("/tmp"),
+            PathBuf::from("/tmp"),
+        );
+
+        let mut module = PickerCommandsModule::new();
+        let result = module.init(&ctx);
+        assert!(matches!(result, ProbeResult::Success));
+
+        let registry = services.get::<PickerRegistry>();
+        assert!(registry.is_some());
+        let reg = registry.unwrap();
+        assert!(reg.get("commands").is_some());
     }
 }

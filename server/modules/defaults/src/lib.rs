@@ -54,6 +54,8 @@ use {
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
     reovim_module_whichkey as whichkey,
+    reovim_picker_buffers as picker_buffers, reovim_picker_commands as picker_commands,
+    reovim_picker_files as picker_files, reovim_picker_grep as picker_grep,
 };
 
 /// Default modules bundle.
@@ -108,7 +110,12 @@ impl DefaultsModule {
             Box::new(cmdline::CmdlineModule::new()),
             Box::new(whichkey::WhichKeyModule::new()),
             Box::new(notification::NotificationModule::new()),
-            // Picker module (#522)
+            // Picker data providers (#522)
+            Box::new(picker_files::PickerFilesModule::new()),
+            Box::new(picker_buffers::PickerBuffersModule::new()),
+            Box::new(picker_commands::PickerCommandsModule::new()),
+            Box::new(picker_grep::PickerGrepModule::new()),
+            // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
@@ -169,7 +176,12 @@ impl Module for DefaultsModule {
             ModuleId::new("cmdline"),
             ModuleId::new("whichkey"),
             ModuleId::new("notification"),
-            // Picker module (#522)
+            // Picker data providers (#522)
+            ModuleId::new("picker-files"),
+            ModuleId::new("picker-buffers"),
+            ModuleId::new("picker-commands"),
+            ModuleId::new("picker-grep"),
+            // Picker orchestration (#522)
             ModuleId::new("microscope"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
@@ -250,15 +262,16 @@ mod tests {
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (3): cmdline, whichkey, notification
+        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 22 modules
-        assert_eq!(deps.len(), 22);
+        // Total: 26 modules
+        assert_eq!(deps.len(), 26);
     }
 
     #[test]
@@ -268,15 +281,16 @@ mod tests {
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (3): cmdline, whichkey, notification
+        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Picker module (1): microscope
         // Code intelligence modules (1): lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 22 modules
-        assert_eq!(modules.len(), 22);
+        // Total: 26 modules
+        assert_eq!(modules.len(), 26);
     }
 
     #[test]

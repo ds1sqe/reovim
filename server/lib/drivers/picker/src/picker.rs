@@ -1,4 +1,7 @@
-use reovim_kernel::api::v1::ServiceRegistry;
+use {
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::ServiceRegistry,
+};
 
 use crate::{PickerAction, PickerContext, PickerItem, PreviewContent};
 
@@ -54,6 +57,15 @@ pub trait Picker: Send + Sync {
     fn is_static(&self) -> bool {
         true
     }
+
+    /// Execute the action after item selection.
+    ///
+    /// Each picker implements this to handle its own action dispatch
+    /// (e.g. open file, switch buffer, run command). The microscope module
+    /// calls this generically without knowing the specific action type.
+    ///
+    /// Default is a no-op for pickers that don't need custom execution.
+    fn execute(&self, _action: PickerAction, _runtime: &mut SessionRuntime<'_>) {}
 }
 
 #[cfg(test)]

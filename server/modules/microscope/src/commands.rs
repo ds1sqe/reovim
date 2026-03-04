@@ -6,10 +6,8 @@ use {
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_picker::{PickerAction, PickerContext, PickerRegistry, push_items},
-    reovim_driver_session::{
-        CommandApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext, WindowApi,
-    },
-    reovim_kernel::api::v1::{BufferId, CommandId},
+    reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
+    reovim_kernel::api::v1::CommandId,
 };
 
 use crate::{ids, modes::MicroscopeMode, state::MicroscopeState};
@@ -180,9 +178,9 @@ impl reovim_driver_command::Command for SelectItem {
 impl CommandHandler for SelectItem {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // Extract action data before closing (close_picker clears state).
-        let action = {
-            let services = runtime.kernel().services.clone();
+        // Extract action and picker before closing (close_picker clears state).
+        let services = runtime.kernel().services.clone();
+        let (action, picker_name) = {
             let state = runtime.ext_mut::<MicroscopeState>();
             if !state.active || state.full_items.is_empty() {
                 close_picker(runtime);
@@ -190,16 +188,23 @@ impl CommandHandler for SelectItem {
             }
             let selected = state.selected.min(state.full_items.len() - 1);
             let item = &state.full_items[selected];
-            let picker_name = state.picker_name.clone();
+            let name = state.picker_name.clone();
 
-            services
+            let action = services
                 .get::<PickerRegistry>()
-                .and_then(|registry| registry.get(&picker_name))
-                .map_or(PickerAction::Close, |picker| picker.on_select(item))
+                .and_then(|registry| registry.get(&name))
+                .map_or(PickerAction::Close, |picker| picker.on_select(item));
+            (action, name)
         };
 
         close_picker(runtime);
-        dispatch_action(runtime, action);
+
+        // Generic dispatch: each picker handles its own action via execute().
+        if let Some(registry) = services.get::<PickerRegistry>()
+            && let Some(picker) = registry.get(&picker_name)
+        {
+            picker.execute(action, runtime);
+        }
         CommandResult::Success
     }
 }
@@ -335,26 +340,6 @@ fn close_picker(runtime: &mut SessionRuntime<'_>) {
         0,
     );
     runtime.set_mode(vim_normal, TransitionContext::new());
-}
-
-/// Dispatch a picker action after selection.
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn dispatch_action(runtime: &mut SessionRuntime<'_>, action: PickerAction) {
-    match action {
-        PickerAction::SwitchBuffer(id) => {
-            let buf = BufferId::from_raw(id);
-            if let Some(win) = runtime.active_window() {
-                let _ = runtime.set_window_buffer(win, buf);
-            }
-        }
-        PickerAction::ExecuteCommand(qualified) => {
-            let cmd = CommandId::from_qualified_leaked(qualified);
-            let ctx = CommandContext::new();
-            runtime.execute_command(cmd, ctx);
-        }
-        // TODO(#522): OpenFile and GotoLocation need VFS open_file API on SessionRuntime
-        PickerAction::Close | PickerAction::OpenFile(_) | PickerAction::GotoLocation { .. } => {}
-    }
 }
 
 /// Collect all command handlers for registration.

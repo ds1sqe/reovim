@@ -1,9 +1,9 @@
 [package]
-name = "reovim-module-microscope"
+name = "reovim-picker-commands"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Microscope fuzzy finder module for reovim - picker orchestration UI"
+description = "Command picker module for reovim - command palette for registered commands"
 repository.workspace = true
 
 [lib]
@@ -15,13 +15,10 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 
 [dependencies]
 reovim-kernel = { workspace = true }
-reovim-driver-session = { workspace = true }
 reovim-driver-picker = { workspace = true }
-reovim-driver-command = { workspace = true }
+reovim-driver-session = { workspace = true }
 reovim-driver-command-types = { workspace = true }
-reovim-driver-input = { workspace = true }
 reovim-module-macros = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

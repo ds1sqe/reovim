@@ -1,9 +1,25 @@
-//! Buffers picker - switch between open buffers.
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+//! Buffer picker module for reovim.
+//!
+//! Provides a picker to switch between open buffers.
+//! Registers `BuffersPicker` in the `PickerRegistry` during module init.
+
+use std::sync::Arc;
 
 use {
-    reovim_driver_picker::{Picker, PickerAction, PickerContext, PickerData, PickerItem},
-    reovim_kernel::api::v1::ServiceRegistry,
+    reovim_driver_picker::{
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
+        SessionRuntime,
+    },
+    reovim_driver_session::WindowApi,
+    reovim_kernel::api::v1::{
+        BufferId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    },
 };
+
+// ============================================================================
+// BuffersPicker
+// ============================================================================
 
 /// Picker that lists open buffers.
 ///
@@ -34,7 +50,7 @@ impl Picker for BuffersPicker {
         "Buffers"
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
         ctx.buffers
             .iter()
             .map(|buf| {
@@ -55,7 +71,67 @@ impl Picker for BuffersPicker {
             _ => PickerAction::Close,
         }
     }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, action: PickerAction, runtime: &mut SessionRuntime<'_>) {
+        if let PickerAction::SwitchBuffer(id) = action {
+            let buf = BufferId::from_raw(id);
+            if let Some(win) = runtime.active_window() {
+                let _ = runtime.set_window_buffer(win, buf);
+            }
+        }
+    }
 }
+
+// ============================================================================
+// Module implementation
+// ============================================================================
+
+/// Buffer picker module.
+///
+/// Registers `BuffersPicker` in `PickerRegistry` during init.
+pub struct PickerBuffersModule;
+
+impl PickerBuffersModule {
+    /// Create a new instance.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for PickerBuffersModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for PickerBuffersModule {
+    fn id(&self) -> ModuleId {
+        ModuleId::new("picker-buffers")
+    }
+
+    fn name(&self) -> &'static str {
+        "Buffer Picker"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 1, 0)
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        let registry = ctx.services.get_or_create::<PickerRegistry>();
+        registry.register(Arc::new(BuffersPicker));
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(PickerBuffersModule);
 
 #[cfg(test)]
 mod tests {
@@ -65,8 +141,8 @@ mod tests {
 
     use super::*;
 
-    fn services() -> ServiceRegistry {
-        ServiceRegistry::new()
+    fn services() -> reovim_kernel::api::v1::ServiceRegistry {
+        reovim_kernel::api::v1::ServiceRegistry::new()
     }
 
     fn empty_ctx() -> PickerContext {
@@ -180,5 +256,60 @@ mod tests {
             icon: None,
         };
         assert!(picker.preview(&item, &services()).is_none());
+    }
+
+    // -- Module tests --
+
+    #[test]
+    fn module_id() {
+        let module = PickerBuffersModule::new();
+        assert_eq!(module.id().as_str(), "picker-buffers");
+    }
+
+    #[test]
+    fn module_name() {
+        let module = PickerBuffersModule::new();
+        assert_eq!(module.name(), "Buffer Picker");
+    }
+
+    #[test]
+    fn module_version() {
+        let module = PickerBuffersModule::new();
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 1);
+    }
+
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn module_default() {
+        let module = PickerBuffersModule::default();
+        assert_eq!(module.id().as_str(), "picker-buffers");
+    }
+
+    #[test]
+    fn module_exit() {
+        let mut module = PickerBuffersModule::new();
+        assert!(module.exit().is_ok());
+    }
+
+    #[test]
+    fn module_init_registers_picker() {
+        let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            reovim_kernel::api::v1::KernelContext::default(),
+            services.clone(),
+            PathBuf::from("/tmp"),
+            PathBuf::from("/tmp"),
+        );
+
+        let mut module = PickerBuffersModule::new();
+        let result = module.init(&ctx);
+        assert!(matches!(result, ProbeResult::Success));
+
+        let registry = services.get::<PickerRegistry>();
+        assert!(registry.is_some());
+        let reg = registry.unwrap();
+        assert!(reg.get("buffers").is_some());
     }
 }

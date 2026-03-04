@@ -34,6 +34,10 @@ reovim-module-whichkey = { workspace = true }
 reovim-module-notification = { workspace = true }
 
 # Picker modules
+reovim-picker-files = { workspace = true }
+reovim-picker-buffers = { workspace = true }
+reovim-picker-commands = { workspace = true }
+reovim-picker-grep = { workspace = true }
 reovim-module-microscope = { workspace = true }
 
 # Explorer module

@@ -1,19 +1,25 @@
-//! Grep picker - content search using ripgrep subprocess.
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
+//! Grep picker module for reovim.
 //!
-//! Runs `rg --line-number --column --no-heading -- <query> <cwd>` and
-//! parses the output. Falls back gracefully when rg is not found.
+//! Provides content search using ripgrep subprocess.
+//! Registers `GrepPicker` in the `PickerRegistry` during module init.
 
 use std::{
     fs,
     io::{BufRead, BufReader},
+    path::Path,
     process::Command,
+    sync::Arc,
 };
 
 use {
     reovim_driver_picker::{
-        Picker, PickerAction, PickerContext, PickerData, PickerItem, PreviewContent,
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
+        PreviewContent, SessionRuntime,
     },
-    reovim_kernel::api::v1::ServiceRegistry,
+    reovim_driver_session::{BufferApi, ChangeTracker, WindowApi},
+    reovim_driver_vfs::VfsInstance,
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 /// Number of context lines to show around a grep match in preview.
@@ -21,6 +27,10 @@ const PREVIEW_CONTEXT_LINES: usize = 5;
 
 /// Maximum number of grep results to return.
 const MAX_RESULTS: usize = 1000;
+
+// ============================================================================
+// GrepPicker
+// ============================================================================
 
 /// Picker that searches file contents using ripgrep.
 ///
@@ -55,7 +65,7 @@ impl Picker for GrepPicker {
         "rg> "
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &ServiceRegistry) -> Vec<PickerItem> {
+    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
         if ctx.query.is_empty() {
             return Vec::new();
         }
@@ -74,7 +84,7 @@ impl Picker for GrepPicker {
         }
     }
 
-    fn preview(&self, item: &PickerItem, _services: &ServiceRegistry) -> Option<PreviewContent> {
+    fn preview(&self, item: &PickerItem, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Option<PreviewContent> {
         let PickerData::GotoLocation { path, line, .. } = &item.data else {
             return None;
         };
@@ -108,6 +118,21 @@ impl Picker for GrepPicker {
 
     fn is_static(&self) -> bool {
         false
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, action: PickerAction, runtime: &mut SessionRuntime<'_>) {
+        if let PickerAction::GotoLocation { path, line, col } = action {
+            open_file(runtime, &path);
+            // Set cursor position (1-based from rg -> 0-based).
+            if let Some(window) = runtime.windows_mut().active_mut() {
+                window.cursor.line = line.saturating_sub(1);
+                window.cursor.column = col.saturating_sub(1);
+            }
+            if let Some(buf_id) = runtime.active_buffer() {
+                runtime.record_cursor_move(buf_id);
+            }
+        }
     }
 }
 
@@ -161,14 +186,102 @@ fn parse_rg_line(line: &str, cwd: &std::path::Path) -> Option<PickerItem> {
     })
 }
 
+// ============================================================================
+// open_file utility (duplicated from picker-files for independence)
+// ============================================================================
+
+/// Open a file by path, reusing existing buffers when possible.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path_str = canonical.to_string_lossy();
+
+    let existing = runtime
+        .kernel()
+        .buffers
+        .list()
+        .into_iter()
+        .find(|&id| {
+            runtime
+                .buffer_file_path(id)
+                .is_some_and(|p| Path::new(&p) == canonical)
+        });
+
+    let buf_id = existing.unwrap_or_else(|| {
+        let content = runtime
+            .kernel()
+            .services
+            .get::<VfsInstance>()
+            .and_then(|vfs| vfs.driver().read_to_string(&canonical).ok())
+            .unwrap_or_default();
+        let id = runtime.create_buffer(Some(&path_str), &content);
+        runtime.set_buffer_modified(id, false);
+        id
+    });
+
+    if let Some(win) = runtime.active_window() {
+        let _ = runtime.set_window_buffer(win, buf_id);
+    }
+}
+
+// ============================================================================
+// Module implementation
+// ============================================================================
+
+/// Grep picker module.
+///
+/// Registers `GrepPicker` in `PickerRegistry` during init.
+pub struct PickerGrepModule;
+
+impl PickerGrepModule {
+    /// Create a new instance.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for PickerGrepModule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Module for PickerGrepModule {
+    fn id(&self) -> ModuleId {
+        ModuleId::new("picker-grep")
+    }
+
+    fn name(&self) -> &'static str {
+        "Grep Picker"
+    }
+
+    fn version(&self) -> Version {
+        Version::new(0, 1, 0)
+    }
+
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        let registry = ctx.services.get_or_create::<PickerRegistry>();
+        registry.register(Arc::new(GrepPicker));
+        ProbeResult::Success
+    }
+
+    fn exit(&mut self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(PickerGrepModule);
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
     use super::*;
 
-    fn services() -> ServiceRegistry {
-        ServiceRegistry::new()
+    fn services() -> reovim_kernel::api::v1::ServiceRegistry {
+        reovim_kernel::api::v1::ServiceRegistry::new()
     }
 
     #[test]
@@ -327,9 +440,6 @@ mod tests {
 
     #[test]
     fn rg_not_found_fallback() {
-        // Test with a non-existent command path to simulate rg not found.
-        // We can't easily test this without mocking Command, but we can
-        // verify the run_ripgrep function handles the error path.
         let result = run_ripgrep("test", &PathBuf::from("/nonexistent_dir_12345"));
         assert!(result.is_empty());
     }
@@ -386,7 +496,6 @@ mod tests {
             },
             icon: None,
         };
-        // Lines after skip(9994) will be empty, so preview returns None.
         assert!(picker.preview(&item, &services()).is_none());
     }
 
@@ -397,5 +506,60 @@ mod tests {
         assert!(item.is_some());
         let item = item.unwrap();
         assert!(item.display.contains("http://example.com"));
+    }
+
+    // -- Module tests --
+
+    #[test]
+    fn module_id() {
+        let module = PickerGrepModule::new();
+        assert_eq!(module.id().as_str(), "picker-grep");
+    }
+
+    #[test]
+    fn module_name() {
+        let module = PickerGrepModule::new();
+        assert_eq!(module.name(), "Grep Picker");
+    }
+
+    #[test]
+    fn module_version() {
+        let module = PickerGrepModule::new();
+        let version = module.version();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 1);
+    }
+
+    #[test]
+    #[allow(clippy::default_constructed_unit_structs)]
+    fn module_default() {
+        let module = PickerGrepModule::default();
+        assert_eq!(module.id().as_str(), "picker-grep");
+    }
+
+    #[test]
+    fn module_exit() {
+        let mut module = PickerGrepModule::new();
+        assert!(module.exit().is_ok());
+    }
+
+    #[test]
+    fn module_init_registers_picker() {
+        let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+        let ctx = ModuleContext::new(
+            reovim_kernel::api::v1::KernelContext::default(),
+            services.clone(),
+            PathBuf::from("/tmp"),
+            PathBuf::from("/tmp"),
+        );
+
+        let mut module = PickerGrepModule::new();
+        let result = module.init(&ctx);
+        assert!(matches!(result, ProbeResult::Success));
+
+        let registry = services.get::<PickerRegistry>();
+        assert!(registry.is_some());
+        let reg = registry.unwrap();
+        assert!(reg.get("grep").is_some());
     }
 }
