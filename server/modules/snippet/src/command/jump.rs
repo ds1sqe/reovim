@@ -257,16 +257,23 @@ fn select_placeholder_and_move(
     start: Position,
     end: Position,
 ) {
+    // Move cursor first and record the move BEFORE setting selection.
+    // record_cursor_move auto-extends sel.end to cursor+1 (#474 visual mode),
+    // which would clobber our explicit placeholder range.
     if let Some(w) = runtime.windows_mut().active_mut() {
         w.cursor.line = start.line;
         w.cursor.column = start.column;
+    }
+    runtime.record_cursor_move(buffer_id);
+
+    // Now set the selection (after record_cursor_move to avoid clobbering).
+    if let Some(w) = runtime.windows_mut().active_mut() {
         if start == end {
             w.selection = None;
         } else {
             w.selection = Some(Selection::character(start, end));
         }
     }
-    runtime.record_cursor_move(buffer_id);
     if start != end {
         runtime.record_selection_change(buffer_id);
     }

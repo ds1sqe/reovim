@@ -114,18 +114,23 @@ impl CommandHandler for ExpandSnippet {
         if has_tab_stops {
             runtime.push_mode(ids::NAVIGATING_MODE, TransitionContext::new());
             if let Some((start, end)) = first_stop_range {
-                // Position cursor at tab stop start
+                // Position cursor at tab stop start.
+                // record_cursor_move MUST be called before setting selection,
+                // because it auto-extends sel.end to cursor+1 (#474 visual mode).
                 if let Some(w) = runtime.windows_mut().active_mut() {
                     w.cursor.line = start.line;
                     w.cursor.column = start.column;
-                    // Select placeholder text if present
+                }
+                runtime.record_cursor_move(buffer_id);
+
+                // Now set the selection (after record_cursor_move to avoid clobbering).
+                if let Some(w) = runtime.windows_mut().active_mut() {
                     if start == end {
                         w.selection = None;
                     } else {
                         w.selection = Some(Selection::character(start, end));
                     }
                 }
-                runtime.record_cursor_move(buffer_id);
                 if start != end {
                     runtime.record_selection_change(buffer_id);
                 }

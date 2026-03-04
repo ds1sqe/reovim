@@ -93,10 +93,8 @@ impl ModeKeyResolver for SnippetResolver {
         // and there's an active placeholder selection, replace it.
         let is_printable = matches!(key.code, KeyCode::Char(_))
             && (key.modifiers == Modifiers::NONE || key.modifiers == Modifiers::SHIFT);
-        if let KeyCode::Char(ch) = key.code
-            && is_printable
-            && let Some(sel) = session.active_selection().cloned()
-        {
+
+        if is_printable && let Some(sel) = session.active_selection().cloned() {
             // Get the buffer ID from the active window.
             let Some(window_id) = session.active_window() else {
                 return ResolveResult::NotHandled;
@@ -120,23 +118,15 @@ impl ModeKeyResolver for SnippetResolver {
                 active.update_positions(&delete_edit);
             }
 
-            // Insert the typed character.
-            let char_str = ch.to_string();
-            session.insert_text(buffer_id, sel.start, &char_str);
-
-            // Update snippet positions for the insertion.
-            let insert_edit = Edit::insert(sel.start, &char_str);
-            let snippet_state = client_extensions.get_or_insert::<SnippetSessionState>();
-            if let Some(active) = &mut snippet_state.active {
-                active.update_positions(&insert_edit);
-            }
-
-            // Clear selection and record changes.
+            // Clear selection — the character itself is NOT inserted here.
+            // By returning NotHandled, we let the parent resolver (vim insert)
+            // handle the insertion. This correctly advances the cursor and
+            // records buffer modifications. reconcile_typing() adjusts
+            // snippet positions when the user tabs away.
             session.set_active_selection(None);
-            session.record_cursor_move(buffer_id);
             session.record_selection_change(buffer_id);
 
-            return ResolveResult::Completed;
+            // Fall through to vim insert mode for the character insertion.
         }
 
         // Not handled — fall through to vim insert mode
