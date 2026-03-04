@@ -3,8 +3,7 @@
 //! Provides pre-built [`MockVfs`] trees of various shapes and sizes.
 //! Used by module benchmarks to create deterministic test data.
 
-use reovim_driver_vfs::MockVfs;
-use std::path::PathBuf;
+use {reovim_driver_vfs::MockVfs, std::path::PathBuf};
 
 /// Pre-built VFS tree fixture for benchmarking.
 ///
@@ -121,7 +120,9 @@ impl TreeFixture {
         // Distribute files across directories
         let src_count = total_files * 60 / 100;
         let test_count = total_files * 25 / 100;
-        let doc_count = total_files.saturating_sub(src_count).saturating_sub(test_count);
+        let doc_count = total_files
+            .saturating_sub(src_count)
+            .saturating_sub(test_count);
 
         // src/ — split between root and a nested module/
         let src = PathBuf::from("/bench/src");
@@ -178,8 +179,7 @@ const fn digit_width(count: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_driver_vfs::VfsDriver;
+    use {super::*, reovim_driver_vfs::VfsDriver};
 
     #[test]
     fn test_digit_width() {

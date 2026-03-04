@@ -6,13 +6,15 @@
 //! Uses the shared `reovim-bench-utils` infrastructure for VFS fixtures
 //! and Criterion re-exports.
 
-use reovim_bench_utils::{
-    criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
-    fixtures::TreeFixture,
-    scaling::SIZES_MEDIUM,
+use {
+    reovim_bench_utils::{
+        criterion::{BenchmarkId, Criterion, criterion_group, criterion_main},
+        fixtures::TreeFixture,
+        scaling::SIZES_MEDIUM,
+    },
+    reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge},
+    reovim_module_explorer::{ExplorerBridge, ExplorerState, tree::FileTree},
 };
-use reovim_driver_session::{ExtensionMap, bridges::ExtensionStateBridge};
-use reovim_module_explorer::{ExplorerBridge, ExplorerState, tree::FileTree};
 
 /// Create an `ExtensionMap` with an active `ExplorerState` backed by
 /// a tree from the given fixture.

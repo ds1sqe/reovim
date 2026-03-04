@@ -56,8 +56,7 @@ pub use serde_json;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use reovim_driver_vfs::VfsDriver;
+    use {super::*, reovim_driver_vfs::VfsDriver};
 
     #[test]
     fn test_fixture_flat_creates_files() {
