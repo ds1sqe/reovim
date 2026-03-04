@@ -681,4 +681,25 @@ mod tests {
         }
         assert_eq!(day_name_short(7), "Unk");
     }
+
+    #[test]
+    fn test_current_datetime_unknown_format() {
+        // Unknown format specifier returns empty string
+        let result = current_datetime("%Q");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_civil_from_days_negative() {
+        // Negative days (before epoch) exercises the else branch in era calculation
+        let (y, m, d) = civil_from_days(-1);
+        assert_eq!((y, m, d), (1969, 12, 31));
+    }
+
+    #[test]
+    fn test_civil_from_days_far_negative() {
+        // Very negative days (year well before epoch)
+        let (y, _, _) = civil_from_days(-365 * 2000);
+        assert!(y < 0);
+    }
 }

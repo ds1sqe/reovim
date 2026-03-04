@@ -356,7 +356,10 @@ async fn test_open_file_with_enter() {
 
     // Verify the buffer changed from initial "hello" to the opened file
     let final_buf = &trace.final_state().buffer;
-    eprintln!("  Final buffer content (first 200 chars): {:?}", &final_buf[..final_buf.len().min(200)]);
+    eprintln!(
+        "  Final buffer content (first 200 chars): {:?}",
+        &final_buf[..final_buf.len().min(200)]
+    );
     assert_ne!(final_buf, "hello", "Buffer should change after opening a file");
 }
 

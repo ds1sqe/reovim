@@ -492,3 +492,158 @@ async fn test_tui_full_workflow() {
 
     handle.stop().await;
 }
+
+// ============================================================================
+// Phase 6-7: Catalog, Reload, Global Fallback (#529)
+// ============================================================================
+
+/// Test: `<leader>sc` shows snippet catalog notification toast in TUI.
+#[tokio::test]
+async fn test_tui_catalog_notification() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Enter normal mode, press <leader>sc (space + s + c)
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Esc");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    handle
+        .send_keys(" sc")
+        .await
+        .expect("Failed to send leader sc");
+
+    // Wait for notification toast with snippet catalog
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| {
+            frame.contains("Snippets for") || frame.contains("available")
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("Snippets for") || frame.contains("available"),
+                "Should show snippet catalog notification"
+            );
+            eprintln!("[catalog] Catalog notification rendered:\n{frame}");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Catalog notification not visible: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test: `<leader>sr` shows reload notification toast in TUI.
+#[tokio::test]
+async fn test_tui_reload_notification() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Normal mode, press <leader>sr
+    handle
+        .send_keys("<Esc>")
+        .await
+        .expect("Failed to send Esc");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    handle
+        .send_keys(" sr")
+        .await
+        .expect("Failed to send leader sr");
+
+    let result = handle
+        .wait_for(Duration::from_secs(3), |frame| {
+            frame.contains("Snippets reloaded") || frame.contains("sources")
+        })
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("Snippets reloaded") || frame.contains("sources"),
+                "Should show reload success notification"
+            );
+            eprintln!("[reload] Reload notification rendered:\n{frame}");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Reload notification not visible: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}
+
+/// Test: global snippet "tst" works from scratch buffer (no file path).
+#[tokio::test]
+async fn test_tui_global_snippet_always_available() {
+    let harness = TestServerHarness::spawn()
+        .await
+        .expect("Failed to spawn server");
+    let addr = format!("127.0.0.1:{}", harness.port());
+
+    let handle = headless_tui(&addr, 80, 24)
+        .await
+        .expect("Failed to connect TUI");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Expand global snippet from scratch buffer (no file path = no filetype)
+    handle
+        .send_keys("itst<C-s>")
+        .await
+        .expect("Failed to send keys");
+
+    let result = handle
+        .wait_for(Duration::from_secs(3), |f| f.contains("TEST_EXPANDED"))
+        .await;
+
+    match result {
+        Ok(frame) => {
+            assert!(
+                frame.contains("TEST_EXPANDED"),
+                "Global snippet should expand from any buffer"
+            );
+            eprintln!("[global] Global snippet expanded from scratch buffer");
+        }
+        Err(e) => {
+            let frame = handle.capture("plain_text").await.ok();
+            panic!(
+                "Global snippet expansion failed: {e}\nFrame:\n{}",
+                frame.unwrap_or_default()
+            );
+        }
+    }
+
+    handle.stop().await;
+}

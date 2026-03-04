@@ -65,7 +65,11 @@ impl Picker for GrepPicker {
         "rg> "
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
+    fn items(
+        &self,
+        ctx: &PickerContext,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Vec<PickerItem> {
         if ctx.query.is_empty() {
             return Vec::new();
         }
@@ -84,7 +88,11 @@ impl Picker for GrepPicker {
         }
     }
 
-    fn preview(&self, item: &PickerItem, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Option<PreviewContent> {
+    fn preview(
+        &self,
+        item: &PickerItem,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Option<PreviewContent> {
         let PickerData::GotoLocation { path, line, .. } = &item.data else {
             return None;
         };
@@ -196,16 +204,11 @@ fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let path_str = canonical.to_string_lossy();
 
-    let existing = runtime
-        .kernel()
-        .buffers
-        .list()
-        .into_iter()
-        .find(|&id| {
-            runtime
-                .buffer_file_path(id)
-                .is_some_and(|p| Path::new(&p) == canonical)
-        });
+    let existing = runtime.kernel().buffers.list().into_iter().find(|&id| {
+        runtime
+            .buffer_file_path(id)
+            .is_some_and(|p| Path::new(&p) == canonical)
+    });
 
     let buf_id = existing.unwrap_or_else(|| {
         let content = runtime

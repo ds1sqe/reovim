@@ -53,9 +53,9 @@ use {
     reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
-    reovim_module_whichkey as whichkey,
-    reovim_picker_buffers as picker_buffers, reovim_picker_commands as picker_commands,
-    reovim_picker_files as picker_files, reovim_picker_grep as picker_grep,
+    reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
+    reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
+    reovim_picker_grep as picker_grep,
 };
 
 /// Default modules bundle.

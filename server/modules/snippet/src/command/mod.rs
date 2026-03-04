@@ -1,38 +1,47 @@
-//! Snippet command handlers (#136).
+//! Snippet command handlers (#136, #529).
 //!
 //! - `ExpandSnippet` - Expand snippet at cursor
 //! - `JumpNext` - Jump to next tab stop
 //! - `JumpPrev` - Jump to previous tab stop
 //! - `CancelSnippet` - Cancel active snippet
+//! - `SnippetCatalog` - List available snippets
+//! - `ReloadSnippets` - Reload snippet files from disk
 
 mod cancel;
+mod catalog;
 mod expand;
 mod jump;
+mod reload;
+
+use std::path::PathBuf;
 
 use {reovim_driver_command::CommandHandler, reovim_kernel::api::v1::ModeId};
 
 pub use {
     cancel::CancelSnippet,
+    catalog::SnippetCatalog,
     expand::ExpandSnippet,
     jump::{JumpNext, JumpPrev},
+    reload::ReloadSnippets,
 };
 
-use std::sync::Arc;
-
-use crate::provider::SnippetRegistry;
+use crate::provider::SnippetRegistryHandle;
 
 /// Create all snippet command handlers.
 ///
-/// The `ExpandSnippet` command needs access to the `SnippetRegistry`
-/// (passed as `Arc` during module init). `return_mode` is the mode to
-/// transition to when snippet navigation finishes (resolved at init time).
+/// The `ExpandSnippet`, `SnippetCatalog`, and `ReloadSnippets` commands need
+/// access to the `SnippetRegistryHandle` for hot-reloadable snippet lookup.
+/// `return_mode` is the mode to transition to when snippet navigation finishes.
 #[must_use]
 pub fn all_commands(
-    registry: Arc<SnippetRegistry>,
+    handle: SnippetRegistryHandle,
     return_mode: ModeId,
+    data_dir: PathBuf,
 ) -> Vec<Box<dyn CommandHandler>> {
     vec![
-        Box::new(ExpandSnippet::new(registry)),
+        Box::new(ExpandSnippet::new(handle.clone())),
+        Box::new(SnippetCatalog::new(handle.clone())),
+        Box::new(ReloadSnippets::new(handle, data_dir)),
         Box::new(JumpNext::new(return_mode.clone())),
         Box::new(JumpPrev),
         Box::new(CancelSnippet::new(return_mode)),
@@ -43,7 +52,7 @@ pub fn all_commands(
 mod tests {
     use reovim_kernel::api::v1::ModuleId;
 
-    use super::*;
+    use {super::*, crate::provider::SnippetRegistry};
 
     fn test_return_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "return")
@@ -51,15 +60,15 @@ mod tests {
 
     #[test]
     fn test_all_commands_count() {
-        let registry = Arc::new(SnippetRegistry::new());
-        let commands = all_commands(registry, test_return_mode());
-        assert_eq!(commands.len(), 4);
+        let handle = SnippetRegistryHandle::new(SnippetRegistry::new());
+        let commands = all_commands(handle, test_return_mode(), PathBuf::from("/tmp"));
+        assert_eq!(commands.len(), 6);
     }
 
     #[test]
     fn test_all_commands_unique_ids() {
-        let registry = Arc::new(SnippetRegistry::new());
-        let commands = all_commands(registry, test_return_mode());
+        let handle = SnippetRegistryHandle::new(SnippetRegistry::new());
+        let commands = all_commands(handle, test_return_mode(), PathBuf::from("/tmp"));
         let ids: Vec<_> = commands.iter().map(|c| c.id()).collect();
         for (i, a) in ids.iter().enumerate() {
             for (j, b) in ids.iter().enumerate() {

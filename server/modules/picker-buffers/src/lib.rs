@@ -8,8 +8,7 @@ use std::sync::Arc;
 
 use {
     reovim_driver_picker::{
-        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
-        SessionRuntime,
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
     reovim_driver_session::WindowApi,
     reovim_kernel::api::v1::{
@@ -50,7 +49,11 @@ impl Picker for BuffersPicker {
         "Buffers"
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
+    fn items(
+        &self,
+        ctx: &PickerContext,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Vec<PickerItem> {
         ctx.buffers
             .iter()
             .map(|buf| {

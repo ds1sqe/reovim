@@ -110,6 +110,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Zero kernel modifications. 443 tests (341 snippet unit + 86 completion unit
   + 7 E2E + 9 TUI integration), zero clippy warnings.
 
+- **Advanced snippet management system (#529, #136 Phases 6-7)**: Full snippet
+  management layer matching VSCode/LuaSnip capabilities. Phase 6: filetype-aware
+  lookup via `reovim_driver_vfs::filetype_id()` replacing hardcoded `"global"`,
+  global fallback in registry, per-snippet `scope` field (`VSCode`
+  `.code-snippets` format) with `applies_to()` filtering, `prefix` as
+  string-or-array (VSCode compat), multi-source provider hierarchy with priority
+  ordering (project-local > user > friendly-snippets > built-in), backward
+  compat for legacy `snippets/` directory, project root detection
+  (`Cargo.toml`/`package.json`/`.git` markers) for `.reovim/snippets/`
+  project-local snippets, filetype inheritance (`typescriptreact` -> `typescript`
+  -> `javascript` -> `global`) via BFS resolution chain, `FriendlySnippetsProvider`
+  loading `rafamadriz/friendly-snippets` VSCode extension format from
+  `package.json` manifest, snippet catalog command (`<leader>sc`) listing
+  available snippets via notification toast. Phase 7: `SnippetRegistryHandle`
+  wrapping `Arc<RwLock<SnippetRegistry>>` for thread-safe hot reload, reload
+  command (`<leader>sr`) re-reads all snippet files and atomically swaps the
+  registry. Zero kernel modifications. 426 tests (402 unit + 24 integration),
+  zero clippy warnings.
+
 - **Fuzzy finder infrastructure (#522)**: Full-stack fuzzy finder (microscope)
   with pluggable picker architecture powered by nucleo. Driver layer
   (`reovim-driver-picker`) provides `Picker` trait, `PickerItem`/`PickerData`/

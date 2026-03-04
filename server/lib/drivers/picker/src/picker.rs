@@ -1,7 +1,4 @@
-use {
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::ServiceRegistry,
-};
+use {reovim_driver_session::SessionRuntime, reovim_kernel::api::v1::ServiceRegistry};
 
 use crate::{PickerAction, PickerContext, PickerItem, PreviewContent};
 

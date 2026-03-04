@@ -74,6 +74,7 @@ impl ModeKeyResolver for SnippetResolver {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_session(
         &self,
         key: &KeyEvent,

@@ -2,7 +2,7 @@
 //!
 //! Expands the snippet whose prefix matches the word before the cursor.
 
-use std::sync::Arc;
+use std::path::Path;
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
@@ -14,7 +14,12 @@ use {
 };
 
 use crate::{
-    engine::ActiveSnippet, ids, parser, provider::SnippetRegistry, state::SnippetSessionState,
+    engine::ActiveSnippet,
+    ids,
+    loader::JsonSnippetProvider,
+    parser,
+    provider::{SnippetProvider, SnippetRegistryHandle},
+    state::SnippetSessionState,
     variables::VariableContext,
 };
 
@@ -24,14 +29,14 @@ use crate::{
 /// parses and expands the snippet body, replaces the trigger word, and
 /// enters snippet navigation mode.
 pub struct ExpandSnippet {
-    registry: Arc<SnippetRegistry>,
+    handle: SnippetRegistryHandle,
 }
 
 impl ExpandSnippet {
     /// Create a new expand command with access to the snippet registry.
     #[must_use]
-    pub const fn new(registry: Arc<SnippetRegistry>) -> Self {
-        Self { registry }
+    pub const fn new(handle: SnippetRegistryHandle) -> Self {
+        Self { handle }
     }
 }
 
@@ -67,11 +72,29 @@ impl CommandHandler for ExpandSnippet {
             return CommandResult::Success; // nothing to expand
         }
 
-        // Determine filetype (placeholder: "global" for now)
-        let filetype = "global";
+        // Determine filetype from buffer file path
+        let filetype = runtime
+            .buffer_file_path(buffer_id)
+            .as_deref()
+            .map(reovim_driver_vfs::filetype_id)
+            .filter(|ft| !ft.is_empty())
+            .unwrap_or("global");
 
-        // Look up snippet by prefix
-        let Some(definition) = self.registry.find_by_prefix(filetype, &prefix) else {
+        // Look up snippet: project-local first, then registry handle
+        let definition = runtime
+            .buffer_file_path(buffer_id)
+            .as_deref()
+            .and_then(|p| crate::project::project_snippet_dir(Path::new(p)))
+            .filter(|dir| dir.exists())
+            .and_then(|dir| JsonSnippetProvider::load_directory(&dir).ok())
+            .and_then(|p| {
+                p.snippet_by_prefix(filetype, &prefix)
+                    .or_else(|| p.snippet_by_prefix("global", &prefix))
+                    .cloned()
+            })
+            .or_else(|| self.handle.find_by_prefix(filetype, &prefix));
+
+        let Some(definition) = definition else {
             return CommandResult::Success; // no matching snippet
         };
 
@@ -163,6 +186,8 @@ const fn is_word_char(b: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::provider::SnippetRegistry;
+
     use super::*;
 
     // =========================================================================
@@ -231,13 +256,13 @@ mod tests {
 
     #[test]
     fn test_command_id() {
-        let cmd = ExpandSnippet::new(Arc::new(SnippetRegistry::new()));
+        let cmd = ExpandSnippet::new(SnippetRegistryHandle::new(SnippetRegistry::new()));
         assert_eq!(cmd.id(), ids::EXPAND);
     }
 
     #[test]
     fn test_command_description() {
-        let cmd = ExpandSnippet::new(Arc::new(SnippetRegistry::new()));
+        let cmd = ExpandSnippet::new(SnippetRegistryHandle::new(SnippetRegistry::new()));
         assert!(!cmd.description().is_empty());
     }
 }

@@ -57,7 +57,11 @@ impl Picker for FilesPicker {
         "Files"
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
+    fn items(
+        &self,
+        ctx: &PickerContext,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Vec<PickerItem> {
         let walker = ignore::WalkBuilder::new(&ctx.cwd)
             .hidden(true)
             .git_ignore(true)
@@ -89,7 +93,11 @@ impl Picker for FilesPicker {
         }
     }
 
-    fn preview(&self, item: &PickerItem, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Option<PreviewContent> {
+    fn preview(
+        &self,
+        item: &PickerItem,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Option<PreviewContent> {
         let PickerData::FilePath(path) = &item.data else {
             return None;
         };
@@ -151,16 +159,11 @@ pub fn open_file(runtime: &mut SessionRuntime<'_>, path: &Path) {
     let path_str = canonical.to_string_lossy();
 
     // Find existing buffer with this file path.
-    let existing = runtime
-        .kernel()
-        .buffers
-        .list()
-        .into_iter()
-        .find(|&id| {
-            runtime
-                .buffer_file_path(id)
-                .is_some_and(|p| Path::new(&p) == canonical)
-        });
+    let existing = runtime.kernel().buffers.list().into_iter().find(|&id| {
+        runtime
+            .buffer_file_path(id)
+            .is_some_and(|p| Path::new(&p) == canonical)
+    });
 
     let buf_id = existing.unwrap_or_else(|| {
         let content = runtime

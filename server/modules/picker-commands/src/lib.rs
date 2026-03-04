@@ -9,8 +9,7 @@ use std::sync::Arc;
 use {
     reovim_driver_command_types::CommandContext,
     reovim_driver_picker::{
-        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry,
-        SessionRuntime,
+        Picker, PickerAction, PickerContext, PickerData, PickerItem, PickerRegistry, SessionRuntime,
     },
     reovim_driver_session::CommandApi,
     reovim_kernel::api::v1::{
@@ -51,7 +50,11 @@ impl Picker for CommandsPicker {
         "Commands"
     }
 
-    fn items(&self, ctx: &PickerContext, _services: &reovim_kernel::api::v1::ServiceRegistry) -> Vec<PickerItem> {
+    fn items(
+        &self,
+        ctx: &PickerContext,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
+    ) -> Vec<PickerItem> {
         ctx.commands
             .iter()
             .map(|cmd| PickerItem {

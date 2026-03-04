@@ -330,7 +330,10 @@ mod tests {
 
         // Third: full again (tree_gen bumped)
         let snap_full = ExplorerBridge.snapshot(&map).unwrap();
-        assert!(snap_full.get("nodes").is_some(), "snapshot after invalidate should include nodes");
+        assert!(
+            snap_full.get("nodes").is_some(),
+            "snapshot after invalidate should include nodes"
+        );
     }
 
     #[test]

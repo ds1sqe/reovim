@@ -1632,6 +1632,348 @@ mod tests {
         }
     }
 
+    // =========================================================================
+    // Transform edge cases: regex segment
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_escaped_backslash_in_regex() {
+        // Regex contains literal backslash: a\\b in input
+        let body = parse("${1/a\\\\b/x/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.regex, "a\\b");
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_unknown_escape_in_regex() {
+        // \n in regex is unknown escape — preserved literally
+        let body = parse("${1/a\\nb/x/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.regex, "a\\nb");
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_eof_in_regex_trailing_backslash() {
+        // Trailing backslash in regex with no closing /
+        let result = parse("${1/abc\\");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_transform_eof_in_regex_no_slash() {
+        // EOF before regex delimiter /
+        let result = parse("${1/abc");
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Transform edge cases: replacement segment
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_escaped_backslash_in_replacement() {
+        let body = parse("${1/x/a\\\\b/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.replacement, vec![FormatItem::Text("a\\b".to_string())]);
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_unknown_escape_in_replacement() {
+        let body = parse("${1/x/a\\nb/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.replacement, vec![FormatItem::Text("a\\nb".to_string())]);
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_eof_in_replacement_trailing_backslash() {
+        let result = parse("${1/x/abc\\");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_transform_eof_in_replacement_no_slash() {
+        let result = parse("${1/x/abc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_transform_escaped_slash_in_replacement() {
+        let body = parse("${1/x/a\\/b/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.replacement, vec![FormatItem::Text("a/b".to_string())]);
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // Format item edge cases in replacement
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_format_item_invalid_number() {
+        // ${abc} in replacement — not a valid capture number, skipped
+        let body = parse("${1/x/${abc}/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                // Invalid format items are silently ignored
+                assert!(t.replacement.is_empty());
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_format_item_unknown_char_after_digit() {
+        // ${1!} in replacement — unknown char after digit, skip to }
+        let body = parse("${1/x/${1!}/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.replacement, vec![FormatItem::Capture(1)]);
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_format_modifier_unknown() {
+        // ${1:xyz} in replacement — unknown modifier after :
+        let body = parse("${1/x/${1:xyz}/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.replacement, vec![FormatItem::Capture(1)]);
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_case_modifier_unknown_returns_none() {
+        // ${1:/badmod} — unknown case modifier name, returns None so nothing pushed
+        let body = parse("${1/x/${1:/badmod}/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert!(t.replacement.is_empty());
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // Choice edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_parse_choice_stray_pipe() {
+        // ${1|a|b|} — stray | not followed by } becomes literal |
+        let body = parse("${1|a|b|}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::Choice { choices, .. } => {
+                // "a|b" is one choice (stray | becomes literal)
+                assert_eq!(choices, &["a|b".to_string()]);
+            }
+            other => panic!("expected Choice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_choice_escaped_backslash() {
+        let body = parse("${1|a\\\\b|}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::Choice { choices, .. } => {
+                assert_eq!(choices, &["a\\b".to_string()]);
+            }
+            other => panic!("expected Choice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_choice_unknown_escape() {
+        let body = parse("${1|a\\xb|}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::Choice { choices, .. } => {
+                assert_eq!(choices, &["a\\xb".to_string()]);
+            }
+            other => panic!("expected Choice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_parse_choice_escaped_backslash_eof() {
+        let result = parse("${1|a\\");
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Braced fallback edge cases
+    // =========================================================================
+
+    #[test]
+    fn test_parse_braced_unknown_start_char() {
+        // ${ followed by non-digit, non-letter → fallback
+        let body = parse("${!foo}").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("${!foo}".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_braced_variable_unknown_suffix() {
+        // ${VAR!} — unknown char after variable name
+        let body = parse("${VAR!rest}").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("${VAR!rest}".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_fallback_braced_no_closing_brace() {
+        // ${ followed by unknown char and no closing brace
+        let body = parse("${!abc").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("${!abc".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_braced_tabstop_eof_after_number() {
+        // ${1 — no closing brace or suffix, already tested but ensure None path
+        let body = parse("${1").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("${1".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_braced_variable_eof_after_name() {
+        // ${VAR — no closing brace, hits Some(_)|None fallback
+        let body = parse("${VAR").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("${VAR".to_string())]);
+    }
+
+    // =========================================================================
+    // Dollar followed by non-identifier/non-digit/non-brace
+    // =========================================================================
+
+    #[test]
+    fn test_parse_dollar_followed_by_special_char() {
+        // $ followed by a char that is not {, digit, or var_start
+        let body = parse("$ rest").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("$ rest".to_string())]);
+    }
+
+    #[test]
+    fn test_parse_dollar_followed_by_exclamation() {
+        let body = parse("$!").unwrap();
+        assert_eq!(body.elements(), &[SnippetElement::Text("$!".to_string())]);
+    }
+
+    // =========================================================================
+    // Transform: EOF while reading options
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_eof_in_options() {
+        // Options section has no closing } — EOF while reading options
+        let body = parse("${1/foo/bar/gi").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                assert_eq!(t.options, "gi");
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // Replacement: $ capture number overflow
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_capture_overflow_in_replacement() {
+        // Huge capture number in replacement that overflows usize
+        let body = parse("${1/x/$99999999999999999999999/}").unwrap();
+        match &body.elements()[0] {
+            SnippetElement::TabStop { transform, .. } => {
+                let t = transform.as_ref().unwrap();
+                // Overflow: digits don't parse, nothing pushed for that capture
+                assert!(t.replacement.is_empty());
+            }
+            other => panic!("expected TabStop, got {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // Format item EOF paths in replacement
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_format_item_eof_invalid_number() {
+        // ${abc without closing } — invalid number then EOF in skip loop
+        let result = parse("${1/x/${abc");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_transform_format_item_eof_after_digit() {
+        // ${1! without closing } — unknown char after digit, then EOF in skip loop
+        let result = parse("${1/x/${1!");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_transform_format_modifier_eof() {
+        // ${1:xyz without closing } — unknown modifier, then EOF in skip loop
+        let result = parse("${1/x/${1:xyz");
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // read_until EOF path
+    // =========================================================================
+
+    #[test]
+    fn test_parse_transform_read_until_eof() {
+        // ${1:+if without closing } — read_until hits EOF
+        let result = parse("${1/x/${1:+something");
+        assert!(result.is_err());
+    }
+
+    // =========================================================================
+    // Choice: empty choice body (|}  )
+    // =========================================================================
+
+    #[test]
+    fn test_parse_choice_empty_body() {
+        // ${1||} — empty current when reaching |}
+        let body = parse("${1||}").unwrap();
+        assert_eq!(
+            body.elements(),
+            &[SnippetElement::Choice {
+                id: 1,
+                choices: vec![],
+            }]
+        );
+    }
+
     #[test]
     fn test_parse_all_case_modifiers_in_transform() {
         for modifier in &[

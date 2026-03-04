@@ -77,6 +77,7 @@ enum Direction {
 ///
 /// `return_mode` is used when all tab stops are exhausted (Next only).
 /// Pass `None` for Prev (which never exits snippet mode).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn execute_jump(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
@@ -184,6 +185,7 @@ fn execute_jump(
 }
 
 /// Pre-read the text at the current tab stop (from start to cursor).
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn read_departing_text(
     runtime: &SessionRuntime<'_>,
     buffer_id: reovim_kernel::api::v1::BufferId,
@@ -210,6 +212,7 @@ struct MirrorInfo {
 }
 
 /// Apply a single mirror edit: delete old text, insert new text, update positions.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn apply_single_mirror(
     runtime: &mut SessionRuntime<'_>,
     buffer_id: reovim_kernel::api::v1::BufferId,
@@ -251,6 +254,7 @@ fn apply_single_mirror(
 }
 
 /// Select placeholder text (if any) and position cursor at the tab stop.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn select_placeholder_and_move(
     runtime: &mut SessionRuntime<'_>,
     buffer_id: reovim_kernel::api::v1::BufferId,

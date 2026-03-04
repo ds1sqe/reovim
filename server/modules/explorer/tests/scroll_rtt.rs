@@ -18,14 +18,15 @@
 
 use std::time::{Duration, Instant};
 
-use reovim_protocol::v2::{
-    notification::Payload, JoinRequest, SendKeysRequest, SubscribeRequest,
-    input_service_client::InputServiceClient,
-    notification_service_client::NotificationServiceClient,
-    presence_service_client::PresenceServiceClient,
+use {
+    reovim_protocol::v2::{
+        JoinRequest, SendKeysRequest, SubscribeRequest, input_service_client::InputServiceClient,
+        notification::Payload, notification_service_client::NotificationServiceClient,
+        presence_service_client::PresenceServiceClient,
+    },
+    reovim_testing::TestServerHarness,
+    tonic::{Request, Streaming, transport::Channel},
 };
-use reovim_testing::TestServerHarness;
-use tonic::{Request, Streaming, transport::Channel};
 
 /// Number of sequential RTT iterations.
 const SEQUENTIAL_ITERATIONS: usize = 100;
@@ -49,18 +50,17 @@ fn authed_request<T>(body: T, token: &str) -> Request<T> {
 }
 
 /// Send keys via gRPC with authentication.
-async fn send_keys(
-    client: &mut InputServiceClient<Channel>,
-    token: &str,
-    keys: &str,
-) {
+async fn send_keys(client: &mut InputServiceClient<Channel>, token: &str, keys: &str) {
     let request = authed_request(
         SendKeysRequest {
             keys: keys.to_string(),
         },
         token,
     );
-    client.send_keys(request).await.expect("send_keys should succeed");
+    client
+        .send_keys(request)
+        .await
+        .expect("send_keys should succeed");
 }
 
 /// Wait for the next `ExtensionUpdated` notification with `kind == "explorer"`.
@@ -88,9 +88,7 @@ async fn wait_explorer_notification(
 /// Drain all pending notifications (non-blocking).
 ///
 /// Keeps reading until no notification arrives within 100ms.
-async fn drain_notifications(
-    stream: &mut Streaming<reovim_protocol::v2::Notification>,
-) {
+async fn drain_notifications(stream: &mut Streaming<reovim_protocol::v2::Notification>) {
     while let Ok(Ok(Some(_))) =
         tokio::time::timeout(Duration::from_millis(100), stream.message()).await
     {}

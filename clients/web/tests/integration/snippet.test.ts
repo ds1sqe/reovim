@@ -65,8 +65,8 @@ describe("Snippet Feature (#136)", () => {
       );
 
       expect(frame).toContain("fn ");
-      // $1 placeholder "name" is deleted on expansion (cursor lands at $1)
-      expect(frame).not.toContain("name");
+      // Phase 2: $1 placeholder "name" is selected (not deleted) on expansion
+      expect(frame).toContain("name");
       // $2 placeholder "params" remains (not yet navigated to)
       expect(frame).toContain("params");
       expect(frame).toContain("{");

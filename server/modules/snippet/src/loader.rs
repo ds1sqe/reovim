@@ -129,12 +129,31 @@ impl JsonSnippetProvider {
                 BodyValue::String(s) => s,
                 BodyValue::Array(lines) => lines.join("\n"),
             };
-            defs.push(SnippetDefinition {
-                name,
-                prefix: raw.prefix,
-                body_raw,
-                description: raw.description,
-            });
+            let scope = raw
+                .scope
+                .map(|s| {
+                    s.split(',')
+                        .map(|part| part.trim().to_owned())
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                })
+                .filter(|v| !v.is_empty());
+
+            // Handle prefix as string or array
+            let prefixes = match raw.prefix {
+                PrefixValue::Single(s) => vec![s],
+                PrefixValue::Multiple(v) => v,
+            };
+
+            for prefix in prefixes {
+                defs.push(SnippetDefinition {
+                    name: name.clone(),
+                    prefix,
+                    body_raw: body_raw.clone(),
+                    description: raw.description.clone(),
+                    scope: scope.clone(),
+                });
+            }
         }
 
         Ok(defs)
@@ -159,10 +178,21 @@ impl SnippetProvider for JsonSnippetProvider {
 /// Raw JSON snippet format (for serde deserialization).
 #[derive(serde::Deserialize)]
 struct RawSnippet {
-    prefix: String,
+    prefix: PrefixValue,
     body: BodyValue,
     #[serde(default)]
     description: Option<String>,
+    /// VSCode-compatible language scope restriction (comma-separated).
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+/// The `prefix` field can be a single string or array of strings.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum PrefixValue {
+    Single(String),
+    Multiple(Vec<String>),
 }
 
 /// The `body` field can be a string or array of strings.
@@ -472,5 +502,74 @@ mod tests {
         let provider = JsonSnippetProvider::load_directory(dir.path()).unwrap();
         // Non-UTF8 stem cannot be converted to String → skipped
         assert!(provider.snippets.is_empty());
+    }
+
+    // =========================================================================
+    // Scope and prefix array (#529)
+    // =========================================================================
+
+    #[test]
+    fn test_parse_json_scope_field() {
+        let json = r#"{
+            "log": {
+                "prefix": "log",
+                "body": "console.log($1)",
+                "scope": "javascript,typescript"
+            }
+        }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        assert_eq!(defs.len(), 1);
+        let scope = defs[0].scope.as_ref().unwrap();
+        assert_eq!(scope, &["javascript", "typescript"]);
+    }
+
+    #[test]
+    fn test_parse_json_no_scope_is_none() {
+        let json = r#"{ "test": { "prefix": "t", "body": "$1" } }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        assert!(defs[0].scope.is_none());
+    }
+
+    #[test]
+    fn test_parse_json_empty_scope_is_none() {
+        let json = r#"{ "test": { "prefix": "t", "body": "$1", "scope": "" } }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        // Empty string → empty vec → filtered to None
+        assert!(defs[0].scope.is_none());
+    }
+
+    #[test]
+    fn test_parse_json_scope_with_spaces() {
+        let json = r#"{ "test": { "prefix": "t", "body": "$1", "scope": " rust , toml " } }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        let scope = defs[0].scope.as_ref().unwrap();
+        assert_eq!(scope, &["rust", "toml"]);
+    }
+
+    #[test]
+    fn test_parse_json_prefix_array() {
+        let json = r#"{
+            "function": {
+                "prefix": ["fn", "func", "function"],
+                "body": "fn $1() {}"
+            }
+        }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        assert_eq!(defs.len(), 3);
+        let prefixes: Vec<&str> = defs.iter().map(|d| d.prefix.as_str()).collect();
+        assert!(prefixes.contains(&"fn"));
+        assert!(prefixes.contains(&"func"));
+        assert!(prefixes.contains(&"function"));
+        // All share the same name and body
+        assert!(defs.iter().all(|d| d.name == "function"));
+        assert!(defs.iter().all(|d| d.body_raw == "fn $1() {}"));
+    }
+
+    #[test]
+    fn test_parse_json_prefix_single_string() {
+        let json = r#"{ "test": { "prefix": "t", "body": "$1" } }"#;
+        let defs = JsonSnippetProvider::parse_json(json).unwrap();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].prefix, "t");
     }
 }

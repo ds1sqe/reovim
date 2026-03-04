@@ -146,7 +146,8 @@ impl ExplorerState {
 
     /// Record that a full-nodes snapshot was emitted at the given generation.
     pub fn set_snapshot_generation(&self, generation: u64) {
-        self.snapshot_generation.store(generation, Ordering::Relaxed);
+        self.snapshot_generation
+            .store(generation, Ordering::Relaxed);
     }
 
     /// Get the cached serialized nodes, if available.

@@ -41,6 +41,12 @@ pub const JUMP_PREV: CommandId = CommandId::new(MODULE, "jump-prev");
 /// Cancel the active snippet and return to insert mode.
 pub const CANCEL: CommandId = CommandId::new(MODULE, "cancel");
 
+/// List available snippets for the current filetype.
+pub const CATALOG: CommandId = CommandId::new(MODULE, "catalog");
+
+/// Reload all snippet files.
+pub const RELOAD: CommandId = CommandId::new(MODULE, "reload");
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,11 +76,17 @@ mod tests {
 
         assert_eq!(CANCEL.module().as_str(), "snippet");
         assert_eq!(CANCEL.name(), "cancel");
+
+        assert_eq!(CATALOG.module().as_str(), "snippet");
+        assert_eq!(CATALOG.name(), "catalog");
+
+        assert_eq!(RELOAD.module().as_str(), "snippet");
+        assert_eq!(RELOAD.name(), "reload");
     }
 
     #[test]
     fn test_command_ids_are_distinct() {
-        let commands = [&EXPAND, &JUMP_NEXT, &JUMP_PREV, &CANCEL];
+        let commands = [&EXPAND, &JUMP_NEXT, &JUMP_PREV, &CANCEL, &CATALOG, &RELOAD];
         for (i, a) in commands.iter().enumerate() {
             for (j, b) in commands.iter().enumerate() {
                 if i != j {
