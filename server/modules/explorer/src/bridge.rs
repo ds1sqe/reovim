@@ -337,6 +337,54 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn snapshot_with_symlink_node() {
+        use {
+            crate::tree::{
+                FileTree,
+                node::{FileNode, NodeType},
+            },
+            std::sync::Arc,
+        };
+
+        let mock = Arc::new(reovim_driver_vfs::MockVfs::new());
+        mock.create_dir(Path::new("/proj")).unwrap();
+        mock.write(Path::new("/proj/file.rs"), b"fn main()")
+            .unwrap();
+
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<ExplorerState>();
+        state.active = true;
+        state.root_path = PathBuf::from("/proj");
+        let mut tree = FileTree::new(PathBuf::from("/proj"), mock.as_ref()).unwrap();
+
+        // Manually inject a symlink node into the tree's root children
+        let root = tree.root_mut();
+        if let Some(children) = root.children_mut() {
+            children.push(FileNode {
+                name: "link".to_string(),
+                path: PathBuf::from("/proj/link"),
+                node_type: NodeType::Symlink {
+                    target: PathBuf::from("/target"),
+                    broken: false,
+                },
+                depth: 1,
+                is_hidden: false,
+            });
+        }
+
+        state.tree = Some(tree);
+
+        let snap = ExplorerBridge.snapshot(&map).unwrap();
+        let nodes = snap["nodes"].as_array().unwrap();
+
+        // Find the symlink node
+        let symlink_node = nodes.iter().find(|n| n["name"] == "link").unwrap();
+        assert!(symlink_node["isSymlink"].as_bool().unwrap());
+        assert!(!symlink_node["isDir"].as_bool().unwrap());
+    }
+
+    #[test]
     fn root_name_from_path_with_no_filename() {
         let mut map = ExtensionMap::new();
         let state = map.get_or_insert::<ExplorerState>();

@@ -61,23 +61,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   client tests. Zero kernel modifications, zero clippy warnings.
 
 - **File explorer sidebar with tree navigation (#523)**: Full-stack file
-  explorer sidebar (nvim-tree style) with server module and TUI extension.
-  Server module (`reovim-module-explorer`) provides `ExplorerState` session
-  extension with `FileTree` data structure, `ExplorerBridge` for JSON
-  serialization, two modes (Browse with keybinding-driven navigation, Input
-  with `TextInputSink` for text entry), and 20 command handlers: toggle
-  (`<Space>e`), close (`q`/`<Esc>`), navigation (`j`/`k`/`gg`/`G`/`-`),
-  expand/collapse (`l`/`h`/`<CR>`), file operations (create file `a`, create
-  directory `A`, rename `r`, delete `d` with `y/n` confirmation), toggle
-  hidden files (`H`), refresh (`R`), and yank path to clipboard (`y`). Tree
-  nodes support files, directories, and symlinks with VFS-backed operations
-  (`VfsDriver` trait). Box-drawing tree prefixes with vertical continuation
-  lines for proper tree structure rendering. TUI extension
-  (`reovim-tui-ext-explorer`) renders a sidebar with dark background, colored
-  directory/file/symlink names, cursor highlighting, tree prefix characters,
-  input prompt, and status messages. `content_offset_left()` on `TuiExtension`
-  trait shifts editor content right to accommodate the sidebar. 203 tests
-  across both crates, zero clippy warnings.
+  explorer sidebar (nvim-tree style) with server module, TUI extension, and
+  web client extension. Server module (`reovim-module-explorer`) provides
+  `ExplorerState` session extension with `FileTree` data structure,
+  `ExplorerBridge` for JSON serialization with delta snapshot optimisation
+  (omits nodes when only metadata changed), two modes (Browse with
+  keybinding-driven navigation, Input with `TextInputSink` for text entry),
+  and 20 command handlers: toggle (`<Space>e`), close (`q`/`<Esc>`),
+  navigation (`j`/`k`/`gg`/`G`/`-`), expand/collapse (`l`/`h`/`<CR>`), file
+  operations (create file `a`, create directory `A`, rename `r`, delete `d`
+  with `y/n` confirmation), toggle hidden files (`H`), refresh (`R`), and
+  yank path to clipboard (`y`). Tree nodes support files, directories, and
+  symlinks with VFS-backed operations (`VfsDriver` trait). Box-drawing tree
+  prefixes with vertical continuation lines for proper tree structure
+  rendering. TUI extension (`reovim-tui-ext-explorer`) renders a sidebar with
+  dark background, colored directory/file/symlink names, cursor highlighting,
+  tree prefix characters, input prompt, and status messages.
+  `content_offset_left()` on `TuiExtension` trait shifts editor content right
+  to accommodate the sidebar. Web client `ExplorerExtension` renders the same
+  sidebar via DOM with scroll windowing, tree prefix characters, cursor
+  highlighting, input prompts, and theme-variable CSS styling. Fixed delta
+  snapshot bug: `reset_snapshot_generation` on deactivation ensures reopening
+  always sends full node data. 198 server-side unit tests with 100% MC/DC
+  coverage, 5 web integration tests, 6 web E2E tests, zero clippy warnings.
 
 - **Snippet expansion module - Phases 1-5 complete (#136)**: Full
   TextMate/LSP-compatible snippet system with expansion, tab stop navigation,

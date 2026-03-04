@@ -395,6 +395,117 @@
   white-space: pre;
 }
 
+/* ============ Explorer Sidebar ============ */
+
+.explorer-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--theme-popup-bg);
+  border-right: 1px solid var(--theme-border);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size, 14px);
+  display: flex;
+  flex-direction: column;
+  z-index: 150;
+  overflow: hidden;
+}
+
+.explorer-header {
+  padding: 6px 12px;
+  font-weight: bold;
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.explorer-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.explorer-node {
+  display: flex;
+  align-items: center;
+  padding: 1px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.explorer-node:hover {
+  background: var(--theme-statusline-bg);
+}
+
+.explorer-node.cursor {
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
+}
+
+.explorer-node.dir .explorer-name {
+  color: #89b4fa;
+  font-weight: bold;
+}
+
+.explorer-node.symlink .explorer-name {
+  color: #94e2d5;
+}
+
+.explorer-node.hidden-file {
+  opacity: 0.5;
+}
+
+.explorer-prefix {
+  color: var(--theme-text-muted);
+  white-space: pre;
+}
+
+.explorer-icon {
+  white-space: pre;
+  flex-shrink: 0;
+}
+
+.explorer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorer-input {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-top: 1px solid var(--theme-border);
+  flex-shrink: 0;
+}
+
+.explorer-input-label {
+  color: var(--theme-text-accent);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.explorer-input-buffer {
+  white-space: pre;
+}
+
+.explorer-input-cursor {
+  color: var(--theme-cursor-bg);
+  animation: blink 1s step-end infinite;
+}
+
+.explorer-message {
+  padding: 4px 8px;
+  color: var(--theme-text-muted);
+  font-size: 0.85em;
+  border-top: 1px solid var(--theme-border);
+  flex-shrink: 0;
+}
+
 /* ============ Fallback ============ */
 
 .overlay-fallback {

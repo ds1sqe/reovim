@@ -260,6 +260,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn browse_exact_only_clears_pending() {
         let resolver = BrowseResolver::new();
         let cmd = crate::ids::CURSOR_DOWN;
@@ -276,6 +277,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn browse_exact_with_longer_clears_pending() {
         let resolver = BrowseResolver::new();
         let cmd = crate::ids::GOTO_FIRST;
@@ -356,6 +358,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn input_exact_enter() {
         let resolver = InputResolver::new();
         let cmd = crate::ids::CONFIRM_INPUT;
@@ -371,6 +374,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn input_exact_with_longer() {
         let resolver = InputResolver::new();
         let cmd = crate::ids::CANCEL_INPUT;
@@ -397,6 +401,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn input_routes_various_chars() {
         let resolver = InputResolver::new();
         let keymap = NotFoundKeymap;
@@ -443,6 +448,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn input_special_keys_use_keymap_not_insert() {
         let resolver = InputResolver::new();
         let cmd = crate::ids::CONFIRM_INPUT;

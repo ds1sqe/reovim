@@ -150,6 +150,15 @@ impl ExplorerState {
             .store(generation, Ordering::Relaxed);
     }
 
+    /// Reset snapshot generation so the next snapshot sends full nodes.
+    ///
+    /// Called when the explorer deactivates — the client discards its
+    /// nodes on `active: false`, so the next activation must be a full
+    /// snapshot, not a delta.
+    pub fn reset_snapshot_generation(&self) {
+        self.snapshot_generation.store(u64::MAX, Ordering::Relaxed);
+    }
+
     /// Get the cached serialized nodes, if available.
     ///
     /// # Panics
@@ -564,6 +573,21 @@ mod tests {
         let state = ExplorerState::create();
         state.set_snapshot_generation(42);
         assert_eq!(state.snapshot_generation(), 42);
+    }
+
+    #[test]
+    fn reset_snapshot_generation() {
+        let state = ExplorerState::create();
+        // Initial value is u64::MAX
+        assert_eq!(state.snapshot_generation(), u64::MAX);
+
+        // Set to a known value
+        state.set_snapshot_generation(42);
+        assert_eq!(state.snapshot_generation(), 42);
+
+        // Reset should go back to u64::MAX
+        state.reset_snapshot_generation();
+        assert_eq!(state.snapshot_generation(), u64::MAX);
     }
 
     #[test]

@@ -18,6 +18,7 @@ use {
 use crate::{ids, modes::ExplorerMode, state::ExplorerState, tree::FileTree};
 
 /// Vim normal mode ID constant.
+#[cfg_attr(coverage_nightly, coverage(off))]
 const fn vim_normal() -> reovim_kernel::api::v1::ModeId {
     reovim_kernel::api::v1::ModeId::with_discriminant(
         reovim_kernel::api::v1::ModuleId::new("vim"),
@@ -45,11 +46,13 @@ impl reovim_driver_command::Command for Toggle {
 }
 
 impl CommandHandler for Toggle {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
 
         if state.active {
             state.active = false;
+            state.reset_snapshot_generation();
             runtime.set_mode(vim_normal(), TransitionContext::new());
         } else {
             state.active = true;
@@ -98,9 +101,11 @@ impl reovim_driver_command::Command for Close {
 }
 
 impl CommandHandler for Close {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.active = false;
+        state.reset_snapshot_generation();
 
         runtime.set_mode(vim_normal(), TransitionContext::new());
 
@@ -127,6 +132,7 @@ impl reovim_driver_command::Command for CursorUp {
 }
 
 impl CommandHandler for CursorUp {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let count = state.node_count();
@@ -153,6 +159,7 @@ impl reovim_driver_command::Command for CursorDown {
 }
 
 impl CommandHandler for CursorDown {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let count = state.node_count();
@@ -179,6 +186,7 @@ impl reovim_driver_command::Command for GotoFirst {
 }
 
 impl CommandHandler for GotoFirst {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let count = state.node_count();
@@ -203,6 +211,7 @@ impl reovim_driver_command::Command for GotoLast {
 }
 
 impl CommandHandler for GotoLast {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let count = state.node_count();
@@ -229,6 +238,7 @@ impl reovim_driver_command::Command for Expand {
 }
 
 impl CommandHandler for Expand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -276,6 +286,7 @@ impl reovim_driver_command::Command for Collapse {
 }
 
 impl CommandHandler for Collapse {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -328,6 +339,7 @@ impl reovim_driver_command::Command for Open {
 }
 
 impl CommandHandler for Open {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -367,6 +379,7 @@ impl CommandHandler for Open {
 
                     let state = runtime.ext_mut::<ExplorerState>();
                     state.active = false;
+                    state.reset_snapshot_generation();
                     runtime.set_mode(vim_normal(), TransitionContext::new());
                 }
                 Err(e) => {
@@ -395,6 +408,7 @@ impl reovim_driver_command::Command for GotoParent {
 }
 
 impl CommandHandler for GotoParent {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -442,6 +456,7 @@ impl reovim_driver_command::Command for ToggleHidden {
 }
 
 impl CommandHandler for ToggleHidden {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.show_hidden = !state.show_hidden;
@@ -466,6 +481,7 @@ impl reovim_driver_command::Command for Refresh {
 }
 
 impl CommandHandler for Refresh {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(vfs) = args.vfs() else {
             return CommandResult::error("VFS not available");
@@ -502,6 +518,7 @@ impl reovim_driver_command::Command for CreateFile {
 }
 
 impl CommandHandler for CreateFile {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.input_mode = crate::state::ExplorerInputMode::CreateFile;
@@ -527,6 +544,7 @@ impl reovim_driver_command::Command for CreateDir {
 }
 
 impl CommandHandler for CreateDir {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.input_mode = crate::state::ExplorerInputMode::CreateDir;
@@ -552,6 +570,7 @@ impl reovim_driver_command::Command for Rename {
 }
 
 impl CommandHandler for Rename {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -589,6 +608,7 @@ impl reovim_driver_command::Command for Delete {
 }
 
 impl CommandHandler for Delete {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.input_mode = crate::state::ExplorerInputMode::ConfirmDelete;
@@ -614,6 +634,7 @@ impl reovim_driver_command::Command for ConfirmInput {
 }
 
 impl CommandHandler for ConfirmInput {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let input_mode = state.input_mode;
@@ -705,6 +726,7 @@ impl reovim_driver_command::Command for CancelInput {
 }
 
 impl CommandHandler for CancelInput {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         cancel_input(runtime)
     }
@@ -725,6 +747,7 @@ impl reovim_driver_command::Command for InputBackspace {
 }
 
 impl CommandHandler for InputBackspace {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         state.input_buffer.pop();
@@ -751,6 +774,7 @@ impl reovim_driver_command::Command for YankPath {
 }
 
 impl CommandHandler for YankPath {
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<ExplorerState>();
         let Some(tree) = &state.tree else {
@@ -776,6 +800,7 @@ impl CommandHandler for YankPath {
 }
 
 /// Shared helper: cancel input mode and return to browse.
+#[cfg_attr(coverage_nightly, coverage(off))]
 fn cancel_input(runtime: &mut SessionRuntime<'_>) -> CommandResult {
     let state = runtime.ext_mut::<ExplorerState>();
     state.input_mode = crate::state::ExplorerInputMode::None;

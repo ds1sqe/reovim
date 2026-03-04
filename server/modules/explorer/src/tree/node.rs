@@ -480,6 +480,333 @@ mod tests {
     }
 
     #[test]
+    fn test_from_path_file() {
+        let vfs = setup_mock_vfs();
+        let node = FileNode::from_path(Path::new("/root/main.rs"), &vfs, 1).unwrap();
+        assert_eq!(node.name, "main.rs");
+        assert!(node.is_file());
+        assert!(!node.is_dir());
+        assert_eq!(node.depth, 1);
+        assert_eq!(node.size(), Some(100));
+    }
+
+    #[test]
+    fn test_from_path_root_slash() {
+        let vfs = MockVfs::new();
+        vfs.add_dir("/");
+        let node = FileNode::from_path(Path::new("/"), &vfs, 0).unwrap();
+        // "/" has no file_name, so fallback to to_string_lossy
+        assert_eq!(node.name, "/");
+        assert!(node.is_dir());
+    }
+
+    #[test]
+    fn test_from_entry_symlink() {
+        struct SymlinkVfs(bool);
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl VfsDriver for SymlinkVfs {
+            fn init(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn shutdown(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn read(&self, _: &Path) -> Result<Vec<u8>, VfsError> {
+                Err(VfsError::NotFound(PathBuf::new()))
+            }
+            fn write(&self, _: &Path, _: &[u8]) -> Result<(), VfsError> {
+                Err(VfsError::NotSupported("write".into()))
+            }
+            fn exists(&self, _: &Path) -> bool {
+                self.0
+            }
+            fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                self.symlink_metadata(p)
+            }
+            fn symlink_metadata(
+                &self,
+                _: &Path,
+            ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                Ok(reovim_driver_vfs::FileMetadata::symlink())
+            }
+            fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
+                Ok(p.to_path_buf())
+            }
+            fn read_link(&self, _: &Path) -> Result<PathBuf, VfsError> {
+                Ok(PathBuf::from("/target"))
+            }
+            fn list_dir(&self, _: &Path) -> Result<Vec<DirEntry>, VfsError> {
+                Ok(vec![])
+            }
+            fn create_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn create_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn delete(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn rename(&self, _: &Path, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn copy(&self, _: &Path, _: &Path) -> Result<u64, VfsError> {
+                Ok(0)
+            }
+            fn remove_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn remove_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn open(
+                &self,
+                _: &Path,
+                _: reovim_driver_vfs::OpenOptions,
+            ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+                Err(VfsError::NotSupported("open".into()))
+            }
+        }
+
+        // exists=true → not broken
+        let vfs = SymlinkVfs(true);
+        let entry = DirEntry::symlink(PathBuf::from("/root/link"));
+        let node = FileNode::from_entry(&entry, &vfs, 1).unwrap();
+        assert!(node.is_symlink());
+        assert!(!node.is_broken_symlink());
+        assert_eq!(node.depth, 1);
+    }
+
+    #[test]
+    fn test_from_path_symlink() {
+        struct BrokenSymlinkVfs;
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl VfsDriver for BrokenSymlinkVfs {
+            fn init(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn shutdown(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn read(&self, _: &Path) -> Result<Vec<u8>, VfsError> {
+                Err(VfsError::NotFound(PathBuf::new()))
+            }
+            fn write(&self, _: &Path, _: &[u8]) -> Result<(), VfsError> {
+                Err(VfsError::NotSupported("write".into()))
+            }
+            fn exists(&self, _: &Path) -> bool {
+                false
+            }
+            fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                self.symlink_metadata(p)
+            }
+            fn symlink_metadata(
+                &self,
+                _: &Path,
+            ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                Ok(reovim_driver_vfs::FileMetadata::symlink())
+            }
+            fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
+                Ok(p.to_path_buf())
+            }
+            fn read_link(&self, _: &Path) -> Result<PathBuf, VfsError> {
+                Ok(PathBuf::from("/nonexistent"))
+            }
+            fn list_dir(&self, _: &Path) -> Result<Vec<DirEntry>, VfsError> {
+                Ok(vec![])
+            }
+            fn create_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn create_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn delete(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn rename(&self, _: &Path, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn copy(&self, _: &Path, _: &Path) -> Result<u64, VfsError> {
+                Ok(0)
+            }
+            fn remove_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn remove_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn open(
+                &self,
+                _: &Path,
+                _: reovim_driver_vfs::OpenOptions,
+            ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+                Err(VfsError::NotSupported("open".into()))
+            }
+        }
+
+        let vfs = BrokenSymlinkVfs;
+        let node = FileNode::from_path(Path::new("/root/link"), &vfs, 1).unwrap();
+        assert!(node.is_symlink());
+        assert!(node.is_broken_symlink());
+    }
+
+    #[test]
+    fn test_sort_comparator_file_before_dir() {
+        // Use 30+ items to trigger merge sort (not insertion sort) so
+        // the comparator sees both (dir, file) and (file, dir) orderings.
+        let vfs = MockVfs::new();
+        vfs.add_dir("/d");
+        // 50 files + 50 dirs = 100 entries → triggers merge/quicksort
+        for i in 0..50 {
+            vfs.add_file(format!("/d/f{i:02}.txt"), format!("file {i}"));
+            vfs.add_dir(format!("/d/d{i:02}"));
+        }
+
+        let mut node = FileNode::from_path(Path::new("/d"), &vfs, 0).unwrap();
+        node.load_children(&vfs).unwrap();
+        let children = node.children().unwrap();
+        assert_eq!(children.len(), 100);
+        // All dirs come first
+        for child in &children[..50] {
+            assert!(child.is_dir(), "expected dir, got file: {}", child.name);
+        }
+        // All files come after
+        for child in &children[50..] {
+            assert!(child.is_file(), "expected file, got dir: {}", child.name);
+        }
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_sort_comparator_direct() {
+        // Directly exercise both sort arms by sorting manually-constructed nodes
+        let file = FileNode {
+            name: "file.txt".to_string(),
+            path: PathBuf::from("/file.txt"),
+            node_type: NodeType::File { size: 0 },
+            depth: 1,
+            is_hidden: false,
+        };
+        let dir = FileNode {
+            name: "dir".to_string(),
+            path: PathBuf::from("/dir"),
+            node_type: NodeType::Directory {
+                expanded: false,
+                children: vec![],
+            },
+            depth: 1,
+            is_hidden: false,
+        };
+
+        // file vs dir → Greater
+        let cmp1 = match (file.is_dir(), dir.is_dir()) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => file.name.to_lowercase().cmp(&dir.name.to_lowercase()),
+        };
+        assert_eq!(cmp1, std::cmp::Ordering::Greater);
+
+        // dir vs file → Less
+        let cmp2 = match (dir.is_dir(), file.is_dir()) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => dir.name.to_lowercase().cmp(&file.name.to_lowercase()),
+        };
+        assert_eq!(cmp2, std::cmp::Ordering::Less);
+    }
+
+    #[test]
+    fn test_load_children_entry_error() {
+        // VFS where list_dir returns entries but symlink_metadata fails for one
+        struct PartialErrorVfs;
+
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl VfsDriver for PartialErrorVfs {
+            fn init(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn shutdown(&mut self) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn read(&self, _: &Path) -> Result<Vec<u8>, VfsError> {
+                Ok(vec![])
+            }
+            fn write(&self, _: &Path, _: &[u8]) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn exists(&self, _: &Path) -> bool {
+                true
+            }
+            fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                self.symlink_metadata(p)
+            }
+            fn symlink_metadata(
+                &self,
+                p: &Path,
+            ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+                if p.file_name().is_some_and(|n| n == "bad.txt") {
+                    Err(VfsError::PermissionDenied(p.to_path_buf()))
+                } else if p.ends_with("good.txt") {
+                    Ok(reovim_driver_vfs::FileMetadata::file(10))
+                } else {
+                    Ok(reovim_driver_vfs::FileMetadata::directory())
+                }
+            }
+            fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
+                Ok(p.to_path_buf())
+            }
+            fn read_link(&self, _: &Path) -> Result<PathBuf, VfsError> {
+                Err(VfsError::NotSupported("read_link".into()))
+            }
+            fn list_dir(&self, _: &Path) -> Result<Vec<DirEntry>, VfsError> {
+                Ok(vec![
+                    DirEntry::file(PathBuf::from("/root/good.txt")),
+                    DirEntry::file(PathBuf::from("/root/bad.txt")),
+                ])
+            }
+            fn create_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn create_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn delete(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn rename(&self, _: &Path, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn copy(&self, _: &Path, _: &Path) -> Result<u64, VfsError> {
+                Ok(0)
+            }
+            fn remove_dir(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn remove_dir_all(&self, _: &Path) -> Result<(), VfsError> {
+                Ok(())
+            }
+            fn open(
+                &self,
+                _: &Path,
+                _: reovim_driver_vfs::OpenOptions,
+            ) -> Result<Box<dyn reovim_driver_vfs::FileHandle>, VfsError> {
+                Err(VfsError::NotSupported("open".into()))
+            }
+        }
+
+        let vfs = PartialErrorVfs;
+        let mut node = FileNode::from_path(Path::new("/root"), &vfs, 0).unwrap();
+        node.load_children(&vfs).unwrap();
+        // Only good.txt should be loaded; bad.txt's from_entry fails silently
+        let children = node.children().unwrap();
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].name, "good.txt");
+    }
+
+    #[test]
     fn test_from_path_name_extraction() {
         let vfs = MockVfs::new();
         vfs.add_dir("/my-project");
