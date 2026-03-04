@@ -1227,4 +1227,72 @@ describe("MicroscopeExtension DOM rendering", () => {
     const whichkey = extensions.find((e) => e.kind() === "whichkey")!;
     expect(whichkey.isActive()).toBe(false);
   });
+
+  it("scrolls to keep selected item visible when past MAX_VISIBLE_ITEMS", () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({
+      display: `item_${i}`,
+    }));
+    const payload = JSON.stringify({
+      active: true,
+      query: "",
+      cursor: 0,
+      selected: 30,
+      scrollOffset: 0,
+      pickerName: "test",
+      pickerTitle: "Test",
+      prompt: "> ",
+      items,
+      totalCount: 50,
+      matchedCount: 50,
+    });
+    ext.applyNotification(payload);
+    ext.render(container);
+
+    const renderedItems = container.querySelectorAll(".microscope-item");
+    // Should render MAX_VISIBLE_ITEMS (20) items
+    expect(renderedItems.length).toBe(20);
+
+    // The selected item (index 30) must have the "selected" class
+    const selectedItems = container.querySelectorAll(".microscope-item.selected");
+    expect(selectedItems.length).toBe(1);
+    expect(
+      selectedItems[0]?.querySelector(".microscope-item-display")?.textContent,
+    ).toBe("item_30");
+  });
+
+  it("does not scroll when selected is within first visible page", () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({
+      display: `item_${i}`,
+    }));
+    const payload = JSON.stringify({
+      active: true,
+      query: "",
+      cursor: 0,
+      selected: 5,
+      scrollOffset: 0,
+      pickerName: "test",
+      pickerTitle: "Test",
+      prompt: "> ",
+      items,
+      totalCount: 50,
+      matchedCount: 50,
+    });
+    ext.applyNotification(payload);
+    ext.render(container);
+
+    const renderedItems = container.querySelectorAll(".microscope-item");
+    expect(renderedItems.length).toBe(20);
+
+    // First item should be item_0 (no scroll)
+    expect(
+      renderedItems[0]?.querySelector(".microscope-item-display")?.textContent,
+    ).toBe("item_0");
+
+    // Item 5 should be selected
+    const selectedItems = container.querySelectorAll(".microscope-item.selected");
+    expect(selectedItems.length).toBe(1);
+    expect(
+      selectedItems[0]?.querySelector(".microscope-item-display")?.textContent,
+    ).toBe("item_5");
+  });
 });

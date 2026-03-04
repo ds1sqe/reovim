@@ -105,13 +105,21 @@ fn render_results(backend: &mut dyn RenderBackend, data: &MicroscopeData, bounds
         .fg(Color::AnsiValue(245))
         .bg(Color::AnsiValue(238));
 
-    for (i, item) in data.items.iter().enumerate() {
-        if i as u16 >= bounds.panel_height {
+    // Compute scroll offset to keep selection visible within the panel.
+    let panel_h = bounds.panel_height as usize;
+    let scroll = if panel_h == 0 || data.selected < panel_h {
+        0
+    } else {
+        data.selected - panel_h + 1
+    };
+
+    for (vi, item) in data.items.iter().skip(scroll).enumerate() {
+        if vi as u16 >= bounds.panel_height {
             break;
         }
 
-        let row = bounds.panel_start_y + i as u16;
-        let is_selected = i == data.selected;
+        let row = bounds.panel_start_y + vi as u16;
+        let is_selected = (scroll + vi) == data.selected;
         let style = if is_selected {
             &selected_style
         } else {
@@ -530,5 +538,218 @@ mod tests {
             .map(|col| backend.cells[query_row][col].0)
             .collect();
         assert_eq!(rendered, count_text);
+    }
+
+    #[test]
+    fn selected_item_scrolled_into_view() {
+        // 100 items with selected=50 — item 50 should be visible with '>' indicator.
+        let mut backend = MockBackend::new(80, 24);
+        let bounds = LayoutBounds::calculate(80, 24);
+        let many_items: Vec<super::super::ItemData> = (0..100)
+            .map(|i| super::super::ItemData {
+                display: format!("item_{i}"),
+                detail: None,
+            })
+            .collect();
+        let data = MicroscopeData {
+            active: true,
+            items: many_items,
+            selected: 50,
+            matched_count: 100,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+
+        // The selected item must appear somewhere in the panel.
+        let mut found_selected = false;
+        for row in bounds.panel_start_y..(bounds.panel_start_y + bounds.panel_height) {
+            if backend.char_at(0, row) == '>' {
+                // Verify it's item_50 by checking display text starts after "> ".
+                let text: String = (2..10)
+                    .map(|col| backend.char_at(col, row))
+                    .collect();
+                assert!(text.starts_with("item_50"), "selected row shows: {text}");
+                found_selected = true;
+                break;
+            }
+        }
+        assert!(found_selected, "selected item must be visible in panel");
+    }
+
+    #[test]
+    fn scroll_shows_correct_items() {
+        // With panel_height=8 and selected=10, items 3..11 should be shown
+        // (scroll = 10 - 8 + 1 = 3).
+        let bounds = LayoutBounds {
+            x: 0,
+            y: 0,
+            width: 80,
+            total_height: 10,
+            query_row: 0,
+            panel_start_y: 2,
+            panel_height: 8,
+            results_width: 80,
+            show_preview: false,
+            preview_width: 0,
+            preview_x: 0,
+        };
+        let mut backend = MockBackend::new(80, 12);
+        let many_items: Vec<super::super::ItemData> = (0..20)
+            .map(|i| super::super::ItemData {
+                display: format!("item_{i:02}"),
+                detail: None,
+            })
+            .collect();
+        let data = MicroscopeData {
+            active: true,
+            items: many_items,
+            selected: 10,
+            matched_count: 20,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_results(&mut backend, &data, &bounds);
+
+        // First visible row should be item_03 (scroll offset = 3).
+        let first_row = bounds.panel_start_y;
+        let text: String = (2..9)
+            .map(|col| backend.char_at(col, first_row))
+            .collect();
+        assert_eq!(text, "item_03");
+
+        // Last visible row should be item_10 (selected, with '>').
+        let last_row = bounds.panel_start_y + bounds.panel_height - 1;
+        assert_eq!(backend.char_at(0, last_row), '>');
+        let text: String = (2..9)
+            .map(|col| backend.char_at(col, last_row))
+            .collect();
+        assert_eq!(text, "item_10");
+    }
+
+    #[test]
+    fn no_scroll_when_selected_in_view() {
+        // 5 items with selected=2 — no scrolling needed, items start from 0.
+        let mut backend = MockBackend::new(80, 24);
+        let bounds = LayoutBounds::calculate(80, 24);
+        let items: Vec<super::super::ItemData> = (0..5)
+            .map(|i| super::super::ItemData {
+                display: format!("item_{i}"),
+                detail: None,
+            })
+            .collect();
+        let data = MicroscopeData {
+            active: true,
+            items,
+            selected: 2,
+            matched_count: 5,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_microscope(&mut backend, &data, &bounds);
+
+        // First item should be item_0 (no scroll).
+        let first_row = bounds.panel_start_y;
+        let text: String = (2..8)
+            .map(|col| backend.char_at(col, first_row))
+            .collect();
+        assert_eq!(text, "item_0");
+
+        // Third item (index 2) should have '>' indicator.
+        let sel_row = bounds.panel_start_y + 2;
+        assert_eq!(backend.char_at(0, sel_row), '>');
+    }
+
+    #[test]
+    fn query_row_overflow_narrow_width() {
+        // Prompt and query wider than width — exercises overflow branches
+        // at lines 48, 56, and 67 (false branches: col >= width).
+        let bounds = LayoutBounds {
+            x: 0,
+            y: 0,
+            width: 4,
+            total_height: 4,
+            query_row: 0,
+            panel_start_y: 2,
+            panel_height: 2,
+            results_width: 4,
+            show_preview: false,
+            preview_width: 0,
+            preview_x: 0,
+        };
+        let mut backend = MockBackend::new(10, 10);
+        let data = MicroscopeData {
+            active: true,
+            prompt: "> > > ".to_owned(), // 6 chars, wider than width=4
+            query: "abcdef".to_owned(),  // also wider
+            ..MicroscopeData::default()
+        };
+        render_query_row(&mut backend, &data, &bounds);
+        // Cells beyond width should remain as default space.
+        assert_eq!(backend.char_at(4, 0), ' ');
+        assert_eq!(backend.char_at(5, 0), ' ');
+    }
+
+    #[test]
+    fn zero_panel_height_scroll() {
+        // panel_height=0 triggers the panel_h == 0 branch (line 110).
+        let bounds = LayoutBounds {
+            x: 0,
+            y: 0,
+            width: 80,
+            total_height: 2,
+            query_row: 0,
+            panel_start_y: 2,
+            panel_height: 0,
+            results_width: 80,
+            show_preview: false,
+            preview_width: 0,
+            preview_x: 0,
+        };
+        let mut backend = MockBackend::new(80, 10);
+        let data = MicroscopeData {
+            active: true,
+            items: vec![super::super::ItemData {
+                display: "item".to_owned(),
+                detail: None,
+            }],
+            selected: 5,
+            matched_count: 1,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        // Should not panic — no items rendered when panel_height is 0.
+        render_results(&mut backend, &data, &bounds);
+    }
+
+    #[test]
+    fn detail_skipped_when_no_room() {
+        // Detail present but col + 2 >= results_width (line 153 false branch).
+        let bounds = LayoutBounds {
+            x: 0,
+            y: 0,
+            width: 10,
+            total_height: 4,
+            query_row: 0,
+            panel_start_y: 2,
+            panel_height: 2,
+            results_width: 10,
+            show_preview: false,
+            preview_width: 0,
+            preview_x: 0,
+        };
+        let mut backend = MockBackend::new(20, 10);
+        let data = MicroscopeData {
+            active: true,
+            items: vec![super::super::ItemData {
+                display: "longname".to_owned(), // 8 chars + 2 prefix = fills results_width=10
+                detail: Some("detail".to_owned()),
+            }],
+            matched_count: 1,
+            prompt: "> ".to_owned(),
+            ..MicroscopeData::default()
+        };
+        render_results(&mut backend, &data, &bounds);
+        // Detail should be skipped because col + 2 >= results_width after display.
     }
 }

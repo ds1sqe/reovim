@@ -145,11 +145,16 @@ export class MicroscopeExtension implements WebExtension {
     const results = document.createElement("div");
     results.className = "microscope-results";
 
-    const visible = this.state.items.slice(0, MAX_VISIBLE_ITEMS);
-    for (const [i, item] of visible.entries()) {
+    // Compute scroll offset to keep selection visible.
+    const scroll =
+      this.state.selected >= MAX_VISIBLE_ITEMS
+        ? this.state.selected - MAX_VISIBLE_ITEMS + 1
+        : 0;
+    const visible = this.state.items.slice(scroll, scroll + MAX_VISIBLE_ITEMS);
+    for (const [vi, item] of visible.entries()) {
       const itemEl = document.createElement("div");
       itemEl.className = "microscope-item";
-      if (i === this.state.selected) {
+      if (scroll + vi === this.state.selected) {
         itemEl.classList.add("selected");
       }
 
