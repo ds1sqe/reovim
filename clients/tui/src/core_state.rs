@@ -206,7 +206,12 @@ pub struct TuiCoreState {
     // =========================================================================
     /// Buffer content cache (`buffer_id` -> lines).
     pub buffer_cache: HashMap<u64, Vec<String>>,
-    // TODO(#494): Add per-window scroll_top: HashMap<u64, usize> for scroll tracking
+
+    /// Per-window scroll offsets (vertical).
+    ///
+    /// Maps `window_id` -> `scroll_top` (first visible line, 0-indexed).
+    /// Computed before each render frame from cursor position and viewport height.
+    pub scroll_tops: HashMap<u64, usize>,
 
     // =========================================================================
     // Multi-client awareness (#474)
@@ -355,6 +360,8 @@ impl TuiCoreState {
             .retain(|id, _| current_window_ids.contains(id));
         self.window_selections
             .retain(|id, _| current_window_ids.contains(id));
+        self.scroll_tops
+            .retain(|id, _| current_window_ids.contains(id));
     }
 
     /// Get cursor position for the focused window.
@@ -366,6 +373,56 @@ impl TuiCoreState {
     #[must_use]
     pub fn get_focused_cursor(&self) -> Option<CursorPosition> {
         self.window_cursors.get(&self.focused_window_id).copied()
+    }
+
+    // =========================================================================
+    // Scroll tracking (#494)
+    // =========================================================================
+
+    /// Compute and store `scroll_top` for a window to keep its cursor visible.
+    ///
+    /// Implements "ensure cursor in viewport" logic:
+    /// - If cursor is above viewport: scroll up to cursor line
+    /// - If cursor is below viewport: scroll down so cursor is on last line
+    /// - Otherwise: keep current scroll position
+    ///
+    /// Returns the computed `scroll_top`.
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn compute_scroll_top(&mut self, window_id: u64, content_height: u16) -> usize {
+        let cursor_line = self
+            .window_cursors
+            .get(&window_id)
+            .map_or(0, |c| c.line as usize);
+
+        let current = self.scroll_tops.get(&window_id).copied().unwrap_or(0);
+        let height = content_height as usize;
+
+        let new_scroll_top = if height == 0 {
+            0
+        } else if cursor_line < current {
+            cursor_line
+        } else if cursor_line >= current + height {
+            cursor_line - height + 1
+        } else {
+            current
+        };
+
+        self.scroll_tops.insert(window_id, new_scroll_top);
+        new_scroll_top
+    }
+
+    /// Get the stored `scroll_top` for a window.
+    ///
+    /// Returns 0 if no `scroll_top` has been computed for this window.
+    #[must_use]
+    pub fn get_scroll_top(&self, window_id: u64) -> usize {
+        self.scroll_tops.get(&window_id).copied().unwrap_or(0)
+    }
+
+    /// Get `scroll_top` for the focused window.
+    #[must_use]
+    pub fn get_focused_scroll_top(&self) -> usize {
+        self.get_scroll_top(self.focused_window_id)
     }
 }
 
@@ -672,5 +729,86 @@ mod tests {
             .insert(100, vec!["line 1".to_string(), "line 2".to_string()]);
         assert_eq!(state.buffer_cache.get(&100).unwrap().len(), 2);
         assert!(!state.buffer_cache.contains_key(&999));
+    }
+
+    #[test]
+    fn test_compute_scroll_top_cursor_in_viewport() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 5, 0);
+
+        let scroll = state.compute_scroll_top(10, 24);
+        assert_eq!(scroll, 0); // cursor at line 5, viewport 0..24 — no scroll needed
+    }
+
+    #[test]
+    fn test_compute_scroll_top_cursor_below_viewport() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 30, 0);
+
+        let scroll = state.compute_scroll_top(10, 24);
+        assert_eq!(scroll, 7); // cursor at 30, height 24 → 30 - 24 + 1 = 7
+    }
+
+    #[test]
+    fn test_compute_scroll_top_cursor_above_viewport() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 30, 0);
+        state.compute_scroll_top(10, 24); // scroll_top = 7
+
+        // Move cursor up to line 2 (above scroll_top=7)
+        state.update_local_cursor(10, 2, 0);
+        let scroll = state.compute_scroll_top(10, 24);
+        assert_eq!(scroll, 2); // snaps to cursor line
+    }
+
+    #[test]
+    fn test_compute_scroll_top_zero_height() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 50, 0);
+
+        let scroll = state.compute_scroll_top(10, 0);
+        assert_eq!(scroll, 0); // zero height → always 0
+    }
+
+    #[test]
+    fn test_get_scroll_top_default() {
+        let state = TuiCoreState::new(1);
+        assert_eq!(state.get_scroll_top(999), 0);
+    }
+
+    #[test]
+    fn test_get_focused_scroll_top() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.update_local_cursor(10, 30, 0);
+        state.compute_scroll_top(10, 24);
+
+        assert_eq!(state.get_focused_scroll_top(), 7);
+    }
+
+    #[test]
+    fn test_cleanup_stale_scroll_tops() {
+        let mut state = TuiCoreState::new(1);
+        state.update_local_cursor(10, 30, 0);
+        state.update_local_cursor(20, 40, 0);
+        state.compute_scroll_top(10, 24);
+        state.compute_scroll_top(20, 24);
+
+        // Only window 10 survives layout change
+        state.windows = vec![WindowInfo {
+            window_id: 10,
+            buffer_id: Some(1),
+            rect: None,
+            focused: true,
+            opacity: None,
+        }];
+
+        state.cleanup_stale_cursors();
+        assert!(state.scroll_tops.contains_key(&10));
+        assert!(!state.scroll_tops.contains_key(&20));
     }
 }

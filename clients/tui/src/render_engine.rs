@@ -254,8 +254,7 @@ fn render_buffer_content<B: RenderBackend>(
 
     let lines = buffer_id.and_then(|id| state.buffer_cache.get(&id));
 
-    // TODO(#494): Per-window scroll tracking — compute from cursor position
-    let scroll_top = 0usize;
+    let scroll_top = state.get_focused_scroll_top();
 
     for row in 0..content_height {
         let line_idx = scroll_top + row as usize;
@@ -380,6 +379,7 @@ fn render_remote_selections<B: RenderBackend>(
         };
 
         let sel_color = dimmed_client_color(remote.client_id);
+        let scroll_top = state.get_focused_scroll_top() as u64;
         render_selection_range(
             backend,
             sel,
@@ -388,6 +388,7 @@ fn render_remote_selections<B: RenderBackend>(
             content_height,
             width,
             lines.map(Vec::as_slice),
+            scroll_top,
         );
     }
 }
@@ -411,6 +412,7 @@ fn render_local_selection<B: RenderBackend>(
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
     let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
 
+    let scroll_top = state.get_focused_scroll_top() as u64;
     render_selection_range(
         backend,
         sel,
@@ -419,6 +421,7 @@ fn render_local_selection<B: RenderBackend>(
         content_height,
         width,
         lines.map(Vec::as_slice),
+        scroll_top,
     );
 }
 
@@ -428,7 +431,7 @@ fn render_local_selection<B: RenderBackend>(
 /// - **char**: Contiguous character range (first/last line partial, middle lines full)
 /// - **line**: Entire lines highlighted
 /// - **block**: Rectangular column range on each line
-#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_selection_range<B: RenderBackend>(
     backend: &mut B,
@@ -438,12 +441,17 @@ fn render_selection_range<B: RenderBackend>(
     content_height: u16,
     screen_width: u16,
     lines: Option<&[String]>,
+    scroll_top: u64,
 ) {
     let (start_line, start_col, end_line, end_col) = normalize_selection(sel);
     let content_width = screen_width.saturating_sub(gutter_width);
 
     for line in start_line..=end_line {
-        if line as u16 >= content_height {
+        if line < scroll_top {
+            continue;
+        }
+        let screen_line = line - scroll_top;
+        if screen_line as u16 >= content_height {
             break;
         }
 
@@ -469,7 +477,8 @@ fn render_selection_range<B: RenderBackend>(
             }
         };
 
-        let screen_y = line as u16;
+        #[allow(clippy::cast_possible_truncation)]
+        let screen_y = screen_line as u16;
         for col in col_start..col_end.min(content_width) {
             backend.overlay_bg(gutter_width + col, screen_y, color);
         }
@@ -505,11 +514,15 @@ fn render_remote_cursors<B: RenderBackend>(
             continue;
         }
 
+        let scroll_top = state.get_focused_scroll_top() as u64;
+        if remote.cursor_line < scroll_top {
+            continue;
+        }
+
         let cursor_color = client_color(remote.client_id);
         let cursor_style = Style::default().bg(cursor_color).fg(Color::White);
 
-        // TODO(#494): Adjust remote cursor for scroll offset
-        let screen_line = remote.cursor_line;
+        let screen_line = remote.cursor_line - scroll_top;
         let screen_col = remote.cursor_col as u16 + gutter_width;
 
         if screen_line < u64::from(content_height) && screen_col < width {
@@ -573,20 +586,26 @@ fn render_remote_cursor_labels<B: RenderBackend>(
 
     let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
 
+    let scroll_top = state.get_focused_scroll_top() as u64;
+
     for remote in state.other_clients.values() {
         if remote.buffer_id != current_buffer_id {
             continue;
         }
 
-        let cursor_line = remote.cursor_line;
-        if cursor_line >= u64::from(content_height) {
+        if remote.cursor_line < scroll_top {
             continue;
         }
-        let screen_y = cursor_line as u16;
+        let screen_line = remote.cursor_line - scroll_top;
+        if screen_line >= u64::from(content_height) {
+            continue;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        let screen_y = screen_line as u16;
 
-        // Calculate end-of-line position from buffer cache
+        // Calculate end-of-line position from buffer cache (absolute line index)
         let eol_col = lines
-            .and_then(|l| l.get(cursor_line as usize))
+            .and_then(|l| l.get(remote.cursor_line as usize))
             .map_or(0, |line| display_width(line) as u16);
 
         // Place label after line content with 1-col gap
@@ -624,9 +643,12 @@ fn render_self_cursor<B: RenderBackend>(
         return;
     };
 
-    // TODO(#494): Adjust self cursor for scroll offset
+    let scroll_top = state.get_focused_scroll_top() as u64;
+    if cursor.line < scroll_top {
+        return;
+    }
     let (width, _) = backend.size();
-    let screen_line = cursor.line;
+    let screen_line = cursor.line - scroll_top;
     let screen_col = cursor.column as u16 + gutter_width;
 
     if screen_line < u64::from(content_height) && screen_col < width {
