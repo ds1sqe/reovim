@@ -358,6 +358,7 @@ impl CommandHandler for Open {
                 Ok(content) => {
                     let text = String::from_utf8_lossy(&content);
                     let buf_id = runtime.create_buffer(Some(&path.to_string_lossy()), &text);
+                    runtime.set_active_buffer(Some(buf_id));
 
                     if let Some(window) = runtime.active_window() {
                         let _ = runtime.set_window_buffer(window, buf_id);

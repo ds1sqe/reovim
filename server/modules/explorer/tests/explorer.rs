@@ -328,6 +328,61 @@ async fn test_refresh() {
 }
 
 // ============================================================================
+// Open file with Enter
+// ============================================================================
+
+/// Test: `<CR>` on a file node opens it and returns to NORMAL mode.
+///
+/// Uses `G` (goto last) to navigate to the last visible node, which should
+/// be a file (directories sort before files). Then `<CR>` opens it.
+/// The buffer should change from the initial content to the file's content.
+#[tokio::test]
+async fn test_open_file_with_enter() {
+    let trace = StepTest::new()
+        .await
+        .with_buffer("hello")
+        .with_delay(120)
+        .step("<Space>e")
+        .expect_mode_contains("EXPLORER")
+        .step("G")
+        .expect_mode_contains("EXPLORER")
+        .step("<CR>")
+        .expect_mode_contains("NORMAL")
+        .run()
+        .await;
+
+    trace.print_trace();
+    trace.assert_ok();
+
+    // Verify the buffer changed from initial "hello" to the opened file
+    let final_buf = &trace.final_state().buffer;
+    eprintln!("  Final buffer content (first 200 chars): {:?}", &final_buf[..final_buf.len().min(200)]);
+    assert_ne!(final_buf, "hello", "Buffer should change after opening a file");
+}
+
+/// Test: `<CR>` on the root directory (index 0) toggles expand, stays in EXPLORER.
+///
+/// When cursor is at index 0 (root dir), Enter should toggle the directory,
+/// not open a file. This verifies the user must navigate to a file node first.
+#[tokio::test]
+async fn test_enter_on_root_dir_toggles() {
+    let trace = StepTest::new()
+        .await
+        .with_buffer("hello")
+        .with_delay(120)
+        .step("<Space>e")
+        .expect_mode_contains("EXPLORER")
+        // Cursor starts at index 0 = root directory
+        .step("<CR>")
+        .expect_mode_contains("EXPLORER")
+        .run()
+        .await;
+
+    trace.print_trace();
+    trace.assert_ok();
+}
+
+// ============================================================================
 // Buffer stays intact
 // ============================================================================
 

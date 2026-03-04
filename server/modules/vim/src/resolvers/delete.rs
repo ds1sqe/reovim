@@ -876,6 +876,7 @@ mod tests {
         fn active_buffer(&self) -> Option<BufferId> {
             None
         }
+        fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
         fn buffer_line(&self, _b: BufferId, _l: usize) -> Option<String> {
             None
         }

@@ -537,6 +537,10 @@ impl BufferApi for SessionRuntime<'_> {
         self.session.active_buffer()
     }
 
+    fn set_active_buffer(&mut self, id: Option<BufferId>) {
+        self.session.set_active_buffer(id);
+    }
+
     fn buffer_line(&self, buffer: BufferId, line: usize) -> Option<String> {
         self.kernel
             .buffers

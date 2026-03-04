@@ -43,6 +43,12 @@ pub trait BufferApi: Send {
     /// Get the active buffer ID.
     fn active_buffer(&self) -> Option<BufferId>;
 
+    /// Set the active buffer ID.
+    ///
+    /// Updates the session-level active buffer. Use after creating a new
+    /// buffer that should become the current editing target.
+    fn set_active_buffer(&mut self, id: Option<BufferId>);
+
     /// Get a line from a buffer.
     ///
     /// Returns `None` if the buffer doesn't exist or line is out of bounds.
