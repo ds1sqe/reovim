@@ -131,6 +131,12 @@ impl JumpSessionState {
         self.target.take()
     }
 
+    /// Whether a resolved jump target is available (non-consuming).
+    #[must_use]
+    pub const fn has_target(&self) -> bool {
+        self.target.is_some()
+    }
+
     /// Whether the jump state machine is active (not Inactive).
     #[must_use]
     pub const fn is_active(&self) -> bool {
@@ -554,6 +560,32 @@ mod tests {
         state.insert_char('1');
         assert!(!state.is_active());
         assert!(state.take_target().is_none());
+    }
+
+    #[test]
+    fn test_has_target_true_after_auto_jump() {
+        let mut state = JumpSessionState::default();
+        state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+        state.insert_char('w');
+        state.insert_char('o');
+        assert!(state.has_target());
+    }
+
+    #[test]
+    fn test_has_target_false_when_inactive() {
+        let state = JumpSessionState::default();
+        assert!(!state.has_target());
+    }
+
+    #[test]
+    fn test_has_target_false_after_take() {
+        let mut state = JumpSessionState::default();
+        state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+        state.insert_char('w');
+        state.insert_char('o');
+        assert!(state.has_target());
+        let _ = state.take_target();
+        assert!(!state.has_target());
     }
 
     #[test]

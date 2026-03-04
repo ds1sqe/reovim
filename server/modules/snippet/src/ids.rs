@@ -4,7 +4,6 @@
 //!
 //! - `MODULE` - Module identity
 //! - `NAVIGATING_MODE` - Active snippet navigation mode
-//! - `VIM_INSERT_MODE` - Vim insert mode (constructed without vim dependency)
 //! - Command IDs for expand, jump-next, jump-prev, cancel
 
 use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId};
@@ -25,14 +24,6 @@ pub const MODULE: ModuleId = ModuleId::new("snippet");
 /// While in this mode, Tab/S-Tab navigate between tab stops.
 /// Unhandled keys fall through to vim insert mode via `inherits_from()`.
 pub const NAVIGATING_MODE: ModeId = ModeId::with_discriminant(MODULE, "navigating", 0);
-
-/// Vim insert mode ID, constructed without importing `reovim-module-vim`.
-///
-/// Matches `VimMode::INSERT_ID` exactly: module "vim", name "insert",
-/// discriminant 1. `ModeId` equality is by module + discriminant only,
-/// so this is interchangeable with the vim module's own constant.
-const VIM_MODULE: ModuleId = ModuleId::new("vim");
-pub const VIM_INSERT_MODE: ModeId = ModeId::with_discriminant(VIM_MODULE, "insert", 1);
 
 // =============================================================================
 // Command IDs
@@ -67,14 +58,6 @@ mod tests {
     }
 
     #[test]
-    fn test_vim_insert_mode_matches_vim_definition() {
-        // Must match VimMode::INSERT_ID: module "vim", discriminant 1
-        assert_eq!(VIM_INSERT_MODE.module().as_str(), "vim");
-        assert_eq!(VIM_INSERT_MODE.name(), "insert");
-        assert_eq!(VIM_INSERT_MODE.discriminant(), 1);
-    }
-
-    #[test]
     fn test_command_ids() {
         assert_eq!(EXPAND.module().as_str(), "snippet");
         assert_eq!(EXPAND.name(), "expand");
@@ -87,11 +70,6 @@ mod tests {
 
         assert_eq!(CANCEL.module().as_str(), "snippet");
         assert_eq!(CANCEL.name(), "cancel");
-    }
-
-    #[test]
-    fn test_navigating_mode_distinct_from_vim_insert() {
-        assert_ne!(NAVIGATING_MODE, VIM_INSERT_MODE);
     }
 
     #[test]

@@ -17,8 +17,12 @@
 pub mod fold;
 pub mod jump;
 
-use reovim_kernel::api::v1::{
-    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+use {
+    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_kernel::api::v1::{
+        CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
+        ProbeResult, Version,
+    },
 };
 
 const MODULE_ID: ModuleId = ModuleId::new("range-finder");
@@ -74,15 +78,41 @@ impl Module for RangeFinderModule {
             command_store.add(handler);
         }
 
+        // Look up vim:normal for mode inheritance (resolved at init time)
+        let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let parent_mode = modes
+            .find_by_name("vim", "normal")
+            .expect("vim:normal mode must be registered before range-finder");
+
+        // Register jump resolver for jump-input mode (#524)
+        let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
+        resolvers.register(jump::resolver::JumpResolver::with_parent(parent_mode.clone()));
+
+        // Register mode info for jump-input mode (#524)
+        modes.add(ModeInfo {
+            id: jump::ids::JUMP_INPUT_MODE,
+            display_name: "JUMP",
+            cursor_style: CursorStyle::Block,
+            accepts_char_input: true,
+            has_selection: false,
+            inherits_from: Some(parent_mode),
+            is_entry: false,
+        });
+
+        // Register keybindings into store for bootstrap wiring (#524)
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // NOTE: Jump search keybinding ("s") is deferred until the command
-            // execute() body is implemented. Registering a no-op stub for "s"
-            // would swallow the key in vim:normal mode, breaking user input.
-            //
+            // Jump navigation
+            KeybindingRegistration::new("s", jump::ids::JUMP_SEARCH)
+                .with_modes(&["vim:normal"])
+                .with_category("jump")
+                .with_description("Jump search (two-char pattern)"),
             // Fold operations
             KeybindingRegistration::new("za", fold::ids::FOLD_TOGGLE)
                 .with_modes(&["vim:normal"])
@@ -154,9 +184,25 @@ mod tests {
 
     #[test]
     fn test_module_init() {
-        use {reovim_kernel::api::v1::ServiceRegistry, std::sync::Arc};
+        use {
+            reovim_kernel::api::v1::{ModeId, ServiceRegistry},
+            std::sync::Arc,
+        };
 
         let services = Arc::new(ServiceRegistry::new());
+
+        // Register mock vim:normal mode (vim initializes before range-finder)
+        let modes = services.get_or_create::<ModeInfoStore>();
+        modes.add(ModeInfo {
+            id: ModeId::new(ModuleId::new("vim"), "normal"),
+            display_name: "NORMAL",
+            cursor_style: CursorStyle::Block,
+            accepts_char_input: false,
+            has_selection: false,
+            inherits_from: None,
+            is_entry: true,
+        });
+
         let ctx = test_module_context(services.clone());
 
         let mut module = RangeFinderModule::new();
@@ -178,30 +224,54 @@ mod tests {
             .unwrap();
         let handlers = command_store.take_handlers();
         assert_eq!(handlers.len(), 7);
+
+        // Verify resolver was registered (#524)
+        let resolvers = services.get::<ResolverRegistry>().unwrap();
+        assert!(resolvers.get(&crate::jump::ids::JUMP_INPUT_MODE).is_some());
+
+        // Verify mode info was registered (#524)
+        // 1 mock vim:normal + 1 JUMP = 2 modes total
+        let modes = services.get::<ModeInfoStore>().unwrap();
+        let mode_list = modes.take_modes();
+        assert_eq!(mode_list.len(), 2);
+        assert_eq!(mode_list[1].display_name, "JUMP");
+        assert_eq!(mode_list[1].cursor_style, CursorStyle::Block);
+        assert!(mode_list[1].accepts_char_input);
+        assert!(!mode_list[1].is_entry);
+
+        // Verify keybindings were registered in store (#524)
+        let keybinding_store = services.get::<KeybindingStore>().unwrap();
+        let bindings = keybinding_store.take_keybindings();
+        assert_eq!(bindings.len(), 6); // s + za/zo/zc/zR/zM
     }
 
     #[test]
     fn test_keybindings() {
         let module = RangeFinderModule::new();
         let bindings = module.keybindings();
-        assert_eq!(bindings.len(), 5); // za/zo/zc/zR/zM (s deferred)
+        assert_eq!(bindings.len(), 6); // s + za/zo/zc/zR/zM
+
+        // Jump
+        assert_eq!(bindings[0].keys, "s");
+        assert_eq!(bindings[0].command_id, crate::jump::ids::JUMP_SEARCH);
+        assert_eq!(bindings[0].category, Some("jump"));
 
         // Fold
-        assert_eq!(bindings[0].keys, "za");
-        assert_eq!(bindings[0].command_id, crate::fold::ids::FOLD_TOGGLE);
-        assert_eq!(bindings[0].category, Some("folding"));
+        assert_eq!(bindings[1].keys, "za");
+        assert_eq!(bindings[1].command_id, crate::fold::ids::FOLD_TOGGLE);
+        assert_eq!(bindings[1].category, Some("folding"));
 
-        assert_eq!(bindings[1].keys, "zo");
-        assert_eq!(bindings[1].command_id, crate::fold::ids::FOLD_OPEN);
+        assert_eq!(bindings[2].keys, "zo");
+        assert_eq!(bindings[2].command_id, crate::fold::ids::FOLD_OPEN);
 
-        assert_eq!(bindings[2].keys, "zc");
-        assert_eq!(bindings[2].command_id, crate::fold::ids::FOLD_CLOSE);
+        assert_eq!(bindings[3].keys, "zc");
+        assert_eq!(bindings[3].command_id, crate::fold::ids::FOLD_CLOSE);
 
-        assert_eq!(bindings[3].keys, "zR");
-        assert_eq!(bindings[3].command_id, crate::fold::ids::FOLD_OPEN_ALL);
+        assert_eq!(bindings[4].keys, "zR");
+        assert_eq!(bindings[4].command_id, crate::fold::ids::FOLD_OPEN_ALL);
 
-        assert_eq!(bindings[4].keys, "zM");
-        assert_eq!(bindings[4].command_id, crate::fold::ids::FOLD_CLOSE_ALL);
+        assert_eq!(bindings[5].keys, "zM");
+        assert_eq!(bindings[5].command_id, crate::fold::ids::FOLD_CLOSE_ALL);
     }
 
     /// Create a minimal `ModuleContext` for testing.

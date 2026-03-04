@@ -7,5 +7,6 @@
 pub mod bridge;
 pub mod command;
 pub mod ids;
+pub mod resolver;
 pub mod search;
 pub mod state;

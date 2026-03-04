@@ -8,13 +8,23 @@ use {
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
         TransitionContext,
     },
-    reovim_kernel::api::v1::{CommandId, Edit, Position},
+    reovim_kernel::api::v1::{CommandId, Edit, ModeId, Position},
 };
 
 use crate::{ids, state::SnippetSessionState};
 
 /// Jump to the next tab stop in the active snippet.
-pub struct JumpNext;
+pub struct JumpNext {
+    return_mode: ModeId,
+}
+
+impl JumpNext {
+    /// Create a new jump-next command with the given return mode.
+    #[must_use]
+    pub const fn new(return_mode: ModeId) -> Self {
+        Self { return_mode }
+    }
+}
 
 impl Command for JumpNext {
     fn id(&self) -> CommandId {
@@ -29,7 +39,7 @@ impl Command for JumpNext {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for JumpNext {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_jump(runtime, args, Direction::Next)
+        execute_jump(runtime, args, Direction::Next, Some(&self.return_mode))
     }
 }
 
@@ -49,7 +59,7 @@ impl Command for JumpPrev {
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for JumpPrev {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
-        execute_jump(runtime, args, Direction::Prev)
+        execute_jump(runtime, args, Direction::Prev, None)
     }
 }
 
@@ -64,10 +74,14 @@ enum Direction {
 }
 
 /// Shared jump implementation for both `JumpNext` and `JumpPrev`.
+///
+/// `return_mode` is used when all tab stops are exhausted (Next only).
+/// Pass `None` for Prev (which never exits snippet mode).
 fn execute_jump(
     runtime: &mut SessionRuntime<'_>,
     args: &CommandContext,
     direction: Direction,
+    return_mode: Option<&ModeId>,
 ) -> CommandResult {
     let Some(buffer_id) = args.buffer_id() else {
         return CommandResult::error("no active buffer");
@@ -153,7 +167,9 @@ fn execute_jump(
                     if let Some(w) = runtime.windows_mut().active_mut() {
                         w.selection = None;
                     }
-                    runtime.set_mode(ids::VIM_INSERT_MODE, TransitionContext::new());
+                    if let Some(mode) = return_mode {
+                        runtime.set_mode(mode.clone(), TransitionContext::new());
+                    }
                 }
                 Direction::Prev => {
                     // Already at first stop — put snippet back, do nothing.
@@ -258,16 +274,22 @@ fn select_placeholder_and_move(
 
 #[cfg(test)]
 mod tests {
+    use reovim_kernel::api::v1::ModuleId;
+
     use super::*;
+
+    fn test_return_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "return")
+    }
 
     #[test]
     fn test_jump_next_id() {
-        assert_eq!(JumpNext.id(), ids::JUMP_NEXT);
+        assert_eq!(JumpNext::new(test_return_mode()).id(), ids::JUMP_NEXT);
     }
 
     #[test]
     fn test_jump_next_description() {
-        assert!(!JumpNext.description().is_empty());
+        assert!(!JumpNext::new(test_return_mode()).description().is_empty());
     }
 
     #[test]

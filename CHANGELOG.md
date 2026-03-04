@@ -42,11 +42,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `JumpSessionState` (Client scope) and `FoldSessionState` (Shared scope) as
   independent `SessionExtension` types. `JumpBridge` and `FoldBridge` serialize
   state to JSON via `ExtensionStateBridge`. `SyntaxSessionState` moved to
-  `reovim-driver-syntax` for module-layer access. Six keybindings in `vim:normal`
-  mode. Command `execute()` bodies are Phase 4 stubs (infrastructure complete,
-  cursor movement and fold mutations deferred). 134 unit tests with 100% MC/DC
-  coverage, 8 E2E integration tests, 3 headless TUI tests, 8 web client tests.
-  Zero kernel modifications, zero clippy warnings.
+  `reovim-driver-syntax` for module-layer access. `JumpResolver` implements
+  `ModeKeyResolver` for `range-finder:jump-input` mode with `vim:normal`
+  inheritance, routing character input to `JumpSessionState` via
+  `client_extensions`. All 7 command `execute()` bodies wired up: 5 fold
+  commands read `SyntaxSessionState` fold ranges and mutate `FoldSessionState`,
+  `JumpSearchCommand` gathers buffer lines and pushes jump-input mode,
+  `JumpExecuteCommand` moves cursor to resolved target. Six keybindings in
+  `vim:normal` mode (`s`, `za`, `zo`, `zc`, `zR`, `zM`). 160 unit tests with
+  100% MC/DC coverage, 8 E2E integration tests, 3 headless TUI tests, 8 web
+  client tests. Zero kernel modifications, zero clippy warnings.
 
 - **File explorer sidebar with tree navigation (#523)**: Full-stack file
   explorer sidebar (nvim-tree style) with server module and TUI extension.

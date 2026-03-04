@@ -8,9 +8,12 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{ExtensionApi, SessionRuntime},
+    reovim_driver_syntax::SyntaxSessionState,
     reovim_kernel::api::v1::CommandId,
 };
+
+use super::state::FoldSessionState;
 
 use super::ids;
 
@@ -29,9 +32,31 @@ impl Command for FoldToggleCommand {
 }
 
 impl CommandHandler for FoldToggleCommand {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // Stub: will get cursor line, find fold, toggle via FoldSessionState
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::Success;
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_line = window.cursor.line as u32;
+
+        // Read fold ranges from syntax driver (immutable borrow).
+        let folds = runtime
+            .ext::<SyntaxSessionState>()
+            .and_then(|s| s.get(buffer_id))
+            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .unwrap_or_default();
+
+        // Mutate fold state.
+        let fold = runtime
+            .ext_mut::<FoldSessionState>()
+            .get_or_insert(buffer_id);
+        fold.set_ranges(folds);
+        if let Some(idx) = fold.fold_at_line(cursor_line) {
+            fold.toggle(idx);
+        }
         CommandResult::Success
     }
 }
@@ -51,8 +76,29 @@ impl Command for FoldOpenCommand {
 }
 
 impl CommandHandler for FoldOpenCommand {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::Success;
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_line = window.cursor.line as u32;
+
+        let folds = runtime
+            .ext::<SyntaxSessionState>()
+            .and_then(|s| s.get(buffer_id))
+            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .unwrap_or_default();
+
+        let fold = runtime
+            .ext_mut::<FoldSessionState>()
+            .get_or_insert(buffer_id);
+        fold.set_ranges(folds);
+        if let Some(idx) = fold.fold_at_line(cursor_line) {
+            fold.open(idx);
+        }
         CommandResult::Success
     }
 }
@@ -72,8 +118,29 @@ impl Command for FoldCloseCommand {
 }
 
 impl CommandHandler for FoldCloseCommand {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::Success;
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_line = window.cursor.line as u32;
+
+        let folds = runtime
+            .ext::<SyntaxSessionState>()
+            .and_then(|s| s.get(buffer_id))
+            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .unwrap_or_default();
+
+        let fold = runtime
+            .ext_mut::<FoldSessionState>()
+            .get_or_insert(buffer_id);
+        fold.set_ranges(folds);
+        if let Some(idx) = fold.fold_at_line(cursor_line) {
+            fold.close(idx);
+        }
         CommandResult::Success
     }
 }
@@ -93,8 +160,22 @@ impl Command for FoldOpenAllCommand {
 }
 
 impl CommandHandler for FoldOpenAllCommand {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+
+        let folds = runtime
+            .ext::<SyntaxSessionState>()
+            .and_then(|s| s.get(buffer_id))
+            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .unwrap_or_default();
+
+        let fold = runtime
+            .ext_mut::<FoldSessionState>()
+            .get_or_insert(buffer_id);
+        fold.set_ranges(folds);
+        fold.open_all();
         CommandResult::Success
     }
 }
@@ -114,8 +195,22 @@ impl Command for FoldCloseAllCommand {
 }
 
 impl CommandHandler for FoldCloseAllCommand {
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::Success;
+        };
+
+        let folds = runtime
+            .ext::<SyntaxSessionState>()
+            .and_then(|s| s.get(buffer_id))
+            .map(reovim_driver_syntax::SyntaxDriver::folds)
+            .unwrap_or_default();
+
+        let fold = runtime
+            .ext_mut::<FoldSessionState>()
+            .get_or_insert(buffer_id);
+        fold.set_ranges(folds);
+        fold.close_all();
         CommandResult::Success
     }
 }

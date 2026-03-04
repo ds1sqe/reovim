@@ -96,25 +96,30 @@ impl Module for SnippetModule {
         let registry = Arc::new(registry);
         self.registry = Some(Arc::clone(&registry));
 
-        // 2. Register command handlers
+        // Look up vim:insert for mode inheritance (resolved at init time)
+        let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let vim_insert = modes
+            .find_by_name("vim", "insert")
+            .expect("vim:insert mode must be registered before snippet");
+
+        // 2. Register command handlers with return mode
         let store = ctx.services.get_or_create::<CommandHandlerStore>();
-        for handler in command::all_commands(Arc::clone(&registry)) {
+        for handler in command::all_commands(Arc::clone(&registry), vim_insert.clone()) {
             store.add(handler);
         }
 
-        // 3. Register snippet resolver in ResolverRegistry
+        // 3. Register snippet resolver with looked-up parent
         let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
-        resolvers.register(resolver::SnippetResolver::new());
+        resolvers.register(resolver::SnippetResolver::with_parent(vim_insert.clone()));
 
         // 4. Register mode info for display
-        let modes = ctx.services.get_or_create::<ModeInfoStore>();
         modes.add(ModeInfo {
             id: ids::NAVIGATING_MODE,
             display_name: "SNIPPET",
             cursor_style: CursorStyle::Bar,
             accepts_char_input: true,
             has_selection: true,
-            inherits_from: Some(ids::VIM_INSERT_MODE),
+            inherits_from: Some(vim_insert.clone()),
             is_entry: false,
         });
 
@@ -124,7 +129,7 @@ impl Module for SnippetModule {
 
         pr_info!(
             "Snippet module initialized with {} commands",
-            command::all_commands(registry).len()
+            command::all_commands(registry, vim_insert).len()
         );
         ProbeResult::Success
     }
@@ -166,7 +171,10 @@ impl CommandProvider for SnippetModule {
             .registry
             .clone()
             .unwrap_or_else(|| Arc::new(SnippetRegistry::new()));
-        command::all_commands(registry)
+        // Fallback ModeId for CommandProvider (testing/FFI only).
+        // In production, init() resolves the real mode from ModeInfoStore.
+        let fallback_mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("vim"), "insert");
+        command::all_commands(registry, fallback_mode)
     }
 }
 
@@ -299,8 +307,9 @@ mod tests {
     #[test]
     fn test_command_provider_matches_all_commands() {
         let registry = Arc::new(SnippetRegistry::new());
+        let fallback = reovim_kernel::api::v1::ModeId::new(ModuleId::new("vim"), "insert");
         let module_handlers = SnippetModule::new().command_handlers();
-        let all = command::all_commands(registry);
+        let all = command::all_commands(registry, fallback);
         assert_eq!(module_handlers.len(), all.len());
     }
 
@@ -318,6 +327,21 @@ mod tests {
     // Init with real context
     // =========================================================================
 
+    /// Register a mock vim:insert mode in `ModeInfoStore` (vim initializes before snippet).
+    fn register_mock_vim_insert(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>) {
+        use reovim_kernel::api::v1::ModeId;
+        let modes = services.get_or_create::<ModeInfoStore>();
+        modes.add(ModeInfo {
+            id: ModeId::new(ModuleId::new("vim"), "insert"),
+            display_name: "INSERT",
+            cursor_style: CursorStyle::Bar,
+            accepts_char_input: true,
+            has_selection: false,
+            inherits_from: None,
+            is_entry: false,
+        });
+    }
+
     #[test]
     fn test_init_registers_commands() {
         use {
@@ -327,6 +351,8 @@ mod tests {
 
         let event_bus = Arc::new(EventBus::new());
         let services = Arc::new(ServiceRegistry::new());
+        register_mock_vim_insert(&services);
+
         let kernel = KernelContext::with_event_bus_services_and_options(
             event_bus,
             Arc::clone(&services),
@@ -366,6 +392,8 @@ mod tests {
 
         let event_bus = Arc::new(EventBus::new());
         let services = Arc::new(ServiceRegistry::new());
+        register_mock_vim_insert(&services);
+
         let kernel = KernelContext::with_event_bus_services_and_options(
             event_bus,
             Arc::clone(&services),

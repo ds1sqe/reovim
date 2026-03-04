@@ -5,13 +5,23 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, ModeId},
 };
 
 use crate::{ids, state::SnippetSessionState};
 
-/// Cancel the active snippet and return to insert mode.
-pub struct CancelSnippet;
+/// Cancel the active snippet and return to the configured return mode.
+pub struct CancelSnippet {
+    return_mode: ModeId,
+}
+
+impl CancelSnippet {
+    /// Create a new cancel command with the given return mode.
+    #[must_use]
+    pub const fn new(return_mode: ModeId) -> Self {
+        Self { return_mode }
+    }
+}
 
 impl Command for CancelSnippet {
     fn id(&self) -> CommandId {
@@ -32,22 +42,32 @@ impl CommandHandler for CancelSnippet {
         if let Some(w) = runtime.windows_mut().active_mut() {
             w.selection = None;
         }
-        runtime.set_mode(ids::VIM_INSERT_MODE, TransitionContext::new());
+        runtime.set_mode(self.return_mode.clone(), TransitionContext::new());
         CommandResult::Success
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use reovim_kernel::api::v1::ModuleId;
+
     use super::*;
+
+    fn test_return_mode() -> ModeId {
+        ModeId::new(ModuleId::new("test"), "return")
+    }
 
     #[test]
     fn test_cancel_id() {
-        assert_eq!(CancelSnippet.id(), ids::CANCEL);
+        assert_eq!(CancelSnippet::new(test_return_mode()).id(), ids::CANCEL);
     }
 
     #[test]
     fn test_cancel_description() {
-        assert!(!CancelSnippet.description().is_empty());
+        assert!(
+            !CancelSnippet::new(test_return_mode())
+                .description()
+                .is_empty()
+        );
     }
 }

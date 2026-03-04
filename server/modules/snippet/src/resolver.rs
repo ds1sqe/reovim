@@ -34,19 +34,16 @@ pub struct SnippetResolver {
 }
 
 impl SnippetResolver {
-    /// Create a new snippet resolver.
+    /// Create a snippet resolver with the given parent mode for inheritance.
+    ///
+    /// The parent mode is resolved at init time via `ModeInfoStore::find_by_name()`
+    /// rather than hardcoding foreign module constants.
     #[must_use]
-    pub const fn new() -> Self {
+    pub const fn with_parent(parent_mode: ModeId) -> Self {
         Self {
             mode_id: ids::NAVIGATING_MODE,
-            parent_mode_id: ids::VIM_INSERT_MODE,
+            parent_mode_id: parent_mode,
         }
-    }
-}
-
-impl Default for SnippetResolver {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -212,33 +209,42 @@ mod tests {
         KeyEvent::new(KeyCode::Tab)
     }
 
+    /// Test parent mode for resolver construction.
+    fn test_parent_mode() -> ModeId {
+        ModeId::new(reovim_kernel::api::v1::ModuleId::new("test"), "parent")
+    }
+
+    fn make_resolver() -> SnippetResolver {
+        SnippetResolver::with_parent(test_parent_mode())
+    }
+
     // =========================================================================
     // Construction and trait
     // =========================================================================
 
     #[test]
     fn test_mode_id() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         assert_eq!(resolver.mode_id(), &ids::NAVIGATING_MODE);
     }
 
     #[test]
-    fn test_inherits_from_vim_insert() {
-        let resolver = SnippetResolver::new();
-        let parent = resolver.inherits_from().unwrap();
-        assert_eq!(parent, &ids::VIM_INSERT_MODE);
+    fn test_inherits_from_parent() {
+        let resolver = make_resolver();
+        assert_eq!(resolver.inherits_from(), Some(&test_parent_mode()));
+    }
+
+    #[test]
+    fn test_with_parent_stores_parent() {
+        let parent = ModeId::new(reovim_kernel::api::v1::ModuleId::new("vim"), "insert");
+        let resolver = SnippetResolver::with_parent(parent.clone());
+        assert_eq!(resolver.inherits_from(), Some(&parent));
     }
 
     #[test]
     fn test_inherits_from_is_some() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         assert!(resolver.inherits_from().is_some());
-    }
-
-    #[test]
-    fn test_default() {
-        let resolver = SnippetResolver::default();
-        assert_eq!(resolver.mode_id(), &ids::NAVIGATING_MODE);
     }
 
     // =========================================================================
@@ -247,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_resolve_not_found() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         let keymap = NotFoundKeymap;
         let input = resolve_input(&keymap);
         let mut state = ModeState::new(ids::NAVIGATING_MODE);
@@ -258,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_resolve_exact_only() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         let cmd = ids::JUMP_NEXT;
         let keymap = ExactOnlyKeymap(cmd.clone());
         let input = resolve_input(&keymap);
@@ -273,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_resolve_exact_with_longer() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         let cmd = ids::JUMP_NEXT;
         let keymap = ExactWithLongerKeymap(cmd.clone());
         let input = resolve_input(&keymap);
@@ -288,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_resolve_prefix_only() {
-        let resolver = SnippetResolver::new();
+        let resolver = make_resolver();
         let keymap = PrefixOnlyKeymap;
         let input = resolve_input(&keymap);
         let mut state = ModeState::new(ids::NAVIGATING_MODE);
