@@ -217,6 +217,38 @@ pub async fn handle_notification<C: NotificationContext>(
                     w.focused = w.window_id == our_focus;
                 }
             }
+
+            // Fetch content for any newly visible buffers not yet in cache.
+            // This covers set_window_buffer() which only emits LayoutChanged,
+            // not BufferModified (e.g., picker file open, buffer switch).
+            let missing: Vec<u64> = {
+                let state = ctx.state_mut();
+                state
+                    .windows
+                    .iter()
+                    .filter_map(|w| w.buffer_id)
+                    .filter(|id| !state.buffer_cache.contains_key(id))
+                    .collect()
+            };
+            for buf_id in missing {
+                match ctx
+                    .client_mut()
+                    .get_buffer_content(Some(buf_id), None, None)
+                    .await
+                {
+                    Ok(content) => {
+                        ctx.state_mut().buffer_cache.insert(buf_id, content.lines);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            buffer_id = buf_id,
+                            error = %e,
+                            "Failed to fetch buffer after layout change"
+                        );
+                    }
+                }
+            }
+
             Ok(NotificationResult::Redraw)
         }
 
@@ -728,6 +760,15 @@ mod tests {
         use reovim_protocol::v2::{LayoutChangedPayload, WindowInfo};
 
         let mut ctx = MockContext::new(1);
+        // Pre-populate buffer cache so the handler doesn't try to fetch
+        // (MockContext.client_mut() panics).
+        ctx.state
+            .buffer_cache
+            .insert(100, vec!["line1".to_string()]);
+        ctx.state
+            .buffer_cache
+            .insert(200, vec!["line2".to_string()]);
+
         let notif = make_notif(Payload::LayoutChanged(LayoutChangedPayload {
             focused_window_id: Some(3),
             windows: vec![
