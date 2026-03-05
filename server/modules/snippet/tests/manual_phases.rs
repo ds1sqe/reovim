@@ -4,6 +4,9 @@
 //! Phase 4 (completion integration), and Phase 5 (transforms, choices) through
 //! the full server/client gRPC stack.
 //!
+//! Snippet fixtures are created in a temp directory per-test so tests are
+//! self-contained and work in CI without pre-installed snippet files.
+//!
 //! # Running Tests
 //!
 //! ```bash
@@ -12,6 +15,71 @@
 
 use reovim_testing::{IntegrationTest, StepTest};
 
+/// Snippet fixture content for all snippets used by these tests.
+const GLOBAL_SNIPPETS: &str = r#"{
+  "function": {
+    "prefix": "fn",
+    "body": "fn ${1:name}(${2:params}) {\n\t$0\n}",
+    "description": "Function definition"
+  },
+  "for_loop": {
+    "prefix": "for",
+    "body": "for ${1:i} in ${2:iter} {\n\t$0\n}",
+    "description": "For loop"
+  },
+  "test_simple": {
+    "prefix": "tst",
+    "body": "TEST_EXPANDED",
+    "description": "Simple test snippet (no tab stops)"
+  },
+  "if_else": {
+    "prefix": "ife",
+    "body": "if ${1:condition} {\n\t${2:body}\n} else {\n\t$0\n}",
+    "description": "If-else block"
+  },
+  "match_arm": {
+    "prefix": "mat",
+    "body": "match ${1:expr} {\n\t${2:pattern} => ${3:result},\n\t$0\n}",
+    "description": "Match expression"
+  },
+  "struct_def": {
+    "prefix": "st",
+    "body": "struct ${1:Name} {\n\t${2:field}: ${3:Type},\n}",
+    "description": "Struct definition"
+  },
+  "impl_block": {
+    "prefix": "imp",
+    "body": "impl ${1:Type} {\n\t$0\n}",
+    "description": "Impl block"
+  },
+  "visibility": {
+    "prefix": "vis",
+    "body": "${1|pub,pub(crate),pub(super)|} ${2:item}",
+    "description": "Visibility prefix (choice)"
+  },
+  "header": {
+    "prefix": "hdr",
+    "body": "// File: $TM_FILENAME\n// Date: $CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE\n\n$0",
+    "description": "File header with variables"
+  },
+  "uuid_marker": {
+    "prefix": "uid",
+    "body": "// ID: $UUID\n$0",
+    "description": "UUID marker"
+  }
+}"#;
+
+/// Create a temp directory with snippet fixtures and return the `XDG_DATA_HOME` value.
+fn create_snippet_fixtures() -> (tempfile::TempDir, String) {
+    let tmp = tempfile::tempdir().expect("Failed to create temp dir");
+    let snippet_dir = tmp.path().join("reovim").join("modules").join("snippets");
+    std::fs::create_dir_all(&snippet_dir).expect("Failed to create snippet dir");
+    std::fs::write(snippet_dir.join("global.json"), GLOBAL_SNIPPETS)
+        .expect("Failed to write global.json");
+    let xdg_path = tmp.path().to_str().expect("Non-UTF8 temp path").to_string();
+    (tmp, xdg_path)
+}
+
 // ============================================================================
 // Phase 2: Placeholder Selection (not deletion)
 // ============================================================================
@@ -19,7 +87,8 @@ use reovim_testing::{IntegrationTest, StepTest};
 /// Expand "fn" — placeholder "name" should be visible (selected, not deleted).
 #[tokio::test]
 async fn phase2_placeholder_visible_after_expand() {
-    let result = IntegrationTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let result = IntegrationTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .send_keys("ifn<C-s>")
@@ -39,7 +108,8 @@ async fn phase2_placeholder_visible_after_expand() {
 /// Expand "fn", then type to replace placeholder — typed text replaces selection.
 #[tokio::test]
 async fn phase2_typing_replaces_placeholder() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
@@ -57,7 +127,8 @@ async fn phase2_typing_replaces_placeholder() {
 /// Expand "fn", Tab to next — "params" placeholder should be visible.
 #[tokio::test]
 async fn phase2_tab_preserves_placeholder() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
@@ -76,7 +147,8 @@ async fn phase2_tab_preserves_placeholder() {
 /// Type replacement at $1, Tab to $2, type replacement — both replaced.
 #[tokio::test]
 async fn phase2_type_at_both_stops() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
@@ -103,7 +175,8 @@ async fn phase2_type_at_both_stops() {
 /// Escape during navigation returns to INSERT mode.
 #[tokio::test]
 async fn phase2_escape_returns_insert() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
@@ -122,10 +195,11 @@ async fn phase2_escape_returns_insert() {
 // Phase 2: Multi-stop workflow
 // ============================================================================
 
-/// Full workflow: expand → type at $1 → Tab → type at $2 → Tab → $0 → Esc.
+/// Full workflow: expand -> type at $1 -> Tab -> type at $2 -> Tab -> $0 -> Esc.
 #[tokio::test]
 async fn phase2_full_workflow_fn() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
@@ -155,10 +229,11 @@ async fn phase2_full_workflow_fn() {
     assert!(buf.contains("a + b"), "Missing body");
 }
 
-/// For loop workflow: expand → type var → Tab → type iter → Tab → body.
+/// For loop workflow: expand -> type var -> Tab -> type iter -> Tab -> body.
 #[tokio::test]
 async fn phase2_full_workflow_for() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifor<C-s>")
@@ -190,7 +265,8 @@ async fn phase2_full_workflow_for() {
 /// "hdr" snippet uses `$TM_FILENAME`, `$CURRENT_YEAR` etc.
 #[tokio::test]
 async fn phase3_variable_expansion() {
-    let result = IntegrationTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let result = IntegrationTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .send_keys("ihdr<C-s>")
@@ -210,7 +286,8 @@ async fn phase3_variable_expansion() {
 /// "uid" snippet uses $UUID — should produce a UUID-like string.
 #[tokio::test]
 async fn phase3_uuid_variable() {
-    let result = IntegrationTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let result = IntegrationTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .send_keys("iuid<C-s>")
@@ -248,7 +325,8 @@ async fn phase3_uuid_variable() {
 /// First choice "pub" should be the default.
 #[tokio::test]
 async fn phase5_choice_first_default() {
-    let result = IntegrationTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let result = IntegrationTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .send_keys("ivis<C-s>")
@@ -267,7 +345,8 @@ async fn phase5_choice_first_default() {
 /// "vis" — type replacement for first choice, Tab to $2, type item name.
 #[tokio::test]
 async fn phase5_choice_workflow() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ivis<C-s>")
@@ -297,7 +376,8 @@ async fn phase5_choice_workflow() {
 /// "st" struct snippet with 3 stops — full workflow.
 #[tokio::test]
 async fn complex_struct_workflow() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ist<C-s>")
@@ -326,7 +406,8 @@ async fn complex_struct_workflow() {
 /// "mat" match snippet with 3 stops.
 #[tokio::test]
 async fn complex_match_workflow() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("imat<C-s>")
@@ -353,7 +434,8 @@ async fn complex_match_workflow() {
 /// "ife" if-else snippet — multi-line with 2 stops + $0.
 #[tokio::test]
 async fn complex_if_else_workflow() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("iife<C-s>")
@@ -385,14 +467,15 @@ async fn complex_if_else_workflow() {
 /// Tab forward twice, S-Tab back, verify cursor went back.
 #[tokio::test]
 async fn phase2_shift_tab_backward_and_retype() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("ifn<C-s>")
         .expect_buffer_contains("name")
-        .step("<Tab>") // $1 → $2
+        .step("<Tab>") // $1 -> $2
         .expect_buffer_contains("params")
-        .step("<S-Tab>") // $2 → $1 (back)
+        .step("<S-Tab>") // $2 -> $1 (back)
         .expect_buffer_contains("name") // should still show $1 placeholder
         .step("corrected") // Now type at $1
         .expect_buffer_contains("corrected")
@@ -412,7 +495,8 @@ async fn phase2_shift_tab_backward_and_retype() {
 /// Expand "tst" — no tab stops, should go straight back to insert.
 #[tokio::test]
 async fn edge_no_tabstops_returns_insert() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("itst<C-s>")
@@ -429,7 +513,8 @@ async fn edge_no_tabstops_returns_insert() {
 /// Unknown prefix — no expansion, stay in insert.
 #[tokio::test]
 async fn edge_no_match_stays_insert() {
-    let trace = StepTest::new()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let trace = StepTest::with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .with_buffer("")
         .step("inotasnippet<C-s>")
