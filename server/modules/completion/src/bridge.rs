@@ -64,6 +64,16 @@ impl ExtensionStateBridge for CompletionBridge {
             .get::<CompletionState>()
             .is_some_and(|s| s.active)
     }
+
+    fn on_mode_changed(&self, _from: &str, _to: &str, extensions: &mut ExtensionMap) {
+        // Auto-dismiss completion popup on any mode change (#521).
+        // Mode changed = user is doing something else. No string coupling needed.
+        if let Some(state) = extensions.get_mut::<CompletionState>()
+            && state.active
+        {
+            state.close();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -159,6 +169,47 @@ mod tests {
         assert_eq!(items[1]["label"], "print");
         assert!(items[1].get("detail").is_none());
     }
+
+    // ========================================================================
+    // on_mode_changed tests (#521)
+    // ========================================================================
+
+    #[test]
+    fn on_mode_changed_dismisses_active_popup() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CompletionState>();
+        state.open(vec![make_snapshot("foo", CompletionKind::Function)], "f");
+        assert!(state.active);
+
+        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+
+        let state = map.get::<CompletionState>().unwrap();
+        assert!(!state.active);
+        assert!(state.items.is_empty());
+    }
+
+    #[test]
+    fn on_mode_changed_noop_when_inactive() {
+        let mut map = ExtensionMap::new();
+        map.get_or_insert::<CompletionState>();
+
+        // Not active — should not panic.
+        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+
+        let state = map.get::<CompletionState>().unwrap();
+        assert!(!state.active);
+    }
+
+    #[test]
+    fn on_mode_changed_noop_no_state() {
+        let mut map = ExtensionMap::new();
+        // No CompletionState at all — should not panic.
+        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+    }
+
+    // ========================================================================
+    // is_active tests
+    // ========================================================================
 
     #[test]
     fn is_active_no_state() {

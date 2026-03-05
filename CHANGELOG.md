@@ -39,6 +39,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   the full completion pipeline (trigger, confirm, dismiss, navigate, wraparound,
   escape, no-match).
 
+- **LSP provider enrichment and completion lifecycle fixes (#521)**: `LspProvider`
+  trait extended with `capabilities()`, `root_path()`, `language_id()`, and
+  `server_info()` methods, exposing `ServerCapabilities` and `ServerInfo` from the
+  LSP initialize response. `LspSaturatorHandle` now stores and serves these fields.
+  Completion requests are capability-gated (`completion_provider.is_some()` check
+  before sending). `LspStartingGuard` prevents concurrent LSP server spawns via
+  `AtomicBool::compare_exchange`. `ExtensionStateBridge` trait extended with
+  `on_mode_changed()` lifecycle hook for bridge self-management on mode transitions.
+  `BridgeRegistry::values()` iterator and `Session::with_client_extensions_mut()`
+  added for mutable per-client extension access. `CompletionBridge` implements
+  `on_mode_changed` to auto-dismiss the popup when leaving insert mode (e.g.,
+  `<Esc>` now closes the completion menu). Mode-change bridge notification wired
+  in `input.rs` after key processing. Aligns with #530 shared provider architecture.
+
 - **Range-finder module - jump navigation and code folding (#524)**: Two-char
   jump search (`s{char}{char}`) and fold operations (`za`/`zo`/`zc`/`zR`/`zM`).
   Jump search engine uses case-insensitive pattern matching with home-row label

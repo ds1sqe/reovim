@@ -149,8 +149,7 @@ pub fn build_notifications(
     if changes.presence_changed {
         for &cid in &changes.presence_updates {
             if let Some(presence) = session.presence().get(ClientId::new(cid)) {
-                notifications
-                    .push(super::presence::build_presence_updated_notification(&presence));
+                notifications.push(super::presence::build_presence_updated_notification(&presence));
             }
         }
     }
@@ -1920,8 +1919,10 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_build_notifications_presence_changed() {
-        use crate::session::{ClientId, ClientPresence, SyncMode};
-        use std::time::SystemTime;
+        use {
+            crate::session::{ClientId, ClientPresence, SyncMode},
+            std::time::SystemTime,
+        };
 
         let session = Session::new(SessionId::new("presence-test"));
         let client_id = ClientId::new(42);

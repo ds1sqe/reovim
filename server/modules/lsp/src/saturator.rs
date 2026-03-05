@@ -32,6 +32,8 @@ use {
 /// Handle for sending requests to the saturator (non-blocking).
 ///
 /// Implements [`LspProvider`] so it can be registered in a service registry.
+/// Carries generic server state (capabilities, root, language) so that any
+/// consumer can inspect the server without going through the saturator (#521, #530).
 #[derive(Clone)]
 pub struct LspSaturatorHandle {
     /// Channel for sending requests (buffered for backpressure).
@@ -40,6 +42,14 @@ pub struct LspSaturatorHandle {
     cache: Arc<DiagnosticCache>,
     /// Whether the server is running and initialized.
     active: Arc<AtomicBool>,
+    /// Server capabilities from the initialize response.
+    capabilities: lsp_types::ServerCapabilities,
+    /// Project root path this server covers.
+    root_path: std::path::PathBuf,
+    /// Language ID this server handles (e.g., "rust").
+    language_id: String,
+    /// Server info (name, version) from the initialize response.
+    server_info: Option<lsp_types::ServerInfo>,
 }
 
 impl std::fmt::Debug for LspSaturatorHandle {
@@ -75,6 +85,26 @@ impl LspProvider for LspSaturatorHandle {
     fn is_active(&self) -> bool {
         self.active.load(Ordering::Relaxed)
     }
+
+    fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities> {
+        if self.is_active() {
+            Some(&self.capabilities)
+        } else {
+            None
+        }
+    }
+
+    fn root_path(&self) -> &std::path::Path {
+        &self.root_path
+    }
+
+    fn language_id(&self) -> &str {
+        &self.language_id
+    }
+
+    fn server_info(&self) -> Option<&lsp_types::ServerInfo> {
+        self.server_info.as_ref()
+    }
 }
 
 /// LSP saturator - background task that owns the LSP Client.
@@ -88,17 +118,22 @@ impl LspSaturator {
     /// Start the saturator with the given configuration.
     ///
     /// Spawns the language server process, initializes it, and returns
-    /// a handle for sending requests.
+    /// a handle for sending requests. The handle carries server capabilities
+    /// and metadata from the initialize response (#521, #530).
     ///
     /// # Errors
     ///
     /// Returns an error if the language server cannot be spawned or initialized.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub async fn start(config: LspServerConfig) -> Result<LspSaturatorHandle, LspError> {
+    pub async fn start(
+        config: LspServerConfig,
+        language_id: String,
+    ) -> Result<LspSaturatorHandle, LspError> {
         let cache = Arc::new(DiagnosticCache::new());
         let active = Arc::new(AtomicBool::new(false));
         let (request_tx, request_rx) = mpsc::channel::<LspRequest>(32);
 
+        let root_path = config.root_path.clone();
         let (client, stdout_reader, stderr) = Client::spawn(config)?;
         let client = Arc::new(client);
 
@@ -113,14 +148,18 @@ impl LspSaturator {
             tokio::spawn(Self::stderr_reader(stderr));
         }
 
-        // Initialize the server
-        client.initialize().await?;
+        // Initialize the server — extract capabilities and server info (#521).
+        let init_result = client.initialize().await?;
         active.store(true, Ordering::Relaxed);
 
         Ok(LspSaturatorHandle {
             tx: request_tx,
             cache,
             active,
+            capabilities: init_result.capabilities,
+            root_path,
+            language_id,
+            server_info: init_result.server_info,
         })
     }
 
@@ -429,6 +468,19 @@ mod tests {
         path.parse().expect("test URI should parse")
     }
 
+    /// Create a test handle with default server state.
+    fn make_test_handle(tx: mpsc::Sender<LspRequest>, active: bool) -> LspSaturatorHandle {
+        LspSaturatorHandle {
+            tx,
+            cache: Arc::new(DiagnosticCache::new()),
+            active: Arc::new(AtomicBool::new(active)),
+            capabilities: lsp_types::ServerCapabilities::default(),
+            root_path: PathBuf::from("/tmp/test"),
+            language_id: "rust".to_string(),
+            server_info: None,
+        }
+    }
+
     /// Create a test client using `cat` to keep stdio pipes alive.
     fn make_test_client() -> Arc<Client> {
         let config = LspServerConfig {
@@ -444,11 +496,7 @@ mod tests {
     #[test]
     fn test_handle_send_request_success() {
         let (tx, _rx) = mpsc::channel::<LspRequest>(10);
-        let handle = LspSaturatorHandle {
-            tx,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(true)),
-        };
+        let handle = make_test_handle(tx, true);
         assert!(handle.send_request(LspRequest::Shutdown));
     }
 
@@ -457,12 +505,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<LspRequest>(1);
         // Fill the channel
         tx.try_send(LspRequest::Shutdown).unwrap();
-
-        let handle = LspSaturatorHandle {
-            tx,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(true)),
-        };
+        let handle = make_test_handle(tx, true);
         assert!(!handle.send_request(LspRequest::Shutdown));
     }
 
@@ -470,53 +513,31 @@ mod tests {
     fn test_handle_send_when_channel_closed() {
         let (tx, rx) = mpsc::channel::<LspRequest>(1);
         drop(rx);
-
-        let handle = LspSaturatorHandle {
-            tx,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(false)),
-        };
+        let handle = make_test_handle(tx, false);
         assert!(!handle.send_request(LspRequest::Shutdown));
     }
 
     #[test]
     fn test_handle_diagnostics_returns_cache() {
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(false)),
-        };
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, false);
         assert!(handle.diagnostics().is_empty());
     }
 
     #[test]
     fn test_handle_is_active_initially_false() {
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(false)),
-        };
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, false);
         assert!(!handle.is_active());
     }
 
     #[test]
     fn test_handle_is_active_when_set() {
-        let active = Arc::new(AtomicBool::new(true));
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache: Arc::new(DiagnosticCache::new()),
-            active,
-        };
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
         assert!(handle.is_active());
     }
 
     #[test]
     fn test_handle_debug() {
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(true)),
-        };
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
         let debug = format!("{handle:?}");
         assert!(debug.contains("LspSaturatorHandle"));
         assert!(debug.contains("active: true"));
@@ -524,11 +545,7 @@ mod tests {
 
     #[test]
     fn test_handle_clone() {
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache: Arc::new(DiagnosticCache::new()),
-            active: Arc::new(AtomicBool::new(true)),
-        };
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
         let cloned = handle.clone();
         assert_eq!(cloned.is_active(), handle.is_active());
     }
@@ -536,16 +553,51 @@ mod tests {
     #[test]
     fn test_handle_diagnostics() {
         let uri = make_uri("file:///test.rs");
-        let cache = Arc::new(DiagnosticCache::new());
-        cache.store(&uri, Some(1), vec![]);
-
-        let handle = LspSaturatorHandle {
-            tx: mpsc::channel::<LspRequest>(1).0,
-            cache,
-            active: Arc::new(AtomicBool::new(true)),
-        };
-
+        let mut handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        handle.cache = Arc::new(DiagnosticCache::new());
+        handle.cache.store(&uri, Some(1), vec![]);
         assert!(handle.diagnostics().has(&uri));
+    }
+
+    #[test]
+    fn test_handle_capabilities_when_active() {
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        assert!(handle.capabilities().is_some());
+    }
+
+    #[test]
+    fn test_handle_capabilities_when_inactive() {
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, false);
+        assert!(handle.capabilities().is_none());
+    }
+
+    #[test]
+    fn test_handle_root_path() {
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        assert_eq!(handle.root_path(), std::path::Path::new("/tmp/test"));
+    }
+
+    #[test]
+    fn test_handle_language_id() {
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        assert_eq!(handle.language_id(), "rust");
+    }
+
+    #[test]
+    fn test_handle_server_info_absent() {
+        let handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        assert!(handle.server_info().is_none());
+    }
+
+    #[test]
+    fn test_handle_server_info_present() {
+        let mut handle = make_test_handle(mpsc::channel::<LspRequest>(1).0, true);
+        handle.server_info = Some(lsp_types::ServerInfo {
+            name: "test-server".to_string(),
+            version: Some("1.0.0".to_string()),
+        });
+        let info = handle.server_info().unwrap();
+        assert_eq!(info.name, "test-server");
     }
 
     #[test]

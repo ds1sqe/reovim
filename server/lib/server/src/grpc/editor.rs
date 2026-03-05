@@ -159,12 +159,11 @@ impl EditorService for EditorServiceImpl {
 
         // Per-client active_buffer (#471)
         let buffer_id = client_id.and_then(|cid| {
-            session
-                .with_clients(|clients| {
-                    clients
-                        .get(&cid)
-                        .and_then(|c| c.state.active_buffer.map(|id| id.as_usize() as u64))
-                })
+            session.with_clients(|clients| {
+                clients
+                    .get(&cid)
+                    .and_then(|c| c.state.active_buffer.map(|id| id.as_usize() as u64))
+            })
         });
 
         Ok(Response::new(GetActiveBufferResponse { buffer_id }))

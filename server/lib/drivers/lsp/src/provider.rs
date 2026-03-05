@@ -37,6 +37,24 @@ pub trait LspProvider: Send + Sync {
 
     /// Check if the language server is running and initialized.
     fn is_active(&self) -> bool;
+
+    /// Server capabilities from the initialize response (#521, #530).
+    ///
+    /// Consumers MUST check capabilities before sending requests
+    /// (e.g., `caps.completion_provider.is_some()` before completion).
+    /// Returns `None` if the server hasn't completed initialization.
+    fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities>;
+
+    /// Project root path this server covers.
+    fn root_path(&self) -> &std::path::Path;
+
+    /// Language ID this server handles (e.g., `"rust"`, `"python"`).
+    fn language_id(&self) -> &str;
+
+    /// Server info (name, version) from the initialize response.
+    ///
+    /// Returns `None` if the server didn't provide this information.
+    fn server_info(&self) -> Option<&lsp_types::ServerInfo>;
 }
 
 #[cfg(test)]
@@ -47,6 +65,7 @@ mod tests {
     struct MockLspProvider;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
+    #[allow(clippy::unnecessary_literal_bound)]
     impl LspProvider for MockLspProvider {
         fn send_request(&self, _request: LspRequest) -> bool {
             false
@@ -60,6 +79,22 @@ mod tests {
 
         fn is_active(&self) -> bool {
             false
+        }
+
+        fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities> {
+            None
+        }
+
+        fn root_path(&self) -> &std::path::Path {
+            std::path::Path::new("/mock")
+        }
+
+        fn language_id(&self) -> &str {
+            "mock"
+        }
+
+        fn server_info(&self) -> Option<&lsp_types::ServerInfo> {
+            None
         }
     }
 

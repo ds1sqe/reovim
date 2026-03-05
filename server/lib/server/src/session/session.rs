@@ -503,6 +503,25 @@ impl Session {
         Some(result)
     }
 
+    /// Run a closure with mutable access to a client's `ExtensionMap`.
+    ///
+    /// Used by bridge lifecycle hooks that need to mutate per-client state
+    /// (e.g., auto-dismiss on mode change). Respects Follow/Share relations
+    /// via [`find_input_target`](Self::find_input_target).
+    ///
+    /// Returns `None` if the client doesn't exist or input is ignored (Following).
+    pub fn with_client_extensions_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ExtensionMap) -> R,
+    {
+        let mut clients = self.clients.write();
+        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+        let result = f(&mut target_client.state.extensions);
+        drop(clients);
+        Some(result)
+    }
+
     /// Get count of connected clients.
     #[must_use]
     pub fn client_count(&self) -> usize {
@@ -1394,7 +1413,8 @@ mod tests {
             state.create_buffer("test content");
         });
 
-        let has_buffer = session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
+        let has_buffer =
+            session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
         assert!(has_buffer);
     }
 
@@ -2823,6 +2843,37 @@ mod tests {
         });
 
         // Now it exists
+        let has_cmdline = session
+            .with_client_extensions(client_id, |ext| {
+                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
+            })
+            .unwrap();
+        assert!(has_cmdline);
+    }
+
+    // ========================================================================
+    // with_client_extensions_mut tests (#521)
+    // ========================================================================
+
+    #[test]
+    fn test_with_client_extensions_mut_returns_none_for_unknown_client() {
+        let session = Session::new(SessionId::new("test"));
+        let result = session.with_client_extensions_mut(ClientId::new(99), |_ext| 42);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_with_client_extensions_mut_modifies_extensions() {
+        let session = Session::new(SessionId::new("test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert CmdlineState via mutable access
+        session.with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<reovim_module_cmdline::CmdlineState>();
+        });
+
+        // Verify via read access
         let has_cmdline = session
             .with_client_extensions(client_id, |ext| {
                 ext.get::<reovim_module_cmdline::CmdlineState>().is_some()

@@ -905,7 +905,6 @@ impl Session {
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.shared.compositor_mut()
     }
-
 }
 
 #[cfg(test)]

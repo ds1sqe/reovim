@@ -6,7 +6,10 @@
 
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use {
@@ -427,6 +430,14 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
         }
     };
 
+    // Check server supports completion before sending request (#521).
+    if let Some(caps) = provider.capabilities()
+        && caps.completion_provider.is_none()
+    {
+        debug!("LSP server does not support completion");
+        return;
+    }
+
     // Build the completion request.
     let path = Path::new(&file_path);
     let uri = uri_from_path(path);
@@ -486,6 +497,20 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
     });
 }
 
+/// Guard to prevent concurrent LSP server starts (#521).
+///
+/// Stored in `ServiceRegistry`. `compare_exchange` ensures only one
+/// spawn task runs at a time per service registry.
+struct LspStartingGuard(AtomicBool);
+
+impl Default for LspStartingGuard {
+    fn default() -> Self {
+        Self(AtomicBool::new(false))
+    }
+}
+
+impl reovim_kernel::api::v1::Service for LspStartingGuard {}
+
 /// Try to auto-start an LSP server for the given language.
 ///
 /// Currently supports Rust (rust-analyzer) only. Spawns the server
@@ -503,8 +528,20 @@ fn try_auto_start_lsp(
         return;
     }
 
+    // Prevent concurrent LSP starts (#521).
+    let guard = services.get_or_create::<LspStartingGuard>();
+    if guard
+        .0
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+        .is_err()
+    {
+        debug!("LSP server start already in progress, skipping");
+        return;
+    }
+
     let Some(root) = find_project_root(Path::new(file_path)) else {
         debug!("No project root found for {file_path}");
+        guard.0.store(false, Ordering::Release);
         return;
     };
 
@@ -523,7 +560,7 @@ fn try_auto_start_lsp(
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         handle.spawn(async move {
             info!(root = ?root, "Auto-starting rust-analyzer");
-            match reovim_module_lsp::LspSaturator::start(config).await {
+            match reovim_module_lsp::LspSaturator::start(config, lang_owned.clone()).await {
                 Ok(lsp_handle) => {
                     // Send DidOpen so the server knows about the file.
                     let uri = uri_from_path(Path::new(&file_path_owned));
@@ -541,6 +578,11 @@ fn try_auto_start_lsp(
                     if let Some(q) = &notify_queue {
                         q.push(PendingLevel::Success, "rust-analyzer ready");
                     }
+
+                    // Reset starting guard (#521).
+                    if let Some(g) = services_clone.get::<LspStartingGuard>() {
+                        g.0.store(false, Ordering::Release);
+                    }
                 }
                 Err(e) => {
                     warn!("Failed to start rust-analyzer: {e}");
@@ -550,9 +592,17 @@ fn try_auto_start_lsp(
                             format!("Failed to start rust-analyzer: {e}"),
                         );
                     }
+
+                    // Reset starting guard so retries are possible (#521).
+                    if let Some(g) = services_clone.get::<LspStartingGuard>() {
+                        g.0.store(false, Ordering::Release);
+                    }
                 }
             }
         });
+    } else {
+        // No tokio runtime — reset guard.
+        guard.0.store(false, Ordering::Release);
     }
 }
 
@@ -776,5 +826,54 @@ mod tests {
         // Root "/" has no Cargo.toml.
         let root = find_project_root(Path::new("/nonexistent/path/file.rs"));
         assert!(root.is_none());
+    }
+
+    // ========================================================================
+    // LspStartingGuard tests (#521)
+    // ========================================================================
+
+    #[test]
+    fn lsp_starting_guard_prevents_concurrent_starts() {
+        let guard = LspStartingGuard::default();
+        // First acquisition succeeds.
+        assert!(
+            guard
+                .0
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                .is_ok()
+        );
+        // Second acquisition fails — already in progress.
+        assert!(
+            guard
+                .0
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn lsp_starting_guard_resets_after_completion() {
+        let guard = LspStartingGuard::default();
+        guard
+            .0
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+            .unwrap();
+        // Reset.
+        guard.0.store(false, Ordering::Release);
+        // Now re-acquisition succeeds.
+        assert!(
+            guard
+                .0
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn lsp_starting_guard_service_trait() {
+        use reovim_kernel::api::v1::ServiceRegistry;
+        let registry = ServiceRegistry::new();
+        let guard = registry.get_or_create::<LspStartingGuard>();
+        assert!(!guard.0.load(Ordering::Relaxed));
     }
 }

@@ -134,6 +134,9 @@ impl InputService for InputServiceImpl {
         // Generic detection replaces hardcoded cmdline check.
         let bridge_states_before = Self::snapshot_bridge_states(&session, client_id, &self.bridges);
 
+        // #521: Track mode before key processing for bridge lifecycle hooks.
+        let mode_before_keys = session.client_current_mode(client_id);
+
         // Process each key through the resolver system
         let mut any_handled = false;
         let mut final_status = KeyStatus::NotFound;
@@ -244,6 +247,16 @@ impl InputService for InputServiceImpl {
             accumulated_changes.record_presence_change(client_id.as_usize());
         }
 
+        // #521: Notify bridges of mode changes so they can self-dismiss.
+        let mode_after_keys = session.client_current_mode(client_id);
+        if let (Some(before), Some(after)) = (&mode_before_keys, &mode_after_keys)
+            && before != after
+        {
+            let from = before.to_string();
+            let to = after.to_string();
+            Self::notify_bridges_mode_changed(&session, client_id, &self.bridges, &from, &to);
+        }
+
         // #514/#468/#469: Generic bridge change detection — emit on toggle AND on
         // every key while active (each keystroke may modify extension state).
         Self::detect_bridge_changes(
@@ -329,6 +342,27 @@ impl InputServiceImpl {
                 changes.record_extension_change(kind.into());
             }
         }
+    }
+
+    /// Notify all client-scoped bridges of a mode change (#521).
+    ///
+    /// Iterates all registered bridges and calls `on_mode_changed` for those
+    /// with [`ExtensionScope::Client`], giving them a chance to self-dismiss
+    /// (e.g., completion popup on leaving insert mode).
+    fn notify_bridges_mode_changed(
+        session: &Session,
+        client_id: ClientId,
+        bridges: &BridgeRegistry,
+        from: &str,
+        to: &str,
+    ) {
+        session.with_client_extensions_mut(client_id, |ext| {
+            for bridge in bridges.values() {
+                if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                    bridge.on_mode_changed(from, to, ext);
+                }
+            }
+        });
     }
 
     /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
@@ -663,9 +697,9 @@ impl InputServiceImpl {
 
                 // Set active buffer ID (required for operators like delete/yank)
                 // Per-client active_buffer (#471)
-                if let Some(buffer_id) = session
-                    .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
-                {
+                if let Some(buffer_id) = session.with_clients(|clients| {
+                    clients.get(&client_id).and_then(|c| c.state.active_buffer)
+                }) {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 

@@ -1815,8 +1815,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
-                active_buffer: None,
-                terminal_size: (80, 24),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1846,8 +1846,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
-                active_buffer: None,
-                terminal_size: (80, 24),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1877,8 +1877,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
-                active_buffer: None,
-                terminal_size: (80, 24),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1908,8 +1908,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
-                active_buffer: None,
-                terminal_size: (80, 24),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1939,8 +1939,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
-                active_buffer: None,
-                terminal_size: (80, 24),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
