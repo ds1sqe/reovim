@@ -122,6 +122,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   no longer hardcode `"vim:normal"` / `"vim:insert"` mode targets. Follows adapter
   pattern established by `vim-lsp` in #532. Defaults bundle updated to 33 modules.
 
+- **Architecture**: Shared extension access and cross-client bridge context (#543)
+  - Add `shared_ext()` / `shared_ext_mut()` to `ExtensionApi` trait (defaults return `None`)
+  - Add `BridgeContext` struct for cross-client reads during bridge snapshot
+  - Add `snapshot_with_context()` default method to `ExtensionStateBridge` (delegates to `snapshot()`)
+  - Add `Session::with_bridge_context()` combined-lock helper (clients + state read locks)
+  - Fix `ExtensionScope::Shared` snapshot TODO in notification builder
+
 - **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
   - Move `VimLookupPolicy` from driver-input to module-vim (policy belongs in modules)
   - Make `KeymapRegistry` lookup policy configurable via `Arc<dyn KeyLookupPolicy>`

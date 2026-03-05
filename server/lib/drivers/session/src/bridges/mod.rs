@@ -37,7 +37,7 @@ use std::{collections::HashMap, sync::Mutex};
 
 use reovim_kernel::api::v1::Service;
 
-use crate::ExtensionMap;
+use crate::{ClientId, ExtensionMap};
 
 /// Scope of an extension bridge — determines which `ExtensionMap` to read from.
 ///
@@ -49,6 +49,63 @@ pub enum ExtensionScope {
     Shared,
     /// Per-client state (each client has its own `ExtensionMap`).
     Client,
+}
+
+/// Context for cross-client reads during bridge snapshot (#543).
+///
+/// Constructed by the server layer inside a combined-lock closure where both
+/// session locks are held. All references are valid for the closure's lifetime.
+///
+/// The `opponents` slice is pre-collected by the server layer, which resolves
+/// `Client::effective_state()` for each connected client. This keeps the driver
+/// layer free of server-layer types (`Client`, `EditingState`).
+pub struct BridgeContext<'a> {
+    /// The client this snapshot is being built for.
+    pub client_id: ClientId,
+
+    /// Read access to session-wide shared extensions.
+    pub shared_extensions: &'a ExtensionMap,
+
+    /// Pre-collected opponent extension maps.
+    ///
+    /// Each entry is `(opponent_client_id, &ExtensionMap)` for every connected
+    /// client except the current one. Clients with no effective state (e.g.,
+    /// broken Follow chains) are excluded by the server layer.
+    opponents: &'a [(ClientId, &'a ExtensionMap)],
+}
+
+impl<'a> BridgeContext<'a> {
+    /// Create a new context.
+    ///
+    /// Called by `Session::with_bridge_context()` in the server layer.
+    #[must_use]
+    pub const fn new(
+        client_id: ClientId,
+        shared_extensions: &'a ExtensionMap,
+        opponents: &'a [(ClientId, &'a ExtensionMap)],
+    ) -> Self {
+        Self {
+            client_id,
+            shared_extensions,
+            opponents,
+        }
+    }
+
+    /// Iterate over all opponents' extension maps.
+    ///
+    /// Calls `f(client_id, extensions)` for each connected client except
+    /// the current one. Skips clients with no effective state.
+    pub fn for_each_opponent(&self, mut f: impl FnMut(ClientId, &ExtensionMap)) {
+        for &(id, ext) in self.opponents {
+            f(id, ext);
+        }
+    }
+
+    /// Get the number of opponents.
+    #[must_use]
+    pub const fn opponent_count(&self) -> usize {
+        self.opponents.len()
+    }
 }
 
 /// Trait for adapting session extension state to JSON for gRPC transmission.
@@ -86,6 +143,18 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     ///
     /// Only called for [`ExtensionScope::Client`] bridges (#521).
     fn on_mode_changed(&self, _from: &str, _to: &str, _extensions: &mut ExtensionMap) {}
+
+    /// Snapshot with cross-client context (multiplayer support, #543).
+    ///
+    /// Default delegates to [`snapshot()`](Self::snapshot) — single-player bridges
+    /// need no changes. Override this to include opponent data in the snapshot.
+    fn snapshot_with_context(
+        &self,
+        extensions: &ExtensionMap,
+        _context: &BridgeContext<'_>,
+    ) -> Option<serde_json::Value> {
+        self.snapshot(extensions)
+    }
 }
 
 /// Registry of extension state bridges.
@@ -438,5 +507,166 @@ mod tests {
         let debug = format!("{provider:?}");
         assert!(debug.contains("BridgeProvider"));
         assert!(debug.contains("pending_bridges"));
+    }
+
+    // ========================================================================
+    // BridgeContext tests (#543)
+    // ========================================================================
+
+    #[test]
+    fn test_bridge_context_new() {
+        let shared = ExtensionMap::new();
+        let opp1 = ExtensionMap::new();
+        let opponents = vec![(ClientId::new(2), &opp1)];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        assert_eq!(ctx.client_id, ClientId::new(1));
+        assert_eq!(ctx.opponent_count(), 1);
+    }
+
+    #[test]
+    fn test_bridge_context_for_each_opponent_iterates_all() {
+        let shared = ExtensionMap::new();
+        let opp1 = ExtensionMap::new();
+        let opp2 = ExtensionMap::new();
+        let opponents = vec![(ClientId::new(2), &opp1), (ClientId::new(3), &opp2)];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        let mut ids = Vec::new();
+        ctx.for_each_opponent(|id, _ext| ids.push(id));
+        assert_eq!(ids, vec![ClientId::new(2), ClientId::new(3)]);
+    }
+
+    #[test]
+    fn test_bridge_context_for_each_opponent_empty() {
+        let shared = ExtensionMap::new();
+        let opponents: Vec<(ClientId, &ExtensionMap)> = vec![];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        let mut count = 0;
+        ctx.for_each_opponent(|_, _| count += 1);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_bridge_context_opponent_count() {
+        let shared = ExtensionMap::new();
+        let opp1 = ExtensionMap::new();
+        let opponents = vec![(ClientId::new(5), &opp1)];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+        assert_eq!(ctx.opponent_count(), 1);
+
+        let empty: Vec<(ClientId, &ExtensionMap)> = vec![];
+        let ctx2 = BridgeContext::new(ClientId::new(1), &shared, &empty);
+        assert_eq!(ctx2.opponent_count(), 0);
+    }
+
+    #[test]
+    fn test_bridge_context_shared_extensions_access() {
+        use crate::SessionExtension;
+
+        #[derive(Debug)]
+        struct SharedExt {
+            value: i32,
+        }
+        impl SessionExtension for SharedExt {
+            fn create() -> Self {
+                Self { value: 42 }
+            }
+        }
+
+        let mut shared = ExtensionMap::new();
+        shared.get_or_insert::<SharedExt>();
+        let opponents: Vec<(ClientId, &ExtensionMap)> = vec![];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        let ext = ctx.shared_extensions.get::<SharedExt>();
+        assert!(ext.is_some());
+        assert_eq!(ext.unwrap().value, 42);
+    }
+
+    // ========================================================================
+    // snapshot_with_context tests (#543)
+    // ========================================================================
+
+    #[test]
+    fn test_snapshot_with_context_default_delegates() {
+        let bridge = DummyBridge::new("test");
+        let map = ExtensionMap::new();
+        let shared = ExtensionMap::new();
+        let opponents: Vec<(ClientId, &ExtensionMap)> = vec![];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        // Default snapshot_with_context delegates to snapshot
+        let snap = bridge.snapshot_with_context(&map, &ctx);
+        let direct = bridge.snapshot(&map);
+        assert_eq!(snap, direct);
+    }
+
+    #[test]
+    fn test_snapshot_with_context_override_uses_context() {
+        use crate::SessionExtension;
+
+        #[derive(Debug)]
+        struct OpponentScore {
+            score: u32,
+        }
+        impl SessionExtension for OpponentScore {
+            fn create() -> Self {
+                Self { score: 0 }
+            }
+        }
+
+        /// Bridge that reads opponent data from context.
+        struct MultiplayerBridge;
+
+        impl ExtensionStateBridge for MultiplayerBridge {
+            fn kind(&self) -> &'static str {
+                "multiplayer"
+            }
+            fn scope(&self) -> ExtensionScope {
+                ExtensionScope::Client
+            }
+            fn snapshot(&self, _ext: &ExtensionMap) -> Option<serde_json::Value> {
+                Some(serde_json::json!({"score": 0}))
+            }
+            fn is_active(&self, _ext: &ExtensionMap) -> bool {
+                true
+            }
+            fn snapshot_with_context(
+                &self,
+                _ext: &ExtensionMap,
+                context: &BridgeContext<'_>,
+            ) -> Option<serde_json::Value> {
+                let mut opponent_scores = Vec::new();
+                context.for_each_opponent(|id, ext| {
+                    if let Some(score) = ext.get::<OpponentScore>() {
+                        opponent_scores
+                            .push(serde_json::json!({"id": id.as_usize(), "score": score.score}));
+                    }
+                });
+                Some(serde_json::json!({"opponents": opponent_scores}))
+            }
+        }
+
+        // Setup: one opponent with a score
+        let mut opp_map = ExtensionMap::new();
+        let opp_score = opp_map.get_or_insert::<OpponentScore>();
+        opp_score.score = 999;
+
+        let shared = ExtensionMap::new();
+        let opponents = vec![(ClientId::new(2), &opp_map)];
+        let ctx = BridgeContext::new(ClientId::new(1), &shared, &opponents);
+
+        let bridge = MultiplayerBridge;
+        let own_map = ExtensionMap::new();
+        let snap = bridge.snapshot_with_context(&own_map, &ctx);
+
+        assert!(snap.is_some());
+        let json = snap.unwrap();
+        let opponents_arr = json["opponents"].as_array().unwrap();
+        assert_eq!(opponents_arr.len(), 1);
+        assert_eq!(opponents_arr[0]["id"], 2);
+        assert_eq!(opponents_arr[0]["score"], 999);
     }
 }

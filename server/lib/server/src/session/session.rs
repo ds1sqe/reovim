@@ -586,6 +586,46 @@ impl Session {
         f(&mut state)
     }
 
+    /// Execute a closure with combined read access to a client's extensions,
+    /// shared extensions, and pre-collected opponent extension maps (#543).
+    ///
+    /// Acquires locks in established order: `clients` (read) first, then `state`
+    /// (read). Resolves `effective_state()` for all clients to collect opponent
+    /// data as driver-layer `ClientId` + `&ExtensionMap` pairs.
+    ///
+    /// Returns `None` if `client_id` is not connected or has no effective state.
+    pub fn with_bridge_context<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(
+            &ExtensionMap,
+            &ExtensionMap,
+            &[(reovim_driver_session::ClientId, &ExtensionMap)],
+        ) -> R,
+    {
+        let clients = self.clients.read();
+        let client = clients.get(&client_id)?;
+        let own_ext = &client.effective_state(&clients)?.extensions;
+
+        // Pre-collect opponent extension maps with driver-layer ClientId.
+        // The driver crate cannot see `Client`, so we resolve here.
+        let opponents: Vec<(reovim_driver_session::ClientId, &ExtensionMap)> = clients
+            .iter()
+            .filter(|&(&id, _)| id != client_id)
+            .filter_map(|(&id, c)| {
+                c.effective_state(&clients).map(|state| {
+                    (reovim_driver_session::ClientId::new(id.as_usize()), &state.extensions)
+                })
+            })
+            .collect();
+
+        let state = self.state.read();
+        let shared_ext = &state.app.extensions;
+        let result = f(own_ext, shared_ext, &opponents);
+        drop(state);
+        drop(clients);
+        Some(result)
+    }
+
     // =========================================================================
     // Per-Client Key Resolution (#471)
     // =========================================================================
@@ -2888,6 +2928,90 @@ mod tests {
             .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
         assert!(has_ext);
+    }
+
+    // ========================================================================
+    // with_bridge_context tests (#543)
+    // ========================================================================
+
+    #[test]
+    fn test_with_bridge_context_unknown_client_returns_none() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let result = session.with_bridge_context(ClientId::new(99), |_, _, _| ());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_own_extensions() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert extension into client 1
+        session.with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<TestSessionExtension>();
+        });
+
+        let has_ext = session
+            .with_bridge_context(client_id, |own_ext, _, _| {
+                own_ext.get::<TestSessionExtension>().is_some()
+            })
+            .unwrap();
+        assert!(has_ext);
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_shared_extensions() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert extension into shared state
+        session.with_state_mut_sync(|state| {
+            state.app.extensions.get_or_insert::<TestSessionExtension>();
+        });
+
+        let has_ext = session
+            .with_bridge_context(client_id, |_, shared_ext, _| {
+                shared_ext.get::<TestSessionExtension>().is_some()
+            })
+            .unwrap();
+        assert!(has_ext);
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_opponents() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client1 = ClientId::new(1);
+        let client2 = ClientId::new(2);
+        session.add_client(client1);
+        session.add_client(client2);
+
+        // Client 1 should see client 2 as opponent
+        let opponent_count = session
+            .with_bridge_context(client1, |_, _, opponents| opponents.len())
+            .unwrap();
+        assert_eq!(opponent_count, 1);
+
+        // Client 2 should see client 1 as opponent
+        let opponent_ids: Vec<usize> = session
+            .with_bridge_context(client2, |_, _, opponents| {
+                opponents.iter().map(|(id, _)| id.as_usize()).collect()
+            })
+            .unwrap();
+        assert_eq!(opponent_ids, vec![1]);
+    }
+
+    #[test]
+    fn test_with_bridge_context_single_client_no_opponents() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        let opponent_count = session
+            .with_bridge_context(client_id, |_, _, opponents| opponents.len())
+            .unwrap();
+        assert_eq!(opponent_count, 0);
     }
 
     // ========================================================================
