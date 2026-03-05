@@ -98,12 +98,7 @@ impl Module for ExplorerModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Normal mode: toggle explorer
-            KeybindingRegistration::new("<Space>e", ids::TOGGLE)
-                .with_modes(&["vim:normal"])
-                .with_description("Toggle file explorer")
-                .with_category("explorer"),
-            // Browse mode: toggle off (same as vim:normal toggle)
+            // Browse mode: toggle off
             KeybindingRegistration::new("<Space>e", ids::TOGGLE)
                 .with_modes(&["explorer:EXPLORER"])
                 .with_description("Toggle file explorer"),
@@ -272,17 +267,6 @@ mod tests {
         let module = ExplorerModule::new();
         let bindings = module.keybindings();
         assert!(!bindings.is_empty());
-    }
-
-    #[test]
-    fn keybindings_have_normal_mode_opener() {
-        let module = ExplorerModule::new();
-        let bindings = module.keybindings();
-        let count = bindings
-            .iter()
-            .filter(|b| b.modes.contains(&"vim:normal"))
-            .count();
-        assert_eq!(count, 1);
     }
 
     #[test]

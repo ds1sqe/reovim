@@ -18,10 +18,9 @@ pub mod fold;
 pub mod jump;
 
 use {
-    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_input::{ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_kernel::api::v1::{
-        CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
-        ProbeResult, Version,
+        CursorStyle, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
 };
 
@@ -99,42 +98,7 @@ impl Module for RangeFinderModule {
             is_entry: false,
         });
 
-        // Register keybindings into store for bootstrap wiring (#524)
-        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
-        keybinding_store.add_all(self.keybindings());
-
         ProbeResult::Success
-    }
-
-    fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            // Jump navigation
-            KeybindingRegistration::new("s", jump::ids::JUMP_SEARCH)
-                .with_modes(&["vim:normal"])
-                .with_category("jump")
-                .with_description("Jump search (two-char pattern)"),
-            // Fold operations
-            KeybindingRegistration::new("za", fold::ids::FOLD_TOGGLE)
-                .with_modes(&["vim:normal"])
-                .with_category("folding")
-                .with_description("Toggle fold at cursor"),
-            KeybindingRegistration::new("zo", fold::ids::FOLD_OPEN)
-                .with_modes(&["vim:normal"])
-                .with_category("folding")
-                .with_description("Open fold at cursor"),
-            KeybindingRegistration::new("zc", fold::ids::FOLD_CLOSE)
-                .with_modes(&["vim:normal"])
-                .with_category("folding")
-                .with_description("Close fold at cursor"),
-            KeybindingRegistration::new("zR", fold::ids::FOLD_OPEN_ALL)
-                .with_modes(&["vim:normal"])
-                .with_category("folding")
-                .with_description("Open all folds"),
-            KeybindingRegistration::new("zM", fold::ids::FOLD_CLOSE_ALL)
-                .with_modes(&["vim:normal"])
-                .with_category("folding")
-                .with_description("Close all folds"),
-        ]
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
@@ -238,40 +202,6 @@ mod tests {
         assert_eq!(mode_list[1].cursor_style, CursorStyle::Block);
         assert!(mode_list[1].accepts_char_input);
         assert!(!mode_list[1].is_entry);
-
-        // Verify keybindings were registered in store (#524)
-        let keybinding_store = services.get::<KeybindingStore>().unwrap();
-        let bindings = keybinding_store.take_keybindings();
-        assert_eq!(bindings.len(), 6); // s + za/zo/zc/zR/zM
-    }
-
-    #[test]
-    fn test_keybindings() {
-        let module = RangeFinderModule::new();
-        let bindings = module.keybindings();
-        assert_eq!(bindings.len(), 6); // s + za/zo/zc/zR/zM
-
-        // Jump
-        assert_eq!(bindings[0].keys, "s");
-        assert_eq!(bindings[0].command_id, crate::jump::ids::JUMP_SEARCH);
-        assert_eq!(bindings[0].category, Some("jump"));
-
-        // Fold
-        assert_eq!(bindings[1].keys, "za");
-        assert_eq!(bindings[1].command_id, crate::fold::ids::FOLD_TOGGLE);
-        assert_eq!(bindings[1].category, Some("folding"));
-
-        assert_eq!(bindings[2].keys, "zo");
-        assert_eq!(bindings[2].command_id, crate::fold::ids::FOLD_OPEN);
-
-        assert_eq!(bindings[3].keys, "zc");
-        assert_eq!(bindings[3].command_id, crate::fold::ids::FOLD_CLOSE);
-
-        assert_eq!(bindings[4].keys, "zR");
-        assert_eq!(bindings[4].command_id, crate::fold::ids::FOLD_OPEN_ALL);
-
-        assert_eq!(bindings[5].keys, "zM");
-        assert_eq!(bindings[5].command_id, crate::fold::ids::FOLD_CLOSE_ALL);
     }
 
     /// Create a minimal `ModuleContext` for testing.

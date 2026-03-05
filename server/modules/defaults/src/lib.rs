@@ -54,9 +54,12 @@ use {
     reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
-    reovim_module_vim_lsp as vim_lsp, reovim_module_whichkey as whichkey,
-    reovim_picker_buffers as picker_buffers, reovim_picker_commands as picker_commands,
-    reovim_picker_files as picker_files, reovim_picker_grep as picker_grep,
+    reovim_module_vim_completion as vim_completion, reovim_module_vim_explorer as vim_explorer,
+    reovim_module_vim_lsp as vim_lsp, reovim_module_vim_microscope as vim_microscope,
+    reovim_module_vim_range_finder as vim_range_finder, reovim_module_vim_snippet as vim_snippet,
+    reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
+    reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
+    reovim_picker_grep as picker_grep,
 };
 
 /// Default modules bundle.
@@ -118,6 +121,8 @@ impl DefaultsModule {
             Box::new(picker_grep::PickerGrepModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
+            // Vim-microscope adapter - bridges vim keybindings to picker commands
+            Box::new(vim_microscope::VimMicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
@@ -128,12 +133,20 @@ impl DefaultsModule {
             Box::new(vim_lsp::VimLspModule::new()),
             // Snippet expansion (#136)
             Box::new(snippet::SnippetModule::new()),
+            // Vim-snippet adapter - bridges vim keybindings to snippet commands
+            Box::new(vim_snippet::VimSnippetModule::new()),
             // Jump navigation and code folding (#524)
             Box::new(range_finder::RangeFinderModule::new()),
+            // Vim-range-finder adapter - bridges vim keybindings to fold/jump commands
+            Box::new(vim_range_finder::VimRangeFinderModule::new()),
             // Completion engine (#521)
             Box::new(completion::CompletionModule::new()),
+            // Vim-completion adapter - bridges vim keybindings to completion commands
+            Box::new(vim_completion::VimCompletionModule::new()),
             // File explorer (#523)
             Box::new(explorer::ExplorerModule::new()),
+            // Vim-explorer adapter - bridges vim keybindings to explorer commands
+            Box::new(vim_explorer::VimExplorerModule::new()),
         ]
     }
 }
@@ -196,12 +209,18 @@ impl Module for DefaultsModule {
             ModuleId::new("vim-lsp"),
             // Snippet expansion (#136)
             ModuleId::new("snippet"),
+            ModuleId::new("vim-snippet"),
             // Jump navigation and code folding (#524)
             ModuleId::new("range-finder"),
+            ModuleId::new("vim-range-finder"),
             // Completion engine (#521)
             ModuleId::new("completion"),
+            ModuleId::new("vim-completion"),
             // File explorer (#523)
             ModuleId::new("explorer"),
+            ModuleId::new("vim-explorer"),
+            // Picker vim adapter
+            ModuleId::new("vim-microscope"),
         ]
     }
 
@@ -276,8 +295,9 @@ mod tests {
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 28 modules
-        assert_eq!(deps.len(), 28);
+        // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+        // Total: 33 modules
+        assert_eq!(deps.len(), 33);
     }
 
     #[test]
@@ -295,8 +315,9 @@ mod tests {
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 28 modules
-        assert_eq!(modules.len(), 28);
+        // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+        // Total: 33 modules
+        assert_eq!(modules.len(), 33);
     }
 
     #[test]
@@ -397,6 +418,19 @@ mod tests {
         assert!(dep_strs.contains(&"lsp"));
         assert!(dep_strs.contains(&"lsp-navigation"));
         assert!(dep_strs.contains(&"vim-lsp"));
+    }
+
+    #[test]
+    fn test_dependencies_contain_vim_adapter_modules() {
+        let module = DefaultsModule::new();
+        let deps = module.dependencies();
+        let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
+
+        assert!(dep_strs.contains(&"vim-microscope"));
+        assert!(dep_strs.contains(&"vim-explorer"));
+        assert!(dep_strs.contains(&"vim-completion"));
+        assert!(dep_strs.contains(&"vim-range-finder"));
+        assert!(dep_strs.contains(&"vim-snippet"));
     }
 
     #[test]

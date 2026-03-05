@@ -66,6 +66,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
+  Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
+  `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature
+  modules. Feature modules (microscope, explorer, completion, range-finder, snippet)
+  no longer hardcode `"vim:normal"` / `"vim:insert"` mode targets. Follows adapter
+  pattern established by `vim-lsp` in #532. Defaults bundle updated to 33 modules.
+
 - **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
   - Move `VimLookupPolicy` from driver-input to module-vim (policy belongs in modules)
   - Make `KeymapRegistry` lookup policy configurable via `Arc<dyn KeyLookupPolicy>`

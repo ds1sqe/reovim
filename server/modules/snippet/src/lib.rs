@@ -200,12 +200,7 @@ impl Module for SnippetModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Expand snippet in insert mode
-            KeybindingRegistration::new("<C-s>", ids::EXPAND)
-                .with_modes(&["vim:insert"])
-                .with_description("Expand snippet at cursor")
-                .with_category("snippet"),
-            // Tab navigates to next tab stop in snippet mode
+            // Snippet navigating mode: tab stop navigation
             KeybindingRegistration::new("<Tab>", ids::JUMP_NEXT)
                 .with_modes(&["snippet:navigating"])
                 .with_description("Jump to next tab stop")
@@ -219,16 +214,6 @@ impl Module for SnippetModule {
             KeybindingRegistration::new("<Esc>", ids::CANCEL)
                 .with_modes(&["snippet:navigating"])
                 .with_description("Cancel snippet navigation")
-                .with_category("snippet"),
-            // Catalog: list available snippets
-            KeybindingRegistration::new("<Space>sc", ids::CATALOG)
-                .with_modes(&["vim:normal"])
-                .with_description("List available snippets")
-                .with_category("snippet"),
-            // Reload: re-read snippet files from disk
-            KeybindingRegistration::new("<Space>sr", ids::RELOAD)
-                .with_modes(&["vim:normal"])
-                .with_description("Reload snippet files")
                 .with_category("snippet"),
         ]
     }
@@ -330,23 +315,15 @@ mod tests {
     #[test]
     fn test_keybindings_count() {
         let module = SnippetModule::new();
-        assert_eq!(module.keybindings().len(), 6);
-    }
-
-    #[test]
-    fn test_keybindings_expand() {
-        let module = SnippetModule::new();
-        let bindings = module.keybindings();
-        let expand = &bindings[0];
-        assert_eq!(expand.keys, "<C-s>");
-        assert_eq!(expand.command_id, ids::EXPAND);
+        // Only snippet:navigating bindings remain (Tab, S-Tab, Esc)
+        assert_eq!(module.keybindings().len(), 3);
     }
 
     #[test]
     fn test_keybindings_jump_next() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let next = &bindings[1];
+        let next = &bindings[0];
         assert_eq!(next.keys, "<Tab>");
         assert_eq!(next.command_id, ids::JUMP_NEXT);
     }
@@ -355,7 +332,7 @@ mod tests {
     fn test_keybindings_jump_prev() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let prev = &bindings[2];
+        let prev = &bindings[1];
         assert_eq!(prev.keys, "<S-Tab>");
         assert_eq!(prev.command_id, ids::JUMP_PREV);
     }
@@ -364,7 +341,7 @@ mod tests {
     fn test_keybindings_cancel() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let cancel = &bindings[3];
+        let cancel = &bindings[2];
         assert_eq!(cancel.keys, "<Esc>");
         assert_eq!(cancel.command_id, ids::CANCEL);
     }

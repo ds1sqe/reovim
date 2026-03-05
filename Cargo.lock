@@ -2234,7 +2234,6 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-completion",
- "reovim-driver-input",
  "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
@@ -2272,7 +2271,12 @@ dependencies = [
  "reovim-module-undo",
  "reovim-module-vfs-local",
  "reovim-module-vim",
+ "reovim-module-vim-completion",
+ "reovim-module-vim-explorer",
  "reovim-module-vim-lsp",
+ "reovim-module-vim-microscope",
+ "reovim-module-vim-range-finder",
+ "reovim-module-vim-snippet",
  "reovim-module-whichkey",
  "reovim-picker-buffers",
  "reovim-picker-commands",
@@ -2561,6 +2565,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-vim-completion"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-completion",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-vim-explorer"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-explorer",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-module-vim-lsp"
 version = "0.10.0-dev"
 dependencies = [
@@ -2568,6 +2592,36 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-lsp-navigation",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-vim-microscope"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-microscope",
+]
+
+[[package]]
+name = "reovim-module-vim-range-finder"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-range-finder",
+]
+
+[[package]]
+name = "reovim-module-vim-snippet"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-snippet",
 ]
 
 [[package]]

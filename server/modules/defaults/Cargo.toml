@@ -59,6 +59,13 @@ reovim-module-snippet = { workspace = true }
 # Completion engine (#521)
 reovim-module-completion = { workspace = true }
 
+# Vim adapter modules (keybinding bridges)
+reovim-module-vim-microscope = { workspace = true }
+reovim-module-vim-explorer = { workspace = true }
+reovim-module-vim-completion = { workspace = true }
+reovim-module-vim-range-finder = { workspace = true }
+reovim-module-vim-snippet = { workspace = true }
+
 # Note: Client-side modules (layout, pair, statusline, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)
 
