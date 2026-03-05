@@ -48,6 +48,7 @@
 use pyo3::prelude::*;
 
 pub mod module;
+pub mod runtime_api;
 pub mod types;
 
 /// Initialize Python with the `reovim` module registered.
@@ -76,6 +77,7 @@ pub fn init_python() {
 
 pub use {
     module::{PyModuleContext, PythonModule},
+    runtime_api::PyRuntimeApi,
     types::{
         PyCommandRegistration, PyEventHandlerRegistration, PyKeybindingRegistration, PyModuleId,
         PyProbeResult, PyVersion,
@@ -268,6 +270,9 @@ fn reovim(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyVersion>()?;
     m.add_class::<PyProbeResult>()?;
     m.add_class::<PyModuleContext>()?;
+
+    // Runtime API
+    m.add_class::<PyRuntimeApi>()?;
 
     // Registration types
     m.add_class::<PyCommandRegistration>()?;

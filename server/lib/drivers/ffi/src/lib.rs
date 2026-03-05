@@ -79,10 +79,18 @@
 //! - Method semantics change
 //! - New types are added (backwards compatible)
 
+pub mod buffer;
+pub mod command;
+pub mod error;
+pub mod event;
+pub mod ffi_types;
 mod logging;
+pub mod mode;
+pub mod runtime;
 mod timer;
 mod types;
 mod version;
+pub mod window;
 
 // Re-export FFI service functions
 pub use {
@@ -94,6 +102,45 @@ pub use {
     },
     version::{ABI_VERSION, reovim_abi_is_compatible, reovim_abi_version},
 };
+
+// Re-export runtime bridge types
+pub use runtime::{InitGuard, RuntimeGuard, with_runtime, with_services};
+
+// Re-export FFI types
+pub use ffi_types::{ReovimCommandArgs, ReovimPosition, ReovimStringResult};
+
+// Re-export buffer API
+pub use buffer::{
+    ReovimBufferId, reovim_active_buffer, reovim_buffer_content, reovim_buffer_line,
+    reovim_buffer_line_count, reovim_buffer_line_len, reovim_buffer_text_range,
+    reovim_create_buffer, reovim_delete_buffer, reovim_delete_range, reovim_insert_text,
+};
+
+// Re-export window API
+pub use window::{
+    ReovimWindowId, reovim_active_window, reovim_close_window, reovim_create_window,
+    reovim_cursor_position, reovim_focus_window, reovim_window_buffer, reovim_window_count,
+};
+
+// Re-export mode API
+pub use mode::{
+    reovim_current_mode, reovim_mode_depth, reovim_pop_mode, reovim_push_mode, reovim_set_mode,
+};
+
+// Re-export command API
+pub use command::{
+    FfiCommandHandler, FfiCommandHandlerStore, ReovimCommandCallback, ReovimCommandRegistration,
+    reovim_execute_command, reovim_register_command,
+};
+
+// Re-export event API
+pub use event::{
+    FfiEventSubscriptionStore, ReovimEventCallback, ReovimSubscriptionHandle,
+    reovim_subscribe_event, reovim_unsubscribe_event,
+};
+
+// Re-export error codes
+pub use error::*;
 
 // Re-export kernel types for convenience
 pub use reovim_kernel::api::v1::{API_VERSION, ModuleProbe, Version};

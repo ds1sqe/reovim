@@ -43,7 +43,8 @@ use reovim_kernel::api::v1::Version;
 /// # History
 ///
 /// - 1.0.0: Initial stable ABI with `ModuleProbe` at 1308 bytes
-pub const ABI_VERSION: Version = Version::new(1, 0, 0);
+/// - 1.1.0: Buffer, window, mode, command, and event APIs
+pub const ABI_VERSION: Version = Version::new(1, 1, 0);
 
 /// ABI version major component.
 ///
@@ -55,7 +56,7 @@ pub static ABI_VERSION_MAJOR: u32 = 1;
 ///
 /// Exported for C header inclusion.
 #[unsafe(no_mangle)]
-pub static ABI_VERSION_MINOR: u32 = 0;
+pub static ABI_VERSION_MINOR: u32 = 1;
 
 /// ABI version patch component.
 ///
@@ -105,9 +106,9 @@ mod tests {
 
     #[test]
     fn test_abi_version_constants() {
-        assert_eq!(ABI_VERSION, Version::new(1, 0, 0));
+        assert_eq!(ABI_VERSION, Version::new(1, 1, 0));
         assert_eq!(ABI_VERSION_MAJOR, 1);
-        assert_eq!(ABI_VERSION_MINOR, 0);
+        assert_eq!(ABI_VERSION_MINOR, 1);
         assert_eq!(ABI_VERSION_PATCH, 0);
     }
 
@@ -143,6 +144,18 @@ mod tests {
         // Different major versions are never compatible
         assert!(!reovim_abi_is_compatible(Version::new(1, 0, 0), Version::new(2, 0, 0)));
         assert!(!reovim_abi_is_compatible(Version::new(2, 0, 0), Version::new(1, 0, 0)));
+    }
+
+    #[test]
+    fn test_abi_v1_1_backward_compatible() {
+        // Modules compiled against ABI 1.0.0 work with new 1.1.0 kernel
+        assert!(reovim_abi_is_compatible(Version::new(1, 0, 0), ABI_VERSION));
+    }
+
+    #[test]
+    fn test_abi_v1_1_forward_incompatible() {
+        // Modules requiring ABI 1.1.0 do NOT work with old 1.0.0 kernel
+        assert!(!reovim_abi_is_compatible(ABI_VERSION, Version::new(1, 0, 0)));
     }
 
     #[test]

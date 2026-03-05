@@ -78,6 +78,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   hover, definition, and references. Registration ID tracking enables
   proper unregistration by ID. 41 new tests across driver and module crates.
 
+- **FFI execution API for external modules (#384)**: Full runtime bridge enabling
+  C, Python, and Haskell modules to access the same capabilities as native Rust
+  modules. Thread-local `RuntimeGuard`/`InitGuard` RAII pattern (inspired by
+  Neovim's Lua bridge) provides safe access to `SessionRuntime` during command
+  callbacks. Buffer API (10 functions: active buffer, line read, content read,
+  line count, line length, text range, insert, delete range, create, delete).
+  Window API (7 functions: active window, cursor position, window count, buffer
+  lookup, create, close, focus). Mode API (5 functions: current mode, mode depth,
+  push, pop, set). Command API (2 functions: register callback, execute by ID).
+  Event API (2 functions: subscribe with callback, unsubscribe). All FFI functions
+  use caller-owned buffer pattern for string reads, `#[repr(C)]` types
+  (`ReovimPosition`, `ReovimStringResult`, `ReovimCommandArgs`), and 11 distinct
+  negative `i32` error codes. `FfiCommandHandlerStore` and
+  `FfiEventSubscriptionStore` integrate with `ServiceRegistry` during module init.
+  Python bindings via PyO3 (`PyRuntimeApi` class) wrap the runtime bridge
+  directly. ABI version bumped to 1.1.0 (backward compatible). C header
+  (`reovim.h`) updated with all new type definitions, function declarations, and
+  callback types. 270 unit tests (206 FFI + 64 Python), zero clippy warnings.
+
 ### Changed
 
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.

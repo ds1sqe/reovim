@@ -19,6 +19,12 @@ workspace = true
 # Kernel layer (FFI types)
 reovim-kernel = { workspace = true }
 
+# Session driver (for SessionRuntime access in FFI bridge)
+reovim-driver-session = { workspace = true }
+
+# Command types (CommandContext, CommandResult)
+reovim-driver-command-types = { workspace = true }
+
 # FFI support
 libc = "0.2"
 

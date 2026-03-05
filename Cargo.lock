@@ -2009,6 +2009,8 @@ name = "reovim-driver-ffi"
 version = "0.10.0-dev"
 dependencies = [
  "libc",
+ "reovim-driver-command-types",
+ "reovim-driver-session",
  "reovim-kernel",
  "tracing",
 ]
@@ -2018,6 +2020,9 @@ name = "reovim-driver-ffi-python"
 version = "0.10.0-dev"
 dependencies = [
  "pyo3",
+ "reovim-driver-command-types",
+ "reovim-driver-ffi",
+ "reovim-driver-session",
  "reovim-kernel",
  "tracing",
 ]
