@@ -37,3 +37,6 @@ pub use lsp_types::SignatureHelp;
 
 // Server state (for LspProvider trait, #521)
 pub use lsp_types::{ServerCapabilities, ServerInfo};
+
+// Dynamic registration (#533)
+pub use lsp_types::{Registration, RegistrationParams, Unregistration, UnregistrationParams};

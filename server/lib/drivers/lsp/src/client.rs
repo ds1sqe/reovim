@@ -338,26 +338,26 @@ impl Client {
                 publish_diagnostics: Some(
                     lsp_types::PublishDiagnosticsClientCapabilities::default(),
                 ),
-                // Enable hover support
+                // Enable hover support (dynamic registration: #533)
                 hover: Some(lsp_types::HoverClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     content_format: Some(vec![
                         lsp_types::MarkupKind::Markdown,
                         lsp_types::MarkupKind::PlainText,
                     ]),
                 }),
-                // Enable references support
+                // Enable references support (dynamic registration: #533)
                 references: Some(lsp_types::ReferenceClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                 }),
-                // Enable definition support
+                // Enable definition support (dynamic registration: #533)
                 definition: Some(lsp_types::GotoCapability {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     link_support: Some(true),
                 }),
-                // Enable completion support
+                // Enable completion support (dynamic registration: #533)
                 completion: Some(lsp_types::CompletionClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     completion_item: Some(lsp_types::CompletionItemCapability {
                         snippet_support: Some(true),
                         documentation_format: Some(vec![
@@ -959,11 +959,43 @@ mod tests {
         let caps = Client::client_capabilities();
         let text_doc = caps.text_document.unwrap();
         let completion = text_doc.completion.unwrap();
-        assert_eq!(completion.dynamic_registration, Some(false));
+        assert_eq!(completion.dynamic_registration, Some(true));
         let item = completion.completion_item.unwrap();
         assert_eq!(item.snippet_support, Some(true));
         let formats = item.documentation_format.unwrap();
         assert!(formats.contains(&lsp_types::MarkupKind::Markdown));
         assert!(formats.contains(&lsp_types::MarkupKind::PlainText));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_hover() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let hover = text_doc.hover.unwrap();
+        assert_eq!(hover.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_definition() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let definition = text_doc.definition.unwrap();
+        assert_eq!(definition.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_references() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let references = text_doc.references.unwrap();
+        assert_eq!(references.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_synchronization_not_dynamic() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let sync = text_doc.synchronization.unwrap();
+        assert_eq!(sync.dynamic_registration, Some(false));
     }
 }

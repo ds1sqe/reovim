@@ -16,11 +16,12 @@ use std::sync::{
 use {
     lsp_types::{
         DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-        PublishDiagnosticsParams, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-        TextDocumentItem, Uri, VersionedTextDocumentIdentifier,
+        PublishDiagnosticsParams, RegistrationParams, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, UnregistrationParams, Uri,
+        VersionedTextDocumentIdentifier,
     },
     reovim_driver_lsp::{
-        DiagnosticCache, LspError, LspProvider, LspRequest, LspServerConfig,
+        CapabilityStore, DiagnosticCache, LspError, LspProvider, LspRequest, LspServerConfig,
         client::Client,
         jsonrpc::{Message, Response},
         transport::Transport,
@@ -42,8 +43,8 @@ pub struct LspSaturatorHandle {
     cache: Arc<DiagnosticCache>,
     /// Whether the server is running and initialized.
     active: Arc<AtomicBool>,
-    /// Server capabilities from the initialize response.
-    capabilities: lsp_types::ServerCapabilities,
+    /// Server capabilities, updated dynamically via `client/registerCapability` (#533).
+    capabilities: Arc<CapabilityStore>,
     /// Project root path this server covers.
     root_path: std::path::PathBuf,
     /// Language ID this server handles (e.g., "rust").
@@ -86,9 +87,9 @@ impl LspProvider for LspSaturatorHandle {
         self.active.load(Ordering::Relaxed)
     }
 
-    fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities> {
+    fn capabilities(&self) -> Option<Arc<lsp_types::ServerCapabilities>> {
         if self.is_active() {
-            Some(&self.capabilities)
+            Some(self.capabilities.load_full())
         } else {
             None
         }
@@ -137,11 +138,23 @@ impl LspSaturator {
         let (client, stdout_reader, stderr) = Client::spawn(config)?;
         let client = Arc::new(client);
 
-        // Spawn saturator main loop
+        // Create capability store with empty caps; updated after initialize().
+        let capability_store =
+            Arc::new(CapabilityStore::new(lsp_types::ServerCapabilities::default()));
+
+        // Spawn saturator main loop (must be before initialize() to read response).
         let cache_clone = Arc::clone(&cache);
         let active_clone = Arc::clone(&active);
         let client_clone = Arc::clone(&client);
-        tokio::spawn(Self::run(client_clone, stdout_reader, request_rx, cache_clone, active_clone));
+        let caps_clone = Arc::clone(&capability_store);
+        tokio::spawn(Self::run(
+            client_clone,
+            stdout_reader,
+            request_rx,
+            cache_clone,
+            active_clone,
+            caps_clone,
+        ));
 
         // Spawn stderr reader if available
         if let Some(stderr) = stderr {
@@ -150,13 +163,14 @@ impl LspSaturator {
 
         // Initialize the server — extract capabilities and server info (#521).
         let init_result = client.initialize().await?;
+        capability_store.store(init_result.capabilities);
         active.store(true, Ordering::Relaxed);
 
         Ok(LspSaturatorHandle {
             tx: request_tx,
             cache,
             active,
-            capabilities: init_result.capabilities,
+            capabilities: capability_store,
             root_path,
             language_id,
             server_info: init_result.server_info,
@@ -174,6 +188,7 @@ impl LspSaturator {
         mut request_rx: mpsc::Receiver<LspRequest>,
         cache: Arc<DiagnosticCache>,
         active: Arc<AtomicBool>,
+        capabilities: Arc<CapabilityStore>,
     ) {
         info!("LSP saturator started");
 
@@ -183,7 +198,7 @@ impl LspSaturator {
                 result = Transport::recv(&mut stdout_reader) => {
                     match result {
                         Ok(message) => {
-                            Self::handle_server_message(&client, &cache, message).await;
+                            Self::handle_server_message(&client, &cache, &capabilities, message).await;
                         }
                         Err(e) => {
                             error!("Failed to receive message: {e}");
@@ -209,6 +224,7 @@ impl LspSaturator {
     async fn handle_server_message(
         client: &Arc<Client>,
         cache: &Arc<DiagnosticCache>,
+        capabilities: &CapabilityStore,
         message: Message,
     ) {
         match message {
@@ -233,7 +249,7 @@ impl LspSaturator {
                 }
             }
             Message::Request(request) => {
-                Self::handle_server_request(client, request);
+                Self::handle_server_request(client, capabilities, request);
             }
         }
     }
@@ -253,12 +269,38 @@ impl LspSaturator {
     }
 
     /// Handle server-to-client requests that require a response.
-    fn handle_server_request(client: &Arc<Client>, request: reovim_driver_lsp::jsonrpc::Request) {
+    fn handle_server_request(
+        client: &Arc<Client>,
+        capabilities: &CapabilityStore,
+        request: reovim_driver_lsp::jsonrpc::Request,
+    ) {
         debug!(method = %request.method, id = ?request.id, "Server request");
 
         let response = match request.method.as_str() {
             "client/registerCapability" => {
-                debug!("Responding to client/registerCapability");
+                if let Some(params) = request.params {
+                    match serde_json::from_value::<RegistrationParams>(params) {
+                        Ok(reg_params) => {
+                            capabilities.apply_registrations(&reg_params.registrations);
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to parse registerCapability params");
+                        }
+                    }
+                }
+                Response::success(request.id, serde_json::Value::Null)
+            }
+            "client/unregisterCapability" => {
+                if let Some(params) = request.params {
+                    match serde_json::from_value::<UnregistrationParams>(params) {
+                        Ok(unreg_params) => {
+                            capabilities.apply_unregistrations(&unreg_params.unregisterations);
+                        }
+                        Err(e) => {
+                            warn!(error = %e, "Failed to parse unregisterCapability params");
+                        }
+                    }
+                }
                 Response::success(request.id, serde_json::Value::Null)
             }
             "window/workDoneProgress/create" => {
@@ -474,11 +516,16 @@ mod tests {
             tx,
             cache: Arc::new(DiagnosticCache::new()),
             active: Arc::new(AtomicBool::new(active)),
-            capabilities: lsp_types::ServerCapabilities::default(),
+            capabilities: Arc::new(CapabilityStore::new(lsp_types::ServerCapabilities::default())),
             root_path: PathBuf::from("/tmp/test"),
             language_id: "rust".to_string(),
             server_info: None,
         }
+    }
+
+    /// Create a test `CapabilityStore` for request handler tests.
+    fn make_test_capability_store() -> CapabilityStore {
+        CapabilityStore::new(lsp_types::ServerCapabilities::default())
     }
 
     /// Create a test client using `cat` to keep stdio pipes alive.
@@ -632,7 +679,13 @@ mod tests {
         let message = jsonrpc::Message::Response(response);
 
         // No pending request for ID 99 — logs warning, no panic
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -653,7 +706,13 @@ mod tests {
         );
         let message = jsonrpc::Message::Notification(notification);
 
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
         assert!(cache.has(&uri));
     }
 
@@ -665,7 +724,13 @@ mod tests {
         let notification = jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
         let message = jsonrpc::Message::Notification(notification);
 
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
         assert!(cache.is_empty());
     }
 
@@ -680,7 +745,13 @@ mod tests {
         );
         let message = jsonrpc::Message::Notification(notification);
 
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
         assert!(cache.is_empty());
     }
 
@@ -695,7 +766,13 @@ mod tests {
         );
         let message = jsonrpc::Message::Notification(notification);
 
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
     }
 
     #[tokio::test]
@@ -706,28 +783,34 @@ mod tests {
         let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
         let message = jsonrpc::Message::Request(request);
 
-        LspSaturator::handle_server_message(&client, &cache, message).await;
+        LspSaturator::handle_server_message(
+            &client,
+            &cache,
+            &make_test_capability_store(),
+            message,
+        )
+        .await;
     }
 
     #[tokio::test]
     async fn test_handle_server_request_register_capability_direct() {
         let client = make_test_client();
         let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
-        LspSaturator::handle_server_request(&client, request);
+        LspSaturator::handle_server_request(&client, &make_test_capability_store(), request);
     }
 
     #[tokio::test]
     async fn test_handle_server_request_work_done_progress() {
         let client = make_test_client();
         let request = jsonrpc::Request::new(2_i64, "window/workDoneProgress/create", None);
-        LspSaturator::handle_server_request(&client, request);
+        LspSaturator::handle_server_request(&client, &make_test_capability_store(), request);
     }
 
     #[tokio::test]
     async fn test_handle_server_request_unknown_direct() {
         let client = make_test_client();
         let request = jsonrpc::Request::new(3_i64, "custom/unknown", None);
-        LspSaturator::handle_server_request(&client, request);
+        LspSaturator::handle_server_request(&client, &make_test_capability_store(), request);
     }
 
     #[tokio::test]
@@ -820,5 +903,115 @@ mod tests {
 
         LspSaturator::handle_did_close(&client, &cache, &uri);
         assert!(!cache.has(&uri));
+    }
+
+    // --- Dynamic registration tests (#533) ---
+
+    #[tokio::test]
+    async fn test_handle_server_request_register_capability_with_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+        assert!(caps.load_full().hover_provider.is_none());
+
+        let params = serde_json::json!({
+            "registrations": [{
+                "id": "r1",
+                "method": "textDocument/hover",
+                "registerOptions": null
+            }]
+        });
+        let request = jsonrpc::Request::new(1_i64, "client/registerCapability", Some(params));
+        LspSaturator::handle_server_request(&client, &caps, request);
+
+        assert!(caps.load_full().hover_provider.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_handle_server_request_register_capability_no_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+        let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
+        // Should not panic, just ACK with null
+        LspSaturator::handle_server_request(&client, &caps, request);
+    }
+
+    #[tokio::test]
+    async fn test_handle_server_request_register_capability_invalid_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+        let params = serde_json::json!({"invalid": "data"});
+        let request = jsonrpc::Request::new(1_i64, "client/registerCapability", Some(params));
+        // Should log warning but not panic
+        LspSaturator::handle_server_request(&client, &caps, request);
+    }
+
+    #[tokio::test]
+    async fn test_handle_server_request_unregister_capability_with_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+
+        // Register first
+        let reg_params = serde_json::json!({
+            "registrations": [{
+                "id": "r1",
+                "method": "textDocument/definition",
+                "registerOptions": null
+            }]
+        });
+        let reg_request =
+            jsonrpc::Request::new(1_i64, "client/registerCapability", Some(reg_params));
+        LspSaturator::handle_server_request(&client, &caps, reg_request);
+        assert!(caps.load_full().definition_provider.is_some());
+
+        // Unregister
+        let unreg_params = serde_json::json!({
+            "unregisterations": [{
+                "id": "r1",
+                "method": "textDocument/definition"
+            }]
+        });
+        let unreg_request =
+            jsonrpc::Request::new(2_i64, "client/unregisterCapability", Some(unreg_params));
+        LspSaturator::handle_server_request(&client, &caps, unreg_request);
+        assert!(caps.load_full().definition_provider.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_handle_server_request_unregister_capability_no_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+        let request = jsonrpc::Request::new(1_i64, "client/unregisterCapability", None);
+        LspSaturator::handle_server_request(&client, &caps, request);
+    }
+
+    #[tokio::test]
+    async fn test_handle_server_request_unregister_capability_invalid_params() {
+        let client = make_test_client();
+        let caps = make_test_capability_store();
+        let params = serde_json::json!({"bad": "format"});
+        let request = jsonrpc::Request::new(1_i64, "client/unregisterCapability", Some(params));
+        LspSaturator::handle_server_request(&client, &caps, request);
+    }
+
+    #[test]
+    fn test_handle_capabilities_reflects_registration() {
+        let (tx, _rx) = mpsc::channel::<LspRequest>(1);
+        let handle = make_test_handle(tx, true);
+
+        // Initially no hover
+        let caps = handle.capabilities().unwrap();
+        assert!(caps.hover_provider.is_none());
+
+        // Dynamically register via the shared CapabilityStore
+        let reg = lsp_types::Registration {
+            id: "r1".to_string(),
+            method: "textDocument/hover".to_string(),
+            register_options: None,
+        };
+        handle.capabilities.apply_registration(&reg);
+
+        // Now capabilities() reflects the change
+        let caps = handle.capabilities().unwrap();
+        assert!(caps.hover_provider.is_some());
     }
 }

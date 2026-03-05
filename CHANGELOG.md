@@ -64,6 +64,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Modules wired into defaults bundle (28 modules). 65 unit tests (54 lsp-navigation
   + 11 vim-lsp adapter) with full coverage.
 
+- **LSP dynamic capability registration (#533)**: Handle `client/registerCapability`
+  and `client/unregisterCapability` server-to-client requests by parsing
+  `RegistrationParams`/`UnregistrationParams` and updating stored
+  `ServerCapabilities`. New `CapabilityStore` in driver layer wraps
+  `ArcSwap<ServerCapabilities>` for lock-free reads and atomic updates,
+  following the `DiagnosticCache` pattern. Supports 8 LSP methods:
+  completion, hover, definition, references, signatureHelp, codeAction,
+  formatting, documentSymbol. `LspProvider::capabilities()` trait signature
+  changed from `Option<&ServerCapabilities>` to `Option<Arc<ServerCapabilities>>`
+  to support dynamic updates (consumers unchanged via Arc deref). Client
+  capabilities now advertise `dynamic_registration: true` for completion,
+  hover, definition, and references. Registration ID tracking enables
+  proper unregistration by ID. 41 new tests across driver and module crates.
+
 ### Changed
 
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.

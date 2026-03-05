@@ -40,10 +40,14 @@ pub trait LspProvider: Send + Sync {
 
     /// Server capabilities from the initialize response (#521, #530).
     ///
-    /// Consumers MUST check capabilities before sending requests
-    /// (e.g., `caps.completion_provider.is_some()` before completion).
+    /// Returns `Arc<ServerCapabilities>` for cheap sharing. Consumers MUST
+    /// check capabilities before sending requests (e.g.,
+    /// `caps.completion_provider.is_some()` before completion).
     /// Returns `None` if the server hasn't completed initialization.
-    fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities>;
+    ///
+    /// Uses `Arc` instead of `&T` to support lock-free dynamic capability
+    /// registration via `ArcSwap` (#533).
+    fn capabilities(&self) -> Option<std::sync::Arc<lsp_types::ServerCapabilities>>;
 
     /// Project root path this server covers.
     fn root_path(&self) -> &std::path::Path;
@@ -81,7 +85,7 @@ mod tests {
             false
         }
 
-        fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities> {
+        fn capabilities(&self) -> Option<std::sync::Arc<lsp_types::ServerCapabilities>> {
             None
         }
 

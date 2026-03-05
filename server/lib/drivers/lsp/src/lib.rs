@@ -35,6 +35,7 @@
 //! ```
 
 mod cache;
+mod capability_store;
 pub mod client;
 mod config;
 mod error;
@@ -62,6 +63,9 @@ pub use {
 
 // Diagnostic cache
 pub use cache::{BufferDiagnostics, DiagnosticCache};
+
+// Capability store (#533 - dynamic registration)
+pub use capability_store::CapabilityStore;
 
 // Provider trait and registry (Epic #520)
 pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};

@@ -434,8 +434,10 @@ mod tests {
             self.active
         }
 
-        fn capabilities(&self) -> Option<&lsp_types::ServerCapabilities> {
-            self.capabilities.as_ref()
+        fn capabilities(&self) -> Option<std::sync::Arc<lsp_types::ServerCapabilities>> {
+            self.capabilities
+                .as_ref()
+                .map(|c| std::sync::Arc::new(c.clone()))
         }
 
         fn root_path(&self) -> &Path {
