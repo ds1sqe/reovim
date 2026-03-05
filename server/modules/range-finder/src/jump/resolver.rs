@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_with_parent_stores_parent() {
-        let parent = ModeId::new(ModuleId::new("vim"), "normal");
+        let parent = ModeId::new(ModuleId::new("test"), "normal");
         let resolver = JumpResolver::with_parent(parent.clone());
         assert_eq!(resolver.inherits_from(), Some(&parent));
     }

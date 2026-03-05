@@ -12,10 +12,14 @@
 //! extensions via `ExtensionStateBridge`.
 //!
 //! The module registers its own mode (`range-finder:jump-input`) for label
-//! selection, with `vim:normal` as parent for keybinding inheritance.
+//! selection. The parent mode for keybinding inheritance is injected by
+//! the adapter module (e.g., `vim-range-finder`) via [`JumpParentMode`].
 
+pub mod config;
 pub mod fold;
 pub mod jump;
+
+pub use config::JumpParentMode;
 
 use {
     reovim_driver_input::{ModeInfo, ModeInfoStore, ResolverRegistry},
@@ -77,11 +81,14 @@ impl Module for RangeFinderModule {
             command_store.add(handler);
         }
 
-        // Look up vim:normal for mode inheritance (resolved at init time)
+        // Read parent mode from adapter-injected config (e.g., vim-range-finder)
+        let parent_mode = ctx
+            .services
+            .get::<JumpParentMode>()
+            .expect("JumpParentMode must be registered (by adapter) before range-finder")
+            .mode()
+            .clone();
         let modes = ctx.services.get_or_create::<ModeInfoStore>();
-        let parent_mode = modes
-            .find_by_name("vim", "normal")
-            .expect("vim:normal mode must be registered before range-finder");
 
         // Register jump resolver for jump-input mode (#524)
         let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
@@ -155,10 +162,12 @@ mod tests {
 
         let services = Arc::new(ServiceRegistry::new());
 
-        // Register mock vim:normal mode (vim initializes before range-finder)
+        // Register mock parent mode and JumpParentMode config
+        // (adapter initializes before range-finder)
+        let parent = ModeId::new(ModuleId::new("test"), "normal");
         let modes = services.get_or_create::<ModeInfoStore>();
         modes.add(ModeInfo {
-            id: ModeId::new(ModuleId::new("vim"), "normal"),
+            id: parent.clone(),
             display_name: "NORMAL",
             cursor_style: CursorStyle::Block,
             accepts_char_input: false,
@@ -166,6 +175,7 @@ mod tests {
             inherits_from: None,
             is_entry: true,
         });
+        services.register(std::sync::Arc::new(JumpParentMode::new(parent)));
 
         let ctx = test_module_context(services.clone());
 

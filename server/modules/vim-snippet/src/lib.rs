@@ -20,11 +20,11 @@
 //! in the snippet module itself, as they target snippet's own mode.
 
 use {
-    reovim_driver_input::KeybindingStore,
+    reovim_driver_input::{KeybindingStore, ModeInfoStore},
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
-    reovim_module_snippet::ids as snippet,
+    reovim_module_snippet::{SnippetParentMode, ids as snippet},
 };
 
 const MODULE: ModuleId = ModuleId::new("vim-snippet");
@@ -64,6 +64,14 @@ impl Module for VimSnippetModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Resolve vim:insert and register as SnippetParentMode for snippet
+        let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let vim_insert = modes
+            .find_by_name("vim", "insert")
+            .expect("vim:insert must be registered before vim-snippet");
+        ctx.services
+            .register(std::sync::Arc::new(SnippetParentMode::new(vim_insert)));
+
         let store = ctx.services.get_or_create::<KeybindingStore>();
         store.add_all(self.keybindings());
         ProbeResult::Success
@@ -133,10 +141,23 @@ mod tests {
     }
 
     #[test]
-    fn init_registers_keybindings() {
-        use reovim_kernel::api::v1::ServiceRegistry;
+    fn init_registers_keybindings_and_parent_mode() {
+        use reovim_kernel::api::v1::{CursorStyle, ModeId, ServiceRegistry};
 
         let services = Arc::new(ServiceRegistry::new());
+
+        // vim:insert must exist (vim initializes before vim-snippet)
+        let modes = services.get_or_create::<ModeInfoStore>();
+        modes.add(reovim_driver_input::ModeInfo {
+            id: ModeId::new(ModuleId::new("vim"), "insert"),
+            display_name: "INSERT",
+            cursor_style: CursorStyle::Bar,
+            accepts_char_input: true,
+            has_selection: false,
+            inherits_from: None,
+            is_entry: false,
+        });
+
         let ctx = test_module_context(services.clone());
 
         let mut module = VimSnippetModule::new();
@@ -145,6 +166,10 @@ mod tests {
 
         let store = services.get::<KeybindingStore>();
         assert!(store.is_some());
+
+        // Verify SnippetParentMode was registered
+        let parent = services.get::<SnippetParentMode>();
+        assert!(parent.is_some());
     }
 
     #[test]

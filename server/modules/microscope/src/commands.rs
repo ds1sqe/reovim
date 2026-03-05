@@ -352,11 +352,11 @@ fn open_picker(
     }
     state.refresh_engine();
 
-    runtime.set_mode(MicroscopeMode::PICKER_ID, TransitionContext::new());
+    runtime.push_mode(MicroscopeMode::PICKER_ID, TransitionContext::new());
     CommandResult::Success
 }
 
-/// Close the picker and return to normal mode.
+/// Close the picker and return to the previous mode via pop.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn close_picker(runtime: &mut SessionRuntime<'_>) {
     let state = runtime.ext_mut::<MicroscopeState>();
@@ -366,13 +366,7 @@ fn close_picker(runtime: &mut SessionRuntime<'_>) {
     state.engine.restart();
     state.services = None;
 
-    // Return to vim:normal mode (discriminant 0)
-    let vim_normal = reovim_kernel::api::v1::ModeId::with_discriminant(
-        reovim_kernel::api::v1::ModuleId::new("vim"),
-        "NORMAL",
-        0,
-    );
-    runtime.set_mode(vim_normal, TransitionContext::new());
+    let _ = runtime.pop_mode(None);
 }
 
 /// Collect all command handlers for registration.

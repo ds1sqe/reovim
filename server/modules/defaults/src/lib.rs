@@ -50,8 +50,8 @@ use {
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
     reovim_module_motions as motions, reovim_module_notification as notification,
     reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_snippet as snippet, reovim_module_tetromino as tetromino,
-    reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
     reovim_module_vim_completion as vim_completion, reovim_module_vim_explorer as vim_explorer,
@@ -131,14 +131,14 @@ impl DefaultsModule {
             Box::new(lsp_navigation::LspNavigationModule::new()),
             // Vim-LSP adapter (#532) - bridges vim keybindings to LSP commands
             Box::new(vim_lsp::VimLspModule::new()),
-            // Snippet expansion (#136)
-            Box::new(snippet::SnippetModule::new()),
-            // Vim-snippet adapter - bridges vim keybindings to snippet commands
+            // Vim-snippet adapter (#532) - registers SnippetParentMode before snippet
             Box::new(vim_snippet::VimSnippetModule::new()),
-            // Jump navigation and code folding (#524)
-            Box::new(range_finder::RangeFinderModule::new()),
-            // Vim-range-finder adapter - bridges vim keybindings to fold/jump commands
+            // Snippet expansion (#136) - reads SnippetParentMode from adapter
+            Box::new(snippet::SnippetModule::new()),
+            // Vim-range-finder adapter (#532) - registers JumpParentMode before range-finder
             Box::new(vim_range_finder::VimRangeFinderModule::new()),
+            // Jump navigation and code folding (#524) - reads JumpParentMode from adapter
+            Box::new(range_finder::RangeFinderModule::new()),
             // Completion engine (#521)
             Box::new(completion::CompletionModule::new()),
             // Vim-completion adapter - bridges vim keybindings to completion commands

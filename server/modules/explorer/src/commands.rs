@@ -17,16 +17,6 @@ use {
 
 use crate::{ids, modes::ExplorerMode, state::ExplorerState, tree::FileTree};
 
-/// Vim normal mode ID constant.
-#[cfg_attr(coverage_nightly, coverage(off))]
-const fn vim_normal() -> reovim_kernel::api::v1::ModeId {
-    reovim_kernel::api::v1::ModeId::with_discriminant(
-        reovim_kernel::api::v1::ModuleId::new("vim"),
-        "NORMAL",
-        0,
-    )
-}
-
 // ============================================================================
 // Toggle / Close
 // ============================================================================
@@ -53,7 +43,7 @@ impl CommandHandler for Toggle {
         if state.active {
             state.active = false;
             state.reset_snapshot_generation();
-            runtime.set_mode(vim_normal(), TransitionContext::new());
+            let _ = runtime.pop_mode(None);
         } else {
             state.active = true;
 
@@ -79,7 +69,7 @@ impl CommandHandler for Toggle {
                 }
             }
 
-            runtime.set_mode(ExplorerMode::BROWSE_ID, TransitionContext::new());
+            runtime.push_mode(ExplorerMode::BROWSE_ID, TransitionContext::new());
         }
 
         CommandResult::Success
@@ -107,7 +97,7 @@ impl CommandHandler for Close {
         state.active = false;
         state.reset_snapshot_generation();
 
-        runtime.set_mode(vim_normal(), TransitionContext::new());
+        let _ = runtime.pop_mode(None);
 
         CommandResult::Success
     }
@@ -380,7 +370,7 @@ impl CommandHandler for Open {
                     let state = runtime.ext_mut::<ExplorerState>();
                     state.active = false;
                     state.reset_snapshot_generation();
-                    runtime.set_mode(vim_normal(), TransitionContext::new());
+                    let _ = runtime.pop_mode(None);
                 }
                 Err(e) => {
                     let state = runtime.ext_mut::<ExplorerState>();

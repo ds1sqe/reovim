@@ -13,16 +13,6 @@ use {
 
 use crate::{game, ids, modes::TetrominoMode, state::TetrominoState};
 
-/// Vim normal mode ID constant.
-#[cfg_attr(coverage_nightly, coverage(off))]
-const fn vim_normal() -> reovim_kernel::api::v1::ModeId {
-    reovim_kernel::api::v1::ModeId::with_discriminant(
-        reovim_kernel::api::v1::ModuleId::new("vim"),
-        "NORMAL",
-        0,
-    )
-}
-
 // ============================================================================
 // Start / Quit / Restart
 // ============================================================================
@@ -46,7 +36,7 @@ impl CommandHandler for Start {
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let state = runtime.ext_mut::<TetrominoState>();
         state.start_game();
-        runtime.set_mode(TetrominoMode::PLAY_ID, TransitionContext::new());
+        runtime.push_mode(TetrominoMode::PLAY_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
@@ -71,7 +61,7 @@ impl CommandHandler for Quit {
         let state = runtime.ext_mut::<TetrominoState>();
         state.active = false;
         state.game = None;
-        runtime.set_mode(vim_normal(), TransitionContext::new());
+        let _ = runtime.pop_mode(None);
         CommandResult::Success
     }
 }

@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn test_with_parent_stores_parent() {
-        let parent = ModeId::new(reovim_kernel::api::v1::ModuleId::new("vim"), "insert");
+        let parent = ModeId::new(reovim_kernel::api::v1::ModuleId::new("test"), "insert");
         let resolver = SnippetResolver::with_parent(parent.clone());
         assert_eq!(resolver.inherits_from(), Some(&parent));
     }

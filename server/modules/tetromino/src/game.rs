@@ -1475,7 +1475,6 @@ mod tests {
         assert_eq!(ghost.row, 8);
     }
 
-
     // =========================================================================
     // lock_and_advance
     // =========================================================================
@@ -1513,5 +1512,4 @@ mod tests {
         lock_and_advance(&mut state, &piece, PieceType::T);
         assert!(state.game_over);
     }
-
 }

@@ -126,6 +126,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   no longer hardcode `"vim:normal"` / `"vim:insert"` mode targets. Follows adapter
   pattern established by `vim-lsp` in #532. Defaults bundle updated to 33 modules.
 
+- **Architecture**: Remove remaining vim-specific coupling from feature modules (#532)
+  - **Adapter-injected parent modes**: `JumpParentMode` and `SnippetParentMode` config
+    types let adapters inject parent mode IDs via `ServiceRegistry`. Feature modules
+    (range-finder, snippet) read config at init instead of calling
+    `find_by_name("vim", ...)`. Adapters init before their feature modules in defaults.
+  - **Push/pop mode transitions**: Microscope, explorer, and tetromino use
+    `push_mode`/`pop_mode` instead of hardcoding `set_mode(vim:normal)` for return
+    transitions. Enables any editor personality to open/close these modules without
+    vim dependency.
+  - **Test-only cleanup**: Replace `ModuleId::new("vim")` with `ModuleId::new("test")`
+    in test code across textobjects, completion, snippet, and range-finder.
+
 - **Architecture**: Shared extension access and cross-client bridge context (#543)
   - Add `shared_ext()` / `shared_ext_mut()` to `ExtensionApi` trait (defaults return `None`)
   - Add `BridgeContext` struct for cross-client reads during bridge snapshot

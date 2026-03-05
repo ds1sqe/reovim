@@ -20,11 +20,11 @@
 //! - This module bridges them with explicit, visible coupling
 
 use {
-    reovim_driver_input::KeybindingStore,
+    reovim_driver_input::{KeybindingStore, ModeInfoStore},
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
-    reovim_module_range_finder::{fold::ids as fold, jump::ids as jump},
+    reovim_module_range_finder::{JumpParentMode, fold::ids as fold, jump::ids as jump},
 };
 
 const MODULE: ModuleId = ModuleId::new("vim-range-finder");
@@ -63,6 +63,14 @@ impl Module for VimRangeFinderModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // Resolve vim:normal and register as JumpParentMode for range-finder
+        let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let vim_normal = modes
+            .find_by_name("vim", "normal")
+            .expect("vim:normal must be registered before vim-range-finder");
+        ctx.services
+            .register(std::sync::Arc::new(JumpParentMode::new(vim_normal)));
+
         let store = ctx.services.get_or_create::<KeybindingStore>();
         store.add_all(self.keybindings());
         ProbeResult::Success
@@ -146,10 +154,23 @@ mod tests {
     }
 
     #[test]
-    fn init_registers_keybindings() {
-        use reovim_kernel::api::v1::ServiceRegistry;
+    fn init_registers_keybindings_and_parent_mode() {
+        use reovim_kernel::api::v1::{CursorStyle, ModeId, ServiceRegistry};
 
         let services = Arc::new(ServiceRegistry::new());
+
+        // vim:normal must exist (vim initializes before vim-range-finder)
+        let modes = services.get_or_create::<ModeInfoStore>();
+        modes.add(reovim_driver_input::ModeInfo {
+            id: ModeId::new(ModuleId::new("vim"), "normal"),
+            display_name: "NORMAL",
+            cursor_style: CursorStyle::Block,
+            accepts_char_input: false,
+            has_selection: false,
+            inherits_from: None,
+            is_entry: true,
+        });
+
         let ctx = test_module_context(services.clone());
 
         let mut module = VimRangeFinderModule::new();
@@ -158,6 +179,10 @@ mod tests {
 
         let store = services.get::<KeybindingStore>();
         assert!(store.is_some());
+
+        // Verify JumpParentMode was registered
+        let parent = services.get::<JumpParentMode>();
+        assert!(parent.is_some());
     }
 
     #[test]

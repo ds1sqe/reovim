@@ -419,19 +419,19 @@ mod tests {
     }
 
     fn visual_mode() -> ModeId {
-        ModeId::new(ModuleId::new("vim"), "visual")
+        ModeId::new(ModuleId::new("test"), "visual")
     }
 
     fn visual_line_mode() -> ModeId {
-        ModeId::new(ModuleId::new("vim"), "visual-line")
+        ModeId::new(ModuleId::new("test"), "visual-line")
     }
 
     fn visual_block_mode() -> ModeId {
-        ModeId::new(ModuleId::new("vim"), "visual-block")
+        ModeId::new(ModuleId::new("test"), "visual-block")
     }
 
     fn operator_pending_mode() -> ModeId {
-        ModeId::new(ModuleId::new("vim"), "delete")
+        ModeId::new(ModuleId::new("test"), "delete")
     }
 
     fn create_test_context() -> KernelContext {
