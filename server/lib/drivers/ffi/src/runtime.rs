@@ -30,7 +30,7 @@ use std::cell::Cell;
 
 use {reovim_driver_session::SessionRuntime, reovim_kernel::api::v1::ServiceRegistry};
 
-use crate::error::{REOVIM_ERR_NO_INIT_CTX, REOVIM_ERR_NO_RUNTIME};
+use crate::error::{REOVIM_ERR_NO_INIT_CTX, REOVIM_ERR_NO_RUNTIME, REOVIM_ERR_PANIC};
 
 // ============================================================================
 // Runtime thread-local
@@ -175,6 +175,39 @@ where
 }
 
 // ============================================================================
+// Panic-safe FFI boundary helpers
+// ============================================================================
+
+/// Run a closure with panic catching for FFI boundary safety.
+///
+/// Every `unsafe extern "C"` function MUST wrap its body in this helper
+/// to prevent undefined behavior from panics crossing the FFI boundary.
+///
+/// # Returns
+///
+/// - The closure's `i32` result on success
+/// - `REOVIM_ERR_PANIC` (-9) if the closure panics
+pub fn ffi_catch_unwind<F>(f: F) -> i32
+where
+    F: FnOnce() -> i32 + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(f).unwrap_or(REOVIM_ERR_PANIC)
+}
+
+/// Variant of [`ffi_catch_unwind`] for functions returning
+/// [`ReovimSubscriptionHandle`].
+///
+/// Returns a null handle (id=0) on panic.
+///
+/// [`ReovimSubscriptionHandle`]: crate::event::ReovimSubscriptionHandle
+pub fn ffi_catch_unwind_handle<F>(f: F) -> crate::event::ReovimSubscriptionHandle
+where
+    F: FnOnce() -> crate::event::ReovimSubscriptionHandle + std::panic::UnwindSafe,
+{
+    std::panic::catch_unwind(f).unwrap_or_else(|_| crate::event::ReovimSubscriptionHandle::null())
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -182,7 +215,10 @@ where
 mod tests {
     use {
         super::*,
-        crate::error::{REOVIM_ERR_NO_INIT_CTX, REOVIM_ERR_NO_RUNTIME},
+        crate::error::{
+            REOVIM_ERR_NO_INIT_CTX, REOVIM_ERR_NO_RUNTIME, REOVIM_ERR_NOT_FOUND, REOVIM_ERR_PANIC,
+            REOVIM_OK,
+        },
     };
 
     // ========================================================================
@@ -340,5 +376,81 @@ mod tests {
     #[test]
     fn test_services_thread_local_starts_none() {
         assert!(ACTIVE_SERVICES.get().is_none());
+    }
+
+    // ========================================================================
+    // RuntimeGuard panic safety test
+    // ========================================================================
+
+    #[test]
+    #[allow(clippy::items_after_statements)]
+    fn test_runtime_guard_panic_safety() {
+        let fake_ptr = 0x1000 as *mut SessionRuntime<'static>;
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let prev = ACTIVE_RUNTIME.get();
+            ACTIVE_RUNTIME.set(Some(fake_ptr));
+
+            // Simulate RuntimeGuard scope with panic
+            struct FakeGuard(Option<*mut SessionRuntime<'static>>);
+            impl Drop for FakeGuard {
+                fn drop(&mut self) {
+                    ACTIVE_RUNTIME.set(self.0);
+                }
+            }
+            let _guard = FakeGuard(prev);
+            assert!(ACTIVE_RUNTIME.get().is_some());
+            panic!("intentional panic in runtime guard");
+        }));
+
+        assert!(result.is_err());
+        // Guard's Drop should have restored None even during panic
+        assert!(ACTIVE_RUNTIME.get().is_none());
+    }
+
+    // ========================================================================
+    // ffi_catch_unwind tests
+    // ========================================================================
+
+    #[test]
+    fn test_ffi_catch_unwind_success() {
+        let result = ffi_catch_unwind(|| 42);
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn test_ffi_catch_unwind_returns_zero() {
+        let result = ffi_catch_unwind(|| REOVIM_OK);
+        assert_eq!(result, REOVIM_OK);
+    }
+
+    #[test]
+    fn test_ffi_catch_unwind_returns_error() {
+        let result = ffi_catch_unwind(|| REOVIM_ERR_NOT_FOUND);
+        assert_eq!(result, REOVIM_ERR_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_ffi_catch_unwind_catches_panic() {
+        let result = ffi_catch_unwind(|| {
+            panic!("intentional FFI panic");
+        });
+        assert_eq!(result, REOVIM_ERR_PANIC);
+    }
+
+    #[test]
+    fn test_ffi_catch_unwind_handle_success() {
+        let handle = ffi_catch_unwind_handle(|| crate::event::ReovimSubscriptionHandle { id: 42 });
+        assert!(!handle.is_null());
+        assert_eq!(handle.id, 42);
+    }
+
+    #[test]
+    fn test_ffi_catch_unwind_handle_catches_panic() {
+        let handle = ffi_catch_unwind_handle(|| {
+            panic!("intentional handle panic");
+        });
+        assert!(handle.is_null());
+        assert_eq!(handle.id, 0);
     }
 }

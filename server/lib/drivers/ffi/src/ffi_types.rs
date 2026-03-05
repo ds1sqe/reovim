@@ -118,6 +118,39 @@ impl ReovimCommandArgs {
     }
 }
 
+/// Yank type for register operations.
+///
+/// Determines paste behavior: characterwise inserts at cursor,
+/// linewise inserts above/below current line.
+///
+/// Corresponds to kernel `YankType` but with C-compatible layout.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReovimYankType {
+    /// Characterwise yank (e.g., `yw`, `y$`).
+    Characterwise = 0,
+    /// Linewise yank (e.g., `yy`, `dd`).
+    Linewise = 1,
+}
+
+impl From<reovim_kernel::api::v1::YankType> for ReovimYankType {
+    fn from(yt: reovim_kernel::api::v1::YankType) -> Self {
+        match yt {
+            reovim_kernel::api::v1::YankType::Characterwise => Self::Characterwise,
+            reovim_kernel::api::v1::YankType::Linewise => Self::Linewise,
+        }
+    }
+}
+
+impl From<ReovimYankType> for reovim_kernel::api::v1::YankType {
+    fn from(yt: ReovimYankType) -> Self {
+        match yt {
+            ReovimYankType::Characterwise => Self::Characterwise,
+            ReovimYankType::Linewise => Self::Linewise,
+        }
+    }
+}
+
 // ============================================================================
 // Compile-time size and alignment assertions
 // ============================================================================
@@ -135,6 +168,11 @@ const _: () = {
 const _: () = {
     assert!(std::mem::size_of::<ReovimCommandArgs>() == 28);
     assert!(std::mem::align_of::<ReovimCommandArgs>() == 4);
+};
+
+const _: () = {
+    assert!(std::mem::size_of::<ReovimYankType>() == 4);
+    assert!(std::mem::align_of::<ReovimYankType>() == 4);
 };
 
 #[cfg(test)]
@@ -355,5 +393,73 @@ mod tests {
         };
         let copied = args;
         assert_eq!(args, copied);
+    }
+
+    // ========================================================================
+    // ReovimYankType tests
+    // ========================================================================
+
+    #[test]
+    fn test_yank_type_size_and_alignment() {
+        assert_eq!(std::mem::size_of::<ReovimYankType>(), 4);
+        assert_eq!(std::mem::align_of::<ReovimYankType>(), 4);
+    }
+
+    #[test]
+    fn test_yank_type_discriminant_values() {
+        assert_eq!(ReovimYankType::Characterwise as i32, 0);
+        assert_eq!(ReovimYankType::Linewise as i32, 1);
+    }
+
+    #[test]
+    fn test_yank_type_from_kernel_characterwise() {
+        use reovim_kernel::api::v1::YankType;
+        let ffi = ReovimYankType::from(YankType::Characterwise);
+        assert_eq!(ffi, ReovimYankType::Characterwise);
+    }
+
+    #[test]
+    fn test_yank_type_from_kernel_linewise() {
+        use reovim_kernel::api::v1::YankType;
+        let ffi = ReovimYankType::from(YankType::Linewise);
+        assert_eq!(ffi, ReovimYankType::Linewise);
+    }
+
+    #[test]
+    fn test_yank_type_to_kernel_characterwise() {
+        use reovim_kernel::api::v1::YankType;
+        let kernel: YankType = ReovimYankType::Characterwise.into();
+        assert_eq!(kernel, YankType::Characterwise);
+    }
+
+    #[test]
+    fn test_yank_type_to_kernel_linewise() {
+        use reovim_kernel::api::v1::YankType;
+        let kernel: YankType = ReovimYankType::Linewise.into();
+        assert_eq!(kernel, YankType::Linewise);
+    }
+
+    #[test]
+    fn test_yank_type_roundtrip() {
+        use reovim_kernel::api::v1::YankType;
+        for yt in [YankType::Characterwise, YankType::Linewise] {
+            let ffi = ReovimYankType::from(yt);
+            let back: YankType = ffi.into();
+            assert_eq!(yt, back);
+        }
+    }
+
+    #[test]
+    fn test_yank_type_debug() {
+        let yt = ReovimYankType::Characterwise;
+        let debug = format!("{yt:?}");
+        assert!(debug.contains("Characterwise"));
+    }
+
+    #[test]
+    fn test_yank_type_clone_copy() {
+        let yt = ReovimYankType::Linewise;
+        let copied = yt;
+        assert_eq!(yt, copied);
     }
 }

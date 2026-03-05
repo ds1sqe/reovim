@@ -10,7 +10,9 @@ use pyo3::{exceptions::PyRuntimeError, prelude::*};
 
 use {
     reovim_driver_ffi::with_runtime,
-    reovim_driver_session::api::{BufferApi, CommandApi, ModeApi, WindowApi},
+    reovim_driver_session::api::{
+        BufferApi, ClipboardApi, CommandApi, ModeApi, RegisterApi, UndoApi, WindowApi,
+    },
 };
 
 /// Python API for accessing the editor runtime during command callbacks.
@@ -240,6 +242,164 @@ impl PyRuntimeApi {
     }
 
     // ========================================================================
+    // Clipboard API
+    // ========================================================================
+
+    /// Copy text to the system clipboard (`+` register).
+    ///
+    /// Returns `True` if copy succeeded, `False` if clipboard unavailable.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (text))]
+    fn copy_to_clipboard(&self, text: &str) -> PyResult<bool> {
+        with_runtime(|rt| rt.copy_to_clipboard(text))
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Paste text from the system clipboard (`+` register).
+    ///
+    /// Returns the clipboard content or `None` if unavailable/empty.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    fn paste_from_clipboard(&self) -> PyResult<Option<String>> {
+        with_runtime(|rt| rt.paste_from_clipboard())
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Copy text to the selection clipboard (`*` register, X11 primary selection).
+    ///
+    /// Returns `True` if copy succeeded, `False` if unavailable.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (text))]
+    fn copy_to_selection(&self, text: &str) -> PyResult<bool> {
+        with_runtime(|rt| rt.copy_to_selection(text))
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Paste text from the selection clipboard (`*` register).
+    ///
+    /// Returns the selection content or `None` if unavailable/empty.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    fn paste_from_selection(&self) -> PyResult<Option<String>> {
+        with_runtime(|rt| rt.paste_from_selection())
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    // ========================================================================
+    // Register API
+    // ========================================================================
+
+    /// Get register contents.
+    ///
+    /// Returns `(text, yank_type)` tuple where `yank_type` is `"characterwise"`
+    /// or `"linewise"`. Returns `None` if the register is empty.
+    ///
+    /// Pass `name=None` or omit for the unnamed register.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (name=None))]
+    fn get_register(&self, name: Option<char>) -> PyResult<Option<(String, String)>> {
+        with_runtime(|rt| {
+            rt.get_register(name).map(|content| {
+                let yt_str = if content.is_linewise() {
+                    "linewise"
+                } else {
+                    "characterwise"
+                };
+                (content.text, yt_str.to_string())
+            })
+        })
+        .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Set register contents.
+    ///
+    /// `yank_type` must be `"characterwise"` (default) or `"linewise"`.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    /// Raises `ValueError` if `yank_type` is invalid.
+    #[pyo3(signature = (text, name=None, yank_type="characterwise"))]
+    fn set_register(&self, text: &str, name: Option<char>, yank_type: &str) -> PyResult<()> {
+        let yt = match yank_type {
+            "characterwise" => reovim_kernel::api::v1::YankType::Characterwise,
+            "linewise" => reovim_kernel::api::v1::YankType::Linewise,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "yank_type must be 'characterwise' or 'linewise'",
+                ));
+            }
+        };
+        let content = reovim_kernel::api::v1::RegisterContent::new(text, yt);
+
+        with_runtime(|rt| rt.set_register(name, content))
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    // ========================================================================
+    // Undo API
+    // ========================================================================
+
+    /// Undo the last change for a buffer.
+    ///
+    /// Returns cursor position `(line, column)` or `None` if nothing to undo.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (buffer_id))]
+    #[allow(clippy::cast_possible_truncation)]
+    fn undo(&self, buffer_id: u64) -> PyResult<Option<(u32, u32)>> {
+        let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
+
+        with_runtime(|rt| {
+            rt.undo(bid)
+                .map(|result| (result.cursor.line as u32, result.cursor.column as u32))
+        })
+        .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Redo the last undone change for a buffer.
+    ///
+    /// Returns cursor position `(line, column)` or `None` if nothing to redo.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (buffer_id))]
+    #[allow(clippy::cast_possible_truncation)]
+    fn redo(&self, buffer_id: u64) -> PyResult<Option<(u32, u32)>> {
+        let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
+
+        with_runtime(|rt| {
+            rt.redo(bid)
+                .map(|result| (result.cursor.line as u32, result.cursor.column as u32))
+        })
+        .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Check if undo is available for a buffer.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (buffer_id))]
+    #[allow(clippy::cast_possible_truncation)]
+    fn can_undo(&self, buffer_id: u64) -> PyResult<bool> {
+        let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
+
+        with_runtime(|rt| rt.can_undo(bid))
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    /// Check if redo is available for a buffer.
+    ///
+    /// Raises `RuntimeError` if called outside a command callback.
+    #[pyo3(signature = (buffer_id))]
+    #[allow(clippy::cast_possible_truncation)]
+    fn can_redo(&self, buffer_id: u64) -> PyResult<bool> {
+        let bid = reovim_kernel::api::v1::BufferId::from_raw(buffer_id as usize);
+
+        with_runtime(|rt| rt.can_redo(bid))
+            .map_err(|_| PyRuntimeError::new_err("no active runtime"))
+    }
+
+    // ========================================================================
     // Command API
     // ========================================================================
 
@@ -441,5 +601,90 @@ mod tests {
         let mode = parse_mode_id("a:b:c").unwrap();
         assert_eq!(mode.module().as_str(), "a");
         assert_eq!(mode.name(), "b:c");
+    }
+
+    // ========================================================================
+    // Clipboard API tests
+    // ========================================================================
+
+    #[test]
+    fn test_copy_to_clipboard_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.copy_to_clipboard("text").is_err());
+    }
+
+    #[test]
+    fn test_paste_from_clipboard_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.paste_from_clipboard().is_err());
+    }
+
+    #[test]
+    fn test_copy_to_selection_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.copy_to_selection("text").is_err());
+    }
+
+    #[test]
+    fn test_paste_from_selection_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.paste_from_selection().is_err());
+    }
+
+    // ========================================================================
+    // Register API tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_register_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.get_register(None).is_err());
+    }
+
+    #[test]
+    fn test_get_register_named_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.get_register(Some('a')).is_err());
+    }
+
+    #[test]
+    fn test_set_register_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.set_register("hello", None, "characterwise").is_err());
+    }
+
+    #[test]
+    fn test_set_register_invalid_yank_type() {
+        let api = PyRuntimeApi;
+        let result = api.set_register("hello", None, "invalid");
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Undo API tests
+    // ========================================================================
+
+    #[test]
+    fn test_undo_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.undo(1).is_err());
+    }
+
+    #[test]
+    fn test_redo_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.redo(1).is_err());
+    }
+
+    #[test]
+    fn test_can_undo_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.can_undo(1).is_err());
+    }
+
+    #[test]
+    fn test_can_redo_no_runtime() {
+        let api = PyRuntimeApi;
+        assert!(api.can_redo(1).is_err());
     }
 }

@@ -93,9 +93,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   negative `i32` error codes. `FfiCommandHandlerStore` and
   `FfiEventSubscriptionStore` integrate with `ServiceRegistry` during module init.
   Python bindings via PyO3 (`PyRuntimeApi` class) wrap the runtime bridge
-  directly. ABI version bumped to 1.1.0 (backward compatible). C header
-  (`reovim.h`) updated with all new type definitions, function declarations, and
-  callback types. 270 unit tests (206 FFI + 64 Python), zero clippy warnings.
+  directly. v2 enhancements: panic safety hardening (`ffi_catch_unwind` wraps
+  all 36 `unsafe extern "C"` functions, returning `REOVIM_ERR_PANIC` on unwind).
+  Clipboard API (4 functions: copy/paste for system clipboard and X11 primary
+  selection, graceful degradation when unavailable). Register API (2 functions:
+  get/set with `ReovimYankType` enum for characterwise/linewise distinction).
+  Undo API (4 functions: undo, redo, can_undo, can_redo — edits auto-apply,
+  FFI receives cursor position only; `record_edit` deferred to v3). Python
+  bindings extended with 10 new methods covering clipboard, register, and undo.
+  ABI version bumped to 1.2.0 (backward compatible). C header (`reovim.h`)
+  updated with `ReovimYankType` enum and all new function declarations.
+  333 unit tests (257 FFI + 76 Python), zero clippy warnings.
 
 ### Changed
 

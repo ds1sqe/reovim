@@ -4,7 +4,7 @@
  * This header defines the ABI for external modules that wish to extend
  * reovim. Modules can be written in C, Haskell, or any language with C FFI.
  *
- * ABI Version: 1.1.0
+ * ABI Version: 1.2.0
  * API Version: 0.2.0
  *
  * See docs/architecture/ffi/overview.md for full documentation.
@@ -35,9 +35,10 @@ extern "C" {
  * History:
  *   1.0.0 - Initial stable ABI (ModuleProbe, logging, timers)
  *   1.1.0 - Buffer, window, mode, command, and event APIs
+ *   1.2.0 - Clipboard, register, and undo APIs
  */
 #define REOVIM_ABI_VERSION_MAJOR 1
-#define REOVIM_ABI_VERSION_MINOR 1
+#define REOVIM_ABI_VERSION_MINOR 2
 #define REOVIM_ABI_VERSION_PATCH 0
 
 /**
@@ -134,6 +135,19 @@ typedef struct ReovimCommandArgs {
     ReovimPosition cursor;  /* Cursor position (valid if has_cursor == 1) */
 } ReovimCommandArgs;
 
+/**
+ * Yank type for register operations.
+ *
+ * Determines paste behavior: characterwise inserts at cursor,
+ * linewise inserts above/below current line.
+ *
+ * Size: 4 bytes, Alignment: 4 bytes
+ */
+typedef enum ReovimYankType {
+    REOVIM_YANK_CHARACTERWISE = 0,
+    REOVIM_YANK_LINEWISE      = 1,
+} ReovimYankType;
+
 /** Opaque buffer ID. */
 typedef uint64_t ReovimBufferId;
 
@@ -227,6 +241,9 @@ typedef void (*ReovimEventCallback)(
  *      - Window API (reovim_active_window, reovim_cursor_position, ...)
  *      - Mode API (reovim_current_mode, reovim_push_mode, ...)
  *      - Command API (reovim_execute_command)
+ *      - Clipboard API (reovim_copy_to_clipboard, reovim_paste_from_clipboard, ...)
+ *      - Register API (reovim_get_register, reovim_set_register)
+ *      - Undo API (reovim_undo, reovim_redo, reovim_can_undo, reovim_can_redo)
  * 6. Call reovim_module_exit() to cleanup
  * 7. Call reovim_module_destroy() to free memory
  */
@@ -603,6 +620,136 @@ ReovimSubscriptionHandle reovim_subscribe_event(
  * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_INIT_CTX
  */
 int32_t reovim_unsubscribe_event(ReovimSubscriptionHandle handle);
+
+/* ============================================================================
+ * Kernel Services - Clipboard API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Clipboard operations may fail silently when clipboard is unavailable
+ * (headless, SSH, Wayland without clipboard manager).
+ */
+
+/**
+ * Copy text to the system clipboard (+ register).
+ *
+ * @param text  Null-terminated text to copy
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8,
+ *         REOVIM_ERR_FAILED, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_copy_to_clipboard(const char* text);
+
+/**
+ * Paste text from the system clipboard (+ register).
+ *
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_paste_from_clipboard(uint8_t* buf, uint32_t buf_len, ReovimStringResult* out_result);
+
+/**
+ * Copy text to the selection clipboard (* register, X11 primary selection).
+ *
+ * @param text  Null-terminated text to copy
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8,
+ *         REOVIM_ERR_FAILED, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_copy_to_selection(const char* text);
+
+/**
+ * Paste text from the selection clipboard (* register).
+ *
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_paste_from_selection(uint8_t* buf, uint32_t buf_len, ReovimStringResult* out_result);
+
+/* ============================================================================
+ * Kernel Services - Register API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Register names are passed as uint8_t:
+ * - 0     = unnamed register (default)
+ * - 'a'   = named register "a
+ * - '"'   = explicit unnamed register
+ * - '+'   = system clipboard register
+ * - '*'   = selection clipboard register
+ */
+
+/**
+ * Get register contents.
+ *
+ * @param name          Register character (0 for unnamed)
+ * @param buf           Caller-owned output buffer for text
+ * @param buf_len       Size of buf in bytes
+ * @param out_result    Receives status and actual string length
+ * @param out_yank_type Receives yank type (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_get_register(
+    uint8_t name,
+    uint8_t* buf,
+    uint32_t buf_len,
+    ReovimStringResult* out_result,
+    ReovimYankType* out_yank_type
+);
+
+/**
+ * Set register contents.
+ *
+ * @param name       Register character (0 for unnamed)
+ * @param text       Null-terminated text to store
+ * @param yank_type  REOVIM_YANK_CHARACTERWISE or REOVIM_YANK_LINEWISE
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_set_register(uint8_t name, const char* text, ReovimYankType yank_type);
+
+/* ============================================================================
+ * Kernel Services - Undo API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Undo/redo operations apply edits automatically. The FFI module receives
+ * only the restored cursor position, not the edit list.
+ */
+
+/**
+ * Undo the last change for a buffer.
+ *
+ * @param buffer_id   Buffer to undo in
+ * @param out_cursor  Receives restored cursor position (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_undo(ReovimBufferId buffer_id, ReovimPosition* out_cursor);
+
+/**
+ * Redo the last undone change for a buffer.
+ *
+ * @param buffer_id   Buffer to redo in
+ * @param out_cursor  Receives restored cursor position (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_redo(ReovimBufferId buffer_id, ReovimPosition* out_cursor);
+
+/**
+ * Check if undo is available for a buffer.
+ *
+ * @param buffer_id  Buffer to query
+ * @param out_bool   Receives 1 (can undo) or 0 (cannot)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_can_undo(ReovimBufferId buffer_id, int32_t* out_bool);
+
+/**
+ * Check if redo is available for a buffer.
+ *
+ * @param buffer_id  Buffer to query
+ * @param out_bool   Receives 1 (can redo) or 0 (cannot)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_can_redo(ReovimBufferId buffer_id, int32_t* out_bool);
 
 /* ============================================================================
  * Helper Macros

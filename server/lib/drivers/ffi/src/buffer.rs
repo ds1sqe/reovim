@@ -30,9 +30,11 @@ use {
 
 #[allow(clippy::wildcard_imports)]
 use crate::error::*;
+use std::panic::AssertUnwindSafe;
+
 use crate::{
     ffi_types::{ReovimPosition, ReovimStringResult},
-    runtime::with_runtime,
+    runtime::{ffi_catch_unwind, with_runtime},
 };
 
 /// Opaque buffer ID for FFI. Maps to kernel `BufferId(usize)`.
@@ -46,7 +48,7 @@ const fn buffer_id_to_ffi(id: BufferId) -> ReovimBufferId {
 
 /// Convert an FFI buffer ID to a kernel `BufferId`.
 #[allow(clippy::cast_possible_truncation)]
-const fn buffer_id_from_ffi(id: ReovimBufferId) -> BufferId {
+pub(crate) const fn buffer_id_from_ffi(id: ReovimBufferId) -> BufferId {
     BufferId::from_raw(id as usize)
 }
 
@@ -100,18 +102,20 @@ pub(crate) fn write_string_to_buf(
 /// - Must be called during a command callback (`RuntimeGuard` active)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_active_buffer(out_id: *mut ReovimBufferId) -> i32 {
-    if out_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.active_buffer()) {
-        Err(e) => e,
-        Ok(None) => REOVIM_ERR_NOT_FOUND,
-        Ok(Some(id)) => {
-            unsafe { *out_id = buffer_id_to_ffi(id) };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.active_buffer()) {
+            Err(e) => e,
+            Ok(None) => REOVIM_ERR_NOT_FOUND,
+            Ok(Some(id)) => {
+                unsafe { *out_id = buffer_id_to_ffi(id) };
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get a line from a buffer.
@@ -141,33 +145,35 @@ pub unsafe extern "C" fn reovim_buffer_line(
     buf_len: u32,
     out_result: *mut ReovimStringResult,
 ) -> i32 {
-    if out_result.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_result.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let bid = buffer_id_from_ffi(buffer_id);
+        let bid = buffer_id_from_ffi(buffer_id);
 
-    match with_runtime(|rt| rt.buffer_line(bid, line as usize)) {
-        Err(e) => e,
-        Ok(None) => {
-            // Could be invalid buffer or out-of-range line.
-            // Check if buffer exists by querying line count.
-            match with_runtime(|rt| rt.buffer_line_count(bid)) {
-                Ok(Some(count)) if (line as usize) >= count => {
-                    unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_OUT_OF_RANGE) };
-                    REOVIM_ERR_OUT_OF_RANGE
-                }
-                _ => {
-                    unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
-                    REOVIM_ERR_NOT_FOUND
+        match with_runtime(|rt| rt.buffer_line(bid, line as usize)) {
+            Err(e) => e,
+            Ok(None) => {
+                // Could be invalid buffer or out-of-range line.
+                // Check if buffer exists by querying line count.
+                match with_runtime(|rt| rt.buffer_line_count(bid)) {
+                    Ok(Some(count)) if (line as usize) >= count => {
+                        unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_OUT_OF_RANGE) };
+                        REOVIM_ERR_OUT_OF_RANGE
+                    }
+                    _ => {
+                        unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
+                        REOVIM_ERR_NOT_FOUND
+                    }
                 }
             }
+            Ok(Some(content)) => {
+                write_string_to_buf(&content, buf, buf_len, out_result);
+                REOVIM_OK
+            }
         }
-        Ok(Some(content)) => {
-            write_string_to_buf(&content, buf, buf_len, out_result);
-            REOVIM_OK
-        }
-    }
+    }))
 }
 
 /// Get the line count of a buffer.
@@ -188,21 +194,25 @@ pub unsafe extern "C" fn reovim_buffer_line_count(
     buffer_id: ReovimBufferId,
     out_count: *mut u32,
 ) -> i32 {
-    if out_count.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let bid = buffer_id_from_ffi(buffer_id);
-
-    match with_runtime(|rt| rt.buffer_line_count(bid)) {
-        Err(e) => e,
-        Ok(None) => REOVIM_ERR_NOT_FOUND,
-        Ok(Some(count)) => {
-            #[allow(clippy::cast_possible_truncation)]
-            unsafe { *out_count = count as u32 };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_count.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        let bid = buffer_id_from_ffi(buffer_id);
+
+        match with_runtime(|rt| rt.buffer_line_count(bid)) {
+            Err(e) => e,
+            Ok(None) => REOVIM_ERR_NOT_FOUND,
+            Ok(Some(count)) => {
+                #[allow(clippy::cast_possible_truncation)]
+                unsafe {
+                    *out_count = count as u32;
+                }
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get the length of a line in bytes.
@@ -225,24 +235,28 @@ pub unsafe extern "C" fn reovim_buffer_line_len(
     line: u32,
     out_len: *mut u32,
 ) -> i32 {
-    if out_len.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let bid = buffer_id_from_ffi(buffer_id);
-
-    match with_runtime(|rt| rt.buffer_line_len(bid, line as usize)) {
-        Err(e) => e,
-        Ok(None) => match with_runtime(|rt| rt.buffer_line_count(bid)) {
-            Ok(Some(count)) if (line as usize) >= count => REOVIM_ERR_OUT_OF_RANGE,
-            _ => REOVIM_ERR_NOT_FOUND,
-        },
-        Ok(Some(len)) => {
-            #[allow(clippy::cast_possible_truncation)]
-            unsafe { *out_len = len as u32 };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_len.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        let bid = buffer_id_from_ffi(buffer_id);
+
+        match with_runtime(|rt| rt.buffer_line_len(bid, line as usize)) {
+            Err(e) => e,
+            Ok(None) => match with_runtime(|rt| rt.buffer_line_count(bid)) {
+                Ok(Some(count)) if (line as usize) >= count => REOVIM_ERR_OUT_OF_RANGE,
+                _ => REOVIM_ERR_NOT_FOUND,
+            },
+            Ok(Some(len)) => {
+                #[allow(clippy::cast_possible_truncation)]
+                unsafe {
+                    *out_len = len as u32;
+                }
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Extract text from a range in the buffer.
@@ -270,25 +284,27 @@ pub unsafe extern "C" fn reovim_buffer_text_range(
     buf_len: u32,
     out_result: *mut ReovimStringResult,
 ) -> i32 {
-    if out_result.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let bid = buffer_id_from_ffi(buffer_id);
-    let start_pos = Position::from(start);
-    let end_pos = Position::from(end);
-
-    match with_runtime(|rt| rt.buffer_text_range(bid, start_pos, end_pos)) {
-        Err(e) => e,
-        Ok(None) => {
-            unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
-            REOVIM_ERR_NOT_FOUND
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_result.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-        Ok(Some(content)) => {
-            write_string_to_buf(&content, buf, buf_len, out_result);
-            REOVIM_OK
+
+        let bid = buffer_id_from_ffi(buffer_id);
+        let start_pos = Position::from(start);
+        let end_pos = Position::from(end);
+
+        match with_runtime(|rt| rt.buffer_text_range(bid, start_pos, end_pos)) {
+            Err(e) => e,
+            Ok(None) => {
+                unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
+                REOVIM_ERR_NOT_FOUND
+            }
+            Ok(Some(content)) => {
+                write_string_to_buf(&content, buf, buf_len, out_result);
+                REOVIM_OK
+            }
         }
-    }
+    }))
 }
 
 /// Get full buffer content as a string.
@@ -315,23 +331,25 @@ pub unsafe extern "C" fn reovim_buffer_content(
     buf_len: u32,
     out_result: *mut ReovimStringResult,
 ) -> i32 {
-    if out_result.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let bid = buffer_id_from_ffi(buffer_id);
-
-    match with_runtime(|rt| rt.buffer_content(bid)) {
-        Err(e) => e,
-        Ok(None) => {
-            unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
-            REOVIM_ERR_NOT_FOUND
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_result.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-        Ok(Some(content)) => {
-            write_string_to_buf(&content, buf, buf_len, out_result);
-            REOVIM_OK
+
+        let bid = buffer_id_from_ffi(buffer_id);
+
+        match with_runtime(|rt| rt.buffer_content(bid)) {
+            Err(e) => e,
+            Ok(None) => {
+                unsafe { *out_result = ReovimStringResult::err(REOVIM_ERR_NOT_FOUND) };
+                REOVIM_ERR_NOT_FOUND
+            }
+            Ok(Some(content)) => {
+                write_string_to_buf(&content, buf, buf_len, out_result);
+                REOVIM_OK
+            }
         }
-    }
+    }))
 }
 
 // ============================================================================
@@ -357,23 +375,25 @@ pub unsafe extern "C" fn reovim_insert_text(
     pos: ReovimPosition,
     text: *const c_char,
 ) -> i32 {
-    if text.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if text.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    // Safety: caller guarantees text is a valid C string.
-    let c_str = unsafe { CStr::from_ptr(text) };
-    let Ok(text_str) = c_str.to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        // Safety: caller guarantees text is a valid C string.
+        let c_str = unsafe { CStr::from_ptr(text) };
+        let Ok(text_str) = c_str.to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let bid = buffer_id_from_ffi(buffer_id);
-    let position = Position::from(pos);
+        let bid = buffer_id_from_ffi(buffer_id);
+        let position = Position::from(pos);
 
-    match with_runtime(|rt| rt.insert_text(bid, position, text_str)) {
-        Err(e) => e,
-        Ok(()) => REOVIM_OK,
-    }
+        match with_runtime(|rt| rt.insert_text(bid, position, text_str)) {
+            Err(e) => e,
+            Ok(()) => REOVIM_OK,
+        }
+    }))
 }
 
 /// Delete a range from a buffer.
@@ -394,14 +414,16 @@ pub unsafe extern "C" fn reovim_delete_range(
     start: ReovimPosition,
     end: ReovimPosition,
 ) -> i32 {
-    let bid = buffer_id_from_ffi(buffer_id);
-    let start_pos = Position::from(start);
-    let end_pos = Position::from(end);
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        let bid = buffer_id_from_ffi(buffer_id);
+        let start_pos = Position::from(start);
+        let end_pos = Position::from(end);
 
-    match with_runtime(|rt| rt.delete_range(bid, start_pos, end_pos)) {
-        Err(e) => e,
-        Ok(()) => REOVIM_OK,
-    }
+        match with_runtime(|rt| rt.delete_range(bid, start_pos, end_pos)) {
+            Err(e) => e,
+            Ok(()) => REOVIM_OK,
+        }
+    }))
 }
 
 // ============================================================================
@@ -432,37 +454,39 @@ pub unsafe extern "C" fn reovim_create_buffer(
     content: *const c_char,
     out_id: *mut ReovimBufferId,
 ) -> i32 {
-    if out_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let name_str = if name.is_null() {
-        None
-    } else {
-        // Safety: caller guarantees name is a valid C string.
-        match unsafe { CStr::from_ptr(name) }.to_str() {
-            Ok(s) => Some(s),
-            Err(_) => return REOVIM_ERR_INVALID_UTF8,
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    };
 
-    let content_str = if content.is_null() {
-        ""
-    } else {
-        // Safety: caller guarantees content is a valid C string.
-        match unsafe { CStr::from_ptr(content) }.to_str() {
-            Ok(s) => s,
-            Err(_) => return REOVIM_ERR_INVALID_UTF8,
-        }
-    };
+        let name_str = if name.is_null() {
+            None
+        } else {
+            // Safety: caller guarantees name is a valid C string.
+            match unsafe { CStr::from_ptr(name) }.to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return REOVIM_ERR_INVALID_UTF8,
+            }
+        };
 
-    match with_runtime(|rt| rt.create_buffer(name_str, content_str)) {
-        Err(e) => e,
-        Ok(id) => {
-            unsafe { *out_id = buffer_id_to_ffi(id) };
-            REOVIM_OK
+        let content_str = if content.is_null() {
+            ""
+        } else {
+            // Safety: caller guarantees content is a valid C string.
+            match unsafe { CStr::from_ptr(content) }.to_str() {
+                Ok(s) => s,
+                Err(_) => return REOVIM_ERR_INVALID_UTF8,
+            }
+        };
+
+        match with_runtime(|rt| rt.create_buffer(name_str, content_str)) {
+            Err(e) => e,
+            Ok(id) => {
+                unsafe { *out_id = buffer_id_to_ffi(id) };
+                REOVIM_OK
+            }
         }
-    }
+    }))
 }
 
 /// Delete a buffer.
@@ -479,16 +503,18 @@ pub unsafe extern "C" fn reovim_create_buffer(
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_delete_buffer(buffer_id: ReovimBufferId) -> i32 {
-    let bid = buffer_id_from_ffi(buffer_id);
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        let bid = buffer_id_from_ffi(buffer_id);
 
-    match with_runtime(|rt| rt.delete_buffer(bid)) {
-        Err(e) => e,
-        Ok(Ok(())) => REOVIM_OK,
-        Ok(Err(reovim_driver_session::api::BufferError::NotFound(_))) => REOVIM_ERR_NOT_FOUND,
-        Ok(Err(reovim_driver_session::api::BufferError::CannotDeleteLastBuffer)) => {
-            REOVIM_ERR_LAST_BUFFER
+        match with_runtime(|rt| rt.delete_buffer(bid)) {
+            Err(e) => e,
+            Ok(Ok(())) => REOVIM_OK,
+            Ok(Err(reovim_driver_session::api::BufferError::NotFound(_))) => REOVIM_ERR_NOT_FOUND,
+            Ok(Err(reovim_driver_session::api::BufferError::CannotDeleteLastBuffer)) => {
+                REOVIM_ERR_LAST_BUFFER
+            }
         }
-    }
+    }))
 }
 
 // ============================================================================

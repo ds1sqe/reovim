@@ -30,9 +30,11 @@ use {
 
 #[allow(clippy::wildcard_imports)]
 use crate::error::*;
+use std::panic::AssertUnwindSafe;
+
 use crate::{
     ffi_types::{ReovimCommandArgs, ReovimPosition},
-    runtime::with_runtime,
+    runtime::{ffi_catch_unwind, with_runtime},
 };
 
 // ============================================================================
@@ -85,36 +87,38 @@ pub unsafe extern "C" fn reovim_execute_command(
     count: i32,
     register: u8,
 ) -> i32 {
-    if cmd_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if cmd_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let c_str = unsafe { CStr::from_ptr(cmd_id) };
-    let Ok(cmd_str) = c_str.to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        let c_str = unsafe { CStr::from_ptr(cmd_id) };
+        let Ok(cmd_str) = c_str.to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let command_id = CommandId::from_qualified_leaked(cmd_str.to_string());
+        let command_id = CommandId::from_qualified_leaked(cmd_str.to_string());
 
-    let mut ctx = CommandContext::new();
-    if count >= 0 {
-        #[allow(clippy::cast_sign_loss)]
-        ctx.set("count", reovim_driver_command_types::ArgValue::Count(count as usize));
-    }
-    if register != 0 {
-        ctx.set("register", reovim_driver_command_types::ArgValue::Register(register as char));
-    }
+        let mut ctx = CommandContext::new();
+        if count >= 0 {
+            #[allow(clippy::cast_sign_loss)]
+            ctx.set("count", reovim_driver_command_types::ArgValue::Count(count as usize));
+        }
+        if register != 0 {
+            ctx.set("register", reovim_driver_command_types::ArgValue::Register(register as char));
+        }
 
-    match with_runtime(|rt| rt.execute_command(command_id.clone(), ctx)) {
-        Err(e) => e,
-        Ok(result) => match result {
-            CommandResult::Success => REOVIM_CMD_SUCCESS,
-            CommandResult::Quit => REOVIM_CMD_QUIT,
-            CommandResult::ForceQuit => REOVIM_CMD_FORCE_QUIT,
-            CommandResult::Detach => REOVIM_CMD_DETACH,
-            CommandResult::Error(_) => REOVIM_CMD_ERROR,
-        },
-    }
+        match with_runtime(|rt| rt.execute_command(command_id.clone(), ctx)) {
+            Err(e) => e,
+            Ok(result) => match result {
+                CommandResult::Success => REOVIM_CMD_SUCCESS,
+                CommandResult::Quit => REOVIM_CMD_QUIT,
+                CommandResult::ForceQuit => REOVIM_CMD_FORCE_QUIT,
+                CommandResult::Detach => REOVIM_CMD_DETACH,
+                CommandResult::Error(_) => REOVIM_CMD_ERROR,
+            },
+        }
+    }))
 }
 
 // ============================================================================
@@ -248,45 +252,47 @@ fn command_context_to_ffi_args(ctx: &CommandContext) -> ReovimCommandArgs {
 /// - Must be called during module init (`InitGuard` active)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_register_command(reg: *const ReovimCommandRegistration) -> i32 {
-    if reg.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if reg.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let reg = unsafe { &*reg };
+        let reg = unsafe { &*reg };
 
-    if reg.id.is_null() || reg.description.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+        if reg.id.is_null() || reg.description.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let Some(callback) = reg.callback else {
-        return REOVIM_ERR_NULL_PTR;
-    };
+        let Some(callback) = reg.callback else {
+            return REOVIM_ERR_NULL_PTR;
+        };
 
-    let Ok(id_str) = (unsafe { CStr::from_ptr(reg.id) }).to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        let Ok(id_str) = (unsafe { CStr::from_ptr(reg.id) }).to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let Ok(desc_str) = (unsafe { CStr::from_ptr(reg.description) }).to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        let Ok(desc_str) = (unsafe { CStr::from_ptr(reg.description) }).to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let command_id = CommandId::from_qualified_leaked(id_str.to_string());
-    // SAFETY: intentional leak — description lives for program lifetime.
-    let description: &'static str = Box::leak(desc_str.to_string().into_boxed_str());
+        let command_id = CommandId::from_qualified_leaked(id_str.to_string());
+        // SAFETY: intentional leak — description lives for program lifetime.
+        let description: &'static str = Box::leak(desc_str.to_string().into_boxed_str());
 
-    let handler = FfiCommandHandler {
-        id: command_id,
-        description,
-        callback,
-        user_data: reg.user_data,
-    };
+        let handler = FfiCommandHandler {
+            id: command_id,
+            description,
+            callback,
+            user_data: reg.user_data,
+        };
 
-    crate::runtime::with_services(|services| {
-        services
-            .get_or_create::<FfiCommandHandlerStore>()
-            .add(handler);
-    })
-    .map_or_else(|e| e, |()| REOVIM_OK)
+        crate::runtime::with_services(|services| {
+            services
+                .get_or_create::<FfiCommandHandlerStore>()
+                .add(handler);
+        })
+        .map_or_else(|e| e, |()| REOVIM_OK)
+    }))
 }
 
 // ============================================================================

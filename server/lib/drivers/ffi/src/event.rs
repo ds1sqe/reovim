@@ -26,8 +26,11 @@ use std::{
 
 use libc::{c_char, c_void};
 
+use std::panic::AssertUnwindSafe;
+
 #[allow(clippy::wildcard_imports)]
 use crate::error::*;
+use crate::runtime::{ffi_catch_unwind, ffi_catch_unwind_handle};
 
 // ============================================================================
 // Event callback types
@@ -209,25 +212,27 @@ pub unsafe extern "C" fn reovim_subscribe_event(
     user_data: *mut c_void,
     _priority: u32,
 ) -> ReovimSubscriptionHandle {
-    if event_type.is_null() {
-        return ReovimSubscriptionHandle::null();
-    }
+    ffi_catch_unwind_handle(AssertUnwindSafe(|| {
+        if event_type.is_null() {
+            return ReovimSubscriptionHandle::null();
+        }
 
-    let Some(callback) = callback else {
-        return ReovimSubscriptionHandle::null();
-    };
+        let Some(callback) = callback else {
+            return ReovimSubscriptionHandle::null();
+        };
 
-    let c_str = unsafe { CStr::from_ptr(event_type) };
-    let Ok(type_str) = c_str.to_str() else {
-        return ReovimSubscriptionHandle::null();
-    };
+        let c_str = unsafe { CStr::from_ptr(event_type) };
+        let Ok(type_str) = c_str.to_str() else {
+            return ReovimSubscriptionHandle::null();
+        };
 
-    crate::runtime::with_services(|services| {
-        services
-            .get_or_create::<FfiEventSubscriptionStore>()
-            .subscribe(type_str.to_string(), callback, user_data)
-    })
-    .unwrap_or(ReovimSubscriptionHandle::null())
+        crate::runtime::with_services(|services| {
+            services
+                .get_or_create::<FfiEventSubscriptionStore>()
+                .subscribe(type_str.to_string(), callback, user_data)
+        })
+        .unwrap_or(ReovimSubscriptionHandle::null())
+    }))
 }
 
 /// Unsubscribe from an event.
@@ -244,19 +249,21 @@ pub unsafe extern "C" fn reovim_subscribe_event(
 /// - Must be called during module init (`InitGuard` active)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_unsubscribe_event(handle: ReovimSubscriptionHandle) -> i32 {
-    if handle.is_null() {
-        return REOVIM_ERR_NOT_FOUND;
-    }
-
-    crate::runtime::with_services(|services| {
-        let store = services.get_or_create::<FfiEventSubscriptionStore>();
-        if store.unsubscribe(handle) {
-            REOVIM_OK
-        } else {
-            REOVIM_ERR_NOT_FOUND
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if handle.is_null() {
+            return REOVIM_ERR_NOT_FOUND;
         }
-    })
-    .unwrap_or(REOVIM_ERR_NO_INIT_CTX)
+
+        crate::runtime::with_services(|services| {
+            let store = services.get_or_create::<FfiEventSubscriptionStore>();
+            if store.unsubscribe(handle) {
+                REOVIM_OK
+            } else {
+                REOVIM_ERR_NOT_FOUND
+            }
+        })
+        .unwrap_or(REOVIM_ERR_NO_INIT_CTX)
+    }))
 }
 
 // ============================================================================

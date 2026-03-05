@@ -80,15 +80,18 @@
 //! - New types are added (backwards compatible)
 
 pub mod buffer;
+pub mod clipboard;
 pub mod command;
 pub mod error;
 pub mod event;
 pub mod ffi_types;
 mod logging;
 pub mod mode;
+pub mod register;
 pub mod runtime;
 mod timer;
 mod types;
+pub mod undo;
 mod version;
 pub mod window;
 
@@ -107,7 +110,7 @@ pub use {
 pub use runtime::{InitGuard, RuntimeGuard, with_runtime, with_services};
 
 // Re-export FFI types
-pub use ffi_types::{ReovimCommandArgs, ReovimPosition, ReovimStringResult};
+pub use ffi_types::{ReovimCommandArgs, ReovimPosition, ReovimStringResult, ReovimYankType};
 
 // Re-export buffer API
 pub use buffer::{
@@ -138,6 +141,18 @@ pub use event::{
     FfiEventSubscriptionStore, ReovimEventCallback, ReovimSubscriptionHandle,
     reovim_subscribe_event, reovim_unsubscribe_event,
 };
+
+// Re-export clipboard API
+pub use clipboard::{
+    reovim_copy_to_clipboard, reovim_copy_to_selection, reovim_paste_from_clipboard,
+    reovim_paste_from_selection,
+};
+
+// Re-export register API
+pub use register::{reovim_get_register, reovim_set_register};
+
+// Re-export undo API
+pub use undo::{reovim_can_redo, reovim_can_undo, reovim_redo, reovim_undo};
 
 // Re-export error codes
 pub use error::*;

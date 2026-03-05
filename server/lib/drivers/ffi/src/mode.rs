@@ -23,7 +23,12 @@ use {
 
 #[allow(clippy::wildcard_imports)]
 use crate::error::*;
-use crate::{ffi_types::ReovimStringResult, runtime::with_runtime};
+use std::panic::AssertUnwindSafe;
+
+use crate::{
+    ffi_types::ReovimStringResult,
+    runtime::{ffi_catch_unwind, with_runtime},
+};
 
 /// Parse a "module:name" mode ID string into a `ModeId`.
 ///
@@ -68,17 +73,19 @@ pub unsafe extern "C" fn reovim_current_mode(
     buf_len: u32,
     out_result: *mut ReovimStringResult,
 ) -> i32 {
-    if out_result.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.current_mode().to_string()) {
-        Err(e) => e,
-        Ok(mode_str) => {
-            crate::buffer::write_string_to_buf(&mode_str, buf, buf_len, out_result);
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_result.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.current_mode().to_string()) {
+            Err(e) => e,
+            Ok(mode_str) => {
+                crate::buffer::write_string_to_buf(&mode_str, buf, buf_len, out_result);
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get the mode stack depth.
@@ -95,18 +102,22 @@ pub unsafe extern "C" fn reovim_current_mode(
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_mode_depth(out_depth: *mut u32) -> i32 {
-    if out_depth.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.mode_depth()) {
-        Err(e) => e,
-        Ok(depth) => {
-            #[allow(clippy::cast_possible_truncation)]
-            unsafe { *out_depth = depth as u32 };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_depth.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.mode_depth()) {
+            Err(e) => e,
+            Ok(depth) => {
+                #[allow(clippy::cast_possible_truncation)]
+                unsafe {
+                    *out_depth = depth as u32;
+                }
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 // ============================================================================
@@ -131,25 +142,27 @@ pub unsafe extern "C" fn reovim_mode_depth(out_depth: *mut u32) -> i32 {
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_push_mode(mode_id: *const c_char) -> i32 {
-    if mode_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if mode_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let c_str = unsafe { CStr::from_ptr(mode_id) };
-    let Ok(mode_str) = c_str.to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        let c_str = unsafe { CStr::from_ptr(mode_id) };
+        let Ok(mode_str) = c_str.to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let Some(mode) = parse_mode_id(mode_str) else {
-        return REOVIM_ERR_FAILED;
-    };
+        let Some(mode) = parse_mode_id(mode_str) else {
+            return REOVIM_ERR_FAILED;
+        };
 
-    match with_runtime(|rt| {
-        rt.push_mode(mode.clone(), reovim_driver_session::TransitionContext::new());
-    }) {
-        Err(e) => e,
-        Ok(()) => REOVIM_OK,
-    }
+        match with_runtime(|rt| {
+            rt.push_mode(mode.clone(), reovim_driver_session::TransitionContext::new());
+        }) {
+            Err(e) => e,
+            Ok(()) => REOVIM_OK,
+        }
+    }))
 }
 
 /// Pop the current mode from the stack.
@@ -167,11 +180,11 @@ pub unsafe extern "C" fn reovim_push_mode(mode_id: *const c_char) -> i32 {
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_pop_mode() -> i32 {
-    match with_runtime(|rt| rt.pop_mode(None)) {
+    ffi_catch_unwind(AssertUnwindSafe(|| match with_runtime(|rt| rt.pop_mode(None)) {
         Err(e) => e,
         Ok(Ok(())) => REOVIM_OK,
         Ok(Err(_)) => REOVIM_ERR_FAILED,
-    }
+    }))
 }
 
 /// Replace the current mode (pop + push atomically).
@@ -192,25 +205,27 @@ pub unsafe extern "C" fn reovim_pop_mode() -> i32 {
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_set_mode(mode_id: *const c_char) -> i32 {
-    if mode_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if mode_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
+        }
 
-    let c_str = unsafe { CStr::from_ptr(mode_id) };
-    let Ok(mode_str) = c_str.to_str() else {
-        return REOVIM_ERR_INVALID_UTF8;
-    };
+        let c_str = unsafe { CStr::from_ptr(mode_id) };
+        let Ok(mode_str) = c_str.to_str() else {
+            return REOVIM_ERR_INVALID_UTF8;
+        };
 
-    let Some(mode) = parse_mode_id(mode_str) else {
-        return REOVIM_ERR_FAILED;
-    };
+        let Some(mode) = parse_mode_id(mode_str) else {
+            return REOVIM_ERR_FAILED;
+        };
 
-    match with_runtime(|rt| {
-        rt.set_mode(mode.clone(), reovim_driver_session::TransitionContext::new());
-    }) {
-        Err(e) => e,
-        Ok(()) => REOVIM_OK,
-    }
+        match with_runtime(|rt| {
+            rt.set_mode(mode.clone(), reovim_driver_session::TransitionContext::new());
+        }) {
+            Err(e) => e,
+            Ok(()) => REOVIM_OK,
+        }
+    }))
 }
 
 // ============================================================================

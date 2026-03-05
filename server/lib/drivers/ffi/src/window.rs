@@ -18,7 +18,13 @@ use {
 
 #[allow(clippy::wildcard_imports)]
 use crate::error::*;
-use crate::{buffer::ReovimBufferId, ffi_types::ReovimPosition, runtime::with_runtime};
+use std::panic::AssertUnwindSafe;
+
+use crate::{
+    buffer::ReovimBufferId,
+    ffi_types::ReovimPosition,
+    runtime::{ffi_catch_unwind, with_runtime},
+};
 
 /// Opaque window ID for FFI. Maps to kernel `WindowId(usize)`.
 pub type ReovimWindowId = u64;
@@ -54,18 +60,20 @@ const fn window_id_from_ffi(id: ReovimWindowId) -> WindowId {
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_active_window(out_id: *mut ReovimWindowId) -> i32 {
-    if out_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.active_window()) {
-        Err(e) => e,
-        Ok(None) => REOVIM_ERR_NOT_FOUND,
-        Ok(Some(id)) => {
-            unsafe { *out_id = window_id_to_ffi(id) };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.active_window()) {
+            Err(e) => e,
+            Ok(None) => REOVIM_ERR_NOT_FOUND,
+            Ok(Some(id)) => {
+                unsafe { *out_id = window_id_to_ffi(id) };
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get the cursor position from the active window.
@@ -83,18 +91,20 @@ pub unsafe extern "C" fn reovim_active_window(out_id: *mut ReovimWindowId) -> i3
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_cursor_position(out_pos: *mut ReovimPosition) -> i32 {
-    if out_pos.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.cursor_position()) {
-        Err(e) => e,
-        Ok(None) => REOVIM_ERR_NOT_FOUND,
-        Ok(Some(pos)) => {
-            unsafe { *out_pos = ReovimPosition::from(pos) };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_pos.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.cursor_position()) {
+            Err(e) => e,
+            Ok(None) => REOVIM_ERR_NOT_FOUND,
+            Ok(Some(pos)) => {
+                unsafe { *out_pos = ReovimPosition::from(pos) };
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get the number of windows.
@@ -111,18 +121,22 @@ pub unsafe extern "C" fn reovim_cursor_position(out_pos: *mut ReovimPosition) ->
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_window_count(out_count: *mut u32) -> i32 {
-    if out_count.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    match with_runtime(|rt| rt.window_count()) {
-        Err(e) => e,
-        Ok(count) => {
-            #[allow(clippy::cast_possible_truncation)]
-            unsafe { *out_count = count as u32 };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_count.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        match with_runtime(|rt| rt.window_count()) {
+            Err(e) => e,
+            Ok(count) => {
+                #[allow(clippy::cast_possible_truncation)]
+                unsafe {
+                    *out_count = count as u32;
+                }
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Get the buffer displayed in a window.
@@ -143,20 +157,22 @@ pub unsafe extern "C" fn reovim_window_buffer(
     window_id: ReovimWindowId,
     out_buffer: *mut ReovimBufferId,
 ) -> i32 {
-    if out_buffer.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let wid = window_id_from_ffi(window_id);
-
-    match with_runtime(|rt| rt.window_buffer(wid)) {
-        Err(e) => e,
-        Ok(None) => REOVIM_ERR_NOT_FOUND,
-        Ok(Some(bid)) => {
-            unsafe { *out_buffer = bid.as_usize() as ReovimBufferId };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_buffer.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        let wid = window_id_from_ffi(window_id);
+
+        match with_runtime(|rt| rt.window_buffer(wid)) {
+            Err(e) => e,
+            Ok(None) => REOVIM_ERR_NOT_FOUND,
+            Ok(Some(bid)) => {
+                unsafe { *out_buffer = bid.as_usize() as ReovimBufferId };
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 // ============================================================================
@@ -182,24 +198,26 @@ pub unsafe extern "C" fn reovim_create_window(
     buffer_id: ReovimBufferId,
     out_id: *mut ReovimWindowId,
 ) -> i32 {
-    if out_id.is_null() {
-        return REOVIM_ERR_NULL_PTR;
-    }
-
-    let buffer = if buffer_id == 0 {
-        None
-    } else {
-        #[allow(clippy::cast_possible_truncation)]
-        Some(BufferId::from_raw(buffer_id as usize))
-    };
-
-    match with_runtime(|rt| rt.create_window(buffer)) {
-        Err(e) => e,
-        Ok(id) => {
-            unsafe { *out_id = window_id_to_ffi(id) };
-            REOVIM_OK
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        if out_id.is_null() {
+            return REOVIM_ERR_NULL_PTR;
         }
-    }
+
+        let buffer = if buffer_id == 0 {
+            None
+        } else {
+            #[allow(clippy::cast_possible_truncation)]
+            Some(BufferId::from_raw(buffer_id as usize))
+        };
+
+        match with_runtime(|rt| rt.create_window(buffer)) {
+            Err(e) => e,
+            Ok(id) => {
+                unsafe { *out_id = window_id_to_ffi(id) };
+                REOVIM_OK
+            }
+        }
+    }))
 }
 
 /// Close a window.
@@ -216,19 +234,21 @@ pub unsafe extern "C" fn reovim_create_window(
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_close_window(window_id: ReovimWindowId) -> i32 {
-    let wid = window_id_from_ffi(window_id);
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        let wid = window_id_from_ffi(window_id);
 
-    match with_runtime(|rt| rt.close_window(wid)) {
-        Err(e) => e,
-        Ok(Ok(())) => REOVIM_OK,
-        Ok(Err(
-            reovim_driver_session::api::WindowError::NotFound(_)
-            | reovim_driver_session::api::WindowError::BufferNotFound(_),
-        )) => REOVIM_ERR_NOT_FOUND,
-        Ok(Err(reovim_driver_session::api::WindowError::CannotCloseLastWindow)) => {
-            REOVIM_ERR_LAST_WINDOW
+        match with_runtime(|rt| rt.close_window(wid)) {
+            Err(e) => e,
+            Ok(Ok(())) => REOVIM_OK,
+            Ok(Err(
+                reovim_driver_session::api::WindowError::NotFound(_)
+                | reovim_driver_session::api::WindowError::BufferNotFound(_),
+            )) => REOVIM_ERR_NOT_FOUND,
+            Ok(Err(reovim_driver_session::api::WindowError::CannotCloseLastWindow)) => {
+                REOVIM_ERR_LAST_WINDOW
+            }
         }
-    }
+    }))
 }
 
 /// Focus a window.
@@ -244,19 +264,21 @@ pub unsafe extern "C" fn reovim_close_window(window_id: ReovimWindowId) -> i32 {
 /// - Must be called during a command callback
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn reovim_focus_window(window_id: ReovimWindowId) -> i32 {
-    let wid = window_id_from_ffi(window_id);
+    ffi_catch_unwind(AssertUnwindSafe(|| {
+        let wid = window_id_from_ffi(window_id);
 
-    match with_runtime(|rt| rt.focus_window(wid)) {
-        Err(e) => e,
-        Ok(Ok(())) => REOVIM_OK,
-        Ok(Err(
-            reovim_driver_session::api::WindowError::NotFound(_)
-            | reovim_driver_session::api::WindowError::BufferNotFound(_),
-        )) => REOVIM_ERR_NOT_FOUND,
-        Ok(Err(reovim_driver_session::api::WindowError::CannotCloseLastWindow)) => {
-            REOVIM_ERR_LAST_WINDOW
+        match with_runtime(|rt| rt.focus_window(wid)) {
+            Err(e) => e,
+            Ok(Ok(())) => REOVIM_OK,
+            Ok(Err(
+                reovim_driver_session::api::WindowError::NotFound(_)
+                | reovim_driver_session::api::WindowError::BufferNotFound(_),
+            )) => REOVIM_ERR_NOT_FOUND,
+            Ok(Err(reovim_driver_session::api::WindowError::CannotCloseLastWindow)) => {
+                REOVIM_ERR_LAST_WINDOW
+            }
         }
-    }
+    }))
 }
 
 // ============================================================================
