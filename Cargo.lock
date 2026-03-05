@@ -2258,6 +2258,7 @@ dependencies = [
  "reovim-module-explorer",
  "reovim-module-keymap",
  "reovim-module-lsp",
+ "reovim-module-lsp-navigation",
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-motions",
@@ -2271,6 +2272,7 @@ dependencies = [
  "reovim-module-undo",
  "reovim-module-vfs-local",
  "reovim-module-vim",
+ "reovim-module-vim-lsp",
  "reovim-module-whichkey",
  "reovim-picker-buffers",
  "reovim-picker-commands",
@@ -2334,6 +2336,25 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-module-lsp-navigation"
+version = "0.10.0-dev"
+dependencies = [
+ "lsp-types",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-lsp",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-microscope",
+ "reovim-module-notification",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -2537,6 +2558,16 @@ dependencies = [
  "reovim-testing",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-vim-lsp"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-lsp-navigation",
+ "reovim-module-macros",
 ]
 
 [[package]]

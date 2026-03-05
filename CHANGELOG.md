@@ -47,6 +47,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `RecordingLspProvider` mock enables full send-path test coverage. 325 unit
   tests across affected modules, zero clippy warnings.
 
+- **LSP navigation gd/gr (#532)**: New `reovim-module-lsp-navigation` module
+  providing Go-to-Definition (`gd`) and Find References (`gr`) commands via LSP.
+  `LspLocationPicker` implements `Picker` trait for multi-result navigation with
+  file preview. Pure helper functions: `definition_to_locations` (handles Scalar,
+  Array, Link response variants), `path_from_uri` (fluent_uri `file://` stripping),
+  `location_to_picker_item` (0→1 indexed conversion), `language_from_path`
+  (case-insensitive extension matching), `find_provider` (language key + default
+  fallback), `has_definition_capability` / `has_references_capability` (server
+  capability checks). Single-result jumps directly; multi-result opens picker via
+  MicroscopeState injection. New `reovim-module-vim-lsp` adapter crate bridges
+  vim (editor personality) and lsp-navigation (code intelligence) with explicit,
+  visible coupling: `gd`/`gr` keybindings target `vim:normal` mode with "lsp"
+  category. Neither vim nor lsp-navigation knows about the other — the adapter
+  is the sole coupling point, swappable for alternative editor personalities.
+  Modules wired into defaults bundle (28 modules). 65 unit tests (54 lsp-navigation
+  + 11 vim-lsp adapter) with full coverage.
+
 ### Changed
 
 - **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)

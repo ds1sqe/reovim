@@ -50,6 +50,8 @@ reovim-module-range-finder = { workspace = true }
 
 # Code intelligence modules
 reovim-module-lsp = { workspace = true }
+reovim-module-lsp-navigation = { workspace = true }
+reovim-module-vim-lsp = { workspace = true }
 
 # Snippet expansion module (#136)
 reovim-module-snippet = { workspace = true }

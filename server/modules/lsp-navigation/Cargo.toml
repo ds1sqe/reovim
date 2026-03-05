@@ -1,0 +1,37 @@
+[package]
+name = "reovim-module-lsp-navigation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LSP navigation module for reovim - gd (goto definition) and gr (references)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-lsp = { workspace = true }
+reovim-driver-picker = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-command-types = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-module-notification = { workspace = true }
+reovim-module-microscope = { workspace = true }
+reovim-module-macros = { workspace = true }
+lsp-types = "0.97"
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

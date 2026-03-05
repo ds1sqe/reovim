@@ -59,6 +59,8 @@ members = [
     "server/modules/snippet",
     "server/modules/range-finder",
     "server/modules/completion",
+    "server/modules/lsp-navigation",
+    "server/modules/vim-lsp",
 
     # Client layer - TUI
     "clients/tui",
@@ -232,6 +234,8 @@ reovim-module-lsp = { path = "./server/modules/lsp", version = "0.10.0-dev" }
 reovim-module-snippet = { path = "./server/modules/snippet", version = "0.10.0-dev" }
 reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.10.0-dev" }
 reovim-module-completion = { path = "./server/modules/completion", version = "0.10.0-dev" }
+reovim-module-lsp-navigation = { path = "./server/modules/lsp-navigation", version = "0.10.0-dev" }
+reovim-module-vim-lsp = { path = "./server/modules/vim-lsp", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

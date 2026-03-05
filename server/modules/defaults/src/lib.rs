@@ -47,15 +47,16 @@ use {
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
     reovim_module_explorer as explorer, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
-    reovim_module_microscope as microscope, reovim_module_motions as motions,
-    reovim_module_notification as notification, reovim_module_range_finder as range_finder,
-    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
-    reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
+    reovim_module_motions as motions, reovim_module_notification as notification,
+    reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
-    reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
-    reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
-    reovim_picker_grep as picker_grep,
+    reovim_module_vim_lsp as vim_lsp, reovim_module_whichkey as whichkey,
+    reovim_picker_buffers as picker_buffers, reovim_picker_commands as picker_commands,
+    reovim_picker_files as picker_files, reovim_picker_grep as picker_grep,
 };
 
 /// Default modules bundle.
@@ -120,8 +121,11 @@ impl DefaultsModule {
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
-            // Code intelligence modules (#520)
+            // Code intelligence modules (#520, #532)
             Box::new(lsp::LspModule::new()),
+            Box::new(lsp_navigation::LspNavigationModule::new()),
+            // Vim-LSP adapter (#532) - bridges vim keybindings to LSP commands
+            Box::new(vim_lsp::VimLspModule::new()),
             // Snippet expansion (#136)
             Box::new(snippet::SnippetModule::new()),
             // Jump navigation and code folding (#524)
@@ -186,8 +190,10 @@ impl Module for DefaultsModule {
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
             ModuleId::new("treesitter-markdown"),
-            // Code intelligence modules (#520)
+            // Code intelligence modules (#520, #532)
             ModuleId::new("lsp"),
+            ModuleId::new("lsp-navigation"),
+            ModuleId::new("vim-lsp"),
             // Snippet expansion (#136)
             ModuleId::new("snippet"),
             // Jump navigation and code folding (#524)
@@ -265,13 +271,13 @@ mod tests {
         // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Code intelligence modules (1): lsp
+        // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 26 modules
-        assert_eq!(deps.len(), 26);
+        // Total: 28 modules
+        assert_eq!(deps.len(), 28);
     }
 
     #[test]
@@ -284,13 +290,13 @@ mod tests {
         // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Code intelligence modules (1): lsp
+        // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 26 modules
-        assert_eq!(modules.len(), 26);
+        // Total: 28 modules
+        assert_eq!(modules.len(), 28);
     }
 
     #[test]
@@ -386,8 +392,11 @@ mod tests {
     fn test_dependencies_contain_lsp_module() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
+        let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
 
-        assert!(deps.iter().map(ModuleId::as_str).any(|x| x == "lsp"));
+        assert!(dep_strs.contains(&"lsp"));
+        assert!(dep_strs.contains(&"lsp-navigation"));
+        assert!(dep_strs.contains(&"vim-lsp"));
     }
 
     #[test]
