@@ -1938,6 +1938,7 @@ dependencies = [
  "reovim-tui-ext-defaults",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -2448,6 +2449,7 @@ dependencies = [
  "reovim-testing",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

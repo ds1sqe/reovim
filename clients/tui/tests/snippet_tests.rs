@@ -4,7 +4,8 @@
 //! type trigger prefix -> `<C-s>` expand -> Tab/S-Tab navigate -> Esc cancel.
 //! Each test captures the actual TUI frame buffer to verify rendered output.
 //!
-//! Requires `~/.local/share/reovim/modules/snippets/global.json` with test snippets.
+//! Snippet fixtures are created in a temp directory per-test so tests are
+//! self-contained and work in CI without pre-installed snippet files.
 //!
 //! # Running Tests
 //!
@@ -18,6 +19,39 @@ use {
     reovim_client_tui::{TuiAppError, TuiHandle, connect_headless},
     reovim_testing::TestServerHarness,
 };
+
+/// Snippet fixture content matching the test expectations.
+const GLOBAL_SNIPPETS: &str = r#"{
+  "function": {
+    "prefix": "fn",
+    "body": "fn ${1:name}(${2:params}) {\n\t$0\n}",
+    "description": "Function definition"
+  },
+  "for_loop": {
+    "prefix": "for",
+    "body": "for ${1:i} in ${2:iter} {\n\t$0\n}",
+    "description": "For loop"
+  },
+  "test_simple": {
+    "prefix": "tst",
+    "body": "TEST_EXPANDED",
+    "description": "Simple test snippet (no tab stops)"
+  }
+}"#;
+
+/// Create a temp directory with snippet fixtures and return the path.
+///
+/// The returned `PathBuf` is the `XDG_DATA_HOME` value — the server will
+/// resolve `{xdg_data_home}/reovim/modules/snippets/global.json`.
+fn create_snippet_fixtures() -> (tempfile::TempDir, String) {
+    let tmp = tempfile::tempdir().expect("Failed to create temp dir");
+    let snippet_dir = tmp.path().join("reovim").join("modules").join("snippets");
+    std::fs::create_dir_all(&snippet_dir).expect("Failed to create snippet dir");
+    std::fs::write(snippet_dir.join("global.json"), GLOBAL_SNIPPETS)
+        .expect("Failed to write global.json");
+    let xdg_path = tmp.path().to_str().expect("Non-UTF8 temp path").to_string();
+    (tmp, xdg_path)
+}
 
 /// Helper to create a headless TUI connection.
 async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, TuiAppError> {
@@ -33,7 +67,8 @@ async fn headless_tui(addr: &str, width: u16, height: u16) -> Result<TuiHandle, 
 /// Test: type "tst" then `<C-s>` expands a simple snippet in TUI.
 #[tokio::test]
 async fn test_tui_expand_simple() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -75,7 +110,8 @@ async fn test_tui_expand_simple() {
 /// Test: type unknown prefix then `<C-s>` does nothing — buffer keeps raw text.
 #[tokio::test]
 async fn test_tui_expand_no_match() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -109,7 +145,8 @@ async fn test_tui_expand_no_match() {
 /// Test: expand "fn" snippet produces function template in TUI.
 #[tokio::test]
 async fn test_tui_expand_function() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -164,7 +201,8 @@ async fn test_tui_expand_function() {
 /// Test: after snippet expansion, mode changes to NAVIGATING.
 #[tokio::test]
 async fn test_tui_snippet_mode_navigating() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -212,7 +250,8 @@ async fn test_tui_snippet_mode_navigating() {
 /// Test: Escape during snippet navigation returns to INSERT mode.
 #[tokio::test]
 async fn test_tui_snippet_escape_to_insert() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -269,7 +308,8 @@ async fn test_tui_snippet_escape_to_insert() {
 /// Test: Tab navigates cursor to next tab stop (visible as cursor movement).
 #[tokio::test]
 async fn test_tui_tab_navigates_cursor() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -322,7 +362,8 @@ async fn test_tui_tab_navigates_cursor() {
 /// Test: S-Tab navigates cursor backward.
 #[tokio::test]
 async fn test_tui_shift_tab_backward() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -373,7 +414,8 @@ async fn test_tui_shift_tab_backward() {
 /// Test: "for" snippet expands to multi-line for loop in TUI.
 #[tokio::test]
 async fn test_tui_expand_multiline_for() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -420,7 +462,8 @@ async fn test_tui_expand_multiline_for() {
 /// Test: complete snippet workflow — expand, navigate all stops, exit.
 #[tokio::test]
 async fn test_tui_full_workflow() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -500,7 +543,8 @@ async fn test_tui_full_workflow() {
 /// Test: `<leader>sc` shows snippet catalog notification toast in TUI.
 #[tokio::test]
 async fn test_tui_catalog_notification() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -548,7 +592,8 @@ async fn test_tui_catalog_notification() {
 /// Test: `<leader>sr` shows reload notification toast in TUI.
 #[tokio::test]
 async fn test_tui_reload_notification() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());
@@ -595,7 +640,8 @@ async fn test_tui_reload_notification() {
 /// Test: global snippet "tst" works from scratch buffer (no file path).
 #[tokio::test]
 async fn test_tui_global_snippet_always_available() {
-    let harness = TestServerHarness::spawn()
+    let (_tmp, xdg) = create_snippet_fixtures();
+    let harness = TestServerHarness::spawn_with_env(&[("XDG_DATA_HOME", &xdg)])
         .await
         .expect("Failed to spawn server");
     let addr = format!("127.0.0.1:{}", harness.port());

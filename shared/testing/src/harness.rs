@@ -216,7 +216,7 @@ impl TestServerHarness {
             .name()
             .unwrap_or("unknown_test")
             .to_string();
-        Self::spawn_inner(&test_name, &[]).await
+        Self::spawn_inner(&test_name, &[], &[]).await
     }
 
     /// Spawn server with explicit test name for log capture.
@@ -250,7 +250,7 @@ impl TestServerHarness {
     pub async fn spawn_with_name(
         test_name: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::spawn_inner(test_name, &[]).await
+        Self::spawn_inner(test_name, &[], &[]).await
     }
 
     /// Spawn server with extra modules loaded.
@@ -274,13 +274,56 @@ impl TestServerHarness {
             .name()
             .unwrap_or("unknown_test")
             .to_string();
-        Self::spawn_inner(&test_name, modules).await
+        Self::spawn_inner(&test_name, modules, &[]).await
+    }
+
+    /// Spawn server with extra modules and custom environment variables.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if server fails to spawn or start.
+    pub async fn spawn_with_modules_and_env(
+        modules: &[&str],
+        env_vars: &[(&str, &str)],
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_test")
+            .to_string();
+        Self::spawn_inner(&test_name, modules, env_vars).await
+    }
+
+    /// Spawn server with custom environment variables.
+    ///
+    /// Passes additional env vars to the server process. Useful for
+    /// overriding `XDG_DATA_HOME` to provide test fixture data.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let harness = TestServerHarness::spawn_with_env(
+    ///     &[("XDG_DATA_HOME", "/tmp/test-fixtures")],
+    /// ).await?;
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns error if server fails to spawn or start.
+    pub async fn spawn_with_env(
+        env_vars: &[(&str, &str)],
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let test_name = std::thread::current()
+            .name()
+            .unwrap_or("unknown_test")
+            .to_string();
+        Self::spawn_inner(&test_name, &[], env_vars).await
     }
 
     /// Internal spawn implementation.
     async fn spawn_inner(
         test_name: &str,
         extra_modules: &[&str],
+        env_vars: &[(&str, &str)],
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Create log directory
         let log_dir = PathBuf::from(TEST_LOG_DIR);
@@ -310,6 +353,11 @@ impl TestServerHarness {
         // Set extra modules if specified
         if !extra_modules.is_empty() {
             cmd.env("REOVIM_EXTRA_MODULES", extra_modules.join(","));
+        }
+
+        // Set custom environment variables
+        for (key, val) in env_vars {
+            cmd.env(key, val);
         }
 
         let mut process = cmd.spawn()?;

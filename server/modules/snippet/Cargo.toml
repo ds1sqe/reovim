@@ -29,6 +29,7 @@ regex = { workspace = true }
 [dev-dependencies]
 reovim-testing = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
 
 [lints]
 workspace = true
