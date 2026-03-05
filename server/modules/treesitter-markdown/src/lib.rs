@@ -44,7 +44,7 @@ use {
         LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
     reovim_driver_syntax_treesitter::{
-        CaptureMapper, InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
+        InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
         TreeSitterDriver,
     },
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
@@ -61,8 +61,6 @@ const MARKDOWN_INJECTIONS_QUERY: &str = include_str!("queries/injections.scm");
 /// This factory creates `TreeSitterDriver` instances configured for
 /// Markdown syntax highlighting using the tree-sitter-md grammar.
 pub struct MarkdownSyntaxFactory {
-    /// Shared capture mapper (reused across driver instances)
-    capture_mapper: Arc<CaptureMapper>,
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled injections query (for code block language detection)
@@ -89,16 +87,9 @@ impl MarkdownSyntaxFactory {
             .expect("Failed to compile Markdown injections query");
 
         Self {
-            capture_mapper: Arc::new(CaptureMapper::new()),
             highlight_query: Arc::new(highlight_query),
             injections_query: Arc::new(injections_query),
         }
-    }
-
-    /// Get the shared capture mapper.
-    #[must_use]
-    pub const fn capture_mapper(&self) -> &Arc<CaptureMapper> {
-        &self.capture_mapper
     }
 }
 
@@ -124,7 +115,6 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
             None, // No folds query yet
             Some(self.injections_query.clone()),
             None, // No indents query for Markdown
-            self.capture_mapper.clone(),
         )
         .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
@@ -139,9 +129,9 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
 }
 
 impl InjectionLayerFactory for MarkdownSyntaxFactory {
-    fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+    fn create_layer(&self) -> Option<InjectionLayer> {
         let language: Language = tree_sitter_md::LANGUAGE.into();
-        InjectionLayer::new("markdown", &language, self.highlight_query.clone(), capture_mapper)
+        InjectionLayer::new("markdown", &language, self.highlight_query.clone())
     }
 
     fn language_id(&self) -> &'static str {
@@ -248,13 +238,6 @@ mod tests {
     }
 
     #[test]
-    fn test_factory_capture_mapper_accessor() {
-        let factory = MarkdownSyntaxFactory::new();
-        let mapper = factory.capture_mapper();
-        let _clone = Arc::clone(mapper);
-    }
-
-    #[test]
     fn test_create_driver() {
         let factory = MarkdownSyntaxFactory::new();
 
@@ -307,8 +290,6 @@ mod tests {
 
     #[test]
     fn test_highlights_contain_heading() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -318,15 +299,13 @@ mod tests {
         // Find heading highlight
         let heading_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::MarkupHeading);
+            .find(|h| h.category.as_str().starts_with("markup.heading"));
 
         assert!(heading_highlight.is_some(), "Expected heading highlight");
     }
 
     #[test]
     fn test_highlights_h2_heading() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -335,15 +314,13 @@ mod tests {
 
         let heading_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::MarkupHeading);
+            .find(|h| h.category.as_str().starts_with("markup.heading"));
 
         assert!(heading_highlight.is_some(), "Expected heading highlight for h2");
     }
 
     #[test]
     fn test_highlights_contain_list_marker() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -353,15 +330,13 @@ mod tests {
         // Find list marker highlight
         let list_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::MarkupList);
+            .find(|h| h.category.as_str().starts_with("markup.list"));
 
         assert!(list_highlight.is_some(), "Expected list marker highlight");
     }
 
     #[test]
     fn test_highlights_contain_code_block() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -371,7 +346,7 @@ mod tests {
         // Find code block highlight (markup.raw)
         let code_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::MarkupRaw);
+            .find(|h| h.category.as_str().starts_with("markup.raw"));
 
         assert!(code_highlight.is_some(), "Expected code block highlight");
     }
@@ -407,8 +382,6 @@ mod tests {
 
     #[test]
     fn test_reparse_updates_highlights() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -416,7 +389,8 @@ mod tests {
         driver.parse("# Hello\n\nSome text.");
         let h1 = driver.highlights(0..100);
         assert!(
-            h1.iter().any(|h| h.group == HighlightGroup::MarkupHeading),
+            h1.iter()
+                .any(|h| h.category.as_str().starts_with("markup.heading")),
             "Should have heading highlight"
         );
 
@@ -424,7 +398,8 @@ mod tests {
         driver.parse("- item 1\n- item 2");
         let h2 = driver.highlights(0..100);
         assert!(
-            h2.iter().any(|h| h.group == HighlightGroup::MarkupList),
+            h2.iter()
+                .any(|h| h.category.as_str().starts_with("markup.list")),
             "Should have list highlight after re-parse"
         );
     }
@@ -568,9 +543,8 @@ mod tests {
     #[test]
     fn test_injection_layer_factory() {
         let factory = MarkdownSyntaxFactory::new();
-        let mapper = Arc::new(CaptureMapper::new());
 
-        let layer = factory.create_layer(mapper);
+        let layer = factory.create_layer();
         assert!(layer.is_some(), "Should create Markdown injection layer");
 
         let layer = layer.unwrap();
@@ -584,13 +558,11 @@ mod tests {
     }
 
     #[test]
-    fn test_injection_layer_factory_multiple_mappers() {
+    fn test_injection_layer_factory_creates_independent_layers() {
         let factory = MarkdownSyntaxFactory::new();
-        let mapper1 = Arc::new(CaptureMapper::new());
-        let mapper2 = Arc::new(CaptureMapper::new());
 
-        let layer1 = factory.create_layer(mapper1);
-        let layer2 = factory.create_layer(mapper2);
+        let layer1 = factory.create_layer();
+        let layer2 = factory.create_layer();
         assert!(layer1.is_some());
         assert!(layer2.is_some());
     }
@@ -712,8 +684,6 @@ mod tests {
 
     #[test]
     fn test_realistic_markdown_document() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
 
@@ -746,7 +716,7 @@ MIT
         assert!(
             highlights
                 .iter()
-                .any(|h| h.group == HighlightGroup::MarkupHeading),
+                .any(|h| h.category.as_str().starts_with("markup.heading")),
             "Expected heading highlights in realistic document"
         );
 
@@ -754,7 +724,7 @@ MIT
         assert!(
             highlights
                 .iter()
-                .any(|h| h.group == HighlightGroup::MarkupList),
+                .any(|h| h.category.as_str().starts_with("markup.list")),
             "Expected list highlights in realistic document"
         );
 
@@ -762,7 +732,7 @@ MIT
         assert!(
             highlights
                 .iter()
-                .any(|h| h.group == HighlightGroup::MarkupRaw),
+                .any(|h| h.category.as_str().starts_with("markup.raw")),
             "Expected code block highlights in realistic document"
         );
 
@@ -770,5 +740,93 @@ MIT
         let injections = driver.injections();
         assert_eq!(injections.len(), 1, "Expected one injection for rust code block");
         assert_eq!(injections[0].language_id, "rust");
+    }
+
+    // ========================================================================
+    // Injection Highlighting POC (Markdown + Rust)
+    // ========================================================================
+
+    #[test]
+    fn test_markdown_with_rust_injection_highlighting() {
+        use reovim_module_treesitter_rust::RustSyntaxFactory;
+
+        let md_lang: Language = tree_sitter_md::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&md_lang, MARKDOWN_HIGHLIGHTS_QUERY).unwrap());
+        let injections_query = Arc::new(Query::new(&md_lang, MARKDOWN_INJECTIONS_QUERY).unwrap());
+
+        // Register Rust factory in injection store
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(RustSyntaxFactory::new()));
+
+        // Create concrete Markdown driver with injections support
+        let mut driver = TreeSitterDriver::with_queries(
+            "markdown",
+            &md_lang,
+            highlight_query,
+            None,
+            Some(injections_query),
+            None,
+        )
+        .unwrap();
+        driver.set_injection_layer_store(store);
+
+        // Parse Markdown with embedded Rust code block
+        driver.parse("# Title\n\n```rust\nfn main() {}\n```\n");
+        let highlights = driver.highlights(0..200);
+
+        // Verify Markdown heading highlight exists
+        assert!(
+            highlights
+                .iter()
+                .any(|h| h.category.as_str().starts_with("markup.heading")),
+            "Expected Markdown heading highlight"
+        );
+
+        // Verify Rust keyword highlight exists (from dynamic injection)
+        assert!(
+            highlights.iter().any(|h| h.category.as_str() == "keyword"
+                || h.category.as_str() == "keyword.function"
+                || h.category.as_str().starts_with("keyword")),
+            "Expected Rust keyword highlight from dynamic injection, got: {highlights:?}"
+        );
+    }
+
+    #[test]
+    fn test_markdown_with_multiple_language_injections() {
+        use reovim_module_treesitter_rust::RustSyntaxFactory;
+
+        let md_lang: Language = tree_sitter_md::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&md_lang, MARKDOWN_HIGHLIGHTS_QUERY).unwrap());
+        let injections_query = Arc::new(Query::new(&md_lang, MARKDOWN_INJECTIONS_QUERY).unwrap());
+
+        // Only Rust is available — Python injection should be silently skipped
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(RustSyntaxFactory::new()));
+
+        let mut driver = TreeSitterDriver::with_queries(
+            "markdown",
+            &md_lang,
+            highlight_query,
+            None,
+            Some(injections_query),
+            None,
+        )
+        .unwrap();
+        driver.set_injection_layer_store(store);
+
+        driver.parse("```rust\nfn main() {}\n```\n\n```python\nprint('hello')\n```\n");
+
+        let injections = driver.injections();
+        assert_eq!(injections.len(), 2);
+
+        let highlights = driver.highlights(0..200);
+
+        // Rust highlights should be present
+        assert!(
+            highlights
+                .iter()
+                .any(|h| h.category.as_str().starts_with("keyword")),
+            "Expected Rust highlights from injection"
+        );
     }
 }

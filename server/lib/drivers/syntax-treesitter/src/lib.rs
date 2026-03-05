@@ -11,13 +11,13 @@
 //! Language Modules                  This Crate                   Trait Crate
 //! ================                  ==========                   ===========
 //! treesitter-rust     ──────────►  TreeSitterDriver  ──impl──►  SyntaxDriver
-//! treesitter-markdown              CaptureMapper
+//! treesitter-markdown
 //! treesitter-python
 //! ```
 //!
 //! # Three-Layer Design
 //!
-//! 1. **`reovim-driver-syntax`** (trait crate): Defines `SyntaxDriver`, `HighlightGroup`
+//! 1. **`reovim-driver-syntax`** (trait crate): Defines `SyntaxDriver`, `HighlightCategory`
 //! 2. **`reovim-driver-syntax-treesitter`** (this crate): Generic tree-sitter implementation
 //! 3. **Language modules** (e.g., `treesitter-rust`): Provide grammars and queries
 //!
@@ -28,7 +28,7 @@
 //!
 //! ```ignore
 //! use std::sync::Arc;
-//! use reovim_driver_syntax_treesitter::{TreeSitterDriver, CaptureMapper};
+//! use reovim_driver_syntax_treesitter::TreeSitterDriver;
 //! use tree_sitter::Query;
 //!
 //! // Language module provides grammar and query
@@ -36,12 +36,10 @@
 //! let query = Query::new(&language.into(), RUST_HIGHLIGHTS_QUERY).unwrap();
 //!
 //! // Create driver
-//! let mapper = Arc::new(CaptureMapper::new());
 //! let mut driver = TreeSitterDriver::new(
 //!     "rust",
 //!     &language.into(),
 //!     Arc::new(query),
-//!     mapper,
 //! ).unwrap();
 //!
 //! // Parse and highlight
@@ -55,12 +53,10 @@
 //! - `Parser` and `QueryCursor` use `Mutex` (exclusive access needed)
 //! - `Tree` and content use `RwLock` (read-heavy access pattern)
 
-mod capture_mapper;
 mod driver;
 mod injection;
 
 pub use {
-    capture_mapper::CaptureMapper,
     driver::TreeSitterDriver,
     injection::{InjectionLayer, InjectionLayerFactory, InjectionLayerStore, InjectionManager},
 };

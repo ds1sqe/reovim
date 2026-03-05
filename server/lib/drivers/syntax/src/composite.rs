@@ -84,7 +84,7 @@ mod tests {
 
     use std::ops::Range;
 
-    use crate::{HighlightGroup, HighlightSpan, SyntaxEdit};
+    use crate::{Annotation, HighlightCategory, SyntaxEdit};
 
     struct StubDriver {
         language: &'static str,
@@ -100,8 +100,12 @@ mod tests {
 
         fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
 
-        fn highlights(&self, _byte_range: Range<usize>) -> Vec<HighlightSpan> {
-            vec![HighlightSpan::new(0, 1, HighlightGroup::Comment)]
+        fn highlights(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
+            vec![Annotation::highlight(
+                0,
+                1,
+                HighlightCategory::new("comment"),
+            )]
         }
 
         fn is_parsed(&self) -> bool {

@@ -20,7 +20,7 @@ pub use reovim_driver_syntax::SyntaxSessionState;
 
 use {
     reovim_driver_session::SessionExtension,
-    reovim_driver_syntax::{SyntaxEdit, SyntaxHighlight},
+    reovim_driver_syntax::SyntaxEdit,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{TokenSpan, TokenUpdate},
     tokio::sync::mpsc,
@@ -149,7 +149,8 @@ impl SyntaxStreamState {
             .map(|span| TokenSpan {
                 start_byte: span.start_byte as u32,
                 end_byte: span.end_byte as u32,
-                category: span.group.category().to_string(),
+                category: span.category.to_string(),
+                kind: None,
             })
             .collect();
 
@@ -160,6 +161,8 @@ impl SyntaxStreamState {
             start_line,
             end_line,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         // Broadcast to subscribers (remove disconnected ones)
@@ -194,7 +197,8 @@ impl SyntaxStreamState {
             .map(|span| TokenSpan {
                 start_byte: span.start_byte as u32,
                 end_byte: span.end_byte as u32,
-                category: span.group.category().to_string(),
+                category: span.category.to_string(),
+                kind: None,
             })
             .collect();
 
@@ -204,6 +208,8 @@ impl SyntaxStreamState {
             start_line: 0,
             end_line: total_lines.saturating_sub(1),
             full_refresh: true,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         // Broadcast to subscribers
@@ -234,7 +240,8 @@ pub fn build_token_update(
         .map(|span| TokenSpan {
             start_byte: span.start_byte as u32,
             end_byte: span.end_byte as u32,
-            category: span.group.category().to_string(),
+            category: span.category.to_string(),
+            kind: None,
         })
         .collect();
 
@@ -244,6 +251,8 @@ pub fn build_token_update(
         start_line: 0,
         end_line: total_lines.saturating_sub(1),
         full_refresh,
+        layer: "syntax".into(),
+        priority: 0,
     })
 }
 
@@ -262,7 +271,7 @@ mod tests {
     use std::{ops::Range, sync::Arc};
 
     use reovim_driver_syntax::{
-        HighlightGroup, HighlightSpan, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
+        Annotation, HighlightCategory, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
     };
 
     /// A minimal test driver for unit tests.
@@ -295,12 +304,12 @@ mod tests {
             // No-op
         }
 
-        fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+        fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                vec![HighlightSpan::new(
+                vec![Annotation::highlight(
                     byte_range.start,
                     byte_range.end,
-                    HighlightGroup::Comment,
+                    HighlightCategory::new("comment"),
                 )]
             } else {
                 Vec::new()
@@ -379,12 +388,16 @@ mod tests {
             start_line: 0,
             end_line: 0,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         state.broadcast(&update);
 
         let received = rx.try_recv().expect("Should receive update");
         assert_eq!(received.buffer_id, 1);
+        assert_eq!(received.layer, "syntax");
+        assert_eq!(received.priority, 0);
     }
 
     #[test]
@@ -402,6 +415,8 @@ mod tests {
             start_line: 0,
             end_line: 0,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         state.broadcast(&update);
@@ -434,6 +449,8 @@ mod tests {
         let update = rx.try_recv().expect("Should receive update");
         assert_eq!(update.buffer_id, 1);
         assert!(!update.full_refresh);
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
     }
 
     #[test]
@@ -470,6 +487,8 @@ mod tests {
         assert_eq!(update.buffer_id, 1);
         assert!(update.full_refresh);
         assert_eq!(update.end_line, 9); // total_lines - 1
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
     }
 
     #[test]
@@ -557,6 +576,8 @@ mod tests {
         assert_eq!(update.start_line, 0);
         assert_eq!(update.end_line, 9);
         assert!(!update.tokens.is_empty());
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
     }
 
     #[test]

@@ -9,15 +9,14 @@
 //!
 //! This crate follows the Linux kernel "mechanism vs policy" principle:
 //!
-//! - **Driver provides MECHANISM**: The [`SyntaxHighlight`] trait defines HOW
-//!   highlights are categorized (abstract interface).
-//! - **Driver provides POLICY**: The [`HighlightGroup`] enum defines WHAT
-//!   categories exist (specific implementation).
+//! - **Driver provides MECHANISM**: The [`HighlightCategory`] type and [`Annotation`] struct
+//!   define HOW highlights are represented (open, string-based categories).
+//! - **Modules provide POLICY**: Language modules decide WHAT categories to emit.
 //!
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/syntax/             <-- SyntaxHighlight trait, HighlightGroup, SyntaxDriver
+//! server/lib/drivers/syntax/             <-- HighlightCategory, Annotation, SyntaxDriver
 //!        ^
 //!        |  implements
 //!        |
@@ -30,8 +29,8 @@
 //! - [`SyntaxDriverFactory`] - Creates drivers for languages
 //! - [`LanguageRegistry`] - Language detection and metadata
 //! - [`SyntaxCache`] - Highlight result caching
-//! - [`HighlightGroup`] - Highlight categories (implements `SyntaxHighlight`)
-//! - [`HighlightSpan`] - A highlighted byte range
+//! - [`HighlightCategory`] - Open string-based highlight categories
+//! - [`Annotation`] - A highlighted byte range with category and kind
 //! - [`SyntaxEdit`] - Edit description for incremental parsing
 //! - [`FoldRange`], [`FoldKind`] - Foldable code regions
 //! - [`Injection`] - Embedded language regions
@@ -53,8 +52,8 @@
 //!
 //! // Get highlights for rendering
 //! let highlights = driver.highlights(0..100);
-//! for span in highlights {
-//!     println!("{:?}: {}", span.byte_range(), span.group.category());
+//! for ann in highlights {
+//!     println!("{:?}: {}", ann.byte_range(), ann.category.as_str());
 //! }
 //! ```
 //!
@@ -95,7 +94,7 @@ pub use {
 pub use {
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
-    highlight::{HighlightGroup, HighlightSpan},
+    highlight::{Annotation, AnnotationKind, HighlightCategory},
     injection::Injection,
     lang_store::LanguageInfoStore,
     registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},
@@ -103,9 +102,6 @@ pub use {
 
 // Error types
 pub use error::ModuleError;
-
-// SyntaxHighlight trait (defined in this crate)
-pub use highlight::SyntaxHighlight;
 
 // Per-session syntax driver storage
 pub use state::SyntaxSessionState;

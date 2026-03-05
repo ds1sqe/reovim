@@ -26,7 +26,8 @@ use crate::render_backend::{RenderBackend as _, TuiExtension};
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_driver_display::{
-        BuiltinTheme, FrameBuffer, ThemeLoader, ThemeManager, TokenCacheManager, TokenSpan,
+        AnnotationCacheManager, BuiltinTheme, CachedAnnotationKind, FrameBuffer, ThemeLoader,
+        ThemeManager, TokenSpan,
     },
     reovim_protocol::v2::{
         GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
@@ -122,7 +123,7 @@ pub struct TuiApp<O: TuiOutput> {
     /// Server layout mirror.
     layout_mirror: ServerLayoutMirror,
     /// Syntax token cache manager.
-    token_cache_manager: TokenCacheManager,
+    token_cache_manager: AnnotationCacheManager,
     /// Theme manager for syntax highlighting.
     theme_manager: ThemeManager,
     /// Theme loader for finding and loading theme files.
@@ -160,7 +161,7 @@ impl<O: TuiOutput> TuiApp<O> {
         let layout_mirror = ServerLayoutMirror::new(width, height);
 
         // Create token cache and theme managers
-        let token_cache_manager = TokenCacheManager::new();
+        let token_cache_manager = AnnotationCacheManager::new();
         let theme_loader = ThemeLoader::new();
         let mut theme_manager = ThemeManager::new(BuiltinTheme::Dark.load());
 
@@ -440,6 +441,7 @@ impl<O: TuiOutput> TuiApp<O> {
                         start_byte: t.start_byte,
                         end_byte: t.end_byte,
                         category: t.category,
+                        kind: CachedAnnotationKind::Highlight,
                     })
                     .collect();
 
@@ -450,6 +452,8 @@ impl<O: TuiOutput> TuiApp<O> {
                     u64::MAX,
                     true,
                     &content,
+                    "syntax",
+                    0,
                 );
 
                 tracing::debug!(buffer_id, token_count = token_spans.len(), "Cached syntax tokens");

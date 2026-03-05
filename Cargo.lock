@@ -2470,9 +2470,11 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-driver-syntax-treesitter",
  "reovim-kernel",
+ "reovim-module-treesitter-rust",
  "reovim-testing",
  "tracing",
  "tree-sitter-md",
+ "tree-sitter-rust",
 ]
 
 [[package]]

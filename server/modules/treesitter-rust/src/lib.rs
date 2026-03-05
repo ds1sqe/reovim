@@ -46,7 +46,7 @@ use {
         SyntaxFactoryStore,
     },
     reovim_driver_syntax_treesitter::{
-        CaptureMapper, InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
+        InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
         TreeSitterDriver,
     },
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
@@ -71,9 +71,8 @@ const RUST_INDENTS_QUERY: &str = include_str!("queries/indents.scm");
 /// This factory creates `TreeSitterDriver` instances configured for
 /// Rust syntax highlighting, fold detection, doc comment injection,
 /// and indentation hints using the tree-sitter-rust grammar.
+#[allow(clippy::struct_field_names)]
 pub struct RustSyntaxFactory {
-    /// Shared capture mapper (reused across driver instances)
-    capture_mapper: Arc<CaptureMapper>,
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
@@ -110,7 +109,6 @@ impl RustSyntaxFactory {
             .expect("Failed to compile Rust indents query");
 
         Self {
-            capture_mapper: Arc::new(CaptureMapper::new()),
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
             injections_query: Arc::new(injections_query),
@@ -122,12 +120,6 @@ impl RustSyntaxFactory {
     #[must_use]
     pub const fn folds_query(&self) -> &Arc<Query> {
         &self.folds_query
-    }
-
-    /// Get the shared capture mapper.
-    #[must_use]
-    pub const fn capture_mapper(&self) -> &Arc<CaptureMapper> {
-        &self.capture_mapper
     }
 }
 
@@ -153,7 +145,6 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
             Some(self.folds_query.clone()),
             Some(self.injections_query.clone()), // Doc comments → Markdown injection
             Some(self.indents_query.clone()),    // Indentation hints
-            self.capture_mapper.clone(),
         )
         .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
@@ -168,9 +159,9 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
 }
 
 impl InjectionLayerFactory for RustSyntaxFactory {
-    fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+    fn create_layer(&self) -> Option<InjectionLayer> {
         let language: Language = tree_sitter_rust::LANGUAGE.into();
-        InjectionLayer::new("rust", &language, self.highlight_query.clone(), capture_mapper)
+        InjectionLayer::new("rust", &language, self.highlight_query.clone())
     }
 
     fn language_id(&self) -> &'static str {
@@ -286,13 +277,6 @@ mod tests {
     }
 
     #[test]
-    fn test_factory_capture_mapper_accessor() {
-        let factory = RustSyntaxFactory::new();
-        let mapper = factory.capture_mapper();
-        let _clone = Arc::clone(mapper);
-    }
-
-    #[test]
     fn test_create_driver() {
         let factory = RustSyntaxFactory::new();
 
@@ -352,8 +336,6 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_contain_keyword_function() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -367,17 +349,15 @@ mod tests {
 
         assert!(fn_highlight.is_some(), "Expected 'fn' highlight");
         assert_eq!(
-            fn_highlight.unwrap().group,
-            HighlightGroup::KeywordFunction,
-            "'fn' should be KeywordFunction"
+            fn_highlight.unwrap().category.as_str(),
+            "keyword.function",
+            "'fn' should be keyword.function"
         );
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_contain_function_name() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -390,17 +370,18 @@ mod tests {
             .find(|h| h.start_byte == 3 && h.end_byte == 7);
 
         assert!(main_highlight.is_some(), "Expected 'main' highlight");
-        assert_eq!(
-            main_highlight.unwrap().group,
-            HighlightGroup::Function,
-            "'main' should be Function"
+        assert!(
+            main_highlight
+                .unwrap()
+                .category
+                .as_str()
+                .starts_with("function"),
+            "'main' should be a function category"
         );
     }
 
     #[test]
     fn test_highlights_contain_string() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -410,15 +391,13 @@ mod tests {
         // Find a string highlight
         let string_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::String);
+            .find(|h| h.category.as_str().starts_with("string"));
 
         assert!(string_highlight.is_some(), "Expected string highlight");
     }
 
     #[test]
     fn test_highlights_contain_comment() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -428,15 +407,13 @@ mod tests {
         // Find comment highlight
         let comment_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::Comment);
+            .find(|h| h.category.as_str().starts_with("comment"));
 
         assert!(comment_highlight.is_some(), "Expected comment highlight");
     }
 
     #[test]
     fn test_highlights_contain_number() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -445,7 +422,7 @@ mod tests {
 
         let number_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::Number);
+            .find(|h| h.category.as_str().starts_with("number"));
 
         assert!(number_highlight.is_some(), "Expected number highlight");
     }
@@ -459,15 +436,15 @@ mod tests {
         let highlights = driver.highlights(0..100);
 
         // i32 should be a builtin type
-        let type_highlight = highlights.iter().find(|h| h.group.is_type());
+        let type_highlight = highlights
+            .iter()
+            .find(|h| h.category.as_str().starts_with("type"));
 
         assert!(type_highlight.is_some(), "Expected type highlight for i32");
     }
 
     #[test]
     fn test_highlights_contain_variable() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -477,7 +454,7 @@ mod tests {
         // 'x' should be highlighted as a variable
         let var_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::Variable);
+            .find(|h| h.category.as_str().starts_with("variable"));
 
         assert!(var_highlight.is_some(), "Expected variable highlight");
     }
@@ -491,15 +468,15 @@ mod tests {
         driver.parse("fn main() { let mut x = 1; }");
         let highlights = driver.highlights(0..100);
 
-        let keyword_highlight = highlights.iter().find(|h| h.group.is_keyword());
+        let keyword_highlight = highlights
+            .iter()
+            .find(|h| h.category.as_str().starts_with("keyword"));
 
         assert!(keyword_highlight.is_some(), "Expected keyword highlight for 'mut' or 'fn'");
     }
 
     #[test]
     fn test_highlights_contain_macro() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -508,7 +485,7 @@ mod tests {
 
         let macro_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::FunctionMacro);
+            .find(|h| h.category.as_str() == "function.macro");
 
         assert!(macro_highlight.is_some(), "Expected macro highlight for println!");
     }
@@ -587,8 +564,6 @@ mod tests {
 
     #[test]
     fn test_reparse_updates_highlights() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -598,7 +573,7 @@ mod tests {
         assert!(
             highlights1
                 .iter()
-                .any(|h| h.group == HighlightGroup::Number),
+                .any(|h| h.category.as_str().starts_with("number")),
             "Should have number highlight"
         );
 
@@ -608,14 +583,14 @@ mod tests {
         assert!(
             highlights2
                 .iter()
-                .any(|h| h.group == HighlightGroup::KeywordFunction),
+                .any(|h| h.category.as_str() == "keyword.function"),
             "Should have function keyword after re-parse"
         );
         // Number should no longer appear
         assert!(
             !highlights2
                 .iter()
-                .any(|h| h.group == HighlightGroup::Number),
+                .any(|h| h.category.as_str().starts_with("number")),
             "Number should not appear after re-parse to function code"
         );
     }
@@ -653,10 +628,9 @@ mod tests {
     #[test]
     fn test_injection_layer_factory() {
         let factory = RustSyntaxFactory::new();
-        let mapper = Arc::new(CaptureMapper::new());
 
         // Should create a valid injection layer
-        let layer = factory.create_layer(mapper);
+        let layer = factory.create_layer();
         assert!(layer.is_some(), "Should create Rust injection layer");
 
         let layer = layer.unwrap();
@@ -670,14 +644,12 @@ mod tests {
     }
 
     #[test]
-    fn test_injection_layer_factory_shared_mapper() {
+    fn test_injection_layer_factory_creates_independent_layers() {
         let factory = RustSyntaxFactory::new();
-        let mapper1 = Arc::new(CaptureMapper::new());
-        let mapper2 = Arc::new(CaptureMapper::new());
 
-        // Should be able to create layers with different mappers
-        let layer1 = factory.create_layer(mapper1);
-        let layer2 = factory.create_layer(mapper2);
+        // Should be able to create multiple independent layers
+        let layer1 = factory.create_layer();
+        let layer2 = factory.create_layer();
         assert!(layer1.is_some());
         assert!(layer2.is_some());
     }
@@ -1186,8 +1158,6 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_highlights_and_folds_combined() {
-        use reovim_driver_syntax::HighlightGroup;
-
         let factory = RustSyntaxFactory::new();
         let mut driver = factory.create("rust").unwrap();
 
@@ -1204,14 +1174,14 @@ mod tests {
         // Verify we have function keyword
         let fn_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::KeywordFunction);
-        assert!(fn_highlight.is_some(), "Expected KeywordFunction highlight");
+            .find(|h| h.category.as_str() == "keyword.function");
+        assert!(fn_highlight.is_some(), "Expected keyword.function highlight");
 
         // Verify we have string
         let string_highlight = highlights
             .iter()
-            .find(|h| h.group == HighlightGroup::String);
-        assert!(string_highlight.is_some(), "Expected String highlight");
+            .find(|h| h.category.as_str().starts_with("string"));
+        assert!(string_highlight.is_some(), "Expected string highlight");
 
         // Get folds
         let folds = driver.folds();

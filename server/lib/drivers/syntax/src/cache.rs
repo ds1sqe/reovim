@@ -4,12 +4,12 @@
 
 use std::ops::Range;
 
-use crate::highlight::HighlightSpan;
+use crate::highlight::Annotation;
 
-/// Cache for highlight results.
+/// Cache for annotation results.
 ///
 /// Implementations can provide various caching strategies for
-/// highlight data to improve performance.
+/// annotation data to improve performance.
 ///
 /// # Thread Safety
 ///
@@ -18,34 +18,34 @@ use crate::highlight::HighlightSpan;
 /// # Example
 ///
 /// ```ignore
-/// // Insert highlights for a range
-/// cache.insert(0..100, highlights);
+/// // Insert annotations for a range
+/// cache.insert(0..100, annotations);
 ///
-/// // Later, retrieve cached highlights
+/// // Later, retrieve cached annotations
 /// if let Some(cached) = cache.get(0..100) {
-///     // Use cached highlights
+///     // Use cached annotations
 /// }
 ///
 /// // After an edit, invalidate affected ranges
 /// cache.invalidate_range(50..75);
 /// ```
 pub trait SyntaxCache: Send + Sync {
-    /// Get cached highlights for a byte range.
+    /// Get cached annotations for a byte range.
     ///
     /// Returns `None` if the range is not cached or cache is stale.
     ///
     /// # Arguments
     ///
     /// * `byte_range` - The byte range to look up
-    fn get(&self, byte_range: Range<usize>) -> Option<Vec<HighlightSpan>>;
+    fn get(&self, byte_range: Range<usize>) -> Option<Vec<Annotation>>;
 
-    /// Insert highlights into the cache.
+    /// Insert annotations into the cache.
     ///
     /// # Arguments
     ///
-    /// * `byte_range` - The byte range these highlights cover
-    /// * `highlights` - The highlights to cache
-    fn insert(&mut self, byte_range: Range<usize>, highlights: Vec<HighlightSpan>);
+    /// * `byte_range` - The byte range these annotations cover
+    /// * `highlights` - The annotations to cache
+    fn insert(&mut self, byte_range: Range<usize>, highlights: Vec<Annotation>);
 
     /// Invalidate cache entries that overlap with a range.
     ///
@@ -65,11 +65,11 @@ pub trait SyntaxCache: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::highlight::HighlightGroup, std::collections::HashMap};
+    use {super::*, crate::HighlightCategory, std::collections::HashMap};
 
     /// Simple in-memory cache implementation for testing.
     struct SimpleCache {
-        entries: HashMap<(usize, usize), Vec<HighlightSpan>>,
+        entries: HashMap<(usize, usize), Vec<Annotation>>,
     }
 
     impl SimpleCache {
@@ -81,23 +81,21 @@ mod tests {
     }
 
     impl SyntaxCache for SimpleCache {
-        fn get(&self, byte_range: Range<usize>) -> Option<Vec<HighlightSpan>> {
+        fn get(&self, byte_range: Range<usize>) -> Option<Vec<Annotation>> {
             self.entries
                 .get(&(byte_range.start, byte_range.end))
                 .cloned()
         }
 
-        fn insert(&mut self, byte_range: Range<usize>, highlights: Vec<HighlightSpan>) {
+        fn insert(&mut self, byte_range: Range<usize>, highlights: Vec<Annotation>) {
             self.entries
                 .insert((byte_range.start, byte_range.end), highlights);
         }
 
         #[cfg_attr(coverage_nightly, coverage(off))]
         fn invalidate_range(&mut self, byte_range: Range<usize>) {
-            self.entries.retain(|(start, end), _| {
-                // Keep entries that don't overlap with the invalidated range
-                *end <= byte_range.start || *start >= byte_range.end
-            });
+            self.entries
+                .retain(|(start, end), _| *end <= byte_range.start || *start >= byte_range.end);
         }
 
         fn clear(&mut self) {
@@ -109,14 +107,15 @@ mod tests {
         }
     }
 
+    fn ann(start: usize, end: usize, cat: &str) -> Annotation {
+        Annotation::highlight(start, end, HighlightCategory::new(cat))
+    }
+
     #[test]
     fn test_cache_insert_and_get() {
         let mut cache = SimpleCache::new();
 
-        let highlights = vec![
-            HighlightSpan::new(0, 5, HighlightGroup::Keyword),
-            HighlightSpan::new(6, 10, HighlightGroup::Function),
-        ];
+        let highlights = vec![ann(0, 5, "keyword"), ann(6, 10, "function")];
 
         cache.insert(0..100, highlights.clone());
 
@@ -137,19 +136,14 @@ mod tests {
     fn test_cache_invalidate_range() {
         let mut cache = SimpleCache::new();
 
-        // Insert multiple entries
-        cache.insert(0..50, vec![HighlightSpan::new(0, 50, HighlightGroup::Keyword)]);
-        cache.insert(50..100, vec![HighlightSpan::new(50, 100, HighlightGroup::Function)]);
-        cache.insert(100..150, vec![HighlightSpan::new(100, 150, HighlightGroup::String)]);
+        cache.insert(0..50, vec![ann(0, 50, "keyword")]);
+        cache.insert(50..100, vec![ann(50, 100, "function")]);
+        cache.insert(100..150, vec![ann(100, 150, "string")]);
 
-        // Invalidate middle range
         cache.invalidate_range(40..60);
 
-        // First entry overlaps with invalidated range, should be removed
         assert!(cache.get(0..50).is_none());
-        // Second entry overlaps with invalidated range, should be removed
         assert!(cache.get(50..100).is_none());
-        // Third entry doesn't overlap, should remain
         assert!(cache.get(100..150).is_some());
     }
 
@@ -157,8 +151,8 @@ mod tests {
     fn test_cache_clear() {
         let mut cache = SimpleCache::new();
 
-        cache.insert(0..50, vec![HighlightSpan::new(0, 50, HighlightGroup::Keyword)]);
-        cache.insert(50..100, vec![HighlightSpan::new(50, 100, HighlightGroup::Function)]);
+        cache.insert(0..50, vec![ann(0, 50, "keyword")]);
+        cache.insert(50..100, vec![ann(50, 100, "function")]);
 
         assert!(!cache.is_empty());
 

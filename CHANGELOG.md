@@ -7,6 +7,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Added
 
 - Syntax session integration: wire SyntaxDriver into session model for live token streaming (#539)
+- Layered annotation system: open `HighlightCategory(Arc<str>)` replaces closed `HighlightGroup` enum (#540)
+  - `Annotation` type with `AnnotationKind` (Highlight, Conceal, Background, VirtualText)
+  - Remove `CaptureMapper` — tree-sitter capture names map directly to `HighlightCategory` strings
+  - Multi-layer `LayeredTokenCache` with priority-based compositing in display driver
+  - Expanded theme groups: 42 base categories + 30 sub-categories with hierarchical fallback
+  - Protocol updated with `AnnotationKind` and layer support
+  - Dynamic injection layer creation: `InjectionManager` lazily creates layers via `InjectionLayerStore`
 - `CompositeFactory` routes `create()` across all registered `SyntaxDriverFactory` instances
 - `LanguageInfoStore` for module self-registration of language metadata during `init()`
 - `DefaultLanguageRegistry` detects language from file path extensions and MIME types

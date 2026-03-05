@@ -224,7 +224,7 @@ mod tests {
 
     use std::{ops::Range, sync::Arc};
 
-    use crate::{HighlightGroup, HighlightSpan, SyntaxEdit};
+    use crate::{Annotation, HighlightCategory, SyntaxEdit};
 
     /// A minimal test driver for unit tests.
     struct TestDriver {
@@ -256,12 +256,12 @@ mod tests {
             // No-op
         }
 
-        fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+        fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                vec![HighlightSpan::new(
+                vec![Annotation::highlight(
                     byte_range.start,
                     byte_range.end,
-                    HighlightGroup::Comment,
+                    HighlightCategory::new("comment"),
                 )]
             } else {
                 Vec::new()

@@ -26,11 +26,9 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use {
     parking_lot::Mutex,
-    reovim_driver_syntax::{HighlightSpan, Injection, SyntaxDriverFactory},
+    reovim_driver_syntax::{Annotation, HighlightCategory, Injection},
     tree_sitter::{Parser, Query, Tree},
 };
-
-use crate::CaptureMapper;
 
 /// An injection layer for parsing and highlighting embedded content.
 ///
@@ -45,8 +43,6 @@ pub struct InjectionLayer {
     trees: HashMap<(usize, usize), Tree>,
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
-    /// Capture mapper for converting captures to `HighlightGroup`
-    capture_mapper: Arc<CaptureMapper>,
 }
 
 impl InjectionLayer {
@@ -58,7 +54,6 @@ impl InjectionLayer {
         language_id: &str,
         ts_language: &tree_sitter::Language,
         highlight_query: Arc<Query>,
-        capture_mapper: Arc<CaptureMapper>,
     ) -> Option<Self> {
         let mut parser = Parser::new();
         parser.set_language(ts_language).ok()?;
@@ -68,7 +63,6 @@ impl InjectionLayer {
             parser: Mutex::new(parser),
             trees: HashMap::new(),
             highlight_query,
-            capture_mapper,
         })
     }
 
@@ -87,7 +81,7 @@ impl InjectionLayer {
         &mut self,
         injection: &Injection,
         full_content: &str,
-    ) -> Vec<HighlightSpan> {
+    ) -> Vec<Annotation> {
         // Extract the embedded content
         let range = injection.byte_range.clone();
         if range.start >= full_content.len() || range.end > full_content.len() {
@@ -136,14 +130,17 @@ impl InjectionLayer {
                     continue;
                 }
 
-                let group = self.capture_mapper.map(capture_name);
                 let node = capture.node;
 
                 // Offset byte positions to parent document coordinates
                 let start_byte = range.start + node.start_byte();
                 let end_byte = range.start + node.end_byte();
 
-                highlights.push(HighlightSpan::new(start_byte, end_byte, group));
+                highlights.push(Annotation::highlight(
+                    start_byte,
+                    end_byte,
+                    HighlightCategory::new(*capture_name),
+                ));
             }
         }
 
@@ -169,9 +166,9 @@ impl InjectionLayer {
 ///
 /// ```ignore
 /// impl InjectionLayerFactory for RustSyntaxFactory {
-///     fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+///     fn create_layer(&self) -> Option<InjectionLayer> {
 ///         let language = tree_sitter_rust::LANGUAGE;
-///         InjectionLayer::new("rust", &language.into(), self.highlight_query.clone(), capture_mapper)
+///         InjectionLayer::new("rust", &language.into(), self.highlight_query.clone())
 ///     }
 ///
 ///     fn language_id(&self) -> &'static str {
@@ -183,7 +180,7 @@ pub trait InjectionLayerFactory: Send + Sync {
     /// Create an injection layer for embedded language highlighting.
     ///
     /// Returns `None` if the layer cannot be created (e.g., query compilation failure).
-    fn create_layer(&self, capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer>;
+    fn create_layer(&self) -> Option<InjectionLayer>;
 
     /// The language ID this factory supports (e.g., "rust", "python").
     fn language_id(&self) -> &'static str;
@@ -198,53 +195,61 @@ pub trait InjectionLayerFactory: Send + Sync {
 pub struct InjectionManager {
     /// Cached injection layers by language ID
     layers: HashMap<String, InjectionLayer>,
-    /// Shared capture mapper for creating layers
-    capture_mapper: Arc<CaptureMapper>,
+    /// Optional store for lazy layer creation during highlighting
+    layer_store: Option<Arc<InjectionLayerStore>>,
+}
+
+impl Default for InjectionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl InjectionManager {
-    /// Create a new injection manager.
+    /// Create a new injection manager without a layer store.
+    ///
+    /// Layers must be pre-registered via [`register_layer()`](Self::register_layer).
     #[must_use]
-    pub fn new(capture_mapper: Arc<CaptureMapper>) -> Self {
+    pub fn new() -> Self {
         Self {
             layers: HashMap::new(),
-            capture_mapper,
+            layer_store: None,
         }
+    }
+
+    /// Create a new injection manager with a layer store for dynamic creation.
+    ///
+    /// When `highlight_injections()` encounters an unknown language, it queries
+    /// the store to create layers on demand.
+    #[must_use]
+    pub fn with_store(store: Arc<InjectionLayerStore>) -> Self {
+        Self {
+            layers: HashMap::new(),
+            layer_store: Some(store),
+        }
+    }
+
+    /// Set or replace the layer store for dynamic layer creation.
+    pub fn set_store(&mut self, store: Arc<InjectionLayerStore>) {
+        self.layer_store = Some(store);
     }
 
     /// Get or create an injection layer for a language.
     ///
-    /// Uses the provided factory to create new layers. Returns `None` if the
-    /// factory doesn't support the language.
-    pub fn get_or_create_layer(
-        &mut self,
-        language_id: &str,
-        factory: &dyn SyntaxDriverFactory,
-    ) -> Option<&mut InjectionLayer> {
+    /// Looks up the layer in the cache first. If not found and a layer store
+    /// is configured, queries the store to create one dynamically.
+    ///
+    /// Returns `None` if the layer is not cached and cannot be created.
+    pub fn get_or_create_layer(&mut self, language_id: &str) -> Option<&mut InjectionLayer> {
         if self.layers.contains_key(language_id) {
             return self.layers.get_mut(language_id);
         }
 
-        // Try to create a layer using the factory.
-        // Note: Dynamic layer creation requires InjectionLayerFactory implementations
-        // to be registered in InjectionLayerStore during module init(). Languages not
-        // pre-registered will be skipped.
-        //
-        // See: Phase 12.4 added InjectionLayerFactory to RustSyntaxFactory and MarkdownSyntaxFactory
-        tracing::debug!(
-            language_id = %language_id,
-            "Injection layer requested but factory-based creation not yet implemented"
-        );
-
-        // Check if factory supports the language (for logging)
-        if !factory.supports(language_id) {
-            tracing::debug!(
-                language_id = %language_id,
-                "Injection layer skipped: language not supported by factory"
-            );
-        }
-
-        None
+        let store = self.layer_store.as_ref()?;
+        let factory = store.find(language_id)?;
+        let layer = factory.create_layer()?;
+        self.layers.insert(language_id.to_string(), layer);
+        self.layers.get_mut(language_id)
     }
 
     /// Register a pre-created injection layer.
@@ -270,12 +275,33 @@ impl InjectionManager {
     ///
     /// Returns highlights from embedded languages, offset-adjusted to parent
     /// document coordinates.
+    ///
+    /// # Lazy Layer Creation
+    ///
+    /// If a layer store is configured (via [`with_store()`](Self::with_store) or
+    /// [`set_store()`](Self::set_store)), this method lazily creates injection
+    /// layers for languages encountered in `injections` that don't already have
+    /// a cached layer. Creation happens in a first pass before highlighting to
+    /// avoid mutable borrow conflicts.
     pub fn highlight_injections(
         &mut self,
         injections: &[Injection],
         full_content: &str,
         byte_range: Range<usize>,
-    ) -> Vec<HighlightSpan> {
+    ) -> Vec<Annotation> {
+        // Phase 1: Lazily create layers for injected languages via store
+        if let Some(store) = &self.layer_store {
+            for injection in injections {
+                if !self.layers.contains_key(&injection.language_id)
+                    && let Some(factory) = store.find(&injection.language_id)
+                    && let Some(layer) = factory.create_layer()
+                {
+                    self.layers.insert(injection.language_id.clone(), layer);
+                }
+            }
+        }
+
+        // Phase 2: Highlight with all available layers
         let mut all_highlights = Vec::new();
 
         for injection in injections {
@@ -286,7 +312,6 @@ impl InjectionManager {
                 continue;
             }
 
-            // Get layer for this language
             if let Some(layer) = self.layers.get_mut(&injection.language_id) {
                 let highlights = layer.highlight_injection(injection, full_content);
                 all_highlights.extend(highlights);
@@ -304,12 +329,6 @@ impl InjectionManager {
             layer.clear_cache();
         }
     }
-
-    /// Get the shared capture mapper.
-    #[must_use]
-    pub const fn capture_mapper(&self) -> &Arc<CaptureMapper> {
-        &self.capture_mapper
-    }
 }
 
 impl std::fmt::Debug for InjectionManager {
@@ -317,6 +336,7 @@ impl std::fmt::Debug for InjectionManager {
         f.debug_struct("InjectionManager")
             .field("layer_count", &self.layers.len())
             .field("languages", &self.layers.keys().collect::<Vec<_>>())
+            .field("has_store", &self.layer_store.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -356,7 +376,7 @@ impl std::fmt::Debug for InjectionManager {
 /// ```ignore
 /// let store = services.get::<InjectionLayerStore>()?;
 /// if let Some(factory) = store.find("rust") {
-///     let layer = factory.create_layer(capture_mapper.clone())?;
+///     let layer = factory.create_layer()?;
 ///     manager.register_layer(layer);
 /// }
 /// ```
@@ -433,31 +453,47 @@ mod tests {
 
     #[test]
     fn test_injection_manager_new() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let manager = InjectionManager::new(mapper);
+        let manager = InjectionManager::new();
         assert_eq!(manager.layer_count(), 0);
+        assert!(!format!("{manager:?}").contains("has_store: true"));
+    }
+
+    #[test]
+    fn test_injection_manager_with_store() {
+        let store = Arc::new(InjectionLayerStore::new());
+        let manager = InjectionManager::with_store(store);
+        assert_eq!(manager.layer_count(), 0);
+        assert!(format!("{manager:?}").contains("has_store: true"));
+    }
+
+    #[test]
+    fn test_injection_manager_set_store() {
+        let mut manager = InjectionManager::new();
+        assert!(!format!("{manager:?}").contains("has_store: true"));
+
+        let store = Arc::new(InjectionLayerStore::new());
+        manager.set_store(store);
+        assert!(format!("{manager:?}").contains("has_store: true"));
     }
 
     #[test]
     fn test_injection_manager_has_layer() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let manager = InjectionManager::new(mapper);
+        let manager = InjectionManager::new();
         assert!(!manager.has_layer("rust"));
     }
 
     #[test]
     fn test_injection_manager_debug() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let manager = InjectionManager::new(mapper);
+        let manager = InjectionManager::new();
         let debug = format!("{manager:?}");
         assert!(debug.contains("InjectionManager"));
         assert!(debug.contains("layer_count"));
+        assert!(debug.contains("has_store"));
     }
 
     #[test]
     fn test_injection_manager_invalidate() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(mapper);
+        let mut manager = InjectionManager::new();
 
         // Invalidate should not panic even with no layers
         manager.invalidate();
@@ -466,8 +502,7 @@ mod tests {
 
     #[test]
     fn test_injection_manager_highlight_injections_empty() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(mapper);
+        let mut manager = InjectionManager::new();
 
         let injections: Vec<Injection> = vec![];
         let highlights = manager.highlight_injections(&injections, "content", 0..100);
@@ -477,8 +512,7 @@ mod tests {
 
     #[test]
     fn test_injection_manager_highlight_injections_no_layer() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(mapper);
+        let mut manager = InjectionManager::new();
 
         // Injection for a language we don't have a layer for
         let injections = vec![Injection::new("rust".to_string(), 10..50, 0, 0, 2, 10)];
@@ -497,8 +531,7 @@ mod tests {
         // Create a minimal highlights query
         let query = Query::new(&language, "(identifier) @variable").unwrap();
 
-        let mapper = Arc::new(CaptureMapper::new());
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper);
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query));
 
         assert!(layer.is_some());
         let layer = layer.unwrap();
@@ -514,8 +547,7 @@ mod tests {
         // Create a query that matches identifiers
         let query = Query::new(&language, "(identifier) @variable").unwrap();
 
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
 
         // Simulate embedded Rust code in a larger document
         // Full content: "Some text\n```rust\nlet x = 1;\n```\nMore text"
@@ -549,11 +581,10 @@ mod tests {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
 
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
         // Register a Rust layer
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         assert!(manager.has_layer("rust"));
@@ -580,20 +611,45 @@ mod tests {
     // InjectionLayerStore Tests
     // ========================================================================
 
-    /// Mock factory for testing the store.
+    /// Mock factory for testing the store (always returns None).
     struct MockLayerFactory {
         language: &'static str,
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl InjectionLayerFactory for MockLayerFactory {
-        fn create_layer(&self, _capture_mapper: Arc<CaptureMapper>) -> Option<InjectionLayer> {
+        fn create_layer(&self) -> Option<InjectionLayer> {
             // For testing, we don't actually create a layer
             None
         }
 
         fn language_id(&self) -> &'static str {
             self.language
+        }
+    }
+
+    /// Real factory that creates a working Rust injection layer.
+    struct RealRustLayerFactory {
+        language: tree_sitter::Language,
+        query: Arc<Query>,
+    }
+
+    impl RealRustLayerFactory {
+        fn new() -> Self {
+            let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+            let query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+            Self { language, query }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl InjectionLayerFactory for RealRustLayerFactory {
+        fn create_layer(&self) -> Option<InjectionLayer> {
+            InjectionLayer::new("rust", &self.language, self.query.clone())
+        }
+
+        fn language_id(&self) -> &'static str {
+            "rust"
         }
     }
 
@@ -651,10 +707,9 @@ mod tests {
     fn test_injection_manager_register_and_has() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         assert!(manager.has_layer("rust"));
@@ -663,22 +718,12 @@ mod tests {
     }
 
     #[test]
-    fn test_injection_manager_capture_mapper() {
-        let mapper = Arc::new(CaptureMapper::new());
-        let manager = InjectionManager::new(Arc::clone(&mapper));
-
-        // Verify the capture mapper is accessible and has mappings
-        assert!(!manager.capture_mapper().is_empty());
-    }
-
-    #[test]
     fn test_injection_manager_highlight_out_of_range_skipped() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         // Create an injection outside the query range
@@ -693,8 +738,7 @@ mod tests {
     fn test_injection_layer_clear_cache() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
 
         // Parse something to populate cache
         let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
@@ -713,8 +757,7 @@ mod tests {
     fn test_injection_layer_highlight_empty_content() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
 
         // Empty injection content
         let injection = Injection::new("rust".to_string(), 5..5, 0, 0, 0, 0);
@@ -726,8 +769,7 @@ mod tests {
     fn test_injection_layer_highlight_out_of_bounds() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
 
         // Range beyond content length
         let injection = Injection::new("rust".to_string(), 100..200, 0, 0, 0, 0);
@@ -736,101 +778,127 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_injection_manager_get_or_create_layer_no_layer() {
-        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+    fn test_injection_manager_get_or_create_layer_no_store() {
+        let mut manager = InjectionManager::new();
 
-        /// Factory that does not support any language.
-        struct EmptyFactory;
-
-        impl SyntaxDriverFactory for EmptyFactory {
-            fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
-                None
-            }
-
-            fn supported_languages(&self) -> Vec<&str> {
-                vec![]
-            }
-        }
-
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(mapper);
-
-        // get_or_create_layer for an unknown language should return None
-        let result = manager.get_or_create_layer("unknown", &EmptyFactory);
+        // No store configured — always returns None for unknown languages
+        let result = manager.get_or_create_layer("unknown");
         assert!(result.is_none());
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_injection_manager_get_or_create_layer_supported_but_no_implementation() {
-        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
+    fn test_injection_manager_get_or_create_layer_store_factory_returns_none() {
+        // MockLayerFactory.create_layer() returns None
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
 
-        /// Factory that claims to support "rust" but can't create injection layers.
-        struct ClaimFactory;
+        let mut manager = InjectionManager::with_store(store);
 
-        impl SyntaxDriverFactory for ClaimFactory {
-            fn create(&self, _language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
-                None
-            }
-
-            fn supported_languages(&self) -> Vec<&str> {
-                vec!["rust"]
-            }
-
-            fn supports(&self, language_id: &str) -> bool {
-                language_id == "rust"
-            }
-        }
-
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(mapper);
-
-        // Factory supports "rust" but get_or_create_layer still returns None
-        // (dynamic creation not yet implemented)
-        let result = manager.get_or_create_layer("rust", &ClaimFactory);
+        // Store has a factory for "rust" but it returns None from create_layer()
+        let result = manager.get_or_create_layer("rust");
         assert!(result.is_none());
+        assert_eq!(manager.layer_count(), 0);
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_injection_manager_get_or_create_layer_cached() {
-        use reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory};
-
-        struct DummyFactory;
-
-        impl SyntaxDriverFactory for DummyFactory {
-            fn create(&self, _: &str) -> Option<Box<dyn SyntaxDriver>> {
-                None
-            }
-            fn supported_languages(&self) -> Vec<&str> {
-                vec![]
-            }
-        }
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
         // Pre-register a layer
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
-        // get_or_create_layer should find the cached layer
-        let result = manager.get_or_create_layer("rust", &DummyFactory);
+        // get_or_create_layer should find the cached layer (no store needed)
+        let result = manager.get_or_create_layer("rust");
         assert!(result.is_some());
         assert_eq!(result.unwrap().language_id(), "rust");
+    }
+
+    #[test]
+    fn test_injection_manager_get_or_create_layer_dynamic_creation() {
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(RealRustLayerFactory::new()));
+
+        let mut manager = InjectionManager::with_store(store);
+        assert_eq!(manager.layer_count(), 0);
+
+        // First call: dynamically creates the layer
+        let result = manager.get_or_create_layer("rust");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().language_id(), "rust");
+        assert_eq!(manager.layer_count(), 1);
+
+        // Second call: returns cached layer
+        let result = manager.get_or_create_layer("rust");
+        assert!(result.is_some());
+        assert_eq!(manager.layer_count(), 1);
+    }
+
+    #[test]
+    fn test_injection_manager_get_or_create_layer_unknown_language_with_store() {
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+
+        let mut manager = InjectionManager::with_store(store);
+
+        // "python" not in store — returns None
+        let result = manager.get_or_create_layer("python");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_highlight_injections_dynamic_creation() {
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(RealRustLayerFactory::new()));
+
+        let mut manager = InjectionManager::with_store(store);
+
+        // Simulate: parent Markdown doc has embedded Rust at bytes 10..30
+        let full_content = "# Title\n\nfn main() { let x = 1; }extra";
+        let injection = Injection::new("rust".to_string(), 10..34, 1, 0, 1, 24);
+
+        // No layer pre-registered — should be created dynamically
+        assert_eq!(manager.layer_count(), 0);
+
+        let highlights =
+            manager.highlight_injections(&[injection], full_content, 0..full_content.len());
+
+        // Layer was dynamically created
+        assert_eq!(manager.layer_count(), 1);
+        assert!(manager.has_layer("rust"));
+
+        // Should have produced highlights from the Rust code
+        assert!(
+            !highlights.is_empty(),
+            "Expected highlights from dynamically created Rust injection layer"
+        );
+    }
+
+    #[test]
+    fn test_highlight_injections_skips_unsupported_language() {
+        // Store with only Rust — injection for "python" should be silently skipped
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+
+        let mut manager = InjectionManager::with_store(store);
+
+        let content = "print('hello')";
+        let injection = Injection::new("python".to_string(), 0..14, 0, 0, 0, 14);
+        let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
+
+        assert!(highlights.is_empty());
+        assert_eq!(manager.layer_count(), 0);
     }
 
     #[test]
     fn test_injection_manager_highlight_non_overlapping_injection() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         // Injection range 10..50, query range 60..100 => no overlap
@@ -850,10 +918,9 @@ mod tests {
     fn test_injection_manager_invalidate_with_layers() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         // Highlight to populate cache
@@ -897,10 +964,9 @@ mod tests {
     fn test_injection_manager_debug_with_layers() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         let debug = format!("{manager:?}");
@@ -913,10 +979,9 @@ mod tests {
     fn test_injection_manager_highlight_injection_end_at_start_of_range() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         // Injection ends exactly where query range starts: no overlap
@@ -929,10 +994,9 @@ mod tests {
     fn test_injection_manager_highlight_injection_start_at_end_of_range() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
         manager.register_layer(layer);
 
         // Injection starts exactly where query range ends: no overlap
@@ -946,8 +1010,7 @@ mod tests {
     fn test_injection_layer_highlight_reuses_cached_tree() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query), mapper).unwrap();
+        let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
 
         let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
         let injection = Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10);
@@ -967,16 +1030,14 @@ mod tests {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let query1 = Query::new(&language, "(identifier) @variable").unwrap();
         let query2 = Query::new(&language, "(identifier) @variable").unwrap();
-        let mapper = Arc::new(CaptureMapper::new());
-        let mut manager = InjectionManager::new(Arc::clone(&mapper));
+        let mut manager = InjectionManager::new();
 
-        let layer1 =
-            InjectionLayer::new("rust", &language, Arc::new(query1), Arc::clone(&mapper)).unwrap();
+        let layer1 = InjectionLayer::new("rust", &language, Arc::new(query1)).unwrap();
         manager.register_layer(layer1);
         assert_eq!(manager.layer_count(), 1);
 
         // Re-registering with same language_id replaces
-        let layer2 = InjectionLayer::new("rust", &language, Arc::new(query2), mapper).unwrap();
+        let layer2 = InjectionLayer::new("rust", &language, Arc::new(query2)).unwrap();
         manager.register_layer(layer2);
         assert_eq!(manager.layer_count(), 1); // Still 1, replaced
     }

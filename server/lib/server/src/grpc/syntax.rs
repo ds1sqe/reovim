@@ -21,7 +21,6 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{HighlightGroup, SyntaxHighlight},
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         GetLanguageInfoRequest, GetLanguageInfoResponse, GetTokensRequest, GetTokensResponse,
@@ -90,27 +89,6 @@ impl SyntaxServiceImpl {
             .get(&self.default_session_id)
             .ok_or_else(|| Status::not_found("No active session"))
     }
-}
-
-/// Convert a `HighlightGroup` to its category string.
-///
-/// Uses the `SyntaxHighlight::category()` method from the syntax driver crate.
-/// This ensures consistency between server and client token categorization.
-///
-/// # Example Categories
-///
-/// - `keyword`, `keyword.control`, `keyword.function`
-/// - `function`, `function.builtin`, `function.macro`
-/// - `variable`, `variable.builtin`, `variable.parameter`
-/// - `string`, `string.escape`
-/// - `comment`, `comment.doc`
-///
-/// # Note
-///
-/// Used by `GetTokens` and `StreamTokens` to convert highlight groups to client-facing categories.
-#[must_use]
-pub fn highlight_group_to_category(group: HighlightGroup) -> &'static str {
-    group.category()
 }
 
 /// Detect language from file extension.
@@ -326,7 +304,8 @@ impl SyntaxService for SyntaxServiceImpl {
                             .map(|span| TokenSpan {
                                 start_byte: span.start_byte as u32,
                                 end_byte: span.end_byte as u32,
-                                category: highlight_group_to_category(span.group).to_string(),
+                                category: span.category.to_string(),
+                                kind: None,
                             })
                             .collect()
                     })
@@ -399,7 +378,8 @@ impl SyntaxService for SyntaxServiceImpl {
                         .map(|span| TokenSpan {
                             start_byte: span.start_byte as u32,
                             end_byte: span.end_byte as u32,
-                            category: highlight_group_to_category(span.group).to_string(),
+                            category: span.category.to_string(),
+                            kind: None,
                         })
                         .collect()
                 });
@@ -414,6 +394,8 @@ impl SyntaxService for SyntaxServiceImpl {
                     start_line: 0,
                     end_line: total_lines.saturating_sub(1),
                     full_refresh: true,
+                    layer: "syntax".into(),
+                    priority: 0,
                 };
 
                 Ok::<_, Status>((initial, rx))
@@ -502,70 +484,6 @@ impl SyntaxService for SyntaxServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_highlight_group_to_category() {
-        // Keywords
-        assert_eq!(highlight_group_to_category(HighlightGroup::Keyword), "keyword");
-        assert_eq!(highlight_group_to_category(HighlightGroup::KeywordControl), "keyword.control");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::KeywordFunction),
-            "keyword.function"
-        );
-
-        // Functions
-        assert_eq!(highlight_group_to_category(HighlightGroup::Function), "function");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::FunctionBuiltin),
-            "function.builtin"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Method), "function.method");
-
-        // Variables
-        assert_eq!(highlight_group_to_category(HighlightGroup::Variable), "variable");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::VariableBuiltin),
-            "variable.builtin"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Parameter), "variable.parameter");
-
-        // Literals
-        assert_eq!(highlight_group_to_category(HighlightGroup::String), "string");
-        assert_eq!(highlight_group_to_category(HighlightGroup::StringEscape), "string.escape");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Number), "number");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Boolean), "boolean");
-
-        // Comments
-        assert_eq!(highlight_group_to_category(HighlightGroup::Comment), "comment");
-        assert_eq!(highlight_group_to_category(HighlightGroup::CommentDoc), "comment.doc");
-
-        // Types
-        assert_eq!(highlight_group_to_category(HighlightGroup::Type), "type");
-        assert_eq!(highlight_group_to_category(HighlightGroup::TypeBuiltin), "type.builtin");
-
-        // Punctuation
-        assert_eq!(highlight_group_to_category(HighlightGroup::Punctuation), "punctuation");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::PunctuationBracket),
-            "punctuation.bracket"
-        );
-
-        // Operators
-        assert_eq!(highlight_group_to_category(HighlightGroup::Operator), "operator");
-
-        // Diagnostics
-        assert_eq!(highlight_group_to_category(HighlightGroup::Error), "diagnostic.error");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Warning), "diagnostic.warning");
-
-        // Markup
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupHeading), "markup.heading");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupBold), "markup.bold");
-
-        // Special
-        assert_eq!(highlight_group_to_category(HighlightGroup::Namespace), "namespace");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Attribute), "attribute");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Embedded), "embedded");
-    }
 
     #[test]
     fn test_detect_language_from_path() {
@@ -808,20 +726,6 @@ mod tests {
         assert!(cmake_exts.contains(&"CMakeLists.txt".to_string()));
     }
 
-    #[test]
-    fn test_highlight_group_additional_groups() {
-        // Test remaining highlight groups for completeness
-        assert_eq!(highlight_group_to_category(HighlightGroup::FunctionMacro), "function.macro");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupItalic), "markup.italic");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupLink), "markup.link");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::PunctuationDelimiter),
-            "punctuation.delimiter"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Character), "character");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Constant), "constant");
-    }
-
     #[tokio::test]
     async fn test_stream_tokens_no_session() {
         let registry = Arc::new(SessionRegistry::new());
@@ -1052,7 +956,7 @@ mod tests {
         use std::{ops::Range, sync::Arc};
 
         use reovim_driver_syntax::{
-            HighlightGroup, HighlightSpan, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
+            Annotation, HighlightCategory, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
         };
 
         /// A minimal test driver for unit tests.
@@ -1085,12 +989,12 @@ mod tests {
                 // No-op for tests
             }
 
-            fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+            fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
                 if self.parsed {
-                    vec![HighlightSpan::new(
+                    vec![Annotation::highlight(
                         byte_range.start,
                         byte_range.end.min(100),
-                        HighlightGroup::Keyword,
+                        HighlightCategory::new("keyword"),
                     )]
                 } else {
                     Vec::new()
@@ -1366,7 +1270,8 @@ mod tests {
                     .map(|span| reovim_protocol::v2::TokenSpan {
                         start_byte: span.start_byte as u32,
                         end_byte: span.end_byte as u32,
-                        category: span.group.category().to_string(),
+                        category: span.category.to_string(),
+                        kind: None,
                     })
                     .collect();
                 let update = reovim_protocol::v2::TokenUpdate {
@@ -1375,6 +1280,8 @@ mod tests {
                     start_line: 0,
                     end_line: 0,
                     full_refresh: false,
+                    layer: "syntax".into(),
+                    priority: 0,
                 };
                 // Broadcast via stream state
                 let stream_state = state
