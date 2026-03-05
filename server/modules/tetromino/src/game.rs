@@ -1,25 +1,25 @@
 //! Pure tetromino game logic with zero framework dependencies.
 //!
-//! All functions are pure and testable. The board is 10 columns x 20 rows,
+//! All functions are pure and testable. The board is 12 columns x 22 rows,
 //! with row 0 at the top. Pieces use the standard 7 tetrominoes with
-//! basic rotation (no wall kicks in v1).
+//! nudge-based wall kicks.
 
 /// Board width in cells.
-pub const BOARD_WIDTH: usize = 10;
+pub const BOARD_WIDTH: usize = 12;
 
 /// Board height in cells.
-pub const BOARD_HEIGHT: usize = 20;
+pub const BOARD_HEIGHT: usize = 22;
 
 /// Cell color corresponding to each tetromino type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockColor {
-    Cyan,   // I
-    Yellow, // O
-    Purple, // T
-    Green,  // S
-    Red,    // Z
-    Blue,   // J
-    Orange, // L
+    Amber,  // I
+    Teal,   // O
+    Rose,   // T
+    Sky,    // S
+    Lime,   // Z
+    Violet, // J
+    Coral,  // L
 }
 
 /// The 7 standard tetrominoes.
@@ -50,13 +50,13 @@ impl PieceType {
     #[must_use]
     pub const fn color(self) -> BlockColor {
         match self {
-            Self::I => BlockColor::Cyan,
-            Self::O => BlockColor::Yellow,
-            Self::T => BlockColor::Purple,
-            Self::S => BlockColor::Green,
-            Self::Z => BlockColor::Red,
-            Self::J => BlockColor::Blue,
-            Self::L => BlockColor::Orange,
+            Self::I => BlockColor::Amber,
+            Self::O => BlockColor::Teal,
+            Self::T => BlockColor::Rose,
+            Self::S => BlockColor::Sky,
+            Self::Z => BlockColor::Lime,
+            Self::J => BlockColor::Violet,
+            Self::L => BlockColor::Coral,
         }
     }
 
@@ -64,13 +64,13 @@ impl PieceType {
     #[must_use]
     pub const fn color_name(self) -> &'static str {
         match self {
-            Self::I => "cyan",
-            Self::O => "yellow",
-            Self::T => "purple",
-            Self::S => "green",
-            Self::Z => "red",
-            Self::J => "blue",
-            Self::L => "orange",
+            Self::I => "amber",
+            Self::O => "teal",
+            Self::T => "rose",
+            Self::S => "sky",
+            Self::Z => "lime",
+            Self::J => "violet",
+            Self::L => "coral",
         }
     }
 
@@ -259,129 +259,102 @@ pub fn clear_lines(board: &mut Board) -> u32 {
     cleared
 }
 
-/// Calculate score for cleared lines at given level (NES scoring).
+/// Calculate score for cleared lines at given level.
+///
+/// Formula: `lines^2 * 50 * (level + 1)`
+/// - 1 line:  50 * (level+1)
+/// - 2 lines: 200 * (level+1)
+/// - 3 lines: 450 * (level+1)
+/// - 4 lines: 800 * (level+1)
 #[must_use]
 pub const fn calculate_score(lines: u32, level: u32) -> u32 {
-    let base = match lines {
-        0 => 0,
-        1 => 40,
-        2 => 100,
-        3 => 300,
-        _ => 1200,
-    };
-    base * (level + 1)
+    lines * lines * 50 * (level + 1)
 }
 
-/// Calculate level from total lines cleared (every 10 lines).
+/// Calculate level from total lines cleared.
+///
+/// Levels 0-4 require 8 lines each. Levels 5+ require 12 lines each.
 #[must_use]
 pub const fn calculate_level(total_lines: u32) -> u32 {
-    total_lines / 10
+    if total_lines < 40 {
+        total_lines / 8
+    } else {
+        5 + (total_lines - 40) / 12
+    }
 }
 
 /// Calculate tick interval in milliseconds from level.
 ///
-/// Starts at 1000ms (level 0), decreasing by 75ms per level,
-/// with a minimum of 100ms.
+/// Uses exponential decay: `900 * 0.85^level`, floored at 80ms.
+/// Level 0: 900ms, Level 5: ~400ms, Level 10: ~177ms, Level 15: ~80ms.
 #[must_use]
-pub const fn tick_interval_ms(level: u32) -> u64 {
-    let base = 1000u64;
-    let reduction = level as u64 * 75;
-    if reduction >= base - 100 {
-        100
-    } else {
-        base - reduction
+pub fn tick_interval_ms(level: u32) -> u64 {
+    // 0.85 = 17/20, computed with integer math to avoid float
+    let mut interval = 900u64;
+    for _ in 0..level {
+        interval = interval * 17 / 20;
     }
+    interval.max(80)
 }
 
-/// SRS wall kick offsets for J, L, S, T, Z pieces.
+/// Standard nudge offsets: in-place, left, right, up.
+const NUDGES_STANDARD: &[(i32, i32)] = &[
+    (0, 0),  // try in place
+    (-1, 0), // nudge left
+    (1, 0),  // nudge right
+    (0, -1), // nudge up
+];
+
+/// I-piece nudge offsets: standard + larger horizontal shifts.
+const NUDGES_I: &[(i32, i32)] = &[
+    (0, 0),  // try in place
+    (-1, 0), // nudge left
+    (1, 0),  // nudge right
+    (0, -1), // nudge up
+    (-2, 0), // nudge left 2
+    (2, 0),  // nudge right 2
+];
+
+/// Common nudge-rotation logic for CW and CCW rotation.
 ///
-/// Each entry is `(from_rotation, to_rotation) -> [(col_offset, row_offset); 5]`.
-/// Test 0 is always (0,0) (no offset). Tests 1-4 are the wall kick attempts.
-#[must_use]
-const fn srs_offsets_jlstz(from: Rotation, to: Rotation) -> [(i32, i32); 5] {
-    match (from, to) {
-        (Rotation::R0 | Rotation::R180, Rotation::R90) => {
-            [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)]
+/// Tries the rotation with a sequence of small offsets (nudges).
+/// Standard pieces try 4 offsets; the I-piece tries 6.
+fn try_rotate_with_nudges(
+    board: &Board,
+    piece: &ActivePiece,
+    to_rot: Rotation,
+) -> Option<ActivePiece> {
+    let offsets = if piece.piece_type == PieceType::I {
+        NUDGES_I
+    } else {
+        NUDGES_STANDARD
+    };
+    for &(dc, dr) in offsets {
+        let candidate = ActivePiece {
+            rotation: to_rot,
+            col: piece.col + dc,
+            row: piece.row + dr,
+            ..piece.clone()
+        };
+        if !collides(board, &candidate) {
+            return Some(candidate);
         }
-        (Rotation::R90, Rotation::R0 | Rotation::R180) => {
-            [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)]
-        }
-        (Rotation::R180 | Rotation::R0, Rotation::R270) => {
-            [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)]
-        }
-        (Rotation::R270, Rotation::R180 | Rotation::R0) => {
-            [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)]
-        }
-        _ => [(0, 0); 5],
     }
+    None
 }
 
-/// SRS wall kick offsets for the I piece (different from JLSTZ).
-#[must_use]
-const fn srs_offsets_i(from: Rotation, to: Rotation) -> [(i32, i32); 5] {
-    match (from, to) {
-        (Rotation::R0, Rotation::R90) | (Rotation::R270, Rotation::R180) => {
-            [(0, 0), (-2, 0), (1, 0), (-2, 1), (1, -2)]
-        }
-        (Rotation::R90, Rotation::R0) | (Rotation::R180, Rotation::R270) => {
-            [(0, 0), (2, 0), (-1, 0), (2, -1), (-1, 2)]
-        }
-        (Rotation::R90, Rotation::R180) | (Rotation::R0, Rotation::R270) => {
-            [(0, 0), (-1, 0), (2, 0), (-1, -2), (2, 1)]
-        }
-        (Rotation::R180, Rotation::R90) | (Rotation::R270, Rotation::R0) => {
-            [(0, 0), (1, 0), (-2, 0), (1, 2), (-2, -1)]
-        }
-        _ => [(0, 0); 5],
-    }
-}
-
-/// Get the SRS wall kick offsets for a piece rotation transition.
-#[must_use]
-const fn wall_kick_offsets(piece: PieceType, from: Rotation, to: Rotation) -> [(i32, i32); 5] {
-    match piece {
-        PieceType::I => srs_offsets_i(from, to),
-        PieceType::O => [(0, 0); 5], // O never needs wall kicks
-        _ => srs_offsets_jlstz(from, to),
-    }
-}
-
-/// Try to rotate the piece clockwise with SRS wall kicks.
+/// Try to rotate the piece clockwise with nudge wall kicks.
 #[must_use]
 pub fn try_rotate_cw(board: &Board, piece: &ActivePiece) -> Option<ActivePiece> {
     let to_rot = piece.rotation.cw();
-    let offsets = wall_kick_offsets(piece.piece_type, piece.rotation, to_rot);
-    for (dc, dr) in offsets {
-        let candidate = ActivePiece {
-            rotation: to_rot,
-            col: piece.col + dc,
-            row: piece.row + dr,
-            ..piece.clone()
-        };
-        if !collides(board, &candidate) {
-            return Some(candidate);
-        }
-    }
-    None
+    try_rotate_with_nudges(board, piece, to_rot)
 }
 
-/// Try to rotate the piece counter-clockwise with SRS wall kicks.
+/// Try to rotate the piece counter-clockwise with nudge wall kicks.
 #[must_use]
 pub fn try_rotate_ccw(board: &Board, piece: &ActivePiece) -> Option<ActivePiece> {
     let to_rot = piece.rotation.ccw();
-    let offsets = wall_kick_offsets(piece.piece_type, piece.rotation, to_rot);
-    for (dc, dr) in offsets {
-        let candidate = ActivePiece {
-            rotation: to_rot,
-            col: piece.col + dc,
-            row: piece.row + dr,
-            ..piece.clone()
-        };
-        if !collides(board, &candidate) {
-            return Some(candidate);
-        }
-    }
-    None
+    try_rotate_with_nudges(board, piece, to_rot)
 }
 
 /// Try to move the piece left. Returns the moved piece if valid.
@@ -449,7 +422,7 @@ pub const fn spawn_piece(piece_type: PieceType) -> ActivePiece {
         piece_type,
         rotation: Rotation::R0,
         row: 0,
-        col: 3,
+        col: 4, // spawn column for 12-wide board
     }
 }
 
@@ -475,56 +448,6 @@ pub fn ghost_piece(board: &Board, piece: &ActivePiece) -> ActivePiece {
     hard_drop(board, piece)
 }
 
-/// Check if the last locked T-piece constitutes a T-spin.
-///
-/// A T-spin occurs when a T-piece is locked and at least 3 of the 4
-/// diagonal corners around its center are occupied (by walls or blocks).
-#[must_use]
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_sign_loss
-)]
-pub fn is_t_spin(board: &Board, piece: &ActivePiece) -> bool {
-    if piece.piece_type != PieceType::T {
-        return false;
-    }
-    // T-piece center is at offset (1,1) for R0/R180 or varies by rotation.
-    // Use the canonical center: for T in any rotation, the center cell is
-    // the one shared by all rotations conceptually. We compute it from the
-    // piece origin based on rotation.
-    let (center_r, center_c) = match piece.rotation {
-        Rotation::R0 => (piece.row, piece.col + 1),
-        Rotation::R90 => (piece.row + 1, piece.col),
-        Rotation::R180 | Rotation::R270 => (piece.row + 1, piece.col + 1),
-    };
-
-    let corners = [(-1, -1), (-1, 1), (1, -1), (1, 1)];
-    let mut filled = 0u8;
-    for (dr, dc) in corners {
-        let r = center_r + dr;
-        let c = center_c + dc;
-        if r < 0 || r >= BOARD_HEIGHT as i32 || c < 0 || c >= BOARD_WIDTH as i32 {
-            filled += 1; // Walls count as filled
-        } else if board[r as usize][c as usize].is_some() {
-            filled += 1;
-        }
-    }
-    filled >= 3
-}
-
-/// Calculate T-spin bonus score.
-#[must_use]
-pub const fn t_spin_score(lines: u32, level: u32) -> u32 {
-    let base = match lines {
-        0 => 400,  // T-spin no lines
-        1 => 800,  // T-spin single
-        2 => 1200, // T-spin double
-        _ => 1600, // T-spin triple
-    };
-    base * (level + 1)
-}
-
 /// Lock the current piece, clear lines, spawn next. Shared by tick/soft-drop/hard-drop.
 ///
 /// Returns the number of lines cleared.
@@ -533,15 +456,10 @@ pub fn lock_and_advance(
     piece: &ActivePiece,
     next_next_piece: PieceType,
 ) -> u32 {
-    let t_spin = is_t_spin(&state.board, piece);
     lock_piece(&mut state.board, piece);
     let lines = clear_lines(&mut state.board);
     state.lines_cleared += lines;
-    if t_spin {
-        state.score += t_spin_score(lines, state.level);
-    } else {
-        state.score += calculate_score(lines, state.level);
-    }
+    state.score += calculate_score(lines, state.level);
     state.level = calculate_level(state.lines_cleared);
     state.hold_used = false;
 
@@ -603,24 +521,24 @@ mod tests {
 
     #[test]
     fn piece_type_colors() {
-        assert_eq!(PieceType::I.color(), BlockColor::Cyan);
-        assert_eq!(PieceType::O.color(), BlockColor::Yellow);
-        assert_eq!(PieceType::T.color(), BlockColor::Purple);
-        assert_eq!(PieceType::S.color(), BlockColor::Green);
-        assert_eq!(PieceType::Z.color(), BlockColor::Red);
-        assert_eq!(PieceType::J.color(), BlockColor::Blue);
-        assert_eq!(PieceType::L.color(), BlockColor::Orange);
+        assert_eq!(PieceType::I.color(), BlockColor::Amber);
+        assert_eq!(PieceType::O.color(), BlockColor::Teal);
+        assert_eq!(PieceType::T.color(), BlockColor::Rose);
+        assert_eq!(PieceType::S.color(), BlockColor::Sky);
+        assert_eq!(PieceType::Z.color(), BlockColor::Lime);
+        assert_eq!(PieceType::J.color(), BlockColor::Violet);
+        assert_eq!(PieceType::L.color(), BlockColor::Coral);
     }
 
     #[test]
     fn piece_type_color_names() {
-        assert_eq!(PieceType::I.color_name(), "cyan");
-        assert_eq!(PieceType::O.color_name(), "yellow");
-        assert_eq!(PieceType::T.color_name(), "purple");
-        assert_eq!(PieceType::S.color_name(), "green");
-        assert_eq!(PieceType::Z.color_name(), "red");
-        assert_eq!(PieceType::J.color_name(), "blue");
-        assert_eq!(PieceType::L.color_name(), "orange");
+        assert_eq!(PieceType::I.color_name(), "amber");
+        assert_eq!(PieceType::O.color_name(), "teal");
+        assert_eq!(PieceType::T.color_name(), "rose");
+        assert_eq!(PieceType::S.color_name(), "sky");
+        assert_eq!(PieceType::Z.color_name(), "lime");
+        assert_eq!(PieceType::J.color_name(), "violet");
+        assert_eq!(PieceType::L.color_name(), "coral");
     }
 
     #[test]
@@ -656,19 +574,19 @@ mod tests {
 
     #[test]
     fn block_color_debug() {
-        let debug = format!("{:?}", BlockColor::Cyan);
-        assert!(debug.contains("Cyan"));
+        let debug = format!("{:?}", BlockColor::Amber);
+        assert!(debug.contains("Amber"));
     }
 
     #[test]
     fn block_color_eq() {
-        assert_eq!(BlockColor::Cyan, BlockColor::Cyan);
-        assert_ne!(BlockColor::Cyan, BlockColor::Red);
+        assert_eq!(BlockColor::Amber, BlockColor::Amber);
+        assert_ne!(BlockColor::Amber, BlockColor::Lime);
     }
 
     #[test]
     fn block_color_clone() {
-        let c = BlockColor::Purple;
+        let c = BlockColor::Rose;
         #[allow(clippy::clone_on_copy)]
         let cloned = c.clone();
         assert_eq!(c, cloned);
@@ -839,7 +757,7 @@ mod tests {
             piece_type: PieceType::I,
             rotation: Rotation::R0,
             row: 5,
-            col: 8,
+            col: 10,
         };
         assert!(collides(&board, &piece));
     }
@@ -850,7 +768,7 @@ mod tests {
         let piece = ActivePiece {
             piece_type: PieceType::I,
             rotation: Rotation::R90,
-            row: 18,
+            row: 20,
             col: 5,
         };
         assert!(collides(&board, &piece));
@@ -859,7 +777,7 @@ mod tests {
     #[test]
     fn collision_with_existing_block() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[5][4] = Some(BlockColor::Cyan);
+        board[5][4] = Some(BlockColor::Amber);
         let piece = ActivePiece {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
@@ -895,10 +813,10 @@ mod tests {
             col: 0,
         };
         lock_piece(&mut board, &piece);
-        assert_eq!(board[0][0], Some(BlockColor::Yellow));
-        assert_eq!(board[0][1], Some(BlockColor::Yellow));
-        assert_eq!(board[1][0], Some(BlockColor::Yellow));
-        assert_eq!(board[1][1], Some(BlockColor::Yellow));
+        assert_eq!(board[0][0], Some(BlockColor::Teal));
+        assert_eq!(board[0][1], Some(BlockColor::Teal));
+        assert_eq!(board[1][0], Some(BlockColor::Teal));
+        assert_eq!(board[1][1], Some(BlockColor::Teal));
     }
 
     #[test]
@@ -912,8 +830,8 @@ mod tests {
         };
         lock_piece(&mut board, &piece);
         // Only rows 0 and 1 should have blocks (rows -2 and -1 are skipped)
-        assert_eq!(board[0][5], Some(BlockColor::Cyan));
-        assert_eq!(board[1][5], Some(BlockColor::Cyan));
+        assert_eq!(board[0][5], Some(BlockColor::Amber));
+        assert_eq!(board[1][5], Some(BlockColor::Amber));
     }
 
     // =========================================================================
@@ -923,45 +841,45 @@ mod tests {
     #[test]
     fn clear_no_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[19][0] = Some(BlockColor::Cyan);
+        board[21][0] = Some(BlockColor::Amber);
         assert_eq!(clear_lines(&mut board), 0);
-        assert_eq!(board[19][0], Some(BlockColor::Cyan));
+        assert_eq!(board[21][0], Some(BlockColor::Amber));
     }
 
     #[test]
     fn clear_single_line() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[19].fill(Some(BlockColor::Cyan));
-        board[18][0] = Some(BlockColor::Red);
+        board[21].fill(Some(BlockColor::Amber));
+        board[20][0] = Some(BlockColor::Lime);
         assert_eq!(clear_lines(&mut board), 1);
-        // Row 18 should have shifted down to 19
-        assert_eq!(board[19][0], Some(BlockColor::Red));
-        // Row 18 should now be empty
-        assert!(board[18].iter().all(Option::is_none));
+        // Row 20 should have shifted down to 21
+        assert_eq!(board[21][0], Some(BlockColor::Lime));
+        // Row 20 should now be empty
+        assert!(board[20].iter().all(Option::is_none));
     }
 
     #[test]
     fn clear_double_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[18].fill(Some(BlockColor::Cyan));
-        board[19].fill(Some(BlockColor::Red));
+        board[20].fill(Some(BlockColor::Amber));
+        board[21].fill(Some(BlockColor::Lime));
         assert_eq!(clear_lines(&mut board), 2);
     }
 
     #[test]
     fn clear_triple_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[17].fill(Some(BlockColor::Blue));
-        board[18].fill(Some(BlockColor::Cyan));
-        board[19].fill(Some(BlockColor::Red));
+        board[19].fill(Some(BlockColor::Violet));
+        board[20].fill(Some(BlockColor::Amber));
+        board[21].fill(Some(BlockColor::Lime));
         assert_eq!(clear_lines(&mut board), 3);
     }
 
     #[test]
     fn clear_four_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        for row in &mut board[16..20] {
-            row.fill(Some(BlockColor::Green));
+        for row in &mut board[18..22] {
+            row.fill(Some(BlockColor::Sky));
         }
         assert_eq!(clear_lines(&mut board), 4);
         // All rows should be empty after clearing 4 bottom rows
@@ -973,13 +891,13 @@ mod tests {
     #[test]
     fn clear_non_contiguous_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // Fill rows 17 and 19 (not 18)
-        board[17].fill(Some(BlockColor::Cyan));
-        board[19].fill(Some(BlockColor::Red));
-        board[18][0] = Some(BlockColor::Blue);
+        // Fill rows 19 and 21 (not 20)
+        board[19].fill(Some(BlockColor::Amber));
+        board[21].fill(Some(BlockColor::Lime));
+        board[20][0] = Some(BlockColor::Violet);
         assert_eq!(clear_lines(&mut board), 2);
-        // The partial row 18 should shift down
-        assert_eq!(board[19][0], Some(BlockColor::Blue));
+        // The partial row 20 should shift down
+        assert_eq!(board[21][0], Some(BlockColor::Violet));
     }
 
     // =========================================================================
@@ -994,28 +912,28 @@ mod tests {
 
     #[test]
     fn score_single_line_level_0() {
-        assert_eq!(calculate_score(1, 0), 40);
+        assert_eq!(calculate_score(1, 0), 50);
     }
 
     #[test]
     fn score_double_line_level_0() {
-        assert_eq!(calculate_score(2, 0), 100);
+        assert_eq!(calculate_score(2, 0), 200);
     }
 
     #[test]
     fn score_triple_line_level_0() {
-        assert_eq!(calculate_score(3, 0), 300);
+        assert_eq!(calculate_score(3, 0), 450);
     }
 
     #[test]
     fn score_four_lines_level_0() {
-        assert_eq!(calculate_score(4, 0), 1200);
+        assert_eq!(calculate_score(4, 0), 800);
     }
 
     #[test]
     fn score_scales_with_level() {
-        assert_eq!(calculate_score(1, 5), 40 * 6);
-        assert_eq!(calculate_score(4, 9), 1200 * 10);
+        assert_eq!(calculate_score(1, 5), 50 * 6);
+        assert_eq!(calculate_score(4, 9), 800 * 10);
     }
 
     // =========================================================================
@@ -1025,9 +943,12 @@ mod tests {
     #[test]
     fn level_from_lines() {
         assert_eq!(calculate_level(0), 0);
-        assert_eq!(calculate_level(9), 0);
-        assert_eq!(calculate_level(10), 1);
-        assert_eq!(calculate_level(25), 2);
+        assert_eq!(calculate_level(7), 0);
+        assert_eq!(calculate_level(8), 1);
+        assert_eq!(calculate_level(39), 4);
+        assert_eq!(calculate_level(40), 5);
+        assert_eq!(calculate_level(51), 5);
+        assert_eq!(calculate_level(52), 6);
     }
 
     // =========================================================================
@@ -1036,7 +957,7 @@ mod tests {
 
     #[test]
     fn tick_interval_level_0() {
-        assert_eq!(tick_interval_ms(0), 1000);
+        assert_eq!(tick_interval_ms(0), 900);
     }
 
     #[test]
@@ -1046,8 +967,8 @@ mod tests {
 
     #[test]
     fn tick_interval_minimum() {
-        assert_eq!(tick_interval_ms(100), 100);
-        assert_eq!(tick_interval_ms(12), 100);
+        assert_eq!(tick_interval_ms(100), 80);
+        assert_eq!(tick_interval_ms(50), 80);
     }
 
     // =========================================================================
@@ -1100,7 +1021,7 @@ mod tests {
             piece_type: PieceType::T,
             rotation: Rotation::R0,
             row: 5,
-            col: 7,
+            col: 9,
         };
         assert!(try_move_right(&board, &piece).is_none());
     }
@@ -1124,7 +1045,7 @@ mod tests {
         let piece = ActivePiece {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
-            row: 18,
+            row: 20,
             col: 5,
         };
         assert!(try_move_down(&board, &piece).is_none());
@@ -1144,13 +1065,13 @@ mod tests {
             col: 5,
         };
         let dropped = hard_drop(&board, &piece);
-        assert_eq!(dropped.row, 18);
+        assert_eq!(dropped.row, 20);
     }
 
     #[test]
     fn hard_drop_onto_piece() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[10][5] = Some(BlockColor::Cyan);
+        board[10][5] = Some(BlockColor::Amber);
         let piece = ActivePiece {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
@@ -1181,14 +1102,13 @@ mod tests {
     #[test]
     fn rotate_cw_blocked() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // I piece at right wall in R0 would go out of bounds when rotated to R90
         let piece = ActivePiece {
             piece_type: PieceType::I,
             rotation: Rotation::R90,
-            row: 18,
+            row: 20,
             col: 5,
         };
-        // R90 -> R180 is horizontal, at row 18, col 5, cells span (18,5)..(18,8)
+        // R90 -> R180 is horizontal, at row 20, col 5, cells span (20,5)..(20,8)
         // That's within bounds, so this should succeed
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
@@ -1197,12 +1117,16 @@ mod tests {
     #[test]
     fn rotate_cw_blocked_at_wall() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // I piece vertical at col 9 can't rotate to horizontal
+        // I piece vertical at col 11 can't rotate to horizontal
+        // R90->R180: horizontal cells at col 11,12,13,14 — all OOB.
+        // Nudge left 1: col 10 -> 10,11,12,13 — still OOB.
+        // Nudge left 2: col 9 -> 9,10,11,12 — col 12 OOB.
+        // Nudge right: worse. Nudge up: same cols. All fail.
         let piece = ActivePiece {
             piece_type: PieceType::I,
             rotation: Rotation::R90,
             row: 5,
-            col: 9,
+            col: 11,
         };
         assert!(try_rotate_cw(&board, &piece).is_none());
     }
@@ -1215,7 +1139,7 @@ mod tests {
     fn spawn_at_top_center() {
         let piece = spawn_piece(PieceType::T);
         assert_eq!(piece.row, 0);
-        assert_eq!(piece.col, 3);
+        assert_eq!(piece.col, 4);
         assert_eq!(piece.rotation, Rotation::R0);
         assert_eq!(piece.piece_type, PieceType::T);
     }
@@ -1260,7 +1184,7 @@ mod tests {
     fn tick_locks_at_bottom() {
         let mut state = new_game(PieceType::O, PieceType::T);
         // Move piece to near bottom
-        state.active_piece.as_mut().unwrap().row = 18;
+        state.active_piece.as_mut().unwrap().row = 20;
         let (lines, locked) = tick(&mut state, PieceType::I);
         assert!(locked);
         assert_eq!(lines, 0);
@@ -1274,14 +1198,14 @@ mod tests {
         let mut state = new_game(PieceType::O, PieceType::T);
         // Fill bottom two rows except cols 0-1
         for col in 2..BOARD_WIDTH {
-            state.board[18][col] = Some(BlockColor::Cyan);
-            state.board[19][col] = Some(BlockColor::Cyan);
+            state.board[20][col] = Some(BlockColor::Amber);
+            state.board[21][col] = Some(BlockColor::Amber);
         }
-        // Place O piece at bottom-left (cols 0-1, rows 18-19)
+        // Place O piece at bottom-left (cols 0-1, rows 20-21)
         state.active_piece = Some(ActivePiece {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
-            row: 18,
+            row: 20,
             col: 0,
         });
         let (lines, locked) = tick(&mut state, PieceType::I);
@@ -1296,12 +1220,12 @@ mod tests {
     fn tick_game_over() {
         let mut state = new_game(PieceType::O, PieceType::O);
         // Fill the top so the next spawn collides
-        for col in 3..5 {
-            state.board[0][col] = Some(BlockColor::Cyan);
-            state.board[1][col] = Some(BlockColor::Cyan);
+        for col in 4..6 {
+            state.board[0][col] = Some(BlockColor::Amber);
+            state.board[1][col] = Some(BlockColor::Amber);
         }
         // Force lock the current piece
-        state.active_piece.as_mut().unwrap().row = 18;
+        state.active_piece.as_mut().unwrap().row = 20;
         let (_lines, locked) = tick(&mut state, PieceType::T);
         assert!(locked);
         assert!(state.game_over);
@@ -1336,10 +1260,10 @@ mod tests {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
             row: 5,
-            col: 3,
+            col: 4,
         };
         let cells = absolute_cells(&piece);
-        assert_eq!(cells, vec![(5, 3), (5, 4), (6, 3), (6, 4)]);
+        assert_eq!(cells, vec![(5, 4), (5, 5), (6, 4), (6, 5)]);
     }
 
     // =========================================================================
@@ -1419,7 +1343,7 @@ mod tests {
     #[test]
     fn rotate_ccw_blocked() {
         // Surrounded on all sides — no wall kick can help
-        let mut blocked = [[Some(BlockColor::Cyan); BOARD_WIDTH]; BOARD_HEIGHT];
+        let mut blocked = [[Some(BlockColor::Amber); BOARD_WIDTH]; BOARD_HEIGHT];
         blocked[10][5] = None;
         blocked[11][5] = None;
         blocked[12][5] = None;
@@ -1440,13 +1364,12 @@ mod tests {
     #[test]
     fn wall_kick_cw_near_floor() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T piece at R0 near floor, row=18. CW to R90 would put a cell
-        // at row 20 (out of bounds). SRS offset test 3 (dc=-1, dr=-1)
-        // kicks it up+left to fit.
+        // T piece at R0 near floor, row=20. CW to R90 would put a cell
+        // at row 22 (out of bounds). Nudge up (0,-1) kicks it to fit.
         let piece = ActivePiece {
             piece_type: PieceType::T,
             rotation: Rotation::R0,
-            row: 18,
+            row: 20,
             col: 4,
         };
         let rotated = try_rotate_cw(&board, &piece);
@@ -1459,9 +1382,11 @@ mod tests {
     fn wall_kick_cw_with_blocks() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         // Place blocks that prevent basic rotation
-        board[6][5] = Some(BlockColor::Red);
-        // T piece at R0, col=4, row=5. CW to R90 would put a cell at (6,5)
-        // which is blocked. SRS kick should find an alternate position.
+        board[6][5] = Some(BlockColor::Lime);
+        // T piece at R0, col=4, row=5. CW to R90 would put a cell at (6,4)
+        // which is clear, but (5,5)+(6,4)+(7,4) — actually let's check:
+        // R90 cells: (0,0),(1,0),(2,0),(1,1) => at col=4: (5,4),(6,4),(7,4),(6,5)
+        // (6,5) is blocked. Nudge left (-1,0) => col=3: (5,3),(6,3),(7,3),(6,4) — fits.
         let piece = ActivePiece {
             piece_type: PieceType::T,
             rotation: Rotation::R0,
@@ -1477,14 +1402,14 @@ mod tests {
     #[test]
     fn wall_kick_i_piece() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // I piece vertical (R90) at col=7, rotating CW to R180 (horizontal).
-        // R180 cells at col=7: (5,7)(5,8)(5,9)(5,10) — col 10 out of bounds.
-        // SRS test 2 (dc=-1, dr=0) kicks to col=6: (5,6)(5,7)(5,8)(5,9) — fits.
+        // I piece vertical (R90) at col=9, rotating CW to R180 (horizontal).
+        // R180 cells at col=9: (5,9)(5,10)(5,11)(5,12) — col 12 OOB.
+        // Nudge left (-1,0) to col=8: (5,8)(5,9)(5,10)(5,11) — fits.
         let piece = ActivePiece {
             piece_type: PieceType::I,
             rotation: Rotation::R90,
             row: 5,
-            col: 7,
+            col: 9,
         };
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
@@ -1533,13 +1458,13 @@ mod tests {
             col: 5,
         };
         let ghost = ghost_piece(&board, &piece);
-        assert_eq!(ghost.row, 18); // O piece lands at row 18 (rows 18-19)
+        assert_eq!(ghost.row, 20); // O piece lands at row 20 (rows 20-21)
     }
 
     #[test]
     fn ghost_piece_above_blocks() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[10][5] = Some(BlockColor::Red);
+        board[10][5] = Some(BlockColor::Lime);
         let piece = ActivePiece {
             piece_type: PieceType::O,
             rotation: Rotation::R0,
@@ -1550,120 +1475,6 @@ mod tests {
         assert_eq!(ghost.row, 8);
     }
 
-    // =========================================================================
-    // T-spin detection
-    // =========================================================================
-
-    #[test]
-    fn t_spin_not_t_piece() {
-        let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        let piece = ActivePiece {
-            piece_type: PieceType::I,
-            rotation: Rotation::R0,
-            row: 5,
-            col: 5,
-        };
-        assert!(!is_t_spin(&board, &piece));
-    }
-
-    #[test]
-    fn t_spin_no_corners_filled() {
-        let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        let piece = ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R0,
-            row: 5,
-            col: 5,
-        };
-        assert!(!is_t_spin(&board, &piece));
-    }
-
-    #[test]
-    fn t_spin_three_corners_filled() {
-        let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T at R0, origin (5,5), center at (5,6)
-        // Corners: (4,5), (4,7), (6,5), (6,7)
-        board[4][5] = Some(BlockColor::Cyan);
-        board[4][7] = Some(BlockColor::Cyan);
-        board[6][5] = Some(BlockColor::Cyan);
-        let piece = ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R0,
-            row: 5,
-            col: 5,
-        };
-        assert!(is_t_spin(&board, &piece));
-    }
-
-    #[test]
-    fn t_spin_wall_counts_as_filled() {
-        let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T at R90, origin (0,0), center at (1,0)
-        // Corners: (0,-1), (0,1), (2,-1), (2,1)
-        // col -1 is wall -> 2 filled automatically
-        // Need 1 more corner filled
-        let mut board2 = board;
-        board2[0][1] = Some(BlockColor::Cyan); // (0,1) is a corner
-        let piece = ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R90,
-            row: 0,
-            col: 0,
-        };
-        assert!(is_t_spin(&board2, &piece));
-    }
-
-    #[test]
-    fn t_spin_r180() {
-        let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T at R180, origin (5,3), center at (6,4)
-        // Corners: (5,3), (5,5), (7,3), (7,5)
-        board[5][3] = Some(BlockColor::Cyan);
-        board[5][5] = Some(BlockColor::Cyan);
-        board[7][3] = Some(BlockColor::Cyan);
-        let piece = ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R180,
-            row: 5,
-            col: 3,
-        };
-        assert!(is_t_spin(&board, &piece));
-    }
-
-    #[test]
-    fn t_spin_r270() {
-        let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T at R270, origin (5,3), center at (6,4)
-        // Corners: (5,3), (5,5), (7,3), (7,5)
-        board[5][3] = Some(BlockColor::Cyan);
-        board[5][5] = Some(BlockColor::Cyan);
-        board[7][3] = Some(BlockColor::Cyan);
-        let piece = ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R270,
-            row: 5,
-            col: 3,
-        };
-        assert!(is_t_spin(&board, &piece));
-    }
-
-    // =========================================================================
-    // T-spin scoring
-    // =========================================================================
-
-    #[test]
-    fn t_spin_score_values() {
-        assert_eq!(t_spin_score(0, 0), 400);
-        assert_eq!(t_spin_score(1, 0), 800);
-        assert_eq!(t_spin_score(2, 0), 1200);
-        assert_eq!(t_spin_score(3, 0), 1600);
-    }
-
-    #[test]
-    fn t_spin_score_scales_with_level() {
-        assert_eq!(t_spin_score(1, 5), 800 * 6);
-        assert_eq!(t_spin_score(2, 9), 1200 * 10);
-    }
 
     // =========================================================================
     // lock_and_advance
@@ -1673,7 +1484,7 @@ mod tests {
     fn lock_and_advance_resets_hold() {
         let mut state = new_game(PieceType::O, PieceType::T);
         state.hold_used = true;
-        state.active_piece.as_mut().unwrap().row = 18;
+        state.active_piece.as_mut().unwrap().row = 20;
         let piece = state.active_piece.clone().unwrap();
         lock_and_advance(&mut state, &piece, PieceType::I);
         assert!(!state.hold_used);
@@ -1682,7 +1493,7 @@ mod tests {
     #[test]
     fn lock_and_advance_spawns_next() {
         let mut state = new_game(PieceType::O, PieceType::T);
-        state.active_piece.as_mut().unwrap().row = 18;
+        state.active_piece.as_mut().unwrap().row = 20;
         let piece = state.active_piece.clone().unwrap();
         lock_and_advance(&mut state, &piece, PieceType::I);
         assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::T);
@@ -1693,35 +1504,14 @@ mod tests {
     fn lock_and_advance_game_over() {
         let mut state = new_game(PieceType::O, PieceType::O);
         // Fill spawn zone
-        for col in 3..5 {
-            state.board[0][col] = Some(BlockColor::Cyan);
-            state.board[1][col] = Some(BlockColor::Cyan);
+        for col in 4..6 {
+            state.board[0][col] = Some(BlockColor::Amber);
+            state.board[1][col] = Some(BlockColor::Amber);
         }
-        state.active_piece.as_mut().unwrap().row = 18;
+        state.active_piece.as_mut().unwrap().row = 20;
         let piece = state.active_piece.clone().unwrap();
         lock_and_advance(&mut state, &piece, PieceType::T);
         assert!(state.game_over);
     }
 
-    #[test]
-    fn lock_and_advance_with_t_spin() {
-        let mut state = new_game(PieceType::T, PieceType::I);
-        // Set up T-spin scenario: 3 corners filled around T center
-        // T at R0, origin (18,5), center at (18,6)
-        // Corners: (17,5), (17,7), (19,5), (19,7)
-        state.board[17][5] = Some(BlockColor::Cyan);
-        state.board[17][7] = Some(BlockColor::Cyan);
-        state.board[19][5] = Some(BlockColor::Cyan);
-        state.active_piece = Some(ActivePiece {
-            piece_type: PieceType::T,
-            rotation: Rotation::R0,
-            row: 18,
-            col: 5,
-        });
-        let piece = state.active_piece.clone().unwrap();
-        let lines = lock_and_advance(&mut state, &piece, PieceType::S);
-        assert_eq!(lines, 0); // No full lines
-        // T-spin no lines = 400 * (level + 1) = 400
-        assert_eq!(state.score, 400);
-    }
 }

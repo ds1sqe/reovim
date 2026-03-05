@@ -77,13 +77,13 @@ fn serialize_board(board: &game::Board) -> Vec<Vec<&'static str>> {
         .map(|row| {
             row.iter()
                 .map(|cell| match cell {
-                    Some(game::BlockColor::Cyan) => "cyan",
-                    Some(game::BlockColor::Yellow) => "yellow",
-                    Some(game::BlockColor::Purple) => "purple",
-                    Some(game::BlockColor::Green) => "green",
-                    Some(game::BlockColor::Red) => "red",
-                    Some(game::BlockColor::Blue) => "blue",
-                    Some(game::BlockColor::Orange) => "orange",
+                    Some(game::BlockColor::Amber) => "amber",
+                    Some(game::BlockColor::Teal) => "teal",
+                    Some(game::BlockColor::Rose) => "rose",
+                    Some(game::BlockColor::Sky) => "sky",
+                    Some(game::BlockColor::Lime) => "lime",
+                    Some(game::BlockColor::Violet) => "violet",
+                    Some(game::BlockColor::Coral) => "coral",
                     None => "",
                 })
                 .collect()
@@ -158,10 +158,10 @@ mod tests {
         assert_eq!(snap["level"], 0);
         assert_eq!(snap["linesCleared"], 0);
 
-        // Board should be 20 rows of 10 columns
+        // Board should be 22 rows of 12 columns
         let board = snap["board"].as_array().unwrap();
-        assert_eq!(board.len(), 20);
-        assert_eq!(board[0].as_array().unwrap().len(), 10);
+        assert_eq!(board.len(), 22);
+        assert_eq!(board[0].as_array().unwrap().len(), 12);
 
         // Active piece should exist
         assert!(snap["activePiece"].is_object());
@@ -223,14 +223,14 @@ mod tests {
         let mut map = ExtensionMap::new();
         let state = map.get_or_insert::<TetrominoState>();
         state.start_game();
-        state.game.as_mut().unwrap().board[19][0] = Some(BlockColor::Cyan);
-        state.game.as_mut().unwrap().board[19][1] = Some(BlockColor::Red);
+        state.game.as_mut().unwrap().board[21][0] = Some(BlockColor::Amber);
+        state.game.as_mut().unwrap().board[21][1] = Some(BlockColor::Lime);
 
         let snap = TetrominoBridge.snapshot(&map).unwrap();
         let board = snap["board"].as_array().unwrap();
-        let last_row = board[19].as_array().unwrap();
-        assert_eq!(last_row[0], "cyan");
-        assert_eq!(last_row[1], "red");
+        let last_row = board[21].as_array().unwrap();
+        assert_eq!(last_row[0], "amber");
+        assert_eq!(last_row[1], "lime");
         assert_eq!(last_row[2], "");
     }
 
@@ -257,9 +257,9 @@ mod tests {
 
     #[test]
     fn serialize_board_empty() {
-        let board = [[None; 10]; 20];
+        let board = [[None; game::BOARD_WIDTH]; game::BOARD_HEIGHT];
         let result = serialize_board(&board);
-        assert_eq!(result.len(), 20);
+        assert_eq!(result.len(), game::BOARD_HEIGHT);
         for row in &result {
             assert!(row.iter().all(|c| c.is_empty()));
         }
@@ -267,23 +267,23 @@ mod tests {
 
     #[test]
     fn serialize_board_all_colors() {
-        let mut board = [[None; 10]; 20];
-        board[0][0] = Some(BlockColor::Cyan);
-        board[0][1] = Some(BlockColor::Yellow);
-        board[0][2] = Some(BlockColor::Purple);
-        board[0][3] = Some(BlockColor::Green);
-        board[0][4] = Some(BlockColor::Red);
-        board[0][5] = Some(BlockColor::Blue);
-        board[0][6] = Some(BlockColor::Orange);
+        let mut board = [[None; game::BOARD_WIDTH]; game::BOARD_HEIGHT];
+        board[0][0] = Some(BlockColor::Amber);
+        board[0][1] = Some(BlockColor::Teal);
+        board[0][2] = Some(BlockColor::Rose);
+        board[0][3] = Some(BlockColor::Sky);
+        board[0][4] = Some(BlockColor::Lime);
+        board[0][5] = Some(BlockColor::Violet);
+        board[0][6] = Some(BlockColor::Coral);
 
         let result = serialize_board(&board);
-        assert_eq!(result[0][0], "cyan");
-        assert_eq!(result[0][1], "yellow");
-        assert_eq!(result[0][2], "purple");
-        assert_eq!(result[0][3], "green");
-        assert_eq!(result[0][4], "red");
-        assert_eq!(result[0][5], "blue");
-        assert_eq!(result[0][6], "orange");
+        assert_eq!(result[0][0], "amber");
+        assert_eq!(result[0][1], "teal");
+        assert_eq!(result[0][2], "rose");
+        assert_eq!(result[0][3], "sky");
+        assert_eq!(result[0][4], "lime");
+        assert_eq!(result[0][5], "violet");
+        assert_eq!(result[0][6], "coral");
     }
 
     #[test]
@@ -296,7 +296,7 @@ mod tests {
         };
         let json = serialize_piece(&piece);
         assert_eq!(json["type"], "T");
-        assert_eq!(json["color"], "purple");
+        assert_eq!(json["color"], "rose");
         let cells = json["cells"].as_array().unwrap();
         assert_eq!(cells.len(), 4);
     }

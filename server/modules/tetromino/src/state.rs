@@ -3,11 +3,14 @@
 //! Stored in the session's `ExtensionMap` as a `SessionExtension`.
 //! Each connected client gets its own independent game.
 
-use std::time::Instant;
+use std::{collections::VecDeque, time::Instant};
 
-use {rand::seq::SliceRandom, reovim_driver_session::SessionExtension};
+use {rand::Rng, reovim_driver_session::SessionExtension};
 
 use crate::game::{self, GameState, PieceType};
+
+/// Maximum reroll attempts to avoid recent pieces.
+const MAX_REROLLS: usize = 4;
 
 /// Per-client tetromino state.
 #[derive(Debug)]
@@ -20,34 +23,41 @@ pub struct TetrominoState {
     pub game: Option<GameState>,
     /// Time of the last gravity tick.
     pub last_tick: Instant,
-    /// Piece bag for pseudo-random piece generation.
-    bag: Vec<PieceType>,
-    /// Current index into the bag.
-    bag_index: usize,
+    /// History of recent piece types for the history-4 randomizer.
+    history: VecDeque<PieceType>,
 }
 
 impl TetrominoState {
     /// Start a new game.
     pub fn start_game(&mut self) {
-        let first = self.next_piece_from_bag();
-        let next = self.next_piece_from_bag();
+        self.history.clear();
+        let first = self.next_piece();
+        let next = self.next_piece();
         self.game = Some(game::new_game(first, next));
         self.active = true;
         self.paused = false;
         self.last_tick = Instant::now();
     }
 
-    /// Get the next piece from the 7-bag randomizer.
+    /// Get the next piece using the history-4 randomizer.
     ///
-    /// Cycles through all 7 piece types. When a bag is exhausted,
-    /// the bag is reshuffled using Fisher-Yates (via `rand`).
-    pub fn next_piece_from_bag(&mut self) -> PieceType {
-        if self.bag_index >= self.bag.len() {
-            self.bag.shuffle(&mut rand::thread_rng());
-            self.bag_index = 0;
+    /// Picks a random piece type. If it appears in the last 4 dealt pieces,
+    /// reroll up to [`MAX_REROLLS`] times. The final pick is always accepted.
+    pub fn next_piece(&mut self) -> PieceType {
+        let mut rng = rand::thread_rng();
+        let mut piece = PieceType::ALL[rng.gen_range(0..PieceType::ALL.len())];
+
+        for _ in 0..MAX_REROLLS {
+            if !self.history.contains(&piece) {
+                break;
+            }
+            piece = PieceType::ALL[rng.gen_range(0..PieceType::ALL.len())];
         }
-        let piece = self.bag[self.bag_index];
-        self.bag_index += 1;
+
+        if self.history.len() >= 4 {
+            self.history.pop_front();
+        }
+        self.history.push_back(piece);
         piece
     }
 
@@ -55,7 +65,7 @@ impl TetrominoState {
     ///
     /// Shared by soft-drop, hard-drop, and tick logic. Returns lines cleared.
     pub fn lock_clear_spawn(&mut self, piece: &game::ActivePiece) -> u32 {
-        let next = self.next_piece_from_bag();
+        let next = self.next_piece();
         if let Some(ref mut game_state) = self.game {
             return game::lock_and_advance(game_state, piece, next);
         }
@@ -80,7 +90,7 @@ impl TetrominoState {
 
     /// Apply a gravity tick: advance the game state and reset the timer.
     pub fn apply_tick(&mut self) {
-        let next_piece = self.next_piece_from_bag();
+        let next_piece = self.next_piece();
         if let Some(ref mut g) = self.game {
             game::tick(g, next_piece);
         }
@@ -109,9 +119,9 @@ impl TetrominoState {
         let current_type = active.piece_type;
         let had_held = game_state.held_piece;
 
-        // Pre-fetch next piece from bag if we need it (first hold)
-        let next_from_bag = if had_held.is_none() {
-            Some(self.next_piece_from_bag())
+        // Pre-fetch next piece if we need it (first hold)
+        let next_from_history = if had_held.is_none() {
+            Some(self.next_piece())
         } else {
             None
         };
@@ -126,7 +136,7 @@ impl TetrominoState {
             game_state.held_piece = Some(current_type);
             let next = game_state.next_piece;
             game_state.active_piece = Some(game::spawn_piece(next));
-            game_state.next_piece = next_from_bag.expect("computed above");
+            game_state.next_piece = next_from_history.expect("computed above");
         }
         game_state.hold_used = true;
         true
@@ -140,16 +150,7 @@ impl SessionExtension for TetrominoState {
             paused: false,
             game: None,
             last_tick: Instant::now(),
-            bag: vec![
-                PieceType::I,
-                PieceType::O,
-                PieceType::T,
-                PieceType::S,
-                PieceType::Z,
-                PieceType::J,
-                PieceType::L,
-            ],
-            bag_index: 0,
+            history: VecDeque::with_capacity(4),
         }
     }
 }
@@ -164,8 +165,7 @@ mod tests {
         assert!(!state.active);
         assert!(!state.paused);
         assert!(state.game.is_none());
-        assert_eq!(state.bag.len(), 7);
-        assert_eq!(state.bag_index, 0);
+        assert!(state.history.is_empty());
     }
 
     #[test]
@@ -186,46 +186,48 @@ mod tests {
     }
 
     #[test]
-    fn start_game_uses_bag() {
+    fn start_game_populates_history() {
         let mut state = TetrominoState::create();
         state.start_game();
-        // First piece from bag is I, second is O
-        assert_eq!(
-            state
-                .game
-                .as_ref()
-                .unwrap()
-                .active_piece
-                .as_ref()
-                .unwrap()
-                .piece_type,
-            PieceType::I
-        );
-        assert_eq!(state.game.as_ref().unwrap().next_piece, PieceType::O);
-        assert_eq!(state.bag_index, 2);
+        // start_game calls next_piece twice (first + next)
+        assert_eq!(state.history.len(), 2);
     }
 
     #[test]
-    fn next_piece_all_types_in_bag() {
+    fn start_game_clears_old_history() {
         let mut state = TetrominoState::create();
-        let mut seen = std::collections::HashSet::new();
-        for _ in 0..7 {
-            seen.insert(state.next_piece_from_bag());
-        }
-        assert_eq!(seen.len(), 7);
+        state.start_game();
+        assert_eq!(state.history.len(), 2);
+        // Start a new game — history should be reset
+        state.start_game();
+        assert_eq!(state.history.len(), 2);
     }
 
     #[test]
-    fn next_piece_reshuffles_bag() {
+    fn next_piece_returns_valid_type() {
         let mut state = TetrominoState::create();
-        // Exhaust first bag
-        for _ in 0..7 {
-            state.next_piece_from_bag();
+        for _ in 0..50 {
+            let piece = state.next_piece();
+            assert!(PieceType::ALL.contains(&piece));
         }
-        // Second bag should still have all 7 types (just different order)
+    }
+
+    #[test]
+    fn next_piece_history_caps_at_4() {
+        let mut state = TetrominoState::create();
+        for _ in 0..20 {
+            state.next_piece();
+        }
+        assert_eq!(state.history.len(), 4);
+    }
+
+    #[test]
+    fn next_piece_all_types_appear() {
+        // Over many draws, all 7 types should appear
+        let mut state = TetrominoState::create();
         let mut seen = std::collections::HashSet::new();
-        for _ in 0..7 {
-            seen.insert(state.next_piece_from_bag());
+        for _ in 0..100 {
+            seen.insert(state.next_piece());
         }
         assert_eq!(seen.len(), 7);
     }
@@ -235,7 +237,6 @@ mod tests {
         let mut state = TetrominoState::create();
         state.start_game();
         state.paused = true;
-        // Even with time elapsed, should not tick when paused
         assert!(!state.should_tick());
     }
 
@@ -257,7 +258,7 @@ mod tests {
     fn should_tick_false_immediately() {
         let mut state = TetrominoState::create();
         state.start_game();
-        // Just started, should not tick immediately (1000ms interval at level 0)
+        // Just started, should not tick immediately (900ms interval at level 0)
         assert!(!state.should_tick());
     }
 

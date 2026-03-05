@@ -10,8 +10,8 @@ pub mod render;
 use reovim_driver_display::render_backend::{RenderBackend, TuiExtension};
 
 /// Board dimensions from the server game logic.
-const BOARD_HEIGHT: usize = 20;
-const BOARD_WIDTH: usize = 10;
+const BOARD_HEIGHT: usize = 22;
+const BOARD_WIDTH: usize = 12;
 
 /// Deserialized tetromino state from server notification.
 #[derive(Debug, Default)]
@@ -208,7 +208,7 @@ mod tests {
         assert_eq!(ext.data.level, 1);
         assert_eq!(ext.data.lines_cleared, 5);
         assert_eq!(ext.data.next_piece, "T");
-        assert_eq!(ext.data.next_piece_color, "purple");
+        assert_eq!(ext.data.next_piece_color, "rose");
     }
 
     #[test]
@@ -231,14 +231,14 @@ mod tests {
         let mut ext = TetrominoExtension::new();
         ext.apply_notification(&make_game_json(false, false, 0, 0, 0));
         let piece = ext.data.active_piece.as_ref().unwrap();
-        assert_eq!(piece.color, "cyan");
+        assert_eq!(piece.color, "amber");
         assert_eq!(piece.cells.len(), 4);
     }
 
     #[test]
     fn apply_notification_no_active_piece() {
         let mut ext = TetrominoExtension::new();
-        let json = r#"{"active":true,"paused":false,"gameOver":true,"score":0,"level":0,"linesCleared":0,"nextPiece":"T","nextPieceColor":"purple","board":[],"activePiece":null}"#;
+        let json = r#"{"active":true,"paused":false,"gameOver":true,"score":0,"level":0,"linesCleared":0,"nextPiece":"T","nextPieceColor":"rose","board":[],"activePiece":null}"#;
         ext.apply_notification(json);
         assert!(ext.data.active_piece.is_none());
     }
@@ -307,11 +307,11 @@ mod tests {
     #[test]
     fn piece_data_debug() {
         let piece = PieceData {
-            color: "cyan".to_owned(),
+            color: "amber".to_owned(),
             cells: vec![(0, 0), (0, 1)],
         };
         let debug = format!("{piece:?}");
-        assert!(debug.contains("cyan"));
+        assert!(debug.contains("amber"));
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
         ext.apply_notification(&make_game_json(false, false, 0, 0, 0));
         assert!(ext.data.ghost_piece.is_some());
         let ghost = ext.data.ghost_piece.as_ref().unwrap();
-        assert_eq!(ghost.color, "cyan");
+        assert_eq!(ghost.color, "amber");
     }
 
     #[test]
@@ -338,7 +338,7 @@ mod tests {
         assert!(ext.data.held_piece.is_some());
         let held = ext.data.held_piece.as_ref().unwrap();
         assert_eq!(held.piece_type, "T");
-        assert_eq!(held.color, "purple");
+        assert_eq!(held.color, "rose");
     }
 
     #[test]
@@ -357,11 +357,11 @@ mod tests {
     fn parse_piece_data_valid() {
         let json: serde_json::Value = serde_json::json!({
             "type": "I",
-            "color": "cyan",
-            "cells": [[0, 3], [0, 4], [0, 5], [0, 6]],
+            "color": "amber",
+            "cells": [[0, 4], [0, 5], [0, 6], [0, 7]],
         });
         let piece = super::parse_piece_data(&json).unwrap();
-        assert_eq!(piece.color, "cyan");
+        assert_eq!(piece.color, "amber");
         assert_eq!(piece.cells.len(), 4);
     }
 
@@ -377,17 +377,17 @@ mod tests {
         let active_piece = if game_over {
             "null".to_owned()
         } else {
-            r#"{"type":"I","color":"cyan","cells":[[0,3],[0,4],[0,5],[0,6]]}"#.to_owned()
+            r#"{"type":"I","color":"amber","cells":[[0,4],[0,5],[0,6],[0,7]]}"#.to_owned()
         };
 
         let ghost_piece = if game_over {
             "null".to_owned()
         } else {
-            r#"{"type":"I","color":"cyan","cells":[[18,3],[18,4],[18,5],[18,6]]}"#.to_owned()
+            r#"{"type":"I","color":"amber","cells":[[20,4],[20,5],[20,6],[20,7]]}"#.to_owned()
         };
 
         format!(
-            r#"{{"active":true,"paused":{paused},"gameOver":{game_over},"score":{score},"level":{level},"linesCleared":{lines},"nextPiece":"T","nextPieceColor":"purple","board":{board},"activePiece":{active_piece},"ghostPiece":{ghost_piece},"heldPiece":null}}"#
+            r#"{{"active":true,"paused":{paused},"gameOver":{game_over},"score":{score},"level":{level},"linesCleared":{lines},"nextPiece":"T","nextPieceColor":"rose","board":{board},"activePiece":{active_piece},"ghostPiece":{ghost_piece},"heldPiece":null}}"#
         )
     }
 
@@ -400,6 +400,6 @@ mod tests {
     ) -> String {
         let base = make_game_json(paused, game_over, score, level, lines);
         // Replace "heldPiece":null with an actual held piece
-        base.replace(r#""heldPiece":null"#, r#""heldPiece":{"type":"T","color":"purple"}"#)
+        base.replace(r#""heldPiece":null"#, r#""heldPiece":{"type":"T","color":"rose"}"#)
     }
 }

@@ -239,7 +239,7 @@ impl CommandHandler for SoftDrop {
         {
             if let Some(moved) = game::try_move_down(&game_state.board, piece) {
                 game_state.active_piece = Some(moved);
-                game_state.score += 1; // 1 point per soft drop cell
+                game_state.score += 2; // 2 points per soft drop cell
             } else {
                 let piece = game_state.active_piece.clone().unwrap();
                 state.lock_clear_spawn(&piece);
@@ -271,10 +271,10 @@ impl CommandHandler for HardDrop {
             && let Some(ref piece) = game_state.active_piece
         {
             let dropped = game::hard_drop(&game_state.board, piece);
-            // 2 points per cell dropped
+            // 3 points per cell dropped
             #[allow(clippy::cast_sign_loss)]
             let drop_distance = (dropped.row - piece.row) as u32;
-            game_state.score += drop_distance * 2;
+            game_state.score += drop_distance * 3;
             game_state.active_piece = Some(dropped.clone());
             state.lock_clear_spawn(&dropped);
         }

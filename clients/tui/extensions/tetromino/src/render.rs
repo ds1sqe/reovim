@@ -30,12 +30,12 @@ use crate::{BOARD_HEIGHT, BOARD_WIDTH, TetrominoData};
 /// Each board cell is 2 characters wide for a square look.
 const CELL_WIDTH: u16 = 2;
 
-// Board dimensions are small constants (10, 20) — truncation is impossible.
-/// Popup width: board (2 chars * 10 cols) + board borders (2) + side panel (10) + popup padding (4)
+// Board dimensions are small constants (12, 22) — truncation is impossible.
+/// Popup width: board (2 chars * 12 cols) + board borders (2) + side panel (10) + popup padding (4)
 #[allow(clippy::cast_possible_truncation)]
 const POPUP_INNER_W: u16 = BOARD_WIDTH as u16 * CELL_WIDTH + 2 + 10 + 2;
 const POPUP_W: u16 = POPUP_INNER_W + 2; // +2 for outer border
-/// Popup height: title (1) + board (20) + board borders (2) + padding (1) + outer border (2)
+/// Popup height: title (1) + board (22) + board borders (2) + padding (1) + outer border (2)
 /// Extra 4 rows for held piece display in side panel.
 #[allow(clippy::cast_possible_truncation)]
 const POPUP_H: u16 = BOARD_HEIGHT as u16 + 6;
@@ -43,13 +43,13 @@ const POPUP_H: u16 = BOARD_HEIGHT as u16 + 6;
 /// Map a color name to a terminal Color.
 fn color_for_name(name: &str) -> Color {
     match name {
-        "cyan" => Color::Cyan,
-        "yellow" => Color::Yellow,
-        "purple" | "magenta" => Color::Magenta,
-        "green" => Color::Green,
-        "red" => Color::Red,
-        "blue" => Color::Blue,
-        "orange" => Color::DarkYellow,
+        "amber" => Color::DarkYellow,
+        "teal" => Color::DarkCyan,
+        "rose" => Color::Magenta,
+        "sky" => Color::Cyan,
+        "lime" => Color::Green,
+        "violet" => Color::Blue,
+        "coral" => Color::Red,
         _ => Color::DarkGrey,
     }
 }
@@ -274,9 +274,9 @@ mod tests {
             board.push(vec![String::new(); BOARD_WIDTH]);
         }
         // Add some locked blocks at the bottom
-        board[19][0] = "cyan".to_owned();
-        board[19][1] = "red".to_owned();
-        board[19][2] = "blue".to_owned();
+        board[21][0] = "amber".to_owned();
+        board[21][1] = "lime".to_owned();
+        board[21][2] = "violet".to_owned();
 
         TetrominoData {
             active: true,
@@ -286,15 +286,15 @@ mod tests {
             level: 3,
             lines_cleared: 15,
             next_piece: "T".to_owned(),
-            next_piece_color: "purple".to_owned(),
+            next_piece_color: "rose".to_owned(),
             board,
             active_piece: Some(PieceData {
-                color: "cyan".to_owned(),
-                cells: vec![(2, 3), (2, 4), (2, 5), (2, 6)],
+                color: "amber".to_owned(),
+                cells: vec![(2, 4), (2, 5), (2, 6), (2, 7)],
             }),
             ghost_piece: Some(PieceData {
-                color: "cyan".to_owned(),
-                cells: vec![(18, 3), (18, 4), (18, 5), (18, 6)],
+                color: "amber".to_owned(),
+                cells: vec![(20, 4), (20, 5), (20, 6), (20, 7)],
             }),
             held_piece: None,
         }
@@ -344,14 +344,13 @@ mod tests {
 
     #[test]
     fn color_mapping() {
-        assert!(matches!(color_for_name("cyan"), Color::Cyan));
-        assert!(matches!(color_for_name("yellow"), Color::Yellow));
-        assert!(matches!(color_for_name("purple"), Color::Magenta));
-        assert!(matches!(color_for_name("magenta"), Color::Magenta));
-        assert!(matches!(color_for_name("green"), Color::Green));
-        assert!(matches!(color_for_name("red"), Color::Red));
-        assert!(matches!(color_for_name("blue"), Color::Blue));
-        assert!(matches!(color_for_name("orange"), Color::DarkYellow));
+        assert!(matches!(color_for_name("amber"), Color::DarkYellow));
+        assert!(matches!(color_for_name("teal"), Color::DarkCyan));
+        assert!(matches!(color_for_name("rose"), Color::Magenta));
+        assert!(matches!(color_for_name("sky"), Color::Cyan));
+        assert!(matches!(color_for_name("lime"), Color::Green));
+        assert!(matches!(color_for_name("violet"), Color::Blue));
+        assert!(matches!(color_for_name("coral"), Color::Red));
         assert!(matches!(color_for_name("unknown"), Color::DarkGrey));
         assert!(matches!(color_for_name(""), Color::DarkGrey));
     }
@@ -372,10 +371,10 @@ mod tests {
     fn render_board_with_all_colors() {
         let mut fb = FrameBuffer::new(80, 30);
         let mut data = make_active_data();
-        data.board[18][0] = "yellow".to_owned();
-        data.board[18][1] = "purple".to_owned();
-        data.board[18][2] = "green".to_owned();
-        data.board[18][3] = "orange".to_owned();
+        data.board[20][0] = "teal".to_owned();
+        data.board[20][1] = "rose".to_owned();
+        data.board[20][2] = "sky".to_owned();
+        data.board[20][3] = "coral".to_owned();
         render_tetromino(&mut fb, &data);
     }
 
@@ -384,8 +383,8 @@ mod tests {
         let mut fb = FrameBuffer::new(80, 30);
         let mut data = make_active_data();
         data.active_piece = Some(PieceData {
-            color: "cyan".to_owned(),
-            cells: vec![(-1, 3), (-1, 4), (0, 3), (0, 4)],
+            color: "amber".to_owned(),
+            cells: vec![(-1, 4), (-1, 5), (0, 4), (0, 5)],
         });
         render_tetromino(&mut fb, &data);
     }
@@ -420,7 +419,7 @@ mod tests {
         let mut data = make_active_data();
         data.held_piece = Some(HeldPieceData {
             piece_type: "T".to_owned(),
-            color: "purple".to_owned(),
+            color: "rose".to_owned(),
         });
         render_tetromino(&mut fb, &data);
     }
@@ -437,9 +436,9 @@ mod tests {
     fn held_piece_data_debug() {
         let held = HeldPieceData {
             piece_type: "I".to_owned(),
-            color: "cyan".to_owned(),
+            color: "amber".to_owned(),
         };
         let debug = format!("{held:?}");
-        assert!(debug.contains("cyan"));
+        assert!(debug.contains("amber"));
     }
 }

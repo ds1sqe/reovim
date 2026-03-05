@@ -109,9 +109,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece preview, score panel
   - Start with `<C-t>` in normal mode; hjkl/arrows for movement, Space for hard drop, p to pause, q/Esc to quit
   - Ghost piece (landing preview), hold piece (`c`), CCW rotation (`z`)
-  - SRS wall kicks (standard offset tables for JLSTZ and I pieces)
-  - Soft drop scoring (1pt/cell), hard drop scoring (2pt/cell), T-spin bonus scoring
-  - 7-bag randomizer with Fisher-Yates shuffle
+  - Original game mechanics distinct from Tetris:
+    - 12x22 board (not 10x20), quadratic scoring `lines^2 * 50 * (level+1)`
+    - Nudge rotation system (not SRS wall kicks)
+    - History-4 randomizer with reroll (not 7-bag)
+    - Exponential speed curve `900 * 0.85^level` (min 80ms)
+    - Custom color palette: Amber/Teal/Rose/Sky/Lime/Violet/Coral
+    - Soft drop 2pt/cell, hard drop 3pt/cell, no T-spin detection
 
 ### Changed
 
