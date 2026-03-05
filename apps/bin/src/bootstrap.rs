@@ -32,7 +32,10 @@ use {
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
-    reovim_driver_syntax::SyntaxFactoryStore,
+    reovim_driver_syntax::{
+        CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
+        SyntaxFactoryStore,
+    },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
@@ -462,23 +465,33 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
         return;
     };
 
-    // Take all factories and use the first one
-    // Future: aggregate into CompositeFactory for multiple languages
+    // Take all factories and build a CompositeFactory that routes by language ID
     let factories = store.take_factories();
     if factories.is_empty() {
         tracing::debug!("No syntax factories registered");
         return;
     }
 
-    // For now, use first factory (TODO: CompositeFactory for multiple languages)
-    let factory = factories.into_iter().next().unwrap();
+    let composite = CompositeFactory::new(factories);
+    let count = composite.factory_count();
+    let factory = Arc::new(composite);
     let languages = factory.supported_languages();
 
-    tracing::info!(count = 1, ?languages, "Configured syntax highlighting from modules");
+    tracing::info!(count, ?languages, "Configured syntax highlighting from modules");
 
     // Configure SyntaxSessionState with the factory (#491: use app.extensions)
     let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
     syntax_state.set_factory(factory);
+
+    // Build language registry from LanguageInfoStore (populated by treesitter modules)
+    if let Some(lang_store) = services.get::<LanguageInfoStore>() {
+        let lang_infos = lang_store.take_all();
+        if !lang_infos.is_empty() {
+            let registry = DefaultLanguageRegistry::new(lang_infos);
+            tracing::info!(?registry, "Built language registry");
+            syntax_state.set_registry(Arc::new(registry));
+        }
+    }
 }
 
 /// Get the default data directory for modules.

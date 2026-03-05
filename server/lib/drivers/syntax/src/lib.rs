@@ -68,6 +68,7 @@
 // ============================================================================
 
 mod cache;
+mod composite;
 mod driver;
 mod edit;
 mod error;
@@ -75,6 +76,7 @@ mod factory;
 mod fold;
 mod highlight;
 mod injection;
+mod lang_store;
 mod registry;
 pub mod state;
 mod store;
@@ -85,8 +87,8 @@ mod store;
 
 // Core traits
 pub use {
-    cache::SyntaxCache, driver::SyntaxDriver, factory::SyntaxDriverFactory,
-    registry::LanguageRegistry, store::SyntaxFactoryStore,
+    cache::SyntaxCache, composite::CompositeFactory, driver::SyntaxDriver,
+    factory::SyntaxDriverFactory, registry::LanguageRegistry, store::SyntaxFactoryStore,
 };
 
 // Types
@@ -95,7 +97,8 @@ pub use {
     fold::{FoldKind, FoldRange},
     highlight::{HighlightGroup, HighlightSpan},
     injection::Injection,
-    registry::{CommentTokens, LanguageInfo},
+    lang_store::LanguageInfoStore,
+    registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},
 };
 
 // Error types

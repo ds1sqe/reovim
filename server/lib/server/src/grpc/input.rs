@@ -267,6 +267,11 @@ impl InputService for InputServiceImpl {
             &mut accumulated_changes,
         );
 
+        // Update syntax drivers for modified buffers (#539)
+        if accumulated_changes.buffer_modified {
+            Self::emit_syntax_updates(&session, &accumulated_changes);
+        }
+
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
@@ -421,6 +426,60 @@ impl InputServiceImpl {
                 "Emitted notifications"
             );
         }
+    }
+
+    /// Update syntax drivers and broadcast token updates for modified buffers.
+    ///
+    /// Called after key processing when `buffer_modified` is true. Does a
+    /// full re-parse for each modified buffer (incremental update deferred).
+    ///
+    /// The function splits mutable borrows to avoid `ExtensionMap` aliasing:
+    /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
+    /// 2. Access `SyntaxStreamState`, broadcast the update
+    fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
+        use crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update};
+
+        if changes.modified_buffers.is_empty() {
+            return;
+        }
+
+        session.with_state_mut_sync(|state| {
+            for &buffer_id in &changes.modified_buffers {
+                // Get buffer content and file path
+                let Some(buffer_arc) = state.buffer(buffer_id) else {
+                    continue;
+                };
+                let buffer = buffer_arc.read();
+                let content = buffer.content().clone();
+                let file_path = buffer.file_path().map(String::from);
+                let total_lines = buffer.line_count() as u64;
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Step 1: Update driver (mutable borrow of SyntaxSessionState)
+                let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
+                if let Some(ref path) = file_path {
+                    syntax.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                if let Some(driver) = syntax.get_mut(buffer_id) {
+                    driver.parse(&content);
+                }
+
+                // Build token update from the driver (immutable borrow)
+                let update = build_token_update(
+                    state.app.extensions.get_or_insert::<SyntaxSessionState>(),
+                    buffer_id,
+                    total_lines,
+                    true,
+                );
+
+                // Step 2: Broadcast to subscribers (mutable borrow of SyntaxStreamState)
+                if let Some(update) = update {
+                    let stream = state.app.extensions.get_or_insert::<SyntaxStreamState>();
+                    stream.broadcast(&update);
+                }
+            }
+        });
     }
 
     /// Convert `ResolveContext` to `CommandContext`.

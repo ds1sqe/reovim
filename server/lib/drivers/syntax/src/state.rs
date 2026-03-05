@@ -28,7 +28,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use {reovim_driver_session::SessionExtension, reovim_kernel::api::v1::BufferId};
 
-use crate::{SyntaxDriver, SyntaxDriverFactory};
+use crate::{LanguageRegistry, SyntaxDriver, SyntaxDriverFactory};
 
 /// Per-session syntax state stored in `ExtensionMap`.
 ///
@@ -55,6 +55,8 @@ pub struct SyntaxSessionState {
     /// Optional factory for creating new drivers.
     /// Uses `Arc` for shared ownership (populated from `SyntaxFactoryStore`).
     factory: Option<Arc<dyn SyntaxDriverFactory>>,
+    /// Optional language registry for detecting language from file paths.
+    registry: Option<Arc<dyn LanguageRegistry>>,
 }
 
 impl SessionExtension for SyntaxSessionState {
@@ -81,6 +83,49 @@ impl SyntaxSessionState {
     #[must_use]
     pub fn factory(&self) -> Option<&dyn SyntaxDriverFactory> {
         self.factory.as_deref()
+    }
+
+    /// Set the language registry used for language detection.
+    pub fn set_registry(&mut self, registry: Arc<dyn LanguageRegistry>) {
+        self.registry = Some(registry);
+    }
+
+    /// Get the language registry (if set).
+    #[must_use]
+    pub fn registry(&self) -> Option<&dyn LanguageRegistry> {
+        self.registry.as_deref()
+    }
+
+    /// Detect language from a file path using the registry.
+    ///
+    /// Returns `None` if no registry is set or the language is not recognized.
+    #[must_use]
+    pub fn detect_language(&self, path: &str) -> Option<String> {
+        self.registry.as_ref()?.detect_from_path(path)
+    }
+
+    /// Ensure a driver exists for a buffer by detecting language from file path.
+    ///
+    /// Combines language detection (via registry) and driver creation (via factory).
+    /// Returns `true` if a driver exists after the call.
+    pub fn ensure_driver_from_path(
+        &mut self,
+        buffer_id: BufferId,
+        path: &str,
+        content: &str,
+    ) -> bool {
+        // If driver already exists, done
+        if self.drivers.contains_key(&buffer_id.as_usize()) {
+            return true;
+        }
+
+        // Detect language from path
+        let Some(language_id) = self.detect_language(path) else {
+            return false;
+        };
+
+        // Delegate to ensure_driver
+        self.ensure_driver(buffer_id, &language_id, content)
     }
 
     /// Get a reference to the driver for a buffer.
@@ -168,6 +213,7 @@ impl std::fmt::Debug for SyntaxSessionState {
         f.debug_struct("SyntaxSessionState")
             .field("buffer_count", &self.drivers.len())
             .field("has_factory", &self.factory.is_some())
+            .field("has_registry", &self.registry.is_some())
             .finish()
     }
 }
@@ -412,5 +458,115 @@ mod tests {
         // No driver: get() returns None, graceful
         let folds = state.get(id).map_or_else(Vec::new, SyntaxDriver::folds);
         assert!(folds.is_empty());
+    }
+
+    // ========================================================================
+    // Registry and ensure_driver_from_path Tests
+    // ========================================================================
+
+    fn make_test_registry() -> Arc<dyn crate::LanguageRegistry> {
+        Arc::new(crate::DefaultLanguageRegistry::new(vec![
+            crate::LanguageInfo::new("rust", "Rust").with_extensions(["rs"]),
+            crate::LanguageInfo::new("markdown", "Markdown").with_extensions(["md"]),
+        ]))
+    }
+
+    #[test]
+    fn test_set_and_get_registry() {
+        let mut state = SyntaxSessionState::new();
+        assert!(state.registry().is_none());
+
+        state.set_registry(make_test_registry());
+        assert!(state.registry().is_some());
+    }
+
+    #[test]
+    fn test_detect_language_with_registry() {
+        let mut state = SyntaxSessionState::new();
+        state.set_registry(make_test_registry());
+
+        assert_eq!(state.detect_language("main.rs"), Some("rust".to_string()));
+        assert_eq!(state.detect_language("README.md"), Some("markdown".to_string()));
+        assert_eq!(state.detect_language("file.txt"), None);
+    }
+
+    #[test]
+    fn test_detect_language_without_registry() {
+        let state = SyntaxSessionState::new();
+        assert_eq!(state.detect_language("main.rs"), None);
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_creates_driver() {
+        let mut state = SyntaxSessionState::new();
+        state.set_factory(Arc::new(TestFactory));
+        state.set_registry(make_test_registry());
+
+        let id = buffer_id(1);
+        assert!(state.ensure_driver_from_path(id, "main.rs", "fn main() {}"));
+        assert!(state.has_driver(id));
+        assert_eq!(state.get(id).unwrap().language(), "rust");
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_existing_driver() {
+        let mut state = SyntaxSessionState::new();
+        state.set_factory(Arc::new(TestFactory));
+        state.set_registry(make_test_registry());
+
+        let id = buffer_id(1);
+        state.set(id, Box::new(TestDriver::new("rust")));
+
+        // Should return true (driver already exists)
+        assert!(state.ensure_driver_from_path(id, "main.rs", ""));
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_unknown_extension() {
+        let mut state = SyntaxSessionState::new();
+        state.set_factory(Arc::new(TestFactory));
+        state.set_registry(make_test_registry());
+
+        let id = buffer_id(1);
+        assert!(!state.ensure_driver_from_path(id, "file.txt", "hello"));
+        assert!(!state.has_driver(id));
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_no_registry() {
+        let mut state = SyntaxSessionState::new();
+        state.set_factory(Arc::new(TestFactory));
+
+        let id = buffer_id(1);
+        assert!(!state.ensure_driver_from_path(id, "main.rs", "fn main() {}"));
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_no_factory() {
+        let mut state = SyntaxSessionState::new();
+        state.set_registry(make_test_registry());
+
+        let id = buffer_id(1);
+        assert!(!state.ensure_driver_from_path(id, "main.rs", "fn main() {}"));
+    }
+
+    #[test]
+    fn test_ensure_driver_from_path_unsupported_language() {
+        let mut state = SyntaxSessionState::new();
+        state.set_factory(Arc::new(TestFactory)); // TestFactory only supports "rust"
+        state.set_registry(make_test_registry());
+
+        let id = buffer_id(1);
+        // Markdown detected but factory doesn't support it
+        assert!(!state.ensure_driver_from_path(id, "README.md", "# Hello"));
+    }
+
+    #[test]
+    fn test_debug_with_registry() {
+        let mut state = SyntaxSessionState::new();
+        state.set_registry(make_test_registry());
+
+        let debug = format!("{state:?}");
+        assert!(debug.contains("has_registry"));
     }
 }

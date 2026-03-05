@@ -212,6 +212,41 @@ impl SyntaxStreamState {
     }
 }
 
+/// Build a `TokenUpdate` from a syntax driver's current highlights.
+///
+/// This is a standalone function to avoid double-borrow issues when
+/// both `SyntaxSessionState` and `SyntaxStreamState` are in the same
+/// `ExtensionMap`. Call this after updating the driver, then pass the
+/// result to `SyntaxStreamState::broadcast()`.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn build_token_update(
+    syntax: &SyntaxSessionState,
+    buffer_id: BufferId,
+    total_lines: u64,
+    full_refresh: bool,
+) -> Option<TokenUpdate> {
+    let driver = syntax.get(buffer_id)?;
+    let highlights = driver.highlights(0..usize::MAX);
+
+    let tokens: Vec<TokenSpan> = highlights
+        .into_iter()
+        .map(|span| TokenSpan {
+            start_byte: span.start_byte as u32,
+            end_byte: span.end_byte as u32,
+            category: span.group.category().to_string(),
+        })
+        .collect();
+
+    Some(TokenUpdate {
+        buffer_id: buffer_id.as_usize() as u64,
+        tokens,
+        start_line: 0,
+        end_line: total_lines.saturating_sub(1),
+        full_refresh,
+    })
+}
+
 impl std::fmt::Debug for SyntaxStreamState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SyntaxStreamState")
@@ -500,6 +535,51 @@ mod tests {
     // ========================================================================
     // SyntaxSessionState re-export sanity test
     // ========================================================================
+
+    // ========================================================================
+    // build_token_update tests
+    // ========================================================================
+
+    #[test]
+    fn test_build_token_update_with_driver() {
+        let mut syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(TestDriver::new("rust")));
+        syntax.get_mut(id).unwrap().parse("fn main() {}");
+
+        let update = build_token_update(&syntax, id, 10, true);
+        assert!(update.is_some());
+
+        let update = update.unwrap();
+        assert_eq!(update.buffer_id, 1);
+        assert!(update.full_refresh);
+        assert_eq!(update.start_line, 0);
+        assert_eq!(update.end_line, 9);
+        assert!(!update.tokens.is_empty());
+    }
+
+    #[test]
+    fn test_build_token_update_no_driver() {
+        let syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        let update = build_token_update(&syntax, id, 10, true);
+        assert!(update.is_none());
+    }
+
+    #[test]
+    fn test_build_token_update_incremental() {
+        let mut syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(TestDriver::new("rust")));
+        syntax.get_mut(id).unwrap().parse("fn main() {}");
+
+        let update = build_token_update(&syntax, id, 5, false).unwrap();
+        assert!(!update.full_refresh);
+        assert_eq!(update.end_line, 4);
+    }
 
     #[test]
     fn test_syntax_session_state_reexport() {

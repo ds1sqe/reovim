@@ -276,11 +276,12 @@ impl SyntaxService for SyntaxServiceImpl {
                 let buffer = buffer_arc.read();
                 let total_lines = buffer.line_count();
 
-                // Detect language from file path
-                let (language_id, _language_name) = detect_language_from_path(buffer.file_path());
-
                 // Get buffer content for byte range calculation
                 let content = buffer.content();
+                let file_path = buffer.file_path().map(String::from);
+
+                // Detect language from file path (hardcoded fallback for response)
+                let (language_id, _language_name) = detect_language_from_path(file_path.as_deref());
 
                 // Calculate byte range for requested lines
                 let start_line = req.start_line.unwrap_or(0) as usize;
@@ -306,8 +307,17 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Get syntax session state from session-wide extensions (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
-                // Get or create driver for this buffer
-                let tokens = if syntax_state.ensure_driver(buffer_id, language_id, &content) {
+                // Try registry-based detection first, fall back to hardcoded
+                if let Some(path) = &file_path {
+                    syntax_state.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                // Fall back to hardcoded language detection if registry didn't work
+                if !syntax_state.has_driver(buffer_id) {
+                    syntax_state.ensure_driver(buffer_id, language_id, &content);
+                }
+
+                // Get tokens from driver
+                let tokens = if syntax_state.has_driver(buffer_id) {
                     syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
                         // Get highlights from driver and convert to TokenSpan
                         driver
@@ -363,7 +373,8 @@ impl SyntaxService for SyntaxServiceImpl {
                 let buffer = buffer_arc.read();
                 let total_lines = buffer.line_count() as u64;
                 let content = buffer.content();
-                let (language_id, _) = detect_language_from_path(buffer.file_path());
+                let file_path = buffer.file_path().map(String::from);
+                let (language_id, _) = detect_language_from_path(file_path.as_deref());
 
                 // Drop buffer lock before accessing extensions
                 drop(buffer);
@@ -372,8 +383,13 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Get syntax state and ensure driver exists (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
-                // Ensure driver is created for this buffer
-                syntax_state.ensure_driver(buffer_id, language_id, &content);
+                // Try registry-based detection first, fall back to hardcoded
+                if let Some(path) = &file_path {
+                    syntax_state.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                if !syntax_state.has_driver(buffer_id) {
+                    syntax_state.ensure_driver(buffer_id, language_id, &content);
+                }
 
                 // Get initial tokens (must finish borrow before accessing stream state)
                 let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
@@ -441,15 +457,33 @@ impl SyntaxService for SyntaxServiceImpl {
                 })?;
 
                 let buffer = buffer_arc.read();
-                let (language_id, language_name) = detect_language_from_path(buffer.file_path());
-                let extensions = extensions_for_language(language_id);
+                let file_path = buffer.file_path().map(String::from);
 
                 // Drop buffer lock before accessing extensions
                 drop(buffer);
                 drop(buffer_arc);
 
-                // Check if a parser is available via the factory (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
+
+                // Try registry-based detection first
+                if let Some(ref path) = file_path
+                    && let Some(lang_id) = syntax_state.detect_language(path)
+                    && let Some(registry) = syntax_state.registry()
+                    && let Some(info) = registry.get_info(&lang_id)
+                {
+                    let has_parser = syntax_state.factory().is_some_and(|f| f.supports(&lang_id));
+                    let extensions = info.extensions.iter().map(|e| format!(".{e}")).collect();
+                    return Ok(Response::new(GetLanguageInfoResponse {
+                        language_id: lang_id,
+                        language_name: info.name.clone(),
+                        extensions,
+                        has_parser,
+                    }));
+                }
+
+                // Fall back to hardcoded detection
+                let (language_id, language_name) = detect_language_from_path(file_path.as_deref());
+                let extensions = extensions_for_language(language_id);
                 let has_parser = syntax_state
                     .factory()
                     .is_some_and(|f| f.supports(language_id));

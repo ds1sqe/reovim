@@ -41,7 +41,10 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore},
+    reovim_driver_syntax::{
+        CommentTokens, LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory,
+        SyntaxFactoryStore,
+    },
     reovim_driver_syntax_treesitter::{
         CaptureMapper, InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
         TreeSitterDriver,
@@ -224,6 +227,15 @@ impl Module for TreesitterRustModule {
         // Register as InjectionLayerFactory (for embedding Rust in other languages)
         let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
         injection_store.add(factory);
+
+        // Register language metadata for detection
+        let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();
+        lang_store.add(
+            LanguageInfo::new("rust", "Rust")
+                .with_extensions(["rs"])
+                .with_mime_types(["text/x-rust"])
+                .with_comments(CommentTokens::with_block("//", "/*", "*/")),
+        );
 
         tracing::info!("TreesitterRustModule: registered Rust syntax and injection factories");
         ProbeResult::Success

@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- Syntax session integration: wire SyntaxDriver into session model for live token streaming (#539)
+- `CompositeFactory` routes `create()` across all registered `SyntaxDriverFactory` instances
+- `LanguageInfoStore` for module self-registration of language metadata during `init()`
+- `DefaultLanguageRegistry` detects language from file path extensions and MIME types
+- `SyntaxSessionState.ensure_driver_from_path()` for automatic language detection and driver creation
+- `emit_syntax_updates` broadcasts token updates to stream subscribers on buffer modification
+- `build_token_update` standalone helper for extracting highlights from drivers
+
 ### Changed
 
 - **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
@@ -20,6 +28,7 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Performance
 
 ### Fixed
+
 
 ### Security
 

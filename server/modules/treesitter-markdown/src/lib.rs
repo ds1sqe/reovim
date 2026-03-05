@@ -40,7 +40,9 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore},
+    reovim_driver_syntax::{
+        LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
+    },
     reovim_driver_syntax_treesitter::{
         CaptureMapper, InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
         TreeSitterDriver,
@@ -197,6 +199,12 @@ impl Module for TreesitterMarkdownModule {
         // This enables Rust doc comments to inject Markdown highlighting
         let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
         injection_store.add(factory);
+
+        // Register language metadata for detection
+        let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();
+        lang_store.add(
+            LanguageInfo::new("markdown", "Markdown").with_extensions(["md", "markdown", "mdx"]),
+        );
 
         tracing::info!(
             "TreesitterMarkdownModule: registered Markdown syntax and injection factories"
