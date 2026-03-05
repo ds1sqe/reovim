@@ -24,6 +24,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-driver-vfs = { workspace = true }
+tempfile = "3"
 
 [lints]
 workspace = true

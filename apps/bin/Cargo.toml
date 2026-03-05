@@ -42,6 +42,9 @@ reovim-module-textobjects = { workspace = true }
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
 
+# Display driver (for SharedThemeManager + ThemeLoader bootstrap)
+reovim-driver-display = { workspace = true }
+
 # Client crates (optional, for CLI and TUI commands)
 reovim-client-cli = { workspace = true, optional = true }
 reovim-client-tui = { workspace = true, optional = true }

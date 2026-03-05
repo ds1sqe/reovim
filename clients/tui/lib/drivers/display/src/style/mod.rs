@@ -63,7 +63,7 @@ pub use {
     icons::{
         BuiltinFileIconProvider, IconDef, IconProvider, IconRegistry, IconSet, file_icons, ui_icons,
     },
-    loader::ThemeLoader,
+    loader::{ThemeInfo, ThemeLoader},
     manager::{SharedThemeManager, ThemeManager},
     registry::StyleGroupRegistry,
     theme::{BuiltinTheme, ThemeProvider},

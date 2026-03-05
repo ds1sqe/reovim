@@ -53,6 +53,8 @@ pub enum ThemeError {
     InvalidColor { key: String, value: String },
     /// Referenced palette color not found.
     PaletteNotFound { key: String, reference: String },
+    /// Invalid base theme name.
+    InvalidBase { name: String },
 }
 
 impl std::fmt::Display for ThemeError {
@@ -66,6 +68,9 @@ impl std::fmt::Display for ThemeError {
             Self::PaletteNotFound { key, reference } => {
                 write!(f, "Palette color '{reference}' not found for key '{key}'")
             }
+            Self::InvalidBase { name } => {
+                write!(f, "Invalid base theme: '{name}'")
+            }
         }
     }
 }
@@ -75,7 +80,9 @@ impl std::error::Error for ThemeError {
         match self {
             Self::Io(e) => Some(e),
             Self::Parse(e) => Some(e),
-            Self::InvalidColor { .. } | Self::PaletteNotFound { .. } => None,
+            Self::InvalidColor { .. } | Self::PaletteNotFound { .. } | Self::InvalidBase { .. } => {
+                None
+            }
         }
     }
 }
@@ -119,6 +126,10 @@ pub struct ThemeFile {
     #[serde(default)]
     pub diagnostic: HashMap<String, StyleDef>,
 
+    /// Decoration styles (heading decorations, virtual text, etc.).
+    #[serde(default)]
+    pub decoration: HashMap<String, StyleDef>,
+
     /// Gutter/annotation styles (git signs, fold markers, etc.).
     #[serde(default)]
     pub gutter: HashMap<String, StyleDef>,
@@ -138,6 +149,10 @@ pub struct ThemeMeta {
     /// Theme version.
     #[serde(default)]
     pub version: Option<String>,
+
+    /// Base built-in theme to inherit from (e.g. "dark", "light", "tokyo-night-orange").
+    #[serde(default)]
+    pub base: Option<String>,
 }
 
 fn default_theme_name() -> String {
@@ -218,14 +233,35 @@ impl FileTheme {
         Self::from_file(file)
     }
 
+    /// Resolve a base theme name to a `BuiltinTheme` variant.
+    fn resolve_base_theme(name: &str) -> Option<super::BuiltinTheme> {
+        super::BuiltinTheme::all()
+            .iter()
+            .find(|v| v.name() == name)
+            .copied()
+    }
+
     /// Convert a parsed `ThemeFile` into a resolved `FileTheme`.
     fn from_file(file: ThemeFile) -> Result<Self, ThemeError> {
         let mut styles = HashMap::new();
 
-        // Resolve all style sections
+        // If base theme specified, pre-populate with its styles
+        if let Some(ref base_name) = file.meta.base {
+            let base_variant =
+                Self::resolve_base_theme(base_name).ok_or_else(|| ThemeError::InvalidBase {
+                    name: base_name.clone(),
+                })?;
+            let base_palette = super::builtin::get_palette(base_variant);
+            for (key, style) in base_palette {
+                styles.insert((*key).to_string(), style.clone());
+            }
+        }
+
+        // Resolve all style sections (overlays on top of base)
         Self::resolve_section(&file.palette, &file.syntax, &mut styles, "")?;
         Self::resolve_section(&file.palette, &file.ui, &mut styles, "")?;
         Self::resolve_section(&file.palette, &file.diagnostic, &mut styles, "diagnostic.")?;
+        Self::resolve_section(&file.palette, &file.decoration, &mut styles, "decoration.")?;
         Self::resolve_section(&file.palette, &file.gutter, &mut styles, "")?;
 
         // Determine default style from foreground or fallback
@@ -673,5 +709,235 @@ mod tests {
         "#;
         let theme = FileTheme::parse(toml).unwrap();
         assert_eq!(theme.name(), "Unnamed Theme");
+    }
+
+    // =========================================================================
+    // Base theme inheritance tests
+    // =========================================================================
+
+    #[test]
+    fn test_parse_theme_with_base_dark() {
+        let toml = r##"
+            [meta]
+            name = "Custom Dark"
+            base = "dark"
+
+            [syntax]
+            keyword = { fg = "#ff00ff", bold = true }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        assert_eq!(theme.name(), "Custom Dark");
+
+        // Custom keyword override
+        let keyword = theme.get_style("keyword").unwrap();
+        assert_eq!(
+            keyword.fg,
+            Some(Color::Rgb {
+                r: 255,
+                g: 0,
+                b: 255
+            })
+        );
+        assert!(keyword.attributes.contains(Attributes::BOLD));
+
+        // Inherited from dark base: "function" should exist
+        assert!(theme.get_style("function").is_some());
+    }
+
+    #[test]
+    fn test_parse_theme_with_base_light() {
+        let toml = r#"
+            [meta]
+            name = "Custom Light"
+            base = "light"
+        "#;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        // All 42 base groups should be inherited from light
+        assert!(theme.get_style("keyword").is_some());
+        assert!(theme.get_style("function").is_some());
+        assert!(theme.get_style("string").is_some());
+        assert!(theme.get_style("type").is_some());
+    }
+
+    #[test]
+    fn test_parse_theme_with_base_tokyo_night() {
+        let toml = r#"
+            [meta]
+            name = "Custom Tokyo Night"
+            base = "tokyo-night-orange"
+        "#;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        assert!(theme.get_style("keyword").is_some());
+        assert!(theme.get_style("function").is_some());
+    }
+
+    #[test]
+    fn test_base_theme_overlay_overrides_base() {
+        use crate::style::{BuiltinTheme, builtin};
+        // Get the dark theme's keyword color for comparison
+        let dark_palette = builtin::get_palette(BuiltinTheme::Dark);
+        let dark_keyword = dark_palette.get("keyword").unwrap();
+
+        let toml = r##"
+            [meta]
+            name = "Override Test"
+            base = "dark"
+
+            [syntax]
+            keyword = { fg = "#aabbcc" }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        let keyword = theme.get_style("keyword").unwrap();
+
+        // Should NOT match the dark base keyword
+        assert_ne!(keyword.fg, dark_keyword.fg);
+        // Should be our custom color
+        assert_eq!(
+            keyword.fg,
+            Some(Color::Rgb {
+                r: 170,
+                g: 187,
+                b: 204
+            })
+        );
+    }
+
+    #[test]
+    fn test_base_theme_preserves_unset_groups() {
+        use crate::style::{BuiltinTheme, builtin};
+        let dark_palette = builtin::get_palette(BuiltinTheme::Dark);
+        let dark_function = dark_palette.get("function").unwrap();
+
+        let toml = r##"
+            [meta]
+            name = "Preserve Test"
+            base = "dark"
+
+            [syntax]
+            keyword = { fg = "#111111" }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        // "function" was not overridden, should match dark base exactly
+        let function = theme.get_style("function").unwrap();
+        assert_eq!(function.fg, dark_function.fg);
+    }
+
+    #[test]
+    fn test_invalid_base_theme_returns_error() {
+        let toml = r#"
+            [meta]
+            name = "Bad Base"
+            base = "nonexistent"
+        "#;
+
+        let err = FileTheme::parse(toml).unwrap_err();
+        assert!(matches!(err, ThemeError::InvalidBase { .. }));
+        assert!(err.to_string().contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_no_base_theme_works() {
+        // Existing behavior: no base field at all
+        let toml = r##"
+            [meta]
+            name = "No Base"
+
+            [syntax]
+            keyword = { fg = "#ff0000" }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        // Should only have explicitly defined styles
+        assert!(theme.get_style("keyword").is_some());
+        assert!(theme.get_style("function").is_none());
+    }
+
+    // =========================================================================
+    // Decoration section tests
+    // =========================================================================
+
+    #[test]
+    fn test_decoration_section_parsing() {
+        let toml = r##"
+            [meta]
+            name = "Decoration Test"
+
+            [decoration]
+            conceal = { fg = "#888888" }
+            virtual_text = { fg = "#666666", italic = true }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        let conceal = theme.get_style("decoration.conceal").unwrap();
+        assert_eq!(
+            conceal.fg,
+            Some(Color::Rgb {
+                r: 136,
+                g: 136,
+                b: 136
+            })
+        );
+
+        let vtext = theme.get_style("decoration.virtual_text").unwrap();
+        assert!(vtext.attributes.contains(Attributes::ITALIC));
+    }
+
+    #[test]
+    fn test_decoration_section_with_dotted_keys() {
+        let toml = r##"
+            [meta]
+            name = "Dotted Decoration"
+
+            [decoration]
+            "heading.1" = { fg = "#ff0000", bold = true }
+            "heading.2" = { fg = "#00ff00" }
+        "##;
+
+        let theme = FileTheme::parse(toml).unwrap();
+        let h1 = theme.get_style("decoration.heading.1").unwrap();
+        assert_eq!(h1.fg, Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+        assert!(h1.attributes.contains(Attributes::BOLD));
+
+        let h2 = theme.get_style("decoration.heading.2").unwrap();
+        assert_eq!(h2.fg, Some(Color::Rgb { r: 0, g: 255, b: 0 }));
+    }
+
+    // =========================================================================
+    // InvalidBase error trait tests
+    // =========================================================================
+
+    #[test]
+    fn test_theme_error_display_invalid_base() {
+        let err = ThemeError::InvalidBase {
+            name: "no-such-theme".to_string(),
+        };
+        assert_eq!(err.to_string(), "Invalid base theme: 'no-such-theme'");
+    }
+
+    #[test]
+    fn test_theme_error_source_invalid_base_is_none() {
+        use std::error::Error as _;
+        let err = ThemeError::InvalidBase {
+            name: "x".to_string(),
+        };
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn test_resolve_base_theme_valid() {
+        assert!(FileTheme::resolve_base_theme("dark").is_some());
+        assert!(FileTheme::resolve_base_theme("light").is_some());
+        assert!(FileTheme::resolve_base_theme("tokyo-night-orange").is_some());
+    }
+
+    #[test]
+    fn test_resolve_base_theme_invalid() {
+        assert!(FileTheme::resolve_base_theme("nonexistent").is_none());
+        assert!(FileTheme::resolve_base_theme("").is_none());
     }
 }

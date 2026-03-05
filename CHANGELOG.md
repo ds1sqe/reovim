@@ -14,6 +14,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Expanded theme groups: 42 base categories + 30 sub-categories with hierarchical fallback
   - Protocol updated with `AnnotationKind` and layer support
   - Dynamic injection layer creation: `InjectionManager` lazily creates layers via `InjectionLayerStore`
+- Theme system enhancements (#541)
+  - Base theme inheritance: `base = "dark"` in TOML overlays custom styles on built-in theme
+  - `[decoration]` section in theme files with `decoration.` prefix
+  - `ThemeInfo` struct and `ThemeLoader::discover()` for structured theme enumeration
+  - `$REOVIM_THEME_DIR` environment variable for custom theme search path
+  - `ThemeLoader::load()` falls back to built-in themes when file not found
+  - `SharedThemeManager` and `ThemeLoader` registered in server `ServiceRegistry` at bootstrap
+  - `:colorscheme` command loads file-based themes through `ThemeLoader`
 - `CompositeFactory` routes `create()` across all registered `SyntaxDriverFactory` instances
 - `LanguageInfoStore` for module self-registration of language metadata during `init()`
 - `DefaultLanguageRegistry` detects language from file path extensions and MIME types

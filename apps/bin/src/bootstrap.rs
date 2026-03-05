@@ -137,6 +137,15 @@ pub fn create_session_state() -> SessionState {
     // Register VFS in ServiceRegistry so ex-commands can access it (#465)
     services.register(Arc::new(VfsInstance::new(Arc::clone(&vfs))));
 
+    // Register theme system (#541): SharedThemeManager + ThemeLoader
+    {
+        use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader};
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        services.register(Arc::new(theme_manager));
+        let theme_loader = ThemeLoader::new();
+        services.register(Arc::new(theme_loader));
+    }
+
     let mut state = SessionState::with_registries(
         kernel,
         initial_mode,

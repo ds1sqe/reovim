@@ -1855,6 +1855,7 @@ dependencies = [
  "reovim-client-tui",
  "reovim-driver-buffer",
  "reovim-driver-command",
+ "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
  "reovim-driver-session",
@@ -2220,6 +2221,7 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "tempfile",
  "tracing",
 ]
 

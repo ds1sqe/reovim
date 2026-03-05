@@ -14,7 +14,7 @@
 //! This is a **policy module** - it decides HOW users switch themes.
 //! The actual theme definitions and `ThemeManager` are **mechanism** (in the driver layer).
 
-use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager};
+use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader};
 
 use crate::{CommandError, ExCommandContext, ExCommandHandler};
 
@@ -37,8 +37,24 @@ use crate::{CommandError, ExCommandContext, ExCommandHandler};
 pub struct ColorschemeCommand;
 
 impl ColorschemeCommand {
-    /// Available theme names.
-    const AVAILABLE_THEMES: &'static [&'static str] = &["dark", "light", "tokyo-night-orange"];
+    /// Built-in theme names (fallback when `ThemeLoader` is unavailable).
+    const BUILTIN_THEMES: &'static [&'static str] = &["dark", "light", "tokyo-night-orange"];
+
+    /// Get available theme names, using `ThemeLoader::discover()` if available,
+    /// falling back to hardcoded built-in names.
+    fn available_theme_names(services: &reovim_kernel::api::v1::ServiceRegistry) -> String {
+        services.get::<ThemeLoader>().map_or_else(
+            || Self::BUILTIN_THEMES.join(", "),
+            |loader| {
+                loader
+                    .discover()
+                    .into_iter()
+                    .map(|t| t.name)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        )
+    }
 }
 
 impl ExCommandHandler for ColorschemeCommand {
@@ -70,12 +86,23 @@ impl ExCommandHandler for ColorschemeCommand {
 
         // Switch to requested theme
         let theme_name = args[0];
+
+        // Try ThemeLoader first (finds file themes + built-in fallback)
+        if let Some(loader) = ctx.kernel.services.get::<ThemeLoader>()
+            && let Ok(theme) = loader.load(theme_name)
+        {
+            theme_manager.write().set_theme(theme);
+            tracing::info!(theme = %theme_name, "switched colorscheme");
+            return Ok(());
+        }
+
+        // Fall back to hardcoded built-in match
         let new_theme = match theme_name {
             "dark" => BuiltinTheme::Dark.load(),
             "light" => BuiltinTheme::Light.load(),
             "tokyo-night-orange" => BuiltinTheme::TokyoNightOrange.load(),
             _ => {
-                let available = Self::AVAILABLE_THEMES.join(", ");
+                let available = Self::available_theme_names(&ctx.kernel.services);
                 return Err(CommandError::InvalidArguments(format!(
                     "Unknown colorscheme: {theme_name}. Available: {available}"
                 )));
@@ -90,7 +117,7 @@ impl ExCommandHandler for ColorschemeCommand {
     }
 
     fn complete(&self, partial: &str) -> Vec<String> {
-        Self::AVAILABLE_THEMES
+        Self::BUILTIN_THEMES
             .iter()
             .filter(|name| name.starts_with(partial))
             .map(|s| (*s).to_string())
@@ -183,11 +210,11 @@ mod tests {
     }
 
     #[test]
-    fn test_colorscheme_available_themes_constant() {
-        assert_eq!(ColorschemeCommand::AVAILABLE_THEMES.len(), 3);
-        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"dark"));
-        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"light"));
-        assert!(ColorschemeCommand::AVAILABLE_THEMES.contains(&"tokyo-night-orange"));
+    fn test_colorscheme_builtin_themes_constant() {
+        assert_eq!(ColorschemeCommand::BUILTIN_THEMES.len(), 3);
+        assert!(ColorschemeCommand::BUILTIN_THEMES.contains(&"dark"));
+        assert!(ColorschemeCommand::BUILTIN_THEMES.contains(&"light"));
+        assert!(ColorschemeCommand::BUILTIN_THEMES.contains(&"tokyo-night-orange"));
     }
 
     #[test]
@@ -306,5 +333,144 @@ mod tests {
     fn test_colorscheme_command_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ColorschemeCommand>();
+    }
+
+    // =========================================================================
+    // ThemeLoader integration tests (#541)
+    // =========================================================================
+
+    #[test]
+    fn test_colorscheme_command_loads_file_theme() {
+        use {std::io::Write, tempfile::TempDir};
+
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        // Create a file theme
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("custom.toml");
+        let mut f = std::fs::File::create(&theme_path).unwrap();
+        f.write_all(
+            b"[meta]\nname = \"Custom File Theme\"\n[syntax]\nkeyword = { fg = \"#ff0000\" }",
+        )
+        .unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        kernel.services.register(Arc::new(loader));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["custom"]);
+        assert!(result.is_ok());
+
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "Custom File Theme");
+    }
+
+    #[test]
+    fn test_colorscheme_command_file_theme_shadows_builtin() {
+        use {std::io::Write, tempfile::TempDir};
+
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Light.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        // Create a file theme named "dark" that shadows the built-in
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("dark.toml");
+        let mut f = std::fs::File::create(&theme_path).unwrap();
+        f.write_all(b"[meta]\nname = \"Custom Dark Override\"\n")
+            .unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        kernel.services.register(Arc::new(loader));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["dark"]);
+        assert!(result.is_ok());
+
+        // Should get the file theme, not the built-in
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "Custom Dark Override");
+    }
+
+    #[test]
+    fn test_colorscheme_load_falls_back_to_builtin() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Light.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        // ThemeLoader with no file themes
+        let loader = ThemeLoader::with_paths(vec![]);
+        kernel.services.register(Arc::new(loader));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+        let cmd = ColorschemeCommand;
+        // "dark" is not a file theme but ThemeLoader falls back to built-in
+        let result = cmd.execute(&mut ctx, &["dark"]);
+        assert!(result.is_ok());
+
+        let tm = kernel.services.get::<SharedThemeManager>().unwrap();
+        assert_eq!(tm.read().current_theme_name(), "dark");
+    }
+
+    #[test]
+    fn test_colorscheme_completion_without_loader_returns_builtins_only() {
+        // No ThemeLoader registered - complete() uses BUILTIN_THEMES
+        let cmd = ColorschemeCommand;
+        let completions = cmd.complete("");
+        assert_eq!(completions.len(), 3);
+        assert!(completions.contains(&"dark".to_string()));
+        assert!(completions.contains(&"light".to_string()));
+        assert!(completions.contains(&"tokyo-night-orange".to_string()));
+    }
+
+    #[test]
+    fn test_available_theme_names_without_loader() {
+        let services = reovim_kernel::api::v1::ServiceRegistry::new();
+        let names = ColorschemeCommand::available_theme_names(&services);
+        assert!(names.contains("dark"));
+        assert!(names.contains("light"));
+        assert!(names.contains("tokyo-night-orange"));
+    }
+
+    #[test]
+    fn test_available_theme_names_with_loader() {
+        use {std::io::Write, tempfile::TempDir};
+
+        let services = reovim_kernel::api::v1::ServiceRegistry::new();
+
+        let temp_dir = TempDir::new().unwrap();
+        let theme_path = temp_dir.path().join("custom.toml");
+        let mut f = std::fs::File::create(&theme_path).unwrap();
+        f.write_all(b"[meta]\nname = \"Custom\"\n").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        services.register(Arc::new(loader));
+
+        let names = ColorschemeCommand::available_theme_names(&services);
+        assert!(names.contains("custom"));
+        // Built-ins should also be listed
+        assert!(names.contains("dark"));
+    }
+
+    #[test]
+    fn test_colorscheme_invalid_with_loader_error_message() {
+        let kernel = reovim_kernel::api::v1::KernelContext::default();
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        kernel.services.register(Arc::new(theme_manager));
+
+        let loader = ThemeLoader::with_paths(vec![]);
+        kernel.services.register(Arc::new(loader));
+
+        let mut ctx = ExCommandContext::new(&kernel);
+        let cmd = ColorschemeCommand;
+        let result = cmd.execute(&mut ctx, &["nonexistent"]);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("nonexistent"));
+        assert!(msg.contains("Available"));
     }
 }
