@@ -50,7 +50,7 @@ use {
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
     reovim_module_motions as motions, reovim_module_notification as notification,
     reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_search as search, reovim_module_snippet as snippet, reovim_module_tetromino as tetromino,
     reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
@@ -147,6 +147,8 @@ impl DefaultsModule {
             Box::new(explorer::ExplorerModule::new()),
             // Vim-explorer adapter - bridges vim keybindings to explorer commands
             Box::new(vim_explorer::VimExplorerModule::new()),
+            // Tetromino game (#537)
+            Box::new(tetromino::TetrominoModule::new()),
         ]
     }
 }
@@ -221,6 +223,8 @@ impl Module for DefaultsModule {
             ModuleId::new("vim-explorer"),
             // Picker vim adapter
             ModuleId::new("vim-microscope"),
+            // Tetromino game (#537)
+            ModuleId::new("tetromino"),
         ]
     }
 
@@ -296,8 +300,9 @@ mod tests {
         // Completion (1): completion
         // Explorer (1): explorer
         // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
-        // Total: 33 modules
-        assert_eq!(deps.len(), 33);
+        // Tetromino (1): tetromino
+        // Total: 34 modules
+        assert_eq!(deps.len(), 34);
     }
 
     #[test]
@@ -316,8 +321,9 @@ mod tests {
         // Completion (1): completion
         // Explorer (1): explorer
         // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+        // Tetromino (1): tetromino
         // Total: 33 modules
-        assert_eq!(modules.len(), 33);
+        assert_eq!(modules.len(), 34);
     }
 
     #[test]

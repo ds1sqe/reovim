@@ -2271,6 +2271,7 @@ dependencies = [
  "reovim-module-scratch-buffer",
  "reovim-module-search",
  "reovim-module-snippet",
+ "reovim-module-tetromino",
  "reovim-module-treesitter-markdown",
  "reovim-module-treesitter-rust",
  "reovim-module-undo",
@@ -2483,6 +2484,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "reovim-module-tetromino"
+version = "0.10.0-dev"
+dependencies = [
+ "rand",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -2789,6 +2804,7 @@ dependencies = [
  "reovim-tui-ext-explorer",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
+ "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
 ]
 
@@ -2812,6 +2828,15 @@ dependencies = [
 
 [[package]]
 name = "reovim-tui-ext-notification"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-tetromino"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",

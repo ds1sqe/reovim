@@ -100,34 +100,34 @@ policies = {
 
 This architecture enables completely different applications using the same engine.
 
-### Example: TetrisGame Mode
+### Example: TetrominoGame Mode
 
 ```rust
-// modules/tetris/src/lib.rs (NOT part of Epic #353 - vision only)
+// modules/tetromino/src/lib.rs (NOT part of Epic #353 - vision only)
 
-pub struct TetrisModule;
+pub struct TetrominoModule;
 
-impl Module for TetrisModule {
-    fn name(&self) -> &str { "tetris" }
+impl Module for TetrominoModule {
+    fn name(&self) -> &str { "tetromino" }
 
     fn init(&self, ctx: &mut ModuleContext) {
-        // Register TetrisResolver - needs INSTANT response
-        ctx.register_resolver(ModeId::from("tetris"), Arc::new(TetrisResolver));
+        // Register TetrominoResolver - needs INSTANT response
+        ctx.register_resolver(ModeId::from("tetromino"), Arc::new(TetrominoResolver));
 
         // Register bindings at Policy layer
         ctx.register_binding_at_layer(BindingLayer::Policy, Binding {
-            mode: "tetris",
+            mode: "tetromino",
             keys: "<Left>",
-            command: "tetris:move_left",
+            command: "tetromino:move_left",
         });
         // Arrow keys, Space for drop, z/x for rotate...
     }
 }
 
-/// Tetris needs INSTANT response - no waiting for longer sequences
-struct TetrisResolver;
+/// Tetromino needs INSTANT response - no waiting for longer sequences
+struct TetrominoResolver;
 
-impl ModeKeyResolver for TetrisResolver {
+impl ModeKeyResolver for TetrominoResolver {
     fn resolve(&self, ctx: &ResolveContext) -> ResolveResult {
         let state = ctx.registry.query(ctx.mode, ctx.keys);
 
@@ -184,7 +184,7 @@ impl ModeKeyResolver for ChessResolver {
 ├──────────────────┼─────────────────────────┼─────────────────────────────────┤
 │  normal (Vim)    │  VimNormalResolver      │  Wait for `dd` after `d`        │
 │  insert (Vim)    │  VimInsertResolver      │  Pass keys to buffer            │
-│  tetris          │  TetrisResolver         │  Execute instantly              │
+│  tetromino       │  TetrominoResolver      │  Execute instantly              │
 │  chess           │  ChessResolver          │  Parse algebraic notation       │
 └──────────────────┴─────────────────────────┴─────────────────────────────────┘
 

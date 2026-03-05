@@ -23,3 +23,4 @@ reovim-tui-ext-notification = { path = "../notification" }
 reovim-tui-ext-microscope = { path = "../microscope" }
 reovim-tui-ext-completion = { path = "../completion" }
 reovim-tui-ext-explorer = { path = "../explorer" }
+reovim-tui-ext-tetromino = { path = "../tetromino" }

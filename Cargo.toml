@@ -59,6 +59,7 @@ members = [
     "server/modules/snippet",
     "server/modules/range-finder",
     "server/modules/completion",
+<<<<<<< HEAD
     "server/modules/lsp-navigation",
     "server/modules/vim-lsp",
     "server/modules/vim-microscope",
@@ -66,6 +67,9 @@ members = [
     "server/modules/vim-completion",
     "server/modules/vim-range-finder",
     "server/modules/vim-snippet",
+=======
+    "server/modules/tetromino",
+>>>>>>> 24df4775 (feat(tetromino): add tetromino game as loadable module (#537))
 
     # Client layer - TUI
     "clients/tui",
@@ -79,6 +83,7 @@ members = [
     "clients/tui/extensions/microscope",
     "clients/tui/extensions/completion",
     "clients/tui/extensions/explorer",
+    "clients/tui/extensions/tetromino",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -246,6 +251,7 @@ reovim-module-vim-explorer = { path = "./server/modules/vim-explorer", version =
 reovim-module-vim-completion = { path = "./server/modules/vim-completion", version = "0.10.0-dev" }
 reovim-module-vim-range-finder = { path = "./server/modules/vim-range-finder", version = "0.10.0-dev" }
 reovim-module-vim-snippet = { path = "./server/modules/vim-snippet", version = "0.10.0-dev" }
+reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

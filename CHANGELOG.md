@@ -104,6 +104,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   ABI version bumped to 1.2.0 (backward compatible). C header (`reovim.h`)
   updated with `ReovimYankType` enum and all new function declarations.
   333 unit tests (257 FFI + 76 Python), zero clippy warnings.
+- **Tetromino game module** (`reovim-module-tetromino`) - Loadable module architecture proof-of-concept (#537)
+  - Server-side: game engine, bridge, commands, modes (PLAY/PAUSED), key resolvers, keybindings
+  - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece preview, score panel
+  - Start with `<C-t>` in normal mode; hjkl/arrows for movement, Space for hard drop, p to pause, q/Esc to quit
+  - Ghost piece (landing preview), hold piece (`c`), CCW rotation (`z`)
+  - SRS wall kicks (standard offset tables for JLSTZ and I pieces)
+  - Soft drop scoring (1pt/cell), hard drop scoring (2pt/cell), T-spin bonus scoring
+  - 7-bag randomizer with Fisher-Yates shuffle
 
 ### Changed
 

@@ -294,7 +294,7 @@ impl std::fmt::Display for KeySequence {
 /// What a keybinding triggers.
 ///
 /// Keybindings can either execute a command or enter a mode.
-/// This enables user-configurable mode bindings like `<C-t>` to enter Tetris mode.
+/// This enables user-configurable mode bindings like `<C-t>` to enter Tetromino mode.
 ///
 /// # TOML Syntax
 ///
@@ -302,7 +302,7 @@ impl std::fmt::Display for KeySequence {
 /// [bindings.normal]
 /// "dd" = "editor:delete-line"      # Command (default)
 /// "i" = { enter = "vim:insert" }   # Mode (explicit)
-/// "<C-t>" = { enter = "tetris:play" }
+/// "<C-t>" = { enter = "tetromino:play" }
 /// ```
 ///
 /// # Example

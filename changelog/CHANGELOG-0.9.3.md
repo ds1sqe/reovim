@@ -229,7 +229,7 @@
   based lookup. `CmdlineState` now implements `TextInputSink` with `as_text_input_sink()`
   override. Runner routes via `insert_char_by_target()` matching on target instead of mode
   name. Enables any module to define input targets without runner changes (e.g., hypothetical
-  chess/tetris/search modules). Files: `server/lib/drivers/input/src/resolver.rs`,
+  chess/tetromino/search modules). Files: `server/lib/drivers/input/src/resolver.rs`,
   `server/lib/drivers/session/src/extension.rs`, `server/lib/drivers/session/src/api/cmdline.rs`,
   `server/lib/server/src/grpc/input.rs`, `server/modules/vim/src/resolvers/*.rs`.
 
