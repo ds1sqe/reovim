@@ -2477,9 +2477,12 @@ mod tests {
         let editing_state = session.client_state(client_id).unwrap();
         assert!(editing_state.windows.is_empty());
 
-        // Now create a buffer
-        session.with_state_mut_sync(|state| {
-            state.create_buffer("hello");
+        // Now create a buffer and set it as the client's active_buffer (#471)
+        let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
+        session.with_clients_mut(|clients| {
+            if let Some(client) = clients.get_mut(&client_id) {
+                client.state.active_buffer = Some(buf_id);
+            }
         });
 
         // resolve_key_for_client should trigger ensure_client_has_window
@@ -2789,9 +2792,13 @@ mod tests {
         assert!(editing_state.compositor.is_some());
         assert!(editing_state.windows.is_empty());
 
-        // Now create a buffer
-        session.with_state_mut_sync(|state| {
-            state.create_buffer("hello lazy compositor");
+        // Now create a buffer and set it as the client's active_buffer (#471)
+        let buf_id =
+            session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
+        session.with_clients_mut(|clients| {
+            if let Some(client) = clients.get_mut(&client_id) {
+                client.state.active_buffer = Some(buf_id);
+            }
         });
 
         // Trigger ensure_client_has_window via resolve_key_for_client.

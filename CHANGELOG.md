@@ -370,6 +370,42 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   New shared bench crate (`reovim-bench-utils`) provides VFS fixture factories,
   Criterion re-exports, and scaling parameter sets.
 
+### Fixed
+
+- **Viewport scroll tracking (#494)**: Scrolling down in long files left the TUI
+  viewport fixed at line 0 because `scroll_top` was hardcoded in `render_engine.rs`.
+  Fix: per-window `scroll_tops` HashMap in `TuiCoreState` with
+  `compute_scroll_top()` that ensures cursor visibility. Scroll offset propagated
+  through all render functions (buffer content, cursors, labels, selections).
+  7 unit tests for scroll computation edge cases.
+
+- **Per-client active_buffer and terminal_size (#471)**: Multi-client sessions
+  shared `active_buffer` and `terminal_size` at the session level, causing clients
+  to interfere with each other's buffer focus and viewport size. Fix: migrated both
+  fields from `SessionShared` to per-client `EditingState`/`ClientContext`. Added
+  `Viewport::ensure_cursor_visible()` for automatic scroll tracking after cursor
+  movement, and presence notification updates on buffer/focus changes. 8 new tests.
+
+- **Tracing output corrupting TUI display**: In integrated mode (server + TUI in
+  one process), tracing output to stderr corrupted the terminal because stderr
+  shares the TUI file descriptor. Fix: conditionalize tracing subscriber by mode —
+  integrated/TUI use file logging (`~/.local/share/reovim/reovim.log`), server/CLI
+  keep stderr. Added `--log <path>` CLI flag to override log file path. Uses
+  `tracing-appender` non-blocking writer with ANSI disabled for file output.
+
+- **Angle bracket keybinding parse failures (#522)**: Three bindings used raw `<`
+  which the key parser treated as the start of a special key sequence, producing
+  "Failed to parse keybinding" warnings at startup. Fix: escaped with `<lt>`
+  notation in visual mode angle bracket textobjects (`i<` -> `i<lt>`,
+  `a<` -> `a<lt>`) and window resize decrease (`<` -> `<lt>`).
+
+- **Buffer content query returning wrong buffer (#471)**: `get_raw_content`,
+  `get_line_count`, and `get_annotations` RPC handlers fell back to the first
+  buffer in the kernel list when no explicit `buffer_id` was provided, ignoring
+  the per-client `active_buffer`. This caused the explorer's file-open operation
+  to report stale buffer content. Fix: resolve buffer via client's per-client
+  `active_buffer` from request extensions before falling back to kernel list.
+
 ## [0.9.4-dev]
 
 ### Added

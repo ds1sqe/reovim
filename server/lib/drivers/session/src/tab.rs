@@ -555,6 +555,17 @@ mod tests {
     }
 
     #[test]
+    fn test_tab_page_clone() {
+        let tab = TabPage::new("cloned");
+        #[allow(clippy::redundant_clone)]
+        let cloned = tab.clone();
+        assert_eq!(cloned.id(), tab.id());
+        assert_eq!(cloned.label(), "cloned");
+        assert!(cloned.compositor().is_none());
+        assert!(cloned.windows().is_empty());
+    }
+
+    #[test]
     fn test_tab_page_set_single_tab_next_wraps() {
         let mut set = TabPageSet::new();
         let id = set.active_tab_id();

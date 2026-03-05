@@ -21,6 +21,9 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-lsp = { workspace = true }
+# Cross-module deps: completion is the integration point that orchestrates
+# LSP startup (module-lsp), snippet expansion from LSP items (module-snippet),
+# and user-visible toast notifications (module-notification).
 reovim-module-lsp = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-module-notification = { workspace = true }

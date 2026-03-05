@@ -550,6 +550,54 @@ mod tests {
     }
 
     #[test]
+    fn render_narrow_sidebar_prefix_overflow() {
+        use reovim_driver_display::FrameBuffer;
+
+        // Deeply nested node: prefix "│ │ └─" = 6 chars + icon "  " = 2 chars.
+        // With width=4, max_x = x + 3, so prefix loop hits `col >= max_x` break.
+        let data = make_data(vec![NodeData {
+            name: "deep.rs".to_owned(),
+            depth: 3,
+            is_dir: false,
+            is_expanded: false,
+            is_hidden: false,
+            is_last: true,
+            vertical_lines: vec![true, true, false],
+            is_symlink: false,
+            size: 0,
+        }]);
+        let bounds = crate::layout::SidebarBounds::calculate(4, 10, false);
+        let mut fb = FrameBuffer::new(40, 10);
+        render_explorer(&mut fb, &data, &bounds);
+        // Should not panic — prefix truncated before icon is reached
+        assert!(fb.get(0, 0).is_some());
+    }
+
+    #[test]
+    fn render_narrow_sidebar_icon_overflow() {
+        use reovim_driver_display::FrameBuffer;
+
+        // Depth 1 node: prefix "└─" = 2 chars, icon "> " = 2 chars.
+        // With width=5 (margin 1 + 3 cols before max_x), prefix fits but icon hits break.
+        let data = make_data(vec![NodeData {
+            name: "src".to_owned(),
+            depth: 1,
+            is_dir: true,
+            is_expanded: false,
+            is_hidden: false,
+            is_last: true,
+            vertical_lines: vec![false],
+            is_symlink: false,
+            size: 0,
+        }]);
+        let bounds = crate::layout::SidebarBounds::calculate(5, 10, false);
+        let mut fb = FrameBuffer::new(40, 10);
+        render_explorer(&mut fb, &data, &bounds);
+        // Should not panic — icon truncated
+        assert!(fb.get(0, 0).is_some());
+    }
+
+    #[test]
     fn build_prefix_depth_3() {
         let prefix = build_prefix(&[true, true, false], true, 3);
         // │ │ └─

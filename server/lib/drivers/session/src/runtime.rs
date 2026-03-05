@@ -2880,7 +2880,7 @@ mod tests {
         let mut active_buffer = None;
         let mut terminal_size = (80u16, 24u16);
 
-        let _runtime = SessionRuntime::new(
+        let mut runtime = SessionRuntime::new(
             &mut session,
             crate::ClientContext {
                 mode_stack: &mut mode_stack,
@@ -2897,8 +2897,9 @@ mod tests {
             &kernel,
             &executor,
         );
-        // terminal_size is per-client (#471) -- just verify defaults
-        assert_eq!(terminal_size, (80, 24));
+        // Exercise session_mut() accessor.
+        let session_ref = runtime.session_mut();
+        assert_eq!(session_ref.id.as_usize(), 1);
     }
 
     #[test]
@@ -6996,6 +6997,34 @@ mod tests {
         let mut harness = TestSessionRuntime::new();
         harness.with_runtime(|runtime| {
             assert!(runtime.paste_from_selection().is_none());
+        });
+    }
+
+    // =========================================================================
+    // BufferApi trait-qualified active_buffer coverage
+    // =========================================================================
+
+    #[test]
+    fn test_buffer_api_active_buffer_trait_qualified() {
+        use crate::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::new();
+        harness.with_runtime(|runtime| {
+            // Trait-qualified call through BufferApi to ensure impl block attribution.
+            assert!(BufferApi::active_buffer(runtime).is_none());
+        });
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let buf_id = BufferApi::active_buffer(runtime);
+            assert!(buf_id.is_some());
+
+            // Test set_active_buffer round-trip via trait qualification.
+            BufferApi::set_active_buffer(runtime, None);
+            assert!(BufferApi::active_buffer(runtime).is_none());
+
+            BufferApi::set_active_buffer(runtime, buf_id);
+            assert_eq!(BufferApi::active_buffer(runtime), buf_id);
         });
     }
 }

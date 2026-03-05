@@ -237,6 +237,17 @@ mod tests {
     }
 
     #[test]
+    fn mock_picker_default_execute() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let picker = MockPicker;
+        let mut test = TestSessionRuntime::new();
+        let mut runtime = test.runtime();
+        // Default execute() is a no-op — just verify it doesn't panic.
+        picker.execute(PickerAction::Close, &mut runtime);
+    }
+
+    #[test]
     fn trait_object_safety() {
         let picker: Arc<dyn Picker> = Arc::new(MockPicker);
         assert_eq!(picker.name(), "mock");

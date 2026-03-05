@@ -154,11 +154,9 @@ impl MicroscopeState {
 
         self.engine.set_pattern(&self.query);
         // Tick until stable (bounded to avoid infinite loop).
-        for _ in 0..100 {
-            let status = self.engine.tick(10);
-            if !status.running {
-                break;
-            }
+        let mut ticks = 0;
+        while ticks < 100 && self.engine.tick(10).running {
+            ticks += 1;
         }
         // Update counts.
         self.total_count = self.engine.total_count();
@@ -369,6 +367,155 @@ mod tests {
         };
         let debug = format!("{snap:?}");
         assert!(debug.contains("PickerItemSnapshot"));
+    }
+
+    /// A dynamic picker that returns items based on query.
+    struct DynamicTestPicker;
+
+    impl reovim_driver_picker::Picker for DynamicTestPicker {
+        fn name(&self) -> &'static str {
+            "dynamic-test"
+        }
+
+        fn title(&self) -> &'static str {
+            "Dynamic Test"
+        }
+
+        fn items(
+            &self,
+            ctx: &reovim_driver_picker::PickerContext,
+            _services: &reovim_kernel::api::v1::ServiceRegistry,
+        ) -> Vec<PickerItem> {
+            if ctx.query.is_empty() {
+                vec![
+                    PickerItem {
+                        display: "alpha".to_owned(),
+                        detail: None,
+                        data: reovim_driver_picker::PickerData::Text("a".to_owned()),
+                        icon: None,
+                    },
+                    PickerItem {
+                        display: "beta".to_owned(),
+                        detail: None,
+                        data: reovim_driver_picker::PickerData::Text("b".to_owned()),
+                        icon: None,
+                    },
+                ]
+            } else {
+                vec![PickerItem {
+                    display: format!("result-{}", ctx.query),
+                    detail: None,
+                    data: reovim_driver_picker::PickerData::Text("r".to_owned()),
+                    icon: None,
+                }]
+            }
+        }
+
+        fn on_select(&self, _item: &PickerItem) -> reovim_driver_picker::PickerAction {
+            reovim_driver_picker::PickerAction::Close
+        }
+
+        fn is_static(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn refresh_engine_dynamic_picker() {
+        let services = Arc::new(ServiceRegistry::new());
+        let registry = Arc::new(PickerRegistry::new());
+        registry.register(Arc::new(DynamicTestPicker));
+        services.register(registry);
+
+        let mut state = MicroscopeState::create();
+        state.services = Some(Arc::clone(&services));
+        state.picker_name = "dynamic-test".to_owned();
+
+        // Initial refresh with empty query — should get 2 items from dynamic picker.
+        state.refresh_engine();
+        assert_eq!(state.total_count, 2);
+        assert_eq!(state.matched_count, 2);
+        assert_eq!(state.items.len(), 2);
+
+        // Set a query — dynamic picker re-fetches with query context.
+        state.query = "foo".to_owned();
+        state.refresh_engine();
+        assert_eq!(state.total_count, 1);
+        assert_eq!(state.matched_count, 1);
+        assert_eq!(state.items[0].display, "result-foo");
+    }
+
+    #[test]
+    fn refresh_engine_dynamic_picker_empty_items() {
+        /// Dynamic picker that always returns empty.
+        struct EmptyDynamicPicker;
+
+        impl reovim_driver_picker::Picker for EmptyDynamicPicker {
+            fn name(&self) -> &'static str {
+                "empty-dynamic"
+            }
+
+            fn title(&self) -> &'static str {
+                "Empty Dynamic"
+            }
+
+            fn items(
+                &self,
+                _ctx: &reovim_driver_picker::PickerContext,
+                _services: &reovim_kernel::api::v1::ServiceRegistry,
+            ) -> Vec<PickerItem> {
+                vec![]
+            }
+
+            fn on_select(&self, _item: &PickerItem) -> reovim_driver_picker::PickerAction {
+                reovim_driver_picker::PickerAction::Close
+            }
+
+            fn is_static(&self) -> bool {
+                false
+            }
+        }
+
+        let services = Arc::new(ServiceRegistry::new());
+        let registry = Arc::new(PickerRegistry::new());
+        registry.register(Arc::new(EmptyDynamicPicker));
+        services.register(registry);
+
+        let mut state = MicroscopeState::create();
+        state.services = Some(Arc::clone(&services));
+        state.picker_name = "empty-dynamic".to_owned();
+
+        // Empty items path — engine restarts but no items pushed.
+        state.refresh_engine();
+        assert_eq!(state.total_count, 0);
+        assert_eq!(state.matched_count, 0);
+        assert!(state.items.is_empty());
+    }
+
+    /// Push many items to force the engine to require multiple ticks.
+    #[test]
+    fn refresh_engine_many_items_multi_tick() {
+        use reovim_driver_picker::{PickerData, push_items};
+
+        let mut state = MicroscopeState::create();
+        let injector = state.engine.injector();
+
+        // Push 50000 items — enough that tick(10) needs multiple passes.
+        let items: Vec<PickerItem> = (0..50_000)
+            .map(|i| PickerItem {
+                display: format!("item_{i:05}"),
+                detail: Some(format!("detail/path/to/item_{i:05}.rs")),
+                data: PickerData::Text(format!("data_{i}")),
+                icon: None,
+            })
+            .collect();
+        push_items(&injector, items);
+
+        state.query = "item_25".to_owned();
+        state.refresh_engine();
+
+        assert!(state.total_count > 0);
+        assert!(state.matched_count > 0);
     }
 
     #[test]

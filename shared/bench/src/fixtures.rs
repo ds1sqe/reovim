@@ -234,6 +234,26 @@ mod tests {
     }
 
     #[test]
+    fn test_project_small_no_module_dir() {
+        // total_files = 1: src_count = 0, so src_mod_count = 0 (false branch of if)
+        let fixture = TreeFixture::project(1);
+        let entries = fixture.vfs.list_dir(&fixture.root).unwrap();
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"Cargo.toml"));
+        assert!(names.contains(&"src"));
+        assert!(names.contains(&"docs"));
+        // src/ should have no module/ subdir since src_count = 0
+        let src_entries = fixture
+            .vfs
+            .list_dir(std::path::Path::new("/bench/src"))
+            .unwrap();
+        assert!(
+            src_entries.iter().all(|e| e.name != "module"),
+            "module/ directory should not exist when src_count is 0"
+        );
+    }
+
+    #[test]
     fn test_project_zero_files() {
         let fixture = TreeFixture::project(0);
         let entries = fixture.vfs.list_dir(&fixture.root).unwrap();

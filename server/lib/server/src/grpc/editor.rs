@@ -264,15 +264,23 @@ mod tests {
         let (registry, session) = test_registry_with_buffer_manager();
 
         // Create a buffer
-        session
-            .with_state_mut(|state| {
-                state.create_buffer("test content");
-            })
+        let buf_id = session
+            .with_state_mut(|state| state.create_buffer("test content"))
             .await;
+
+        // Per-client active_buffer (#471): add a client and set their active buffer
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+        session.with_clients_mut(|clients| {
+            if let Some(client) = clients.get_mut(&client_id) {
+                client.state.active_buffer = Some(buf_id);
+            }
+        });
 
         let service = EditorServiceImpl::new(registry, SessionId::new("test"));
 
-        let request = Request::new(GetActiveBufferRequest {});
+        let mut request = Request::new(GetActiveBufferRequest {});
+        request.extensions_mut().insert(client_id);
         let response = service.get_active_buffer(request).await;
 
         assert!(response.is_ok());

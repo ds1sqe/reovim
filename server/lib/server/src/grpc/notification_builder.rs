@@ -1748,6 +1748,8 @@ mod tests {
         );
         // #474: Set compositor on per-client state (not shared)
         client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
+        // Per-client active_buffer (#471): set so fallback for unmapped windows works
+        client.state.active_buffer = Some(buffer_id);
         session.add_client_with_state(client);
 
         let notification = build_layout_notification(&session, 99999, 1);
