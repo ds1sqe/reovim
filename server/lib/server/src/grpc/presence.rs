@@ -169,7 +169,7 @@ fn build_presence_left_notification(client_id: ClientId, display_name: &str) -> 
 }
 
 /// Build `presence_updated` notification.
-fn build_presence_updated_notification(presence: &ClientPresence) -> Notification {
+pub fn build_presence_updated_notification(presence: &ClientPresence) -> Notification {
     use reovim_protocol::v2::PresenceUpdatedPayload;
 
     Notification {

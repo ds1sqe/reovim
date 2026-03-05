@@ -195,6 +195,28 @@ impl StepTest {
         }
     }
 
+    /// Create new step test with custom environment variables.
+    ///
+    /// See [`super::IntegrationTest::with_env`] for details.
+    ///
+    /// # Panics
+    ///
+    /// Panics if server fails to spawn.
+    pub async fn with_env(env_vars: &[(&str, &str)]) -> Self {
+        let harness = TestServerHarness::spawn_with_env(env_vars)
+            .await
+            .expect("Failed to spawn server with env vars");
+        let addr = format!("127.0.0.1:{}", harness.port());
+        Self {
+            harness,
+            addr,
+            initial_content: None,
+            initial_cursor: None,
+            steps: Vec::new(),
+            default_delay: DEFAULT_STEP_DELAY_MS,
+        }
+    }
+
     /// Get the path to the server log file for debugging.
     ///
     /// Returns `None` if log capture is not enabled.

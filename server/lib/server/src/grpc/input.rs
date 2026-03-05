@@ -90,6 +90,7 @@ impl InputService for InputServiceImpl {
     /// - State changes are accumulated and emitted as notifications
     ///
     /// When modules are NOT loaded (empty registries), falls back to character insertion.
+    #[allow(clippy::too_many_lines)]
     async fn send_keys(
         &self,
         request: Request<SendKeysRequest>,
@@ -132,6 +133,9 @@ impl InputService for InputServiceImpl {
         // #514/#468: Snapshot ALL bridge active states before key resolution.
         // Generic detection replaces hardcoded cmdline check.
         let bridge_states_before = Self::snapshot_bridge_states(&session, client_id, &self.bridges);
+
+        // #521: Track mode before key processing for bridge lifecycle hooks.
+        let mode_before_keys = session.client_current_mode(client_id);
 
         // Process each key through the resolver system
         let mut any_handled = false;
@@ -198,20 +202,59 @@ impl InputService for InputServiceImpl {
         // Most key operations move the cursor (typing, motions, commands like `o`).
         // `record_cursor_move` is idempotent on `affected_buffers`, so calling it
         // even when InsertChar already recorded cursor_move is safe (#505).
-        #[allow(clippy::redundant_closure_for_method_calls)]
-        if any_handled && let Some(buffer_id) = session.with_state(|s| s.active_buffer()).await {
+        // Per-client active_buffer (#471)
+        if any_handled
+            && let Some(buffer_id) = session
+                .with_clients(|clients| clients.get(&client_id).and_then(|c| c.state.active_buffer))
+        {
             accumulated_changes.record_cursor_move(buffer_id);
         }
 
+        // Viewport scroll tracking: adjust scroll_top so cursor stays visible.
+        if any_handled {
+            let scrolled_window = session.with_clients_mut(|clients| {
+                let client = clients.get_mut(&client_id)?;
+                let window = client.state.windows.active_mut()?;
+                if window.viewport.ensure_cursor_visible(window.cursor.line) {
+                    Some(window.id)
+                } else {
+                    None
+                }
+            });
+            if let Some(window_id) = scrolled_window {
+                accumulated_changes.record_scroll_change(window_id);
+            }
+        }
+
         // #474: Auto-detect selection changes (defense-in-depth).
-        #[allow(clippy::redundant_closure_for_method_calls)]
         if let Some(state) = session.client_state(client_id) {
-            let active_buffer = session.with_state(|s| s.active_buffer()).await;
             Self::ensure_selection_change_recorded(
                 &mut accumulated_changes,
                 &state.windows,
-                active_buffer,
+                state.active_buffer,
             );
+        }
+
+        // Auto-emit presence update on buffer/window change (#471).
+        if accumulated_changes.window_changed || accumulated_changes.focus_changed {
+            let new_buffer_id = session.with_clients(|clients| {
+                let window = clients.get(&client_id)?.state.windows.active()?;
+                Some(window.buffer_id?.as_usize())
+            });
+            session.presence().update(client_id, |p| {
+                p.buffer_id = new_buffer_id;
+            });
+            accumulated_changes.record_presence_change(client_id.as_usize());
+        }
+
+        // #521: Notify bridges of mode changes so they can self-dismiss.
+        let mode_after_keys = session.client_current_mode(client_id);
+        if let (Some(before), Some(after)) = (&mode_before_keys, &mode_after_keys)
+            && before != after
+        {
+            let from = before.to_string();
+            let to = after.to_string();
+            Self::notify_bridges_mode_changed(&session, client_id, &self.bridges, &from, &to);
         }
 
         // #514/#468/#469: Generic bridge change detection — emit on toggle AND on
@@ -299,6 +342,27 @@ impl InputServiceImpl {
                 changes.record_extension_change(kind.into());
             }
         }
+    }
+
+    /// Notify all client-scoped bridges of a mode change (#521).
+    ///
+    /// Iterates all registered bridges and calls `on_mode_changed` for those
+    /// with [`ExtensionScope::Client`], giving them a chance to self-dismiss
+    /// (e.g., completion popup on leaving insert mode).
+    fn notify_bridges_mode_changed(
+        session: &Session,
+        client_id: ClientId,
+        bridges: &BridgeRegistry,
+        from: &str,
+        to: &str,
+    ) {
+        session.with_client_extensions_mut(client_id, |ext| {
+            for bridge in bridges.values() {
+                if bridge.scope() == reovim_driver_session::bridges::ExtensionScope::Client {
+                    bridge.on_mode_changed(from, to, ext);
+                }
+            }
+        });
     }
 
     /// Defense-in-depth: if cursor moved but `selection_changed` was not set by
@@ -425,8 +489,10 @@ impl InputServiceImpl {
                     if let Some(transition) =
                         session.try_on_command_complete_for_client(client_id).await
                     {
-                        Self::apply_mode_transition_for_client(session, client_id, transition)
-                            .await;
+                        let pop_changes =
+                            Self::apply_mode_transition_for_client(session, client_id, transition)
+                                .await;
+                        changes.merge(pop_changes);
                     }
 
                     // Merge command changes into accumulated changes
@@ -470,7 +536,10 @@ impl InputServiceImpl {
                 ResolveResult::ModeTransition(transition) => {
                     // Per-client state (#471): Apply mode transition to per-client mode stack
                     tracing::debug!(?transition, %client_id, "Applying mode transition");
-                    Self::apply_mode_transition_for_client(session, client_id, transition).await;
+                    let pop_changes =
+                        Self::apply_mode_transition_for_client(session, client_id, transition)
+                            .await;
+                    changes.merge(pop_changes);
                     // Record mode change for notification
                     changes.record_mode_change();
                     (true, changes)
@@ -552,7 +621,7 @@ impl InputServiceImpl {
         session: &Session,
         client_id: ClientId,
         transition: ModeTransition,
-    ) {
+    ) -> StateChanges {
         // Update per-client mode stack via session's update_client_state
         let applied = session.update_client_state(client_id, |editing_state| {
             match transition.clone() {
@@ -591,11 +660,14 @@ impl InputServiceImpl {
         }
 
         // Handle pop result if provided (Phase #471: use per-client state)
+        // Returns StateChanges from command execution (e.g., buffer_modified from delete)
         if let ModeTransition::Pop {
             result: Some(pop_result),
         } = transition
         {
-            Self::handle_pop_result_for_client(session, client_id, pop_result);
+            Self::handle_pop_result_for_client(session, client_id, pop_result)
+        } else {
+            StateChanges::new()
         }
     }
 
@@ -603,7 +675,16 @@ impl InputServiceImpl {
     ///
     /// This ensures commands executed from pop results (like change operators)
     /// use per-client state for proper multi-client isolation.
-    fn handle_pop_result_for_client(session: &Session, client_id: ClientId, result: PopResult) {
+    ///
+    /// Returns `StateChanges` from command execution so the caller can merge
+    /// them into accumulated changes for notification emission.
+    fn handle_pop_result_for_client(
+        session: &Session,
+        client_id: ClientId,
+        result: PopResult,
+    ) -> StateChanges {
+        let mut changes = StateChanges::new();
+
         match result {
             PopResult::ExecuteCommand { command, args } => {
                 tracing::debug!(?command, %client_id, "Executing command from pop result (per-client)");
@@ -615,23 +696,30 @@ impl InputServiceImpl {
                 }
 
                 // Set active buffer ID (required for operators like delete/yank)
-                #[allow(clippy::redundant_closure_for_method_calls)]
-                if let Some(buffer_id) = session.with_state_sync(|state| state.active_buffer()) {
+                // Per-client active_buffer (#471)
+                if let Some(buffer_id) = session.with_clients(|clients| {
+                    clients.get(&client_id).and_then(|c| c.state.active_buffer)
+                }) {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
                 // Phase #471/#479: Execute with per-client state, log errors to ring buffer
-                if let Some((CommandResult::Error(ref e), _)) =
-                    session.execute_command_for_client(client_id, &command, &cmd_ctx)
-                {
-                    // Phase #479: Log command failure to ring buffer (visible, not silent)
-                    session.with_client_ring_buffer(client_id, |rb| {
-                        rb.log_event(
-                            ClientEventType::Error,
-                            format!("COMMAND_FAILED: cmd={command:?} error={e}"),
-                        );
-                    });
-                    tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                match session.execute_command_for_client(client_id, &command, &cmd_ctx) {
+                    Some((CommandResult::Error(ref e), cmd_changes)) => {
+                        changes.merge(cmd_changes);
+                        // Phase #479: Log command failure to ring buffer (visible, not silent)
+                        session.with_client_ring_buffer(client_id, |rb| {
+                            rb.log_event(
+                                ClientEventType::Error,
+                                format!("COMMAND_FAILED: cmd={command:?} error={e}"),
+                            );
+                        });
+                        tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                    }
+                    Some((_, cmd_changes)) => {
+                        changes.merge(cmd_changes);
+                    }
+                    None => {}
                 }
                 // Success/Quit/ForceQuit/Detach: handled elsewhere
                 // None (client not found or following): already logged in execute_command_for_client
@@ -646,6 +734,8 @@ impl InputServiceImpl {
                 tracing::trace!(?values, "Mode returned data");
             }
         }
+
+        changes
     }
 
     // NOTE (#471): `fallback_char_insert()` was REMOVED.
@@ -1534,19 +1624,10 @@ mod tests {
         let client_id = ClientId::new(1);
         session.add_client(client_id);
 
-        // Set active buffer via session state
-        tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap()
-            .block_on(async {
-                session
-                    .with_state_mut(|state| {
-                        state
-                            .driver_session
-                            .set_active_buffer(Some(BufferId::from_raw(5)));
-                    })
-                    .await;
-            });
+        // Set active buffer via per-client state (#471)
+        session.update_client_state(client_id, |state| {
+            state.active_buffer = Some(BufferId::from_raw(5));
+        });
 
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),

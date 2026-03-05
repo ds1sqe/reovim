@@ -7,7 +7,7 @@ The session driver (`lib/drivers/session/`) provides traits for session manageme
 | Type | Purpose |
 |------|---------|
 | `Session` | Shared session infrastructure (`id` + `SessionShared`) |
-| `SessionShared` | Truly shared state (compositor, active_buffer, home_mode) |
+| `SessionShared` | Truly shared state (compositor, home_mode) |
 | `SessionRuntime` | Runtime that borrows Session + per-client state |
 | `ClientId` | Client connection identifier |
 | `EmptySessionHandler` | Handle empty sessions (no buffers) |
@@ -32,10 +32,8 @@ pub struct Session {
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `compositor` | `Option<Box<dyn RootCompositor>>` | Window layout management |
-| `active_buffer` | `Option<BufferId>` | Session-level active buffer |
-| `terminal_size` | `(u16, u16)` | Default terminal dimensions (80x24) |
-| `home_mode` | `ModeId` | Mode for initializing new clients |
+| `compositor` | `Option<Box<dyn RootCompositor>>` | Window layout template |
+| `home_mode` | `ModeId` | Bootstrap template for initializing new clients |
 
 ### Per-Client State (server::EditingState)
 
@@ -61,10 +59,10 @@ Per-client state lives in `server/lib/server/src/session/client.rs`:
 ```rust
 // Shared state access
 let home_mode = state.driver_session.shared.home_mode();
-let active_buffer = state.driver_session.shared.active_buffer();
 
 // Per-client state access (via server Session)
 let editing_state = session.client_state(client_id);
+// active_buffer, terminal_size are per-client in EditingState
 let mode = editing_state.current_mode();
 let cursor = editing_state.windows.focused().map(|w| w.cursor);
 ```

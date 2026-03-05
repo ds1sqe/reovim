@@ -32,10 +32,6 @@ reovim-driver-session = { workspace = true }
 
 # Module bundle (provides DefaultsModule::create_modules)
 reovim-module-defaults = { workspace = true }
-# Module bridges (gRPC bridge registration, #468)
-reovim-module-cmdline = { workspace = true }
-reovim-module-whichkey = { workspace = true }
-reovim-module-notification = { workspace = true }
 
 # Extra modules available via REOVIM_EXTRA_MODULES env var
 reovim-module-textobjects = { workspace = true }
@@ -56,6 +52,7 @@ tokio = { workspace = true, features = ["full"] }
 # Logging
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+reovim-driver-log = { path = "../../shared/log" }
 
 # Sync primitives for KernelContext
 parking_lot = { workspace = true }

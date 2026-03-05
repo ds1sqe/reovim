@@ -26,7 +26,9 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_command::{CommandHandlerStore, ExCommandHandlerStore, ExCommandRegistry},
+    reovim_driver_command::{
+        CommandHandlerStore, CommandQueryService, ExCommandHandlerStore, ExCommandRegistry,
+    },
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
@@ -43,26 +45,33 @@ use {
     },
 };
 
-/// Create an extension bridge registry for gRPC notification emission (#468).
+/// Collect extension bridges from modules via `BridgeProvider`.
 ///
-/// Bridges adapt session extension state to JSON for gRPC transmission.
-/// Each bridge adapts a module's `SessionExtension` state to JSON.
+/// Initializes modules in a temporary `ServiceRegistry` to collect bridges.
+/// Bridges are stateless trait objects — they can be collected once and reused
+/// across all sessions. The actual session state is created separately by
+/// the session factory.
 ///
-/// Currently registers bridges directly from module crates. Full
-/// `BridgeProvider`-based collection (where modules register during `init()`
-/// and bootstrap collects) requires refactoring the session factory pattern.
+/// This keeps bootstrap decoupled from individual modules: zero module-specific
+/// imports needed. Modules self-register their bridges during `init()`.
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
-pub fn create_bridge_registry() -> reovim_driver_session::bridges::BridgeRegistry {
-    use {
-        reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
-        reovim_module_notification::NotificationBridge, reovim_module_whichkey::WhichKeyBridge,
-    };
+pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
+    use reovim_driver_session::bridges::{BridgeProvider, BridgeRegistry};
+
+    // Initialize modules in a temporary ServiceRegistry just for bridge collection.
+    let services = Arc::new(ServiceRegistry::new());
+    let kernel = create_kernel_context(Arc::clone(&services));
+    let module_ctx = create_module_context(kernel, Arc::clone(&services));
+    initialize_modules(&module_ctx);
 
     let mut registry = BridgeRegistry::new();
-    registry.register(CmdlineBridge);
-    registry.register(WhichKeyBridge);
-    registry.register(NotificationBridge);
+    if let Some(provider) = services.get::<BridgeProvider>() {
+        for bridge in provider.take_bridges() {
+            registry.register_boxed(bridge);
+        }
+    }
+
     registry
 }
 
@@ -106,7 +115,12 @@ pub fn create_session_state() -> SessionState {
 
     // Register CommandQuerySnapshot for module command queries (#453)
     let command_query_snapshot = Arc::new(CommandQuerySnapshot::from_registry(&command_registry));
+    // Register CommandQueryProvider for module-level access (#522)
+    let command_query_provider = Arc::new(reovim_driver_command::CommandQueryProvider::new(
+        command_query_snapshot.list_all(),
+    ));
     services.register(command_query_snapshot);
+    services.register(command_query_provider);
 
     // Extract ex-command handlers and create registry (#465)
     extract_ex_command_registry(&services);
@@ -278,8 +292,8 @@ fn trigger_empty_session_handlers(state: &mut SessionState, services: &Arc<Servi
         EmptySessionAction, EmptySessionContext, SessionHandlerKey, SessionHandlerRegistry,
     };
 
-    // Only trigger if no buffers exist
-    if state.active_buffer().is_some() {
+    // Only trigger if no buffers exist (check kernel buffer list)
+    if !state.app.kernel.buffers.list().is_empty() {
         return;
     }
 

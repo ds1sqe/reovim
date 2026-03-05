@@ -216,6 +216,8 @@ mod tests {
         registers: RegisterBank,
         clipboard_history: HistoryRing,
         local_marks: MarkBank,
+        active_buffer: Option<BufferId>,
+        terminal_size: (u16, u16),
     }
 
     impl TestState {
@@ -242,6 +244,8 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             }
         }
 
@@ -257,6 +261,8 @@ mod tests {
                     registers: &mut self.registers,
                     clipboard_history: &mut self.clipboard_history,
                     local_marks: &mut self.local_marks,
+                    active_buffer: &mut self.active_buffer,
+                    terminal_size: &mut self.terminal_size,
                 },
                 kernel,
                 &StubExecutor,
@@ -650,6 +656,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
         let mut runtime = SessionRuntime::new(
             &mut session,
             reovim_driver_session::ClientContext {
@@ -661,6 +669,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &ctx,
             &StubExecutor,

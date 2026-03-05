@@ -23,6 +23,8 @@ members = [
     "server/lib/drivers/clipboard",
     "server/lib/drivers/ffi",
     "server/lib/drivers/ffi-python",
+    "server/lib/drivers/picker",
+    "server/lib/drivers/completion",
 
     # Server modules
     "server/modules/vim",
@@ -46,7 +48,17 @@ members = [
     "server/modules/cmdline",
     "server/modules/whichkey",
     "server/modules/notification",
+    "server/modules/microscope",
+    "server/modules/explorer",
+    "server/modules/picker-files",
+    "server/modules/picker-buffers",
+    "server/modules/picker-commands",
+    "server/modules/picker-grep",
     "server/modules/treesitter-markdown",
+    "server/modules/lsp",
+    "server/modules/snippet",
+    "server/modules/range-finder",
+    "server/modules/completion",
 
     # Client layer - TUI
     "clients/tui",
@@ -57,6 +69,9 @@ members = [
     "clients/tui/extensions/which-key",
     "clients/tui/extensions/cmdline",
     "clients/tui/extensions/notification",
+    "clients/tui/extensions/microscope",
+    "clients/tui/extensions/completion",
+    "clients/tui/extensions/explorer",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -73,6 +88,9 @@ members = [
 
     # Shared clients layer
     "shared/clients/model",
+
+    # Shared benchmarking utilities
+    "shared/bench",
 
     # Tools (Rust only - reovim-testing is Python)
     "tools/bench",
@@ -119,6 +137,7 @@ parking_lot = "0.12.3"
 futures = "0.3"
 futures-timer = "3.0"
 rand = "0.8"
+regex = "1"
 
 tokio = { version = "1.25", features = ["full"] }
 tonic = "0.12"
@@ -136,6 +155,7 @@ reovim-arch = { path = "./shared/arch", version = "0.9.5-dev" }
 reovim-protocol = { path = "./shared/protocol", version = "0.9.5-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.9.5-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.9.5-dev" }
+reovim-bench-utils = { path = "./shared/bench", version = "0.9.5-dev" }
 reovim-net = { path = "./shared/net", version = "0.9.5-dev" }
 reovim-log = { path = "./shared/log", version = "0.9.5-dev" }
 reovim-trace = { path = "./shared/trace", version = "0.9.5-dev" }
@@ -159,6 +179,8 @@ reovim-driver-search = { path = "./server/lib/drivers/search", version = "0.9.5-
 reovim-driver-clipboard = { path = "./server/lib/drivers/clipboard", version = "0.9.5-dev" }
 reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.9.5-dev" }
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.9.5-dev" }
+reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.9.5-dev" }
+reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.9.5-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.9.5-dev" }
@@ -199,7 +221,17 @@ reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", ver
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.9.5-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.9.5-dev" }
 reovim-module-notification = { path = "./server/modules/notification", version = "0.9.5-dev" }
+reovim-module-microscope = { path = "./server/modules/microscope", version = "0.9.5-dev" }
+reovim-module-explorer = { path = "./server/modules/explorer", version = "0.9.5-dev" }
+reovim-picker-files = { path = "./server/modules/picker-files", version = "0.9.5-dev" }
+reovim-picker-buffers = { path = "./server/modules/picker-buffers", version = "0.9.5-dev" }
+reovim-picker-commands = { path = "./server/modules/picker-commands", version = "0.9.5-dev" }
+reovim-picker-grep = { path = "./server/modules/picker-grep", version = "0.9.5-dev" }
 reovim-module-treesitter-markdown = { path = "./server/modules/treesitter-markdown", version = "0.9.5-dev" }
+reovim-module-lsp = { path = "./server/modules/lsp", version = "0.9.5-dev" }
+reovim-module-snippet = { path = "./server/modules/snippet", version = "0.9.5-dev" }
+reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.9.5-dev" }
+reovim-module-completion = { path = "./server/modules/completion", version = "0.9.5-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -211,3 +243,7 @@ toml = "0.8"
 
 # Clipboard
 arboard = "3"
+
+# Fuzzy matching
+nucleo = "0.5"
+ignore = "0.4"

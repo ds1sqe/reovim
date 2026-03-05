@@ -671,6 +671,11 @@ impl<O: TuiOutput> TuiApp<O> {
             opacity: 1.0, // TODO(#400): read from server layout when compositor is wired
         };
 
+        // Compute scroll_top for focused window before rendering.
+        let content_height = height.saturating_sub(1);
+        self.state
+            .compute_scroll_top(self.state.focused_window_id, content_height);
+
         // Always render to FrameBuffer (common output)
         render_frame(&mut self.frame_buffer, &self.state, &config, &self.extensions);
 
@@ -739,8 +744,10 @@ impl<O: TuiOutput> TuiApp<O> {
 
             #[allow(clippy::cast_possible_truncation)]
             let cursor_x = rect.x as u16 + gutter_width + cursor_pos.column as u16;
+            let scroll_top = self.state.get_focused_scroll_top();
             #[allow(clippy::cast_possible_truncation)]
-            let cursor_y = rect.y as u16 + cursor_pos.line as u16;
+            let cursor_y =
+                rect.y as u16 + (cursor_pos.line as usize).saturating_sub(scroll_top) as u16;
 
             self.output.position_cursor(cursor_x, cursor_y);
 

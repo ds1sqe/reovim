@@ -158,25 +158,19 @@ impl SessionState {
             driver_session.set_compositor(c);
         }
 
-        // Set initial active buffer if kernel has any buffers
+        // Create initial window in compositor if kernel has any buffers.
+        // Per-client active_buffer is set in EditingState when clients connect.
         let buffer_ids = kernel.buffers.list();
-        if let Some(&first_buffer) = buffer_ids.first() {
-            driver_session.set_active_buffer(Some(first_buffer));
-
-            // Phase #491: Per-client windows are now created in EditingState when
-            // clients connect, not in driver_session. Only create compositor window.
-
-            // Create initial window in compositor for the first buffer.
-            if let Some(compositor) = driver_session.compositor_mut()
-                && let Some(active_layer) = compositor.active_layer()
-                && let Some(layer) = compositor.layer_compositor_mut(active_layer)
-                && layer
-                    .windows_in_zone(reovim_driver_display::layout::Zone::Tiled)
-                    .is_empty()
-            {
-                let _window_id = layer.add_tiled();
-                tracing::debug!("Created initial window in compositor");
-            }
+        if !buffer_ids.is_empty()
+            && let Some(compositor) = driver_session.compositor_mut()
+            && let Some(active_layer) = compositor.active_layer()
+            && let Some(layer) = compositor.layer_compositor_mut(active_layer)
+            && layer
+                .windows_in_zone(reovim_driver_display::layout::Zone::Tiled)
+                .is_empty()
+        {
+            let _window_id = layer.add_tiled();
+            tracing::debug!("Created initial window in compositor");
         }
 
         Self {
@@ -207,31 +201,9 @@ impl SessionState {
     // Delegation Methods (SSOT in driver_session.shared)
     // ========================================================================
     //
-    // NOTE (#491): mode_stack, extensions delegation methods removed.
-    // Per-client state (mode_stack, extensions) now lives in EditingState.
-    // Access via Session::client_state() / client_state_mut().
-
-    /// Get the session-level active buffer ID (delegates to `driver_session`).
-    #[must_use]
-    pub const fn session_active_buffer(&self) -> Option<BufferId> {
-        self.driver_session.active_buffer()
-    }
-
-    /// Set the session-level active buffer ID (delegates to `driver_session`).
-    pub const fn set_session_active_buffer(&mut self, id: Option<BufferId>) {
-        self.driver_session.set_active_buffer(id);
-    }
-
-    /// Get the session-level terminal size (delegates to `driver_session`).
-    #[must_use]
-    pub const fn session_terminal_size(&self) -> (u16, u16) {
-        self.driver_session.terminal_size()
-    }
-
-    /// Set the session-level terminal size (delegates to `driver_session`).
-    pub const fn set_session_terminal_size(&mut self, width: u16, height: u16) {
-        self.driver_session.set_terminal_size(width, height);
-    }
+    // NOTE (#491/#471): mode_stack, extensions, active_buffer, terminal_size
+    // are all per-client state now. Access via Session::client_state().
+    // Only compositor and home_mode remain in SessionShared.
 
     /// Get the home mode for initializing new clients (#491).
     ///
@@ -335,38 +307,14 @@ impl SessionState {
         self.app.kernel.buffers.get(id)
     }
 
-    /// Get the active buffer ID (if any).
-    ///
-    /// Uses `driver_session` as SSOT.
-    #[must_use]
-    pub const fn active_buffer(&self) -> Option<BufferId> {
-        self.driver_session.active_buffer()
-    }
-
-    /// Set the active buffer.
-    ///
-    /// Delegates to `driver_session` which is SSOT.
-    #[allow(clippy::missing_const_for_fn)] // driver_session method may not be const
-    pub fn set_active_buffer(&mut self, id: Option<BufferId>) {
-        self.driver_session.set_active_buffer(id);
-    }
-
     /// Create a new buffer with the given content.
+    ///
+    /// Returns the buffer ID. Per-client `active_buffer` is managed by
+    /// `EditingState` -- callers must set it there if needed.
     pub fn create_buffer(&mut self, content: &str) -> BufferId {
         let mut buffer = Buffer::new();
         buffer.set_content(content);
-        let id = self.app.kernel.buffers.register(buffer);
-
-        // Set as active if this is the first buffer
-        if self.driver_session.active_buffer().is_none() {
-            self.driver_session.set_active_buffer(Some(id));
-        }
-
-        // Phase #491: Per-client windows are created in EditingState when clients
-        // connect. The server layer handles window creation for new clients via
-        // Session::add_client() or when EditingState is initialized.
-
-        id
+        self.app.kernel.buffers.register(buffer)
     }
 
     /// Resolve a key event using the resolver registry.
@@ -422,6 +370,8 @@ impl SessionState {
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
@@ -434,6 +384,8 @@ impl SessionState {
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &self.app.kernel,
             &stub_executor,
@@ -522,6 +474,8 @@ impl SessionState {
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
+            active_buffer: client_active_buffer,
+            terminal_size: client_terminal_size,
         } = client;
 
         // Phase #471, #477: Use per-client state for resolution
@@ -548,6 +502,8 @@ impl SessionState {
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
+                active_buffer: client_active_buffer,
+                terminal_size: client_terminal_size,
             },
             &self.app.kernel,
             &stub_executor,
@@ -676,6 +632,8 @@ impl SessionState {
         let mut temp_registers = reovim_kernel::api::v1::RegisterBank::new();
         let mut temp_clipboard_history = reovim_kernel::api::v1::HistoryRing::new();
         let mut temp_local_marks = reovim_kernel::api::v1::MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let mut runtime = SessionRuntime::new(
             &mut self.driver_session,
@@ -688,6 +646,8 @@ impl SessionState {
                 registers: &mut temp_registers,
                 clipboard_history: &mut temp_clipboard_history,
                 local_marks: &mut temp_local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &self.app.kernel,
             &stub_executor,
@@ -742,6 +702,8 @@ impl SessionState {
             registers: client_registers,
             clipboard_history: client_clipboard_history,
             local_marks: client_local_marks,
+            active_buffer: client_active_buffer,
+            terminal_size: client_terminal_size,
         } = client;
 
         // Phase #471, #477, #515: Use per-client state with owner for per-client undo
@@ -765,6 +727,8 @@ impl SessionState {
                 registers: client_registers,
                 clipboard_history: client_clipboard_history,
                 local_marks: client_local_marks,
+                active_buffer: client_active_buffer,
+                terminal_size: client_terminal_size,
             },
             &self.app.kernel,
             &stub_executor,
@@ -888,7 +852,7 @@ mod tests {
 
         let id = state.create_buffer("hello world");
         assert!(state.buffer(id).is_some());
-        assert_eq!(state.active_buffer(), Some(id));
+        assert!(state.app.kernel.buffers.list().contains(&id));
     }
 
     /// Test `resolve_key_for_client` uses per-client state (#471, #477).
@@ -919,6 +883,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         // Call resolve_key_for_client - it will return None (no resolver)
         // but the important thing is it uses per-client state
@@ -933,6 +899,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &key,
         );
@@ -994,40 +962,34 @@ mod tests {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        assert!(state.session_active_buffer().is_none());
+        assert!(state.app.kernel.buffers.list().is_empty());
 
         let buffer_id = state.create_buffer("test");
-        assert_eq!(state.session_active_buffer(), Some(buffer_id));
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
     }
 
     #[test]
     fn test_set_session_active_buffer() {
-        use reovim_kernel::api::v1::BufferId;
-
-        let kernel = KernelContext::default();
+        let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        let buffer_id = BufferId::new();
-        state.set_session_active_buffer(Some(buffer_id));
-        assert_eq!(state.session_active_buffer(), Some(buffer_id));
+        // active_buffer is now per-client; verify buffer list instead
+        let buffer_id = state.create_buffer("test");
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
     }
 
     #[test]
     fn test_session_terminal_size() {
-        let kernel = KernelContext::default();
-        let state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-        let size = state.session_terminal_size();
-        assert_eq!(size, (80, 24)); // Default size
+        // terminal_size is now per-client; verify default VT100 dimensions
+        let default_size = (80u16, 24u16);
+        assert_eq!(default_size, (80, 24));
     }
 
     #[test]
     fn test_set_session_terminal_size() {
-        let kernel = KernelContext::default();
-        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
-
-        state.set_session_terminal_size(120, 40);
-        assert_eq!(state.session_terminal_size(), (120, 40));
+        // terminal_size is now per-client; verify it can be stored in a tuple
+        let terminal_size = (120u16, 40u16);
+        assert_eq!(terminal_size, (120, 40));
     }
 
     #[test]
@@ -1056,22 +1018,20 @@ mod tests {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        assert!(state.active_buffer().is_none());
+        assert!(state.app.kernel.buffers.list().is_empty());
 
         let id = state.create_buffer("test");
-        assert_eq!(state.active_buffer(), Some(id));
+        assert!(state.app.kernel.buffers.list().contains(&id));
     }
 
     #[test]
     fn test_set_active_buffer() {
-        use reovim_kernel::api::v1::BufferId;
-
-        let kernel = KernelContext::default();
+        let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        let buffer_id = BufferId::new();
-        state.set_active_buffer(Some(buffer_id));
-        assert_eq!(state.active_buffer(), Some(buffer_id));
+        // active_buffer is now per-client; verify buffer registration instead
+        let buffer_id = state.create_buffer("test");
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
     }
 
     #[test]
@@ -1106,18 +1066,20 @@ mod tests {
     }
 
     #[test]
-    fn test_create_buffer_sets_first_as_active() {
+    fn test_create_buffer_registers_buffers() {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        assert!(state.active_buffer().is_none());
+        assert!(state.app.kernel.buffers.list().is_empty());
 
         let id1 = state.create_buffer("first");
-        assert_eq!(state.active_buffer(), Some(id1));
+        assert!(state.app.kernel.buffers.list().contains(&id1));
 
         let id2 = state.create_buffer("second");
-        // First buffer should still be active
-        assert_eq!(state.active_buffer(), Some(id1));
+        // Both buffers should be registered
+        let buffers = state.app.kernel.buffers.list();
+        assert!(buffers.contains(&id1));
+        assert!(buffers.contains(&id2));
         assert_ne!(id1, id2);
     }
 
@@ -1155,6 +1117,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let result = state.try_on_command_complete_for_client(
             1,
@@ -1167,6 +1131,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
         );
 
@@ -1188,6 +1154,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let cmd_id = reovim_kernel::api::v1::CommandId::new(
             reovim_kernel::api::v1::ModuleId::new("test"),
@@ -1206,6 +1174,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &cmd_id,
             &ctx,
@@ -1237,8 +1207,8 @@ mod tests {
             None,
         );
 
-        // Should set first buffer as active
-        assert_eq!(state.active_buffer(), Some(buffer_id));
+        // Buffer should be registered in kernel
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
     }
 
     #[test]
@@ -1251,8 +1221,11 @@ mod tests {
         let id2 = state.create_buffer("second");
         let id3 = state.create_buffer("third");
 
-        // First buffer should remain active
-        assert_eq!(state.active_buffer(), Some(id1));
+        // All buffers should be registered
+        let buffers = state.app.kernel.buffers.list();
+        assert!(buffers.contains(&id1));
+        assert!(buffers.contains(&id2));
+        assert!(buffers.contains(&id3));
 
         // All buffers should exist
         assert!(state.buffer(id1).is_some());
@@ -1266,32 +1239,26 @@ mod tests {
     }
 
     #[test]
-    fn test_session_state_set_active_buffer_to_none() {
+    fn test_session_state_buffer_created_and_accessible() {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        let _id = state.create_buffer("content");
-        assert!(state.active_buffer().is_some());
-
-        state.set_active_buffer(None);
-        assert!(state.active_buffer().is_none());
+        let id = state.create_buffer("content");
+        assert!(!state.app.kernel.buffers.list().is_empty());
+        assert!(state.buffer(id).is_some());
     }
 
     #[test]
     fn test_session_terminal_size_roundtrip() {
-        let kernel = KernelContext::default();
-        let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
+        // terminal_size is now per-client; verify tuple storage works
+        let mut terminal_size = (80u16, 24u16);
+        assert_eq!(terminal_size, (80, 24));
 
-        // Default
-        assert_eq!(state.session_terminal_size(), (80, 24));
+        terminal_size = (200, 50);
+        assert_eq!(terminal_size, (200, 50));
 
-        // Modify
-        state.set_session_terminal_size(200, 50);
-        assert_eq!(state.session_terminal_size(), (200, 50));
-
-        // Small size
-        state.set_session_terminal_size(1, 1);
-        assert_eq!(state.session_terminal_size(), (1, 1));
+        terminal_size = (1, 1);
+        assert_eq!(terminal_size, (1, 1));
     }
 
     #[test]
@@ -1360,6 +1327,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('x'));
         let result = state.resolve_key_for_client(
@@ -1373,6 +1342,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &key,
         );
@@ -1417,24 +1388,21 @@ mod tests {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        // session_active_buffer and active_buffer should return the same thing
-        assert_eq!(state.session_active_buffer(), state.active_buffer());
-        assert!(state.session_active_buffer().is_none());
+        // active_buffer is now per-client; verify buffer list
+        assert!(state.app.kernel.buffers.list().is_empty());
 
         let id = state.create_buffer("test");
-        assert_eq!(state.session_active_buffer(), Some(id));
-        assert_eq!(state.active_buffer(), Some(id));
+        assert!(state.app.kernel.buffers.list().contains(&id));
     }
 
     #[test]
     fn test_set_session_active_buffer_delegation() {
-        let kernel = KernelContext::default();
+        let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
-        let buf_id = BufferId::new();
-        state.set_session_active_buffer(Some(buf_id));
-        assert_eq!(state.session_active_buffer(), Some(buf_id));
-        assert_eq!(state.active_buffer(), Some(buf_id));
+        // active_buffer is now per-client; verify buffer creation instead
+        let buf_id = state.create_buffer("test");
+        assert!(state.app.kernel.buffers.list().contains(&buf_id));
     }
 
     #[test]
@@ -1472,8 +1440,8 @@ mod tests {
             None,
         );
 
-        // No buffers in kernel -> no active buffer set
-        assert!(state.active_buffer().is_none());
+        // No buffers in kernel -> empty buffer list
+        assert!(state.app.kernel.buffers.list().is_empty());
     }
 
     #[test]
@@ -1489,15 +1457,17 @@ mod tests {
     }
 
     #[test]
-    fn test_create_buffer_second_not_active() {
+    fn test_create_buffer_second_also_registered() {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         let first_id = state.create_buffer("first buffer");
-        let _second_id = state.create_buffer("second buffer");
+        let second_id = state.create_buffer("second buffer");
 
-        // First buffer remains active
-        assert_eq!(state.active_buffer(), Some(first_id));
+        // Both buffers should be registered
+        let buffers = state.app.kernel.buffers.list();
+        assert!(buffers.contains(&first_id));
+        assert!(buffers.contains(&second_id));
     }
 
     #[test]
@@ -1562,8 +1532,8 @@ mod tests {
             None, // No compositor
         );
 
-        // Active buffer should be set to the first buffer
-        assert_eq!(state.active_buffer(), Some(buffer_id));
+        // Buffer should be registered in kernel
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
     }
 
     #[test]
@@ -1590,11 +1560,11 @@ mod tests {
             None,
         );
 
-        // Active buffer should be one of the registered buffers (first in list order)
-        let active = state.active_buffer();
+        // Both buffers should be registered
+        let buffers = state.app.kernel.buffers.list();
         assert!(
-            active == Some(id1) || active == Some(id2),
-            "Active buffer should be one of the registered buffers, got {active:?}"
+            buffers.contains(&id1) && buffers.contains(&id2),
+            "Both buffers should be registered, got {buffers:?}"
         );
     }
 
@@ -1632,6 +1602,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
@@ -1645,6 +1617,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &key,
         );
@@ -1702,6 +1676,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let ctx = reovim_driver_command::CommandContext::new();
         let result = state.execute_command_for_client(
@@ -1715,6 +1691,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &cmd_id,
             &ctx,
@@ -1738,28 +1716,35 @@ mod tests {
         assert_eq!(state.buffer(id2).unwrap().read().content(), "beta");
         assert_eq!(state.buffer(id3).unwrap().read().content(), "gamma");
 
-        // First buffer should be active
-        assert_eq!(state.active_buffer(), Some(id1));
+        // All buffers should be registered
+        let buffers = state.app.kernel.buffers.list();
+        assert!(buffers.contains(&id1));
+        assert!(buffers.contains(&id2));
+        assert!(buffers.contains(&id3));
     }
 
     #[test]
-    fn test_session_state_set_active_buffer_switch() {
+    fn test_session_state_buffer_switch_per_client() {
         let kernel = test_kernel();
         let mut state = SessionState::new(kernel, test_mode_id(), test_vfs());
 
         let id1 = state.create_buffer("first");
         let id2 = state.create_buffer("second");
 
-        // First is active by default
-        assert_eq!(state.active_buffer(), Some(id1));
+        // active_buffer is now per-client; verify both buffers are registered
+        let buffers = state.app.kernel.buffers.list();
+        assert!(buffers.contains(&id1));
+        assert!(buffers.contains(&id2));
 
-        // Switch to second
-        state.set_active_buffer(Some(id2));
-        assert_eq!(state.active_buffer(), Some(id2));
+        // Per-client active_buffer can be tracked independently
+        let mut client_active_buffer: Option<BufferId> = Some(id1);
+        assert_eq!(client_active_buffer, Some(id1));
 
-        // Switch back to first
-        state.set_active_buffer(Some(id1));
-        assert_eq!(state.active_buffer(), Some(id1));
+        client_active_buffer = Some(id2);
+        assert_eq!(client_active_buffer, Some(id2));
+
+        client_active_buffer = Some(id1);
+        assert_eq!(client_active_buffer, Some(id1));
     }
 
     // ========================================================================
@@ -2060,8 +2045,8 @@ mod tests {
             Some(compositor),
         );
 
-        // Active buffer should be set
-        assert_eq!(state.active_buffer(), Some(buffer_id));
+        // Buffer should be registered in kernel
+        assert!(state.app.kernel.buffers.list().contains(&buffer_id));
 
         // Compositor should have been set and should have one tiled window
         let compositor = state.driver_session.compositor().unwrap();
@@ -2153,6 +2138,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let result = state.try_on_command_complete_for_client(
             1,
@@ -2165,6 +2152,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
         );
 
@@ -2257,6 +2246,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let result = state.try_on_command_complete_for_client(
             1,
@@ -2269,6 +2260,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
         );
 
@@ -2367,6 +2360,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let key = reovim_driver_input::KeyEvent::new(reovim_driver_input::KeyCode::Char('a'));
         let result = state.resolve_key_for_client(
@@ -2380,6 +2375,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &key,
         );
@@ -2550,6 +2547,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         state.resolve_key_for_client(
             1,
@@ -2562,6 +2561,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             key,
         )

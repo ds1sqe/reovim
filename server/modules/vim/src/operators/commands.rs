@@ -242,6 +242,16 @@ fn execute_operator(
                     "Updated cursor after text-modifying operator"
                 );
             }
+
+            // Record buffer modification for notification pipeline.
+            // The operator writes directly to the kernel buffer via OperatorContext,
+            // bypassing SessionRuntime::delete_range() which normally calls
+            // record_buffer_modified(). We must record it explicitly so that
+            // StateChanges propagates to TUI for display refresh.
+            if operator.is_text_modifying() {
+                runtime.record_buffer_modified(buffer_id);
+            }
+
             CommandResult::Success
         }
         Err(e) => CommandResult::error(&e.to_string()),
@@ -366,6 +376,8 @@ mod tests {
         registers: RegisterBank,
         clipboard_history: HistoryRing,
         local_marks: MarkBank,
+        active_buffer: Option<BufferId>,
+        terminal_size: (u16, u16),
     }
 
     impl TestState {
@@ -392,6 +404,8 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             }
         }
 
@@ -407,6 +421,8 @@ mod tests {
                     registers: &mut self.registers,
                     clipboard_history: &mut self.clipboard_history,
                     local_marks: &mut self.local_marks,
+                    active_buffer: &mut self.active_buffer,
+                    terminal_size: &mut self.terminal_size,
                 },
                 kernel,
                 &StubExecutor,
@@ -1018,6 +1034,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         // Add a window without buffer to have an active window
         let window = reovim_driver_session::Window::new();
@@ -1034,6 +1052,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &ctx,
             &StubExecutor,

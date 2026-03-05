@@ -152,6 +152,27 @@ impl ModeInfoStore {
             .expect("ModeInfoStore lock poisoned")
             .is_empty()
     }
+
+    /// Find a registered mode by module name and mode name.
+    ///
+    /// Returns `Some(ModeId)` if a mode with the given module and name
+    /// has been registered, `None` otherwise.
+    ///
+    /// This is intended for use during `Module::init()` to resolve
+    /// parent modes for inheritance without hardcoding foreign constants.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lock is poisoned.
+    #[must_use]
+    pub fn find_by_name(&self, module: &str, name: &str) -> Option<ModeId> {
+        self.modes
+            .read()
+            .expect("ModeInfoStore lock poisoned")
+            .iter()
+            .find(|m| m.id.module().as_str() == module && m.id.name() == name)
+            .map(|m| m.id.clone())
+    }
 }
 
 impl Default for ModeInfoStore {
@@ -465,5 +486,55 @@ mod tests {
         store.add_mode(InsertMode);
         let debug = format!("{store:?}");
         assert!(debug.contains('2'));
+    }
+
+    // =========================================================================
+    // find_by_name
+    // =========================================================================
+
+    #[test]
+    fn test_find_by_name_returns_some_for_registered_mode() {
+        let store = ModeInfoStore::new();
+        store.add_mode(TestMode);
+        let found = store.find_by_name("test", "test");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap(), ModeId::new(ModuleId::new("test"), "test"));
+    }
+
+    #[test]
+    fn test_find_by_name_returns_none_for_missing_mode() {
+        let store = ModeInfoStore::new();
+        store.add_mode(TestMode);
+        assert!(store.find_by_name("other", "missing").is_none());
+    }
+
+    #[test]
+    fn test_find_by_name_returns_none_for_wrong_module() {
+        let store = ModeInfoStore::new();
+        store.add_mode(TestMode);
+        assert!(store.find_by_name("wrong", "test").is_none());
+    }
+
+    #[test]
+    fn test_find_by_name_returns_none_for_wrong_name() {
+        let store = ModeInfoStore::new();
+        store.add_mode(TestMode);
+        assert!(store.find_by_name("test", "wrong").is_none());
+    }
+
+    #[test]
+    fn test_find_by_name_returns_none_on_empty_store() {
+        let store = ModeInfoStore::new();
+        assert!(store.find_by_name("test", "test").is_none());
+    }
+
+    #[test]
+    fn test_find_by_name_with_multiple_modes() {
+        let store = ModeInfoStore::new();
+        store.add_mode(TestMode);
+        store.add_mode(InsertMode);
+        assert!(store.find_by_name("test", "test").is_some());
+        assert!(store.find_by_name("test", "insert").is_some());
+        assert!(store.find_by_name("test", "visual").is_none());
     }
 }

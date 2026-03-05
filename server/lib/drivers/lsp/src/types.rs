@@ -34,3 +34,6 @@ pub use lsp_types::MessageType;
 
 // Signature
 pub use lsp_types::SignatureHelp;
+
+// Server state (for LspProvider trait, #521)
+pub use lsp_types::{ServerCapabilities, ServerInfo};

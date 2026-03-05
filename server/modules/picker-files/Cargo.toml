@@ -1,0 +1,28 @@
+[package]
+name = "reovim-picker-files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "File picker module for reovim - .gitignore-aware fuzzy file finder"
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-picker = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-driver-vfs = { workspace = true }
+reovim-module-macros = { workspace = true }
+ignore = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

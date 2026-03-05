@@ -23,8 +23,7 @@
 //! │                                                                 │
 //! │ SHARED INFRASTRUCTURE:                                          │
 //! │   Session { id, shared: SessionShared }                         │
-//! │   SessionShared { compositor, terminal_size, active_buffer,     │
-//! │                   home_mode }                                   │
+//! │   SessionShared { compositor, home_mode }                       │
 //! │                                                                 │
 //! │ RUNTIME (borrows shared + per-client state):                    │
 //! │   SessionRuntime::new(&session, &mode_stack, &windows, ...)     │

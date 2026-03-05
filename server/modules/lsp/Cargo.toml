@@ -1,0 +1,43 @@
+[package]
+name = "reovim-module-lsp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LSP module for reovim - Language Server Protocol integration"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []  # Enable FFI entry points for standalone dynamic loading
+
+[dependencies]
+# Kernel layer
+reovim-kernel = { workspace = true }
+
+# LSP driver (types, client, transport)
+reovim-driver-lsp = { workspace = true }
+
+# Module FFI macros
+reovim-module-macros = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# Serialization
+lsp-types = "0.97"
+serde_json = "1.0"
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

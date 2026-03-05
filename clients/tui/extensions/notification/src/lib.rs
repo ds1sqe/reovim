@@ -364,9 +364,8 @@ fn render_progress_bar(
         needed.min(available / 2)
     };
     let bar_width = u32::from(available.saturating_sub(detail_cols));
-    if bar_width == 0 {
-        return;
-    }
+    // Invariant: detail_cols <= available/2, so bar_width >= ceil(available/2) >= 1
+    debug_assert!(bar_width > 0);
 
     let filled = (u32::from(percent.min(100)) * bar_width / 100) as u16;
 

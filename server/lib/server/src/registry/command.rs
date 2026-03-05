@@ -144,7 +144,8 @@ impl CommandRegistry {
         self.entries.get(id).map(|entry| {
             // Single clone point for context enrichment (Epic #415)
             let mut ctx = args.clone();
-            if let Some(buffer_id) = driver_session.active_buffer() {
+            // Per-client active_buffer (#471)
+            if let Some(buffer_id) = *client.active_buffer {
                 ctx.set_buffer_id(buffer_id);
             }
             ctx.set_vfs(Arc::clone(vfs));
@@ -423,6 +424,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let result = registry.execute_for_client(
             1, // test client_id for per-client undo (#471)
@@ -437,6 +440,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &app,
             &vfs,
@@ -626,6 +631,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
 
         let result = registry.execute_for_client(
             1,
@@ -640,6 +647,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &app,
             &vfs,
@@ -706,9 +715,7 @@ mod tests {
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
 
-        // Create a buffer and set it active
         let buffer_id = BufferId::from_raw(1);
-        driver_session.set_active_buffer(Some(buffer_id));
 
         let app = AppState::new(kernel);
         let vfs = test_vfs();
@@ -722,6 +729,8 @@ mod tests {
         let mut registers = RegisterBank::new();
         let mut clipboard_history = HistoryRing::new();
         let mut local_marks = MarkBank::new();
+        let mut active_buffer = Some(buffer_id); // Per-client active_buffer (#471)
+        let mut terminal_size = (80u16, 24u16);
 
         let result = registry.execute_for_client(
             1,
@@ -736,6 +745,8 @@ mod tests {
                 registers: &mut registers,
                 clipboard_history: &mut clipboard_history,
                 local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
             },
             &app,
             &vfs,

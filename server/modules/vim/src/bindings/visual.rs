@@ -203,7 +203,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("textobject")
             .with_description("Select inner braces"),
-        KeybindingRegistration::new("i<", textobjects::INNER_ANGLE)
+        KeybindingRegistration::new("i<lt>", textobjects::INNER_ANGLE)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("textobject")
             .with_description("Select inner angle brackets"),
@@ -260,7 +260,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("textobject")
             .with_description("Select around braces"),
-        KeybindingRegistration::new("a<", textobjects::AROUND_ANGLE)
+        KeybindingRegistration::new("a<lt>", textobjects::AROUND_ANGLE)
             .with_modes(&["vim:visual", "vim:visual-line", "vim:visual-block"])
             .with_category("textobject")
             .with_description("Select around angle brackets"),
@@ -419,7 +419,7 @@ mod tests {
         assert!(keys.contains(&"i{"), "Missing 'i{{' binding");
         assert!(keys.contains(&"i}"), "Missing 'i}}' binding");
         assert!(keys.contains(&"iB"), "Missing 'iB' binding");
-        assert!(keys.contains(&"i<"), "Missing 'i<' binding");
+        assert!(keys.contains(&"i<lt>"), "Missing 'i<lt>' binding");
         assert!(keys.contains(&"i>"), "Missing 'i>' binding");
     }
 
@@ -439,7 +439,7 @@ mod tests {
         assert!(keys.contains(&"a{"), "Missing 'a{{' binding");
         assert!(keys.contains(&"a}"), "Missing 'a}}' binding");
         assert!(keys.contains(&"aB"), "Missing 'aB' binding");
-        assert!(keys.contains(&"a<"), "Missing 'a<' binding");
+        assert!(keys.contains(&"a<lt>"), "Missing 'a<lt>' binding");
         assert!(keys.contains(&"a>"), "Missing 'a>' binding");
     }
 

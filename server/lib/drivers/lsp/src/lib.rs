@@ -2,14 +2,13 @@
 //! LSP driver for reovim.
 //!
 //! Provides Language Server Protocol client infrastructure following the
-//! kernel driver pattern. This module defines types for LSP communication;
-//! concrete implementations will be added in Phase 4.
+//! kernel driver pattern.
 //!
 //! # Architecture
 //!
 //! Following Linux kernel principles of mechanism vs policy:
-//! - **Mechanism**: Request/response types, diagnostic caching, error handling
-//! - **Policy**: Concrete LSP client implementations (Phase 4)
+//! - **Mechanism**: JSON-RPC transport, client lifecycle, provider trait
+//! - **Policy**: Concrete LSP module implementations (in `reovim-module-lsp`)
 //!
 //! # Components
 //!
@@ -18,6 +17,9 @@
 //! - [`DiagnosticCache`] - Lock-free diagnostic storage using `ArcSwap`
 //! - [`LspServerConfig`] - Server spawn configuration
 //! - [`LspError`] - Comprehensive error types
+//! - [`client::Client`] - LSP client with JSON-RPC communication
+//! - [`LspProvider`] - Service trait for language server access
+//! - [`LspProviderRegistry`] - Keyed registry for LSP providers
 //!
 //! # Example
 //!
@@ -31,18 +33,18 @@
 //! // Diagnostic cache for lock-free reads
 //! let cache = DiagnosticCache::new();
 //! ```
-//!
-//! # Future Phases
-//!
-//! - **Phase 4**: `LspClient` struct with async methods
-//! - **Phase 5**: Additional request variants (completion, code actions)
-//! - **Phase 6**: Multi-server coordination
 
 mod cache;
+pub mod client;
 mod config;
 mod error;
+pub mod jsonrpc;
+mod key;
+mod provider;
+mod registry;
 mod request;
 mod response;
+pub mod transport;
 mod types;
 
 // Error types
@@ -59,6 +61,9 @@ pub use {
 
 // Diagnostic cache
 pub use cache::{BufferDiagnostics, DiagnosticCache};
+
+// Provider trait and registry (Epic #520)
+pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
 
 // Re-export essential LSP types
 pub mod lsp_types {

@@ -6,7 +6,7 @@
 use std::fmt;
 
 use {
-    lsp_types::{GotoDefinitionResponse, Hover, Location, Position, Uri},
+    lsp_types::{CompletionResponse, GotoDefinitionResponse, Hover, Location, Position, Uri},
     reovim_kernel::api::v1::OneshotSender,
 };
 
@@ -90,6 +90,15 @@ pub enum LspRequest {
         /// Response channel.
         response_tx: OneshotSender<NavigationResult<Option<Hover>>>,
     },
+    /// Request completion items at a position.
+    Completion {
+        /// Document URI.
+        uri: Uri,
+        /// Cursor position.
+        position: Position,
+        /// Response channel.
+        response_tx: OneshotSender<NavigationResult<Option<CompletionResponse>>>,
+    },
     /// Request server shutdown.
     Shutdown,
 }
@@ -133,6 +142,11 @@ impl fmt::Debug for LspRequest {
                 .finish_non_exhaustive(),
             Self::Hover { uri, position, .. } => f
                 .debug_struct("Hover")
+                .field("uri", uri)
+                .field("position", position)
+                .finish_non_exhaustive(),
+            Self::Completion { uri, position, .. } => f
+                .debug_struct("Completion")
                 .field("uri", uri)
                 .field("position", position)
                 .finish_non_exhaustive(),
@@ -220,6 +234,20 @@ mod tests {
         let debug_str = format!("{req:?}");
         assert!(debug_str.contains("References"));
         assert!(debug_str.contains("include_declaration: true"));
+    }
+
+    #[test]
+    fn test_completion_debug() {
+        let (tx, _rx) = reovim_kernel::api::v1::oneshot();
+        let req = LspRequest::Completion {
+            uri: make_uri("file:///test.rs"),
+            position: Position::new(5, 10),
+            response_tx: tx,
+        };
+        let debug_str = format!("{req:?}");
+        assert!(debug_str.contains("Completion"));
+        assert!(debug_str.contains("position"));
+        assert!(!debug_str.contains("response_tx"));
     }
 
     #[test]

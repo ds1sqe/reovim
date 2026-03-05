@@ -461,6 +461,8 @@ mod tests {
         registers: RegisterBank,
         clipboard_history: HistoryRing,
         local_marks: MarkBank,
+        active_buffer: Option<BufferId>,
+        terminal_size: (u16, u16),
     }
 
     impl TestState {
@@ -480,6 +482,8 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             }
         }
 
@@ -499,6 +503,8 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             }
         }
 
@@ -518,6 +524,8 @@ mod tests {
                 registers: RegisterBank::new(),
                 clipboard_history: HistoryRing::new(),
                 local_marks: MarkBank::new(),
+                active_buffer: None,
+                terminal_size: (80, 24),
             }
         }
 
@@ -537,6 +545,8 @@ mod tests {
                     registers: &mut self.registers,
                     clipboard_history: &mut self.clipboard_history,
                     local_marks: &mut self.local_marks,
+                    active_buffer: &mut self.active_buffer,
+                    terminal_size: &mut self.terminal_size,
                 },
                 kernel,
                 executor,
@@ -1437,6 +1447,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1466,6 +1478,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1495,6 +1509,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);
@@ -1524,6 +1540,8 @@ mod tests {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         };
         let executor = StubExecutor;
         let mut runtime = state.runtime(&kernel, &executor);

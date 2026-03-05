@@ -32,7 +32,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry, SyntaxSessionState};
+use crate::session::{Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState};
 
 /// Forward syntax token updates from session to gRPC stream.
 ///
@@ -266,7 +266,7 @@ impl SyntaxService for SyntaxServiceImpl {
         session
             .with_state_mut(|state| {
                 let buffer_id = requested_buffer_id
-                    .or_else(|| state.active_buffer())
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -375,10 +375,7 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Ensure driver is created for this buffer
                 syntax_state.ensure_driver(buffer_id, language_id, &content);
 
-                // Subscribe to updates
-                let rx = syntax_state.subscribe();
-
-                // Get initial tokens
+                // Get initial tokens (must finish borrow before accessing stream state)
                 let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
                     driver
                         .highlights(0..content.len())
@@ -390,6 +387,10 @@ impl SyntaxService for SyntaxServiceImpl {
                         })
                         .collect()
                 });
+
+                // Subscribe to updates via stream state
+                let stream_state = state.app.extensions.get_or_insert::<SyntaxStreamState>();
+                let rx = stream_state.subscribe();
 
                 let initial = TokenUpdate {
                     buffer_id: buffer_id.as_usize() as u64,
@@ -1310,12 +1311,43 @@ mod tests {
         // through the subscriber channel that the spawned task is listening on.
         session
             .with_state_mut(|state| {
+                let edit = SyntaxEdit::insert(0, 0, 0, 3, 0, 3);
                 let syntax_state = state
                     .app
                     .extensions
                     .get_or_insert::<crate::session::SyntaxSessionState>();
-                let edit = SyntaxEdit::insert(0, 0, 0, 3, 0, 3);
-                syntax_state.notify_edit(buffer_id, "fn main() { let x = 1; }", &edit, 0, 0);
+                let content = "fn main() { let x = 1; }";
+                syntax_state
+                    .get_mut(buffer_id)
+                    .unwrap()
+                    .update(content, &edit);
+                // Collect tokens while we still have the syntax state borrow
+                let highlights = syntax_state
+                    .get(buffer_id)
+                    .unwrap()
+                    .highlights(0..content.len());
+                #[allow(clippy::cast_possible_truncation)]
+                let tokens: Vec<reovim_protocol::v2::TokenSpan> = highlights
+                    .into_iter()
+                    .map(|span| reovim_protocol::v2::TokenSpan {
+                        start_byte: span.start_byte as u32,
+                        end_byte: span.end_byte as u32,
+                        category: span.group.category().to_string(),
+                    })
+                    .collect();
+                let update = reovim_protocol::v2::TokenUpdate {
+                    buffer_id: buffer_id.as_usize() as u64,
+                    tokens,
+                    start_line: 0,
+                    end_line: 0,
+                    full_refresh: false,
+                };
+                // Broadcast via stream state
+                let stream_state = state
+                    .app
+                    .extensions
+                    .get_or_insert::<crate::session::SyntaxStreamState>();
+                stream_state.broadcast(&update);
             })
             .await;
 

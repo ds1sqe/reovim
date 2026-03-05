@@ -200,10 +200,10 @@ impl Session {
 
         // Per-client state (#471, #491): Initialize new clients with session's home mode
         // stored in SessionShared. After this, the client's per-client mode stack is used.
+        // active_buffer: new clients get the first kernel buffer (scratch buffer).
         let state = self.state.read();
         let home_mode = state.home_mode().clone();
-        let active_buffer = state.active_buffer();
-        let terminal_size = state.driver_session.terminal_size();
+        let active_buffer = state.app.kernel.buffers.list().first().copied();
         // #474: Clone shared compositor for per-client ownership
         let compositor = state
             .driver_session
@@ -225,14 +225,17 @@ impl Session {
         let mode_stack = ModeStack::new(home_mode);
         let mut client = Client::with_mode_stack(client_id, metadata, mode_stack);
 
+        // Per-client active_buffer: initialize with first kernel buffer
+        client.state.active_buffer = active_buffer;
+
         // #474: Set per-client compositor and create windows with matching IDs.
         // The compositor's window IDs must match the per-client WindowLayout IDs
         // so that cursor notifications (which use WindowLayout IDs) align with
         // layout notifications (which use compositor IDs).
         if let Some(compositor) = compositor {
             if let Some(buffer_id) = active_buffer {
-                let screen =
-                    reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                let (tw, th) = client.state.terminal_size;
+                let screen = reovim_driver_display::Rect::new(0, 0, tw, th);
                 let result = compositor.composite(screen);
                 for p in &result.placements {
                     let window = Window::with_id_and_buffer(p.window_id, buffer_id);
@@ -500,6 +503,25 @@ impl Session {
         Some(result)
     }
 
+    /// Run a closure with mutable access to a client's `ExtensionMap`.
+    ///
+    /// Used by bridge lifecycle hooks that need to mutate per-client state
+    /// (e.g., auto-dismiss on mode change). Respects Follow/Share relations
+    /// via [`find_input_target`](Self::find_input_target).
+    ///
+    /// Returns `None` if the client doesn't exist or input is ignored (Following).
+    pub fn with_client_extensions_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ExtensionMap) -> R,
+    {
+        let mut clients = self.clients.write();
+        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+        let result = f(&mut target_client.state.extensions);
+        drop(clients);
+        Some(result)
+    }
+
     /// Get count of connected clients.
     #[must_use]
     pub fn client_count(&self) -> usize {
@@ -582,18 +604,17 @@ impl Session {
     /// 3. Client tries to move cursor → per-client windows still empty!
     ///
     /// This helper fixes step 3 by creating a window for the active buffer.
-    fn ensure_client_has_window(editing_state: &mut super::EditingState, state: &SessionState) {
+    fn ensure_client_has_window(editing_state: &mut super::EditingState) {
         use reovim_driver_session::Window;
 
-        // Only sync if per-client windows are empty AND session has an active buffer
+        // Only sync if per-client windows are empty AND client has an active buffer
         if editing_state.windows.is_empty()
-            && let Some(buffer_id) = state.active_buffer()
+            && let Some(buffer_id) = editing_state.active_buffer
         {
             // #474: If per-client compositor exists, create windows with matching IDs
             if let Some(ref compositor) = editing_state.compositor {
-                let terminal_size = state.driver_session.terminal_size();
-                let screen =
-                    reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
+                let (tw, th) = editing_state.terminal_size;
+                let screen = reovim_driver_display::Rect::new(0, 0, tw, th);
                 let result = compositor.composite(screen);
                 for p in &result.placements {
                     let window = Window::with_id_and_buffer(p.window_id, buffer_id);
@@ -650,7 +671,7 @@ impl Session {
         let editing_state = &mut target_client.state;
 
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state, &state);
+        Self::ensure_client_has_window(editing_state);
 
         // Resolve key with per-client state (#471 Phase 5: pass client_id for undo origin)
         state.resolve_key_for_client(target_id.as_usize(), editing_state.client_context(), key)
@@ -676,7 +697,7 @@ impl Session {
         let editing_state = &mut target_client.state;
 
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state, &state);
+        Self::ensure_client_has_window(editing_state);
 
         state.try_on_command_complete_for_client(
             target_id.as_usize(),
@@ -725,7 +746,7 @@ impl Session {
         let editing_state = &mut target_client.state;
 
         // Ensure per-client windows are populated (fixes buffer-after-client-join issue)
-        Self::ensure_client_has_window(editing_state, &state);
+        Self::ensure_client_has_window(editing_state);
 
         // Execute command with per-client state, passing client_id for per-client undo (#471, #515)
         state.execute_command_for_client(
@@ -762,8 +783,12 @@ impl Session {
         match target {
             InputTarget::Buffer => {
                 // Insert into active buffer at client's cursor position
+                // active_buffer is per-client (#471)
+                let clients = self.clients.read();
+                let buffer_id = clients.get(&client_id)?.state.active_buffer?;
+                drop(clients);
+
                 let state = self.state.read();
-                let buffer_id = state.active_buffer()?;
                 let buffer_arc = state.buffer(buffer_id)?;
 
                 // Get undo registry for recording edit (#471)
@@ -1107,7 +1132,7 @@ mod tests {
 
         // Read it back
         let has_buffer = session
-            .with_state(|state| state.active_buffer().is_some())
+            .with_state(|state| !state.app.kernel.buffers.list().is_empty())
             .await;
 
         assert!(has_buffer);
@@ -1388,7 +1413,8 @@ mod tests {
             state.create_buffer("test content");
         });
 
-        let has_buffer = session.with_state_sync(|state| state.active_buffer().is_some());
+        let has_buffer =
+            session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
         assert!(has_buffer);
     }
 
@@ -1917,7 +1943,7 @@ mod tests {
 
         // Verify the character was inserted
         session.with_state_sync(|state| {
-            let buffer_id = state.active_buffer().unwrap();
+            let buffer_id = *state.app.kernel.buffers.list().first().unwrap();
             let buffer = state.buffer(buffer_id).unwrap();
             let content = buffer.read().content();
             assert!(content.contains('X'));
@@ -2451,9 +2477,12 @@ mod tests {
         let editing_state = session.client_state(client_id).unwrap();
         assert!(editing_state.windows.is_empty());
 
-        // Now create a buffer
-        session.with_state_mut_sync(|state| {
-            state.create_buffer("hello");
+        // Now create a buffer and set it as the client's active_buffer (#471)
+        let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello"));
+        session.with_clients_mut(|clients| {
+            if let Some(client) = clients.get_mut(&client_id) {
+                client.state.active_buffer = Some(buf_id);
+            }
         });
 
         // resolve_key_for_client should trigger ensure_client_has_window
@@ -2763,9 +2792,13 @@ mod tests {
         assert!(editing_state.compositor.is_some());
         assert!(editing_state.windows.is_empty());
 
-        // Now create a buffer
-        session.with_state_mut_sync(|state| {
-            state.create_buffer("hello lazy compositor");
+        // Now create a buffer and set it as the client's active_buffer (#471)
+        let buf_id =
+            session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
+        session.with_clients_mut(|clients| {
+            if let Some(client) = clients.get_mut(&client_id) {
+                client.state.active_buffer = Some(buf_id);
+            }
         });
 
         // Trigger ensure_client_has_window via resolve_key_for_client.
@@ -2817,6 +2850,37 @@ mod tests {
         });
 
         // Now it exists
+        let has_cmdline = session
+            .with_client_extensions(client_id, |ext| {
+                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
+            })
+            .unwrap();
+        assert!(has_cmdline);
+    }
+
+    // ========================================================================
+    // with_client_extensions_mut tests (#521)
+    // ========================================================================
+
+    #[test]
+    fn test_with_client_extensions_mut_returns_none_for_unknown_client() {
+        let session = Session::new(SessionId::new("test"));
+        let result = session.with_client_extensions_mut(ClientId::new(99), |_ext| 42);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_with_client_extensions_mut_modifies_extensions() {
+        let session = Session::new(SessionId::new("test"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert CmdlineState via mutable access
+        session.with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<reovim_module_cmdline::CmdlineState>();
+        });
+
+        // Verify via read access
         let has_cmdline = session
             .with_client_extensions(client_id, |ext| {
                 ext.get::<reovim_module_cmdline::CmdlineState>().is_some()

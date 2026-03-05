@@ -19,7 +19,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry};
+use crate::session::{ClientId, Session, SessionId, SessionRegistry};
 
 /// gRPC `BufferService` implementation.
 ///
@@ -58,15 +58,23 @@ impl BufferService for BufferServiceImpl {
         &self,
         request: Request<GetRawContentRequest>,
     ) -> Result<Response<GetRawContentResponse>, Status> {
+        // Per-client active_buffer (#471): extract client ID before consuming request.
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
+
+        // Resolve buffer_id: explicit > per-client active > first in list
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
 
         session
             .with_state(|state| {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -101,15 +109,21 @@ impl BufferService for BufferServiceImpl {
         &self,
         request: Request<GetLineCountRequest>,
     ) -> Result<Response<GetLineCountResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
 
         session
             .with_state(|state| {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 let buffer_arc = state.buffer(buffer_id).ok_or_else(|| {
@@ -131,15 +145,21 @@ impl BufferService for BufferServiceImpl {
         &self,
         request: Request<GetAnnotationsRequest>,
     ) -> Result<Response<GetAnnotationsResponse>, Status> {
+        let client_id = request.extensions().get::<ClientId>().copied();
         let req = request.into_inner();
         let session = self.get_session()?;
+
+        let client_active = client_id.and_then(|cid| {
+            session.with_clients(|clients| clients.get(&cid).and_then(|c| c.state.active_buffer))
+        });
 
         session
             .with_state(|state| {
                 let buffer_id = req
                     .buffer_id
                     .map(|id| BufferId::from_raw(id as usize))
-                    .or_else(|| state.active_buffer())
+                    .or(client_active)
+                    .or_else(|| state.app.kernel.buffers.list().first().copied())
                     .ok_or_else(|| Status::not_found("No active buffer"))?;
 
                 // Return empty annotations for now
@@ -667,5 +687,59 @@ mod tests {
         let service = BufferServiceImpl::new(registry, SessionId::new("test"));
         let result = service.get_session();
         assert!(result.is_ok());
+    }
+
+    /// Per-client `active_buffer` (#471): when two buffers exist and a client
+    /// has `active_buffer` set to the second one, `get_raw_content(None)`
+    /// should return the second buffer's content, not the first.
+    #[tokio::test]
+    async fn test_get_raw_content_uses_client_active_buffer() {
+        let (registry, session) = test_registry_with_buffer_manager();
+
+        // Create two buffers
+        let (buf1, buf2) = session
+            .with_state_mut(|state| {
+                let b1 = state.create_buffer("first buffer");
+                let b2 = state.create_buffer("second buffer");
+                (b1, b2)
+            })
+            .await;
+
+        // Register a client with active_buffer pointing to buf2
+        let client_id = ClientId::new(42);
+        session.add_client(client_id);
+        session.update_client_state(client_id, |state| {
+            state.active_buffer = Some(buf2);
+        });
+
+        let service = BufferServiceImpl::new(registry, SessionId::new("test"));
+
+        // Request without buffer_id but WITH client_id in extensions
+        let mut request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        request.extensions_mut().insert(client_id);
+        let response = service.get_raw_content(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(
+            resp.lines[0], "second buffer",
+            "Should return client's active buffer, not first"
+        );
+        assert_eq!(resp.buffer_id, buf2.as_usize() as u64);
+
+        // Without client_id, should fall back to first buffer in list
+        let request = Request::new(GetRawContentRequest {
+            buffer_id: None,
+            start_line: None,
+            end_line: None,
+        });
+        let response = service.get_raw_content(request).await;
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.buffer_id, buf1.as_usize() as u64);
     }
 }

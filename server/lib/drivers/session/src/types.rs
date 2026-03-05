@@ -59,10 +59,8 @@ use crate::{api::Selection as ApiSelection, extension::ExtensionMap};
 /// ┌─────────────────────────────────────────────────────────────────┐
 /// │ DRIVER LAYER                                                    │
 /// │   SessionShared  ◄─── Truly shared infrastructure               │
-/// │   ├── compositor                                                │
-/// │   ├── terminal_size                                             │
-/// │   ├── active_buffer                                             │
-/// │   └── home_mode  ◄─── NEW (#491)                                │
+/// │   ├── compositor  (template for layout)                         │
+/// │   └── home_mode   (bootstrap template for new clients, #491)   │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 ///
@@ -79,23 +77,10 @@ pub struct SessionShared {
     /// This is set by the layout module during session initialization.
     pub compositor: Option<Box<dyn RootCompositor>>,
 
-    /// Currently active buffer ID.
-    ///
-    /// This is a session-level concern - all clients attached to this
-    /// session see the same active buffer.
-    active_buffer: Option<BufferId>,
-
-    /// Terminal dimensions (width, height) as session-level default.
-    ///
-    /// Per-client dimensions may override this via `ClientViewport`.
-    /// Default: (80, 24) - standard VT100 size.
-    terminal_size: (u16, u16),
-
     /// Home mode for initializing new clients (#491).
     ///
-    /// When a new client connects, their `EditingState.mode_stack` is
-    /// initialized with this mode at the bottom. This is a session-level
-    /// configuration that ensures all clients start in the same mode.
+    /// Bootstrap template for initializing new clients -- each client's
+    /// mode evolves independently after init.
     home_mode: ModeId,
 }
 
@@ -104,8 +89,6 @@ impl std::fmt::Debug for SessionShared {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionShared")
             .field("compositor", &self.compositor.as_ref().map(|_| "..."))
-            .field("active_buffer", &self.active_buffer)
-            .field("terminal_size", &self.terminal_size)
             .field("home_mode", &self.home_mode)
             .finish()
     }
@@ -120,14 +103,11 @@ impl SessionShared {
     ///
     /// - `home_mode`: The mode used to initialize new clients' mode stacks
     ///
-    /// Terminal size defaults to VT100 standard (80x24).
     /// Compositor is initialized as `None` and should be set by the layout module.
     #[must_use]
     pub fn new(home_mode: ModeId) -> Self {
         Self {
             compositor: None,
-            active_buffer: None,
-            terminal_size: (80, 24), // VT100 default
             home_mode,
         }
     }
@@ -148,31 +128,6 @@ impl SessionShared {
     /// Get a mutable reference to the compositor.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.compositor.as_deref_mut()
-    }
-
-    /// Get the active buffer ID.
-    #[must_use]
-    pub const fn active_buffer(&self) -> Option<BufferId> {
-        self.active_buffer
-    }
-
-    /// Set the active buffer ID.
-    pub const fn set_active_buffer(&mut self, id: Option<BufferId>) {
-        self.active_buffer = id;
-    }
-
-    /// Get terminal dimensions (width, height).
-    ///
-    /// This is the session-level default. Per-client dimensions
-    /// may differ and are stored in `ClientViewport`.
-    #[must_use]
-    pub const fn terminal_size(&self) -> (u16, u16) {
-        self.terminal_size
-    }
-
-    /// Set terminal dimensions.
-    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
-        self.terminal_size = (width, height);
     }
 
     /// Get the home mode for initializing new clients (#491).
@@ -290,6 +245,18 @@ pub struct ClientContext<'a> {
     pub clipboard_history: &'a mut HistoryRing,
     /// Per-client local marks (a-z).
     pub local_marks: &'a mut MarkBank,
+    /// Per-client active buffer (#471).
+    ///
+    /// Each client tracks which buffer they are viewing independently.
+    /// Previously session-level in `SessionShared`, migrated to per-client
+    /// so that multi-client sessions don't share active buffer state.
+    pub active_buffer: &'a mut Option<BufferId>,
+    /// Per-client terminal dimensions (width, height) (#471).
+    ///
+    /// Each client has independent terminal size for compositor calculations.
+    /// Previously hardcoded (80, 24) in `SessionShared`, migrated to per-client
+    /// so that clients with different screen sizes get correct layouts.
+    pub terminal_size: &'a mut (u16, u16),
 }
 
 // ============================================================================
@@ -459,6 +426,23 @@ impl Viewport {
     #[must_use]
     pub const fn is_position_visible(&self, line: usize, column: usize) -> bool {
         self.is_line_visible(line) && self.is_column_visible(column)
+    }
+
+    /// Adjust `scroll_top` so the cursor line is visible.
+    ///
+    /// Returns `true` if `scroll_top` was changed.
+    pub const fn ensure_cursor_visible(&mut self, cursor_line: usize) -> bool {
+        if self.height == 0 {
+            return false;
+        }
+        let old = self.scroll_top;
+        let h = self.height as usize;
+        if cursor_line < self.scroll_top {
+            self.scroll_top = cursor_line;
+        } else if cursor_line >= self.scroll_top + h {
+            self.scroll_top = cursor_line - h + 1;
+        }
+        self.scroll_top != old
     }
 }
 
@@ -800,18 +784,16 @@ impl KeySequence {
 /// ┌─────────────────────────────────────────────────────────────────┐
 /// │ DRIVER LAYER                                                    │
 /// │   Session (this struct)                                         │
-/// │   ├── id: ClientId (placeholder)                                │
+/// │   ├── id: ClientId (deprecated, not used at runtime #471)       │
 /// │   └── shared: SessionShared  ◄─── Truly shared infrastructure   │
-/// │       ├── compositor                                            │
-/// │       ├── terminal_size                                         │
-/// │       ├── active_buffer                                         │
-/// │       └── home_mode                                             │
+/// │       ├── compositor  (template for layout)                     │
+/// │       └── home_mode   (bootstrap template for new clients)      │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 pub struct Session {
-    /// Unique client identifier (placeholder for session-level operations).
+    /// Client identifier (deprecated -- not used at runtime #471).
     pub id: ClientId,
-    /// Shared session infrastructure (compositor, `terminal_size`, `active_buffer`).
+    /// Shared session infrastructure (compositor, home mode).
     ///
     /// This field contains truly shared state that is accessed by all clients.
     /// `SessionRuntime` accesses shared state via `session.shared`.
@@ -922,38 +904,6 @@ impl Session {
     /// Delegates to `self.shared.compositor_mut()`.
     pub fn compositor_mut(&mut self) -> Option<&mut (dyn RootCompositor + 'static)> {
         self.shared.compositor_mut()
-    }
-
-    /// Get the active buffer ID.
-    ///
-    /// Delegates to `self.shared.active_buffer()`.
-    #[must_use]
-    pub const fn active_buffer(&self) -> Option<BufferId> {
-        self.shared.active_buffer()
-    }
-
-    /// Set the active buffer ID.
-    ///
-    /// Delegates to `self.shared.set_active_buffer()`.
-    pub const fn set_active_buffer(&mut self, id: Option<BufferId>) {
-        self.shared.set_active_buffer(id);
-    }
-
-    /// Get terminal dimensions (width, height).
-    ///
-    /// This is the session-level default. Per-client dimensions
-    /// may differ and are stored in `ClientViewport`.
-    /// Delegates to `self.shared.terminal_size()`.
-    #[must_use]
-    pub const fn terminal_size(&self) -> (u16, u16) {
-        self.shared.terminal_size()
-    }
-
-    /// Set terminal dimensions.
-    ///
-    /// Delegates to `self.shared.set_terminal_size()`.
-    pub const fn set_terminal_size(&mut self, width: u16, height: u16) {
-        self.shared.set_terminal_size(width, height);
     }
 }
 
@@ -1097,11 +1047,7 @@ mod tests {
         assert_eq!(session.id.as_usize(), 1);
         // home_mode is stored in shared (#491)
         assert_eq!(session.shared.home_mode(), &mode);
-        // Shared fields initialized correctly
-        assert!(session.active_buffer().is_none());
-        assert_eq!(session.terminal_size(), (80, 24)); // VT100 default
-        // Per-client state (mode_stack, windows, extensions) now lives in
-        // BootstrapState or server::EditingState, NOT in Session (#491)
+        // active_buffer and terminal_size are per-client (#471), not in Session
     }
 
     #[test]
@@ -1111,8 +1057,7 @@ mod tests {
 
         // Session has only shared infrastructure
         assert_eq!(session.id.as_usize(), 1);
-        assert!(session.active_buffer().is_none());
-        assert_eq!(session.terminal_size(), (80, 24));
+        // active_buffer and terminal_size are per-client (#471)
 
         // BootstrapState has per-client initial state
         assert_eq!(bootstrap.mode_stack.current(), &mode);
@@ -1121,54 +1066,8 @@ mod tests {
         assert!(bootstrap.extensions.is_empty());
     }
 
-    #[test]
-    fn test_session_active_buffer() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
-
-        // Initially None
-        assert!(session.active_buffer().is_none());
-
-        // Set active buffer
-        let buf_id = BufferId::new();
-        session.set_active_buffer(Some(buf_id));
-        assert_eq!(session.active_buffer(), Some(buf_id));
-
-        // Clear active buffer
-        session.set_active_buffer(None);
-        assert!(session.active_buffer().is_none());
-    }
-
-    #[test]
-    fn test_session_terminal_size() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
-
-        // Default VT100 size
-        assert_eq!(session.terminal_size(), (80, 24));
-
-        // Update terminal size
-        session.set_terminal_size(120, 40);
-        assert_eq!(session.terminal_size(), (120, 40));
-    }
-
-    #[test]
-    fn test_session_terminal_size_boundaries() {
-        let mode = test_mode();
-        let mut session = Session::new(ClientId::new(1), mode);
-
-        // Min values
-        session.set_terminal_size(0, 0);
-        assert_eq!(session.terminal_size(), (0, 0));
-
-        // Near-min
-        session.set_terminal_size(1, 1);
-        assert_eq!(session.terminal_size(), (1, 1));
-
-        // Max values
-        session.set_terminal_size(u16::MAX, u16::MAX);
-        assert_eq!(session.terminal_size(), (u16::MAX, u16::MAX));
-    }
+    // NOTE (#471): active_buffer and terminal_size tests removed.
+    // These are now per-client (in EditingState/ClientContext), tested in testing.rs.
 
     // =========================================================================
     // TextObjRange tests
@@ -1243,60 +1142,8 @@ mod tests {
         let shared = SessionShared::new(mode.clone());
 
         assert!(shared.compositor.is_none());
-        assert!(shared.active_buffer().is_none());
-        assert_eq!(shared.terminal_size(), (80, 24)); // VT100 default
-        assert_eq!(shared.home_mode(), &mode); // #491: home_mode is stored
-    }
-
-    // NOTE: Default impl removed in #491 - SessionShared now requires home_mode
-
-    #[test]
-    fn test_session_shared_active_buffer() {
-        let mode = test_mode();
-        let mut shared = SessionShared::new(mode);
-
-        // Initially None
-        assert!(shared.active_buffer().is_none());
-
-        // Set active buffer
-        let buf_id = BufferId::new();
-        shared.set_active_buffer(Some(buf_id));
-        assert_eq!(shared.active_buffer(), Some(buf_id));
-
-        // Clear active buffer
-        shared.set_active_buffer(None);
-        assert!(shared.active_buffer().is_none());
-    }
-
-    #[test]
-    fn test_session_shared_terminal_size() {
-        let mode = test_mode();
-        let mut shared = SessionShared::new(mode);
-
-        // Default VT100 size
-        assert_eq!(shared.terminal_size(), (80, 24));
-
-        // Update terminal size
-        shared.set_terminal_size(120, 40);
-        assert_eq!(shared.terminal_size(), (120, 40));
-    }
-
-    #[test]
-    fn test_session_shared_terminal_size_boundaries() {
-        let mode = test_mode();
-        let mut shared = SessionShared::new(mode);
-
-        // Min values
-        shared.set_terminal_size(0, 0);
-        assert_eq!(shared.terminal_size(), (0, 0));
-
-        // Near-min
-        shared.set_terminal_size(1, 1);
-        assert_eq!(shared.terminal_size(), (1, 1));
-
-        // Max values
-        shared.set_terminal_size(u16::MAX, u16::MAX);
-        assert_eq!(shared.terminal_size(), (u16::MAX, u16::MAX));
+        // active_buffer and terminal_size are per-client (#471)
+        assert_eq!(shared.home_mode(), &mode);
     }
 
     #[test]
@@ -1308,8 +1155,7 @@ mod tests {
 
         assert!(debug_str.contains("SessionShared"));
         assert!(debug_str.contains("compositor"));
-        assert!(debug_str.contains("terminal_size"));
-        assert!(debug_str.contains("home_mode")); // #491: home_mode in debug
+        assert!(debug_str.contains("home_mode"));
     }
 
     #[test]
@@ -1518,6 +1364,62 @@ mod tests {
     }
 
     // =========================================================================
+    // Viewport::ensure_cursor_visible tests
+    // =========================================================================
+
+    #[test]
+    fn test_ensure_cursor_visible_no_change_when_visible() {
+        let mut vp = Viewport::new(80, 24);
+        assert!(!vp.ensure_cursor_visible(0));
+        assert_eq!(vp.scroll_top, 0);
+        assert!(!vp.ensure_cursor_visible(23));
+        assert_eq!(vp.scroll_top, 0);
+    }
+
+    #[test]
+    fn test_ensure_cursor_visible_scroll_down() {
+        let mut vp = Viewport::new(80, 24);
+        assert!(vp.ensure_cursor_visible(30));
+        assert_eq!(vp.scroll_top, 7); // 30 - 24 + 1
+    }
+
+    #[test]
+    fn test_ensure_cursor_visible_scroll_up() {
+        let mut vp = Viewport::new(80, 24);
+        vp.scroll_top = 20;
+        assert!(vp.ensure_cursor_visible(10));
+        assert_eq!(vp.scroll_top, 10);
+    }
+
+    #[test]
+    fn test_ensure_cursor_visible_zero_height() {
+        let mut vp = Viewport::new(80, 0);
+        assert!(!vp.ensure_cursor_visible(5));
+        assert_eq!(vp.scroll_top, 0);
+    }
+
+    #[test]
+    fn test_ensure_cursor_visible_exact_boundary() {
+        let mut vp = Viewport::new(80, 10);
+        // Cursor at line 9 (last visible line when scroll_top=0, height=10)
+        assert!(!vp.ensure_cursor_visible(9));
+        assert_eq!(vp.scroll_top, 0);
+        // Cursor at line 10 (just past the boundary)
+        assert!(vp.ensure_cursor_visible(10));
+        assert_eq!(vp.scroll_top, 1);
+    }
+
+    #[test]
+    fn test_ensure_cursor_visible_returns_false_when_already_at_cursor() {
+        let mut vp = Viewport::new(80, 10);
+        vp.scroll_top = 5;
+        // Cursor within visible range [5, 14]
+        assert!(!vp.ensure_cursor_visible(5));
+        assert!(!vp.ensure_cursor_visible(14));
+        assert_eq!(vp.scroll_top, 5);
+    }
+
+    // =========================================================================
     // Additional CursorPosition tests
     // =========================================================================
 
@@ -1667,7 +1569,6 @@ mod tests {
         let mode = test_mode();
         let session = Session::new(ClientId::new(1), mode);
         assert!(session.compositor().is_none());
-        assert!(session.active_buffer().is_none());
     }
 
     #[test]
@@ -1676,15 +1577,6 @@ mod tests {
         let mut shared = SessionShared::new(mode);
         assert!(shared.compositor().is_none());
         assert!(shared.compositor_mut().is_none());
-    }
-
-    #[test]
-    fn test_session_shared_set_active_buffer() {
-        let mode = test_mode();
-        let mut shared = SessionShared::new(mode);
-        let buf_id = BufferId::new();
-        shared.set_active_buffer(Some(buf_id));
-        assert_eq!(shared.active_buffer(), Some(buf_id));
     }
 
     // =========================================================================

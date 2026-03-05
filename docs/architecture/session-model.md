@@ -25,19 +25,23 @@ reovim follows a tmux-inspired session model for multi-client editing.
 │  Session: "default" (SessionId)                 │
 │  ├── Shared State:                              │
 │  │   ├── buffers (content shared by all)        │
-│  │   ├── extensions (module state)              │
-│  │   └── active_buffer                          │
+│  │   ├── kernel (buffer registry)               │
+│  │   └── compositor (layout template)           │
 │  │                                              │
 │  └── Attached Clients:                          │
 │      ├── ClientId(1) - EditingState             │
 │      │   ├── mode_stack (NORMAL)                │
 │      │   ├── cursor (10, 5)                     │
+│      │   ├── active_buffer (BufferId(1))        │
 │      │   ├── viewport (120x40)                  │
+│      │   ├── extensions (module state)          │
 │      │   └── selection (none)                   │
 │      └── ClientId(2) - EditingState             │
 │          ├── mode_stack (INSERT)                │
 │          ├── cursor (20, 3)                     │
+│          ├── active_buffer (BufferId(2))        │
 │          ├── viewport (80x24)                   │
+│          ├── extensions (module state)          │
 │          └── selection (none)                   │
 └─────────────────────────────────────────────────┘
 ```
@@ -88,12 +92,17 @@ Two terminals attach to the same session:
 - **Viewport** - Terminal dimensions, scroll offset
 - **Pending keys** - Key sequence accumulator
 
-### Deprecated for Runtime (driver::Session)
-The following fields in `driver::Session` are **bootstrap-only** (#471):
-- `mode_stack` - Use `EditingState.mode_stack` at runtime
-- `windows` - Use `EditingState.windows` at runtime
+### Per-Client State (EditingState)
+All runtime editing state lives in `EditingState` per client (#471):
+- `mode_stack` - Independent mode for each client
+- `windows` - Independent window layout
+- `active_buffer` - Which buffer the client is viewing
+- `terminal_size` - Client's terminal dimensions
+- `extensions` - Module per-session state
+- `registers` - Yank/paste registers
+- `local_marks` - Buffer-local marks
 
-Commands should use `SessionRuntime::new_for_client()` to operate on per-client state.
+`SessionShared` retains only `compositor` (template) and `home_mode` (bootstrap default).
 
 ## Related Documents
 

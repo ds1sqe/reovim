@@ -1,0 +1,18 @@
+[package]
+name = "reovim-driver-picker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Picker driver for reovim - defines Picker trait, types, engine, and registry"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-session = { workspace = true }
+nucleo = { workspace = true }

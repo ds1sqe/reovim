@@ -101,6 +101,13 @@ mod tests {
     }
 
     #[test]
+    fn test_clock_default() {
+        let clock = TestClock::default();
+        let t = clock.now();
+        assert!(t <= Instant::now());
+    }
+
+    #[test]
     fn test_clock_is_send_sync() {
         let clock = Arc::new(TestClock::new());
         let clone = Arc::clone(&clock);

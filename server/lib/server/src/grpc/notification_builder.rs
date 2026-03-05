@@ -145,6 +145,15 @@ pub fn build_notifications(
         }
     }
 
+    // Presence updated notifications (#471)
+    if changes.presence_changed {
+        for &cid in &changes.presence_updates {
+            if let Some(presence) = session.presence().get(ClientId::new(cid)) {
+                notifications.push(super::presence::build_presence_updated_notification(&presence));
+            }
+        }
+    }
+
     // Extension state updated notifications (#514)
     if changes.extension_changed
         && let Some(registry) = bridges
@@ -287,11 +296,12 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
     let windows: Vec<WindowInfo> = if let Some(ref state) = editing_state {
         if let Some(ref compositor) = state.compositor {
             // Per-client compositor: IDs match per-client windows
-            let terminal_size = session.with_state_sync(|s| s.driver_session.terminal_size());
-            let screen = reovim_driver_display::Rect::new(0, 0, terminal_size.0, terminal_size.1);
+            // Per-client terminal_size and active_buffer (#471)
+            let (tw, th) = state.terminal_size;
+            let screen = reovim_driver_display::Rect::new(0, 0, tw, th);
             let composite = compositor.composite(screen);
 
-            let active_buffer = session.with_state_sync(|s| s.driver_session.active_buffer());
+            let active_buffer = state.active_buffer;
 
             composite
                 .placements
@@ -1738,6 +1748,8 @@ mod tests {
         );
         // #474: Set compositor on per-client state (not shared)
         client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
+        // Per-client active_buffer (#471): set so fallback for unmapped windows works
+        client.state.active_buffer = Some(buffer_id);
         session.add_client_with_state(client);
 
         let notification = build_layout_notification(&session, 99999, 1);
@@ -1904,5 +1916,48 @@ mod tests {
         let session = Session::new(SessionId::new("shared-test"));
         let result = build_extension_notification("shared-test", &session, 12345, 1, &bridges);
         assert!(result.is_none());
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_build_notifications_presence_changed() {
+        use {
+            crate::session::{ClientId, ClientPresence, SyncMode},
+            std::time::SystemTime,
+        };
+
+        let session = Session::new(SessionId::new("presence-test"));
+        let client_id = ClientId::new(42);
+        let presence = ClientPresence {
+            client_id,
+            client_type: "tui".to_string(),
+            display_name: "test".to_string(),
+            buffer_id: Some(1),
+            cursor: (0, 0),
+            visible_lines: (0, 24),
+            mode: "NORMAL".to_string(),
+            sync_mode: SyncMode::Independent,
+            joined_at: SystemTime::now(),
+        };
+        session.presence().join(presence);
+
+        let mut changes = StateChanges::new();
+        changes.record_presence_change(client_id.as_usize());
+
+        let notifications = build_notifications(&changes, &session, 12345, None);
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].event_type, "presence_updated");
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_build_notifications_presence_changed_missing_client() {
+        let session = Session::new(SessionId::new("presence-test2"));
+
+        let mut changes = StateChanges::new();
+        changes.record_presence_change(999);
+
+        let notifications = build_notifications(&changes, &session, 12345, None);
+        assert!(notifications.is_empty());
     }
 }

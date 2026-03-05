@@ -91,6 +91,13 @@
   max-width: 150px;
 }
 
+.completion-source {
+  font-size: 0.75em;
+  color: var(--theme-text-muted);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .completion-empty {
   padding: 12px;
   text-align: center;
@@ -252,6 +259,251 @@
 .cmdline-completion.selected {
   background: var(--theme-menu-selected-bg);
   color: var(--theme-popup-fg);
+}
+
+/* ============ Microscope Fuzzy Finder ============ */
+
+.microscope-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 100%;
+  max-height: 50%;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  display: flex;
+  flex-direction: column;
+  z-index: 200;
+}
+
+.microscope-query-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--theme-border);
+  gap: 4px;
+}
+
+.microscope-prompt {
+  color: var(--theme-text-accent);
+  font-weight: bold;
+  user-select: none;
+}
+
+.microscope-query {
+  flex: 1;
+  white-space: pre;
+}
+
+.microscope-counter {
+  color: var(--theme-text-muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.microscope-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.microscope-results {
+  flex: 0 0 40%;
+  overflow-y: auto;
+  border-right: 1px solid var(--theme-border);
+}
+
+.microscope-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.microscope-item:hover {
+  background: var(--theme-statusline-bg);
+}
+
+.microscope-item.selected {
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
+}
+
+.microscope-item-icon {
+  width: 1.5em;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.microscope-item-display {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.microscope-item-detail {
+  color: var(--theme-text-muted);
+  font-size: 0.85em;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.microscope-preview {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+
+.microscope-preview-path {
+  padding: 4px 12px;
+  font-size: 0.85em;
+  color: var(--theme-text-muted);
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.microscope-preview-lines {
+  padding: 4px 0;
+}
+
+.microscope-preview-line {
+  display: flex;
+  padding: 0 12px;
+  line-height: 1.4;
+}
+
+.microscope-preview-line.highlighted {
+  background: var(--theme-menu-selected-bg);
+}
+
+.microscope-line-number {
+  min-width: 3em;
+  text-align: right;
+  padding-right: 12px;
+  color: var(--theme-text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.microscope-line-text {
+  white-space: pre;
+}
+
+/* ============ Explorer Sidebar ============ */
+
+.explorer-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--theme-popup-bg);
+  border-right: 1px solid var(--theme-border);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size, 14px);
+  display: flex;
+  flex-direction: column;
+  z-index: 150;
+  overflow: hidden;
+}
+
+.explorer-header {
+  padding: 6px 12px;
+  font-weight: bold;
+  color: var(--theme-fg);
+  border-bottom: 1px solid var(--theme-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.explorer-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.explorer-node {
+  display: flex;
+  align-items: center;
+  padding: 1px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.explorer-node:hover {
+  background: var(--theme-statusline-bg);
+}
+
+.explorer-node.cursor {
+  background: var(--theme-menu-selected-bg);
+  color: var(--theme-popup-fg);
+}
+
+.explorer-node.dir .explorer-name {
+  color: #89b4fa;
+  font-weight: bold;
+}
+
+.explorer-node.symlink .explorer-name {
+  color: #94e2d5;
+}
+
+.explorer-node.hidden-file {
+  opacity: 0.5;
+}
+
+.explorer-prefix {
+  color: var(--theme-text-muted);
+  white-space: pre;
+}
+
+.explorer-icon {
+  white-space: pre;
+  flex-shrink: 0;
+}
+
+.explorer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorer-input {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-top: 1px solid var(--theme-border);
+  flex-shrink: 0;
+}
+
+.explorer-input-label {
+  color: var(--theme-text-accent);
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.explorer-input-buffer {
+  white-space: pre;
+}
+
+.explorer-input-cursor {
+  color: var(--theme-cursor-bg);
+  animation: blink 1s step-end infinite;
+}
+
+.explorer-message {
+  padding: 4px 8px;
+  color: var(--theme-text-muted);
+  font-size: 0.85em;
+  border-top: 1px solid var(--theme-border);
+  flex-shrink: 0;
 }
 
 /* ============ Fallback ============ */

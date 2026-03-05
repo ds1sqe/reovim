@@ -50,6 +50,18 @@ impl fmt::Display for LspError {
 
 impl std::error::Error for LspError {}
 
+impl From<crate::transport::TransportError> for LspError {
+    fn from(e: crate::transport::TransportError) -> Self {
+        Self::TransportError(e.to_string())
+    }
+}
+
+impl From<serde_json::Error> for LspError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serialization(e.to_string())
+    }
+}
+
 // Re-export ModuleError for consistency with other drivers
 pub use reovim_kernel::api::v1::ModuleError;
 
@@ -117,5 +129,20 @@ mod tests {
     fn test_error_is_error_trait() {
         fn assert_error<E: std::error::Error>() {}
         assert_error::<LspError>();
+    }
+
+    #[test]
+    fn test_from_transport_error() {
+        let transport_err = crate::transport::TransportError::Closed;
+        let lsp_err: LspError = transport_err.into();
+        assert!(matches!(lsp_err, LspError::TransportError(_)));
+        assert!(format!("{lsp_err}").contains("Connection closed"));
+    }
+
+    #[test]
+    fn test_from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("invalid").unwrap_err();
+        let lsp_err: LspError = json_err.into();
+        assert!(matches!(lsp_err, LspError::Serialization(_)));
     }
 }

@@ -47,7 +47,7 @@ use {
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
         Window, WindowLayout,
     },
-    reovim_kernel::api::v1::{HistoryRing, MarkBank, ModeStack, RegisterBank},
+    reovim_kernel::api::v1::{BufferId, HistoryRing, MarkBank, ModeStack, RegisterBank},
 };
 
 use super::{ClientId, ring_buffer::ClientRingBuffer};
@@ -634,6 +634,18 @@ pub struct EditingState {
     /// Each client owns their own local marks. Global marks (A-Z) remain
     /// shared in `KernelContext.global_marks`.
     pub local_marks: MarkBank,
+
+    /// Per-client active buffer (#471).
+    ///
+    /// Each client tracks which buffer they are viewing independently.
+    /// New clients are initialized with the first kernel buffer (scratch).
+    pub active_buffer: Option<BufferId>,
+
+    /// Per-client terminal dimensions (width, height) (#471).
+    ///
+    /// Each client has independent terminal size. Initialized to VT100
+    /// default (80, 24); updated when the client sends a resize RPC.
+    pub terminal_size: (u16, u16),
 }
 
 impl std::fmt::Debug for EditingState {
@@ -650,6 +662,8 @@ impl std::fmt::Debug for EditingState {
             .field("registers", &self.registers)
             .field("clipboard_history", &self.clipboard_history)
             .field("local_marks", &self.local_marks)
+            .field("active_buffer", &self.active_buffer)
+            .field("terminal_size", &self.terminal_size)
             .finish()
     }
 }
@@ -673,6 +687,8 @@ impl Clone for EditingState {
             registers: self.registers.clone(), // #515
             clipboard_history: self.clipboard_history.clone(), // #515
             local_marks: self.local_marks.clone(), // #515
+            active_buffer: self.active_buffer, // #471
+            terminal_size: self.terminal_size, // #471
         }
     }
 }
@@ -696,6 +712,8 @@ impl Default for EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         }
     }
 }
@@ -716,6 +734,8 @@ impl EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         }
     }
 
@@ -738,6 +758,8 @@ impl EditingState {
             registers: RegisterBank::new(),
             clipboard_history: HistoryRing::new(),
             local_marks: MarkBank::new(),
+            active_buffer: None,
+            terminal_size: (80, 24),
         }
     }
 
@@ -766,6 +788,8 @@ impl EditingState {
             registers: &mut self.registers,
             clipboard_history: &mut self.clipboard_history,
             local_marks: &mut self.local_marks,
+            active_buffer: &mut self.active_buffer,
+            terminal_size: &mut self.terminal_size,
         }
     }
 }

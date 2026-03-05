@@ -915,6 +915,7 @@ mod tests {
         fn active_buffer(&self) -> Option<BufferId> {
             None
         }
+        fn set_active_buffer(&mut self, _id: Option<BufferId>) {}
         fn buffer_line(&self, _b: BufferId, _l: usize) -> Option<String> {
             None
         }
@@ -976,6 +977,10 @@ mod tests {
         }
         fn set_window_buffer(&mut self, _w: WindowId, _b: BufferId) -> Result<(), WindowError> {
             Ok(())
+        }
+        fn set_active_selection(&mut self, _selection: Option<reovim_driver_session::Selection>) {}
+        fn active_selection(&self) -> Option<&reovim_driver_session::Selection> {
+            None
         }
     }
 

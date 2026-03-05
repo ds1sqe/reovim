@@ -123,6 +123,29 @@ impl IntegrationTest {
         }
     }
 
+    /// Create new test with custom environment variables.
+    ///
+    /// Passes additional env vars to the server process. Useful for
+    /// overriding `XDG_DATA_HOME` to provide test fixture data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if server fails to spawn.
+    pub async fn with_env(env_vars: &[(&str, &str)]) -> Self {
+        let harness = TestServerHarness::spawn_with_env(env_vars)
+            .await
+            .expect("Failed to spawn server with env vars");
+        let addr = format!("127.0.0.1:{}", harness.port());
+        Self {
+            harness,
+            addr,
+            initial_content: None,
+            initial_cursor: None,
+            key_sequences: Vec::new(),
+            default_delay: DEFAULT_DELAY_MS,
+        }
+    }
+
     /// Get the path to the server log file for debugging.
     ///
     /// Returns `None` if log capture is not enabled.

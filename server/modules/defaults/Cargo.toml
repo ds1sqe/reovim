@@ -30,13 +30,34 @@ reovim-module-buffer-simple = { workspace = true }
 reovim-module-search = { workspace = true }
 reovim-module-clipboard = { workspace = true }
 reovim-module-cmdline = { workspace = true }
+reovim-module-whichkey = { workspace = true }
 reovim-module-notification = { workspace = true }
+
+# Picker modules
+reovim-picker-files = { workspace = true }
+reovim-picker-buffers = { workspace = true }
+reovim-picker-commands = { workspace = true }
+reovim-picker-grep = { workspace = true }
+reovim-module-microscope = { workspace = true }
+
+# Explorer module
+reovim-module-explorer = { workspace = true }
 
 # Syntax highlighting modules
 reovim-module-treesitter-rust = { workspace = true }
 reovim-module-treesitter-markdown = { workspace = true }
+reovim-module-range-finder = { workspace = true }
 
-# Note: Client-side modules (layout, pair, cmdline, statusline, which-key, undotree)
+# Code intelligence modules
+reovim-module-lsp = { workspace = true }
+
+# Snippet expansion module (#136)
+reovim-module-snippet = { workspace = true }
+
+# Completion engine (#521)
+reovim-module-completion = { workspace = true }
+
+# Note: Client-side modules (layout, pair, statusline, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)
 
 [lints]

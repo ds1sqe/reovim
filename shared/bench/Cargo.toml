@@ -1,0 +1,23 @@
+[package]
+name = "reovim-bench-utils"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Shared benchmarking utilities for reovim module benchmarks"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Criterion benchmarking framework (re-exported for modules)
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# VFS driver (MockVfs for fixture factories)
+reovim-driver-vfs = { workspace = true }
+
+# JSON serialization (for bridge benchmark helpers)
+serde_json = { workspace = true }

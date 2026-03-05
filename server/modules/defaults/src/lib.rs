@@ -45,12 +45,17 @@ use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
 use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
-    reovim_module_editor as editor, reovim_module_keymap as keymap,
-    reovim_module_motions as motions, reovim_module_notification as notification,
+    reovim_module_completion as completion, reovim_module_editor as editor,
+    reovim_module_explorer as explorer, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
+    reovim_module_microscope as microscope, reovim_module_motions as motions,
+    reovim_module_notification as notification, reovim_module_range_finder as range_finder,
     reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
-    reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
+    reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
+    reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
+    reovim_picker_grep as picker_grep,
 };
 
 /// Default modules bundle.
@@ -103,10 +108,28 @@ impl DefaultsModule {
             Box::new(vim::VimModule::new()),
             // Extension bridge modules (#468, #443)
             Box::new(cmdline::CmdlineModule::new()),
+            Box::new(whichkey::WhichKeyModule::new()),
             Box::new(notification::NotificationModule::new()),
+            // Picker data providers (#522)
+            Box::new(picker_files::PickerFilesModule::new()),
+            Box::new(picker_buffers::PickerBuffersModule::new()),
+            Box::new(picker_commands::PickerCommandsModule::new()),
+            Box::new(picker_grep::PickerGrepModule::new()),
+            // Picker orchestration (#522)
+            Box::new(microscope::MicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
+            // Code intelligence modules (#520)
+            Box::new(lsp::LspModule::new()),
+            // Snippet expansion (#136)
+            Box::new(snippet::SnippetModule::new()),
+            // Jump navigation and code folding (#524)
+            Box::new(range_finder::RangeFinderModule::new()),
+            // Completion engine (#521)
+            Box::new(completion::CompletionModule::new()),
+            // File explorer (#523)
+            Box::new(explorer::ExplorerModule::new()),
         ]
     }
 }
@@ -151,10 +174,28 @@ impl Module for DefaultsModule {
             ModuleId::new("vim"),
             // Extension bridge modules (#468, #443)
             ModuleId::new("cmdline"),
+            ModuleId::new("whichkey"),
             ModuleId::new("notification"),
+            // Picker data providers (#522)
+            ModuleId::new("picker-files"),
+            ModuleId::new("picker-buffers"),
+            ModuleId::new("picker-commands"),
+            ModuleId::new("picker-grep"),
+            // Picker orchestration (#522)
+            ModuleId::new("microscope"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
             ModuleId::new("treesitter-markdown"),
+            // Code intelligence modules (#520)
+            ModuleId::new("lsp"),
+            // Snippet expansion (#136)
+            ModuleId::new("snippet"),
+            // Jump navigation and code folding (#524)
+            ModuleId::new("range-finder"),
+            // Completion engine (#521)
+            ModuleId::new("completion"),
+            // File explorer (#523)
+            ModuleId::new("explorer"),
         ]
     }
 
@@ -220,10 +261,17 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Extension bridge modules (2): cmdline, notification
+        // Extension bridge modules (3): cmdline, whichkey, notification
+        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 15 modules
-        assert_eq!(deps.len(), 15);
+        // Code intelligence modules (1): lsp
+        // Snippet (1): snippet
+        // Range-finder (1): range-finder
+        // Completion (1): completion
+        // Explorer (1): explorer
+        // Total: 26 modules
+        assert_eq!(deps.len(), 26);
     }
 
     #[test]
@@ -232,10 +280,17 @@ mod tests {
         // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
-        // Extension bridge modules (2): cmdline, notification
+        // Extension bridge modules (3): cmdline, whichkey, notification
+        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Total: 15 modules
-        assert_eq!(modules.len(), 15);
+        // Code intelligence modules (1): lsp
+        // Snippet (1): snippet
+        // Range-finder (1): range-finder
+        // Completion (1): completion
+        // Explorer (1): explorer
+        // Total: 26 modules
+        assert_eq!(modules.len(), 26);
     }
 
     #[test]
@@ -325,6 +380,14 @@ mod tests {
 
         assert!(dep_strs.contains(&"treesitter-rust"));
         assert!(dep_strs.contains(&"treesitter-markdown"));
+    }
+
+    #[test]
+    fn test_dependencies_contain_lsp_module() {
+        let module = DefaultsModule::new();
+        let deps = module.dependencies();
+
+        assert!(deps.iter().map(ModuleId::as_str).any(|x| x == "lsp"));
     }
 
     #[test]

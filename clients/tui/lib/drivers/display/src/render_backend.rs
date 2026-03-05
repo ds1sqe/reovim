@@ -180,6 +180,17 @@ pub trait TuiExtension: Send + Sync {
     fn cursor_position(&self, _terminal_width: u16, _terminal_height: u16) -> Option<(u16, u16)> {
         None
     }
+
+    /// Content area left inset for sidebar extensions.
+    ///
+    /// When active, the render engine shifts buffer content, selections,
+    /// cursors, and line numbers right by this amount to make room for
+    /// the sidebar. Multiple sidebars can stack (values are summed).
+    ///
+    /// Default: `0` (no inset).
+    fn content_offset_left(&self) -> u16 {
+        0
+    }
 }
 
 #[cfg(test)]

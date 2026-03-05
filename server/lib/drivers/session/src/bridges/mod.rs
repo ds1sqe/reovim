@@ -78,6 +78,14 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     /// Used for change detection: the runner compares `is_active()` before
     /// and after key resolution to detect activation/deactivation.
     fn is_active(&self, extensions: &ExtensionMap) -> bool;
+
+    /// Called when the client's mode changes (e.g., insert → normal).
+    ///
+    /// Bridges can use this to auto-deactivate when leaving a relevant mode.
+    /// Default implementation is a no-op.
+    ///
+    /// Only called for [`ExtensionScope::Client`] bridges (#521).
+    fn on_mode_changed(&self, _from: &str, _to: &str, _extensions: &mut ExtensionMap) {}
 }
 
 /// Registry of extension state bridges.
@@ -121,6 +129,13 @@ impl BridgeRegistry {
         let mut kinds: Vec<_> = self.bridges.keys().copied().collect();
         kinds.sort_unstable();
         kinds
+    }
+
+    /// Iterate over all registered bridges.
+    ///
+    /// Used by lifecycle hooks (e.g., `on_mode_changed`) to notify all bridges (#521).
+    pub fn values(&self) -> impl Iterator<Item = &dyn ExtensionStateBridge> {
+        self.bridges.values().map(AsRef::as_ref)
     }
 }
 
@@ -340,6 +355,24 @@ mod tests {
         let snap = bridge.snapshot(&map);
         assert!(snap.is_some());
         assert_eq!(snap.unwrap(), serde_json::json!({"dummy": true}));
+    }
+
+    #[test]
+    fn test_on_mode_changed_default_noop() {
+        let bridge = DummyBridge::new("test");
+        let mut map = ExtensionMap::new();
+        // Default impl is a no-op — should not panic.
+        bridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+    }
+
+    #[test]
+    fn test_registry_values() {
+        let mut reg = BridgeRegistry::new();
+        reg.register(DummyBridge::new("alpha"));
+        reg.register(DummyBridge::new("beta"));
+        let mut kinds: Vec<&str> = reg.values().map(ExtensionStateBridge::kind).collect();
+        kinds.sort_unstable();
+        assert_eq!(kinds, vec!["alpha", "beta"]);
     }
 
     // ========================================================================
