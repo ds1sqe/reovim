@@ -478,6 +478,10 @@ pub trait FileHandle: Send + Sync {
 ///
 /// Provides a platform-independent interface for watching
 /// files and directories for changes.
+///
+/// **Status**: Planned API. No production implementation yet.
+/// Future implementations: `inotify` (Linux), `FSEvents` (macOS),
+/// `ReadDirectoryChangesW` (Windows).
 pub trait FileWatcher: Send + Sync {
     /// Watch a path for changes.
     ///

@@ -98,8 +98,11 @@ mod extension;
 mod handler_key;
 mod handler_registry;
 mod mode;
+mod notification_drain;
+mod notification_queue;
 mod operator_state;
 mod runtime;
+mod snippet_expander;
 pub mod tab;
 pub mod testing;
 mod transition;
@@ -144,3 +147,12 @@ pub use tab::{TabPage, TabPageSet};
 
 // Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
 pub use {handler_key::SessionHandlerKey, handler_registry::SessionHandlerRegistry};
+
+// Pending notification queue (#542 - cross-module decoupling)
+pub use notification_queue::{PendingLevel, PendingNotification, PendingNotificationQueue};
+
+// Notification drain trait (#542 - decouple completion from notification module)
+pub use notification_drain::{NotificationDrain, NotificationDrainRegistry};
+
+// Snippet expander trait (#542 - decouple completion from snippet module)
+pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};

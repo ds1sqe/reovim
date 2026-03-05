@@ -66,6 +66,7 @@ pub mod operators;
 pub mod providers;
 pub mod resolvers;
 pub mod session_state;
+pub mod vim_lookup_policy;
 pub mod visual;
 
 #[cfg(test)]
@@ -91,6 +92,9 @@ pub use operators::{
 
 // Re-export fallback handler (Epic #372 - Mode Ownership)
 pub use fallback::VimFallbackHandler;
+
+// Re-export Vim lookup policy (#542 - mechanism/policy separation)
+pub use vim_lookup_policy::VimLookupPolicy;
 
 // Re-export mode commands (Epic #372 - Mode Ownership)
 pub use commands::{

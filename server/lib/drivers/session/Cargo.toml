@@ -29,6 +29,8 @@ reovim-driver-undo = { workspace = true }
 reovim-driver-search = { workspace = true }
 # JSON serialization for extension state bridges (#514)
 serde_json = { workspace = true }
+# Thread-safe queue for pending notifications (#542)
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 # VFS driver for MockUndoProvider's persist/load methods in tests

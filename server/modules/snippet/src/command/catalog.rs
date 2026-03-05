@@ -5,9 +5,11 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{BufferApi, ExtensionApi, SessionRuntime},
+    reovim_driver_session::{
+        BufferApi, NotificationDrainRegistry, PendingLevel, PendingNotificationQueue,
+        SessionRuntime,
+    },
     reovim_kernel::api::v1::CommandId,
-    reovim_module_notification::{NotificationLevel, NotificationState},
 };
 
 use crate::{ids, provider::SnippetRegistryHandle};
@@ -55,8 +57,10 @@ impl CommandHandler for SnippetCatalog {
         let snippets = self.handle.all_for_filetype(filetype);
 
         if snippets.is_empty() {
-            let state = runtime.ext_mut::<NotificationState>();
-            state.push(NotificationLevel::Info, format!("No snippets for {filetype}"));
+            if let Some(queue) = runtime.kernel().services.get::<PendingNotificationQueue>() {
+                queue.push(PendingLevel::Info, format!("No snippets for {filetype}"));
+            }
+            drain_notifications(runtime);
             return CommandResult::Success;
         }
 
@@ -68,12 +72,27 @@ impl CommandHandler for SnippetCatalog {
         }
         let body = lines.join("\n");
 
-        let title = format!("Snippets for {filetype} ({} available)", snippets.len());
+        let title = format!("Snippets for {filetype} ({} available)\n{body}", snippets.len());
 
-        let state = runtime.ext_mut::<NotificationState>();
-        state.push_with_body(NotificationLevel::Info, title, body);
+        if let Some(queue) = runtime.kernel().services.get::<PendingNotificationQueue>() {
+            queue.push(PendingLevel::Info, title);
+        }
+        drain_notifications(runtime);
 
         CommandResult::Success
+    }
+}
+
+/// Drain pending notifications so they appear immediately in this command cycle.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn drain_notifications(runtime: &mut SessionRuntime<'_>) {
+    let drain = runtime
+        .kernel()
+        .services
+        .get::<NotificationDrainRegistry>()
+        .and_then(|reg| reg.get());
+    if let Some(d) = drain {
+        d.drain_pending(runtime);
     }
 }
 

@@ -21,7 +21,7 @@
 //! # Components
 //!
 //! - **Types**: [`KeyCode`], [`KeyEvent`], [`Modifiers`], [`MouseEvent`]
-//! - **Traits**: [`InputDriver`], [`KeyHandler`], [`KeymapRegistry`], [`ClipboardProvider`]
+//! - **Traits**: [`ClipboardProvider`], [`ModeKeyResolver`]
 //! - **Conversions**: `From` impls between arch types and driver types
 //!
 //! # Example
@@ -78,10 +78,7 @@ pub use key::{KeyCode, KeyEvent, KeyEventKind, KeymapResult, Modifiers};
 pub use mouse::{MouseButton, MouseEvent, MouseEventKind};
 
 // Re-export traits
-pub use traits::{
-    ClipboardProvider, HandlerPriority, InputDriver, KeyHandler, KeyHandlerResult, KeymapRegistry,
-    priority,
-};
+pub use traits::ClipboardProvider;
 
 // Re-export mode types (Phase 6 - Kernel-driver architecture)
 pub use mode::{KeySequence, Keybinding, KeybindingTarget};
@@ -100,7 +97,6 @@ pub use resolver::{
 // Re-export lookup types (Epic #353 - Mechanism/Policy separation)
 pub use lookup::{
     BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeymapQuery,
-    VimLookupPolicy,
 };
 
 // Re-export lifecycle types (Epic #372 - Mode Ownership)

@@ -8,6 +8,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
+  - Move `VimLookupPolicy` from driver-input to module-vim (policy belongs in modules)
+  - Make `KeymapRegistry` lookup policy configurable via `Arc<dyn KeyLookupPolicy>`
+  - Promote `PendingNotificationQueue` from module-completion to driver-session (shared mechanism)
+  - Add `LspLifecycle` trait in driver-lsp to decouple completion from module-lsp
+  - Add `SnippetExpander` trait in driver-session to decouple completion from module-snippet
+  - Add `NotificationDrain` trait in driver-session to decouple completion from module-notification
+  - Remove all `reovim-module-*` dependencies from completion module's Cargo.toml
+
 ### Performance
 
 ### Fixed

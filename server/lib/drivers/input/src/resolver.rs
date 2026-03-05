@@ -628,13 +628,12 @@ pub trait ModeKeyResolver: Send + Sync {
 ///
 /// ```ignore
 /// use reovim_driver_input::{ResolveResult, InputTarget};
-/// use reovim_module_cmdline::CmdlineState;
 ///
 /// // Insert into buffer (default for insert mode)
 /// ResolveResult::insert_char('x');
 ///
-/// // Insert into command-line extension
-/// ResolveResult::insert_char_to::<CmdlineState>('x');
+/// // Insert into a session extension implementing TextInputSink
+/// ResolveResult::insert_char_to::<MyExtension>('x');
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum InputTarget {
@@ -652,8 +651,8 @@ pub enum InputTarget {
     /// # Example
     ///
     /// ```ignore
-    /// // Command-line mode routes to CmdlineState
-    /// InputTarget::extension::<CmdlineState>()
+    /// // Route to a session extension implementing TextInputSink
+    /// InputTarget::extension::<MyExtension>()
     /// ```
     Extension(TypeId),
 }
@@ -664,9 +663,7 @@ impl InputTarget {
     /// # Example
     ///
     /// ```ignore
-    /// use reovim_module_cmdline::CmdlineState;
-    ///
-    /// let target = InputTarget::extension::<CmdlineState>();
+    /// let target = InputTarget::extension::<MyExtension>();
     /// ```
     #[must_use]
     pub const fn extension<T: SessionExtension + TextInputSink>() -> Self {
@@ -724,13 +721,12 @@ pub enum ResolveResult {
     ///
     /// ```ignore
     /// use reovim_driver_input::ResolveResult;
-    /// use reovim_module_cmdline::CmdlineState;
     ///
     /// // Insert mode → buffer
     /// ResolveResult::insert_char('x');
     ///
-    /// // Command-line mode → CmdlineState extension
-    /// ResolveResult::insert_char_to::<CmdlineState>(':');
+    /// // Extension mode → TextInputSink extension
+    /// ResolveResult::insert_char_to::<MyExtension>(':');
     /// ```
     InsertChar {
         /// The character to insert.
@@ -825,7 +821,7 @@ impl ResolveResult {
     /// Create an `InsertChar` result that inserts into a session extension.
     ///
     /// Use this for modes that input into extension state, such as command-line
-    /// mode (into `CmdlineState`) or search mode (into search state).
+    /// mode or search mode.
     ///
     /// The extension must implement both `SessionExtension` and `TextInputSink`.
     ///
@@ -833,10 +829,9 @@ impl ResolveResult {
     ///
     /// ```ignore
     /// use reovim_driver_input::ResolveResult;
-    /// use reovim_module_cmdline::CmdlineState;
     ///
-    /// // In command-line resolver
-    /// ResolveResult::insert_char_to::<CmdlineState>(':')
+    /// // In a resolver that inputs to an extension
+    /// ResolveResult::insert_char_to::<MyExtension>(':')
     /// ```
     #[must_use]
     pub const fn insert_char_to<T: SessionExtension + TextInputSink>(c: char) -> Self {
@@ -1232,19 +1227,28 @@ mod tests {
         }
     }
 
+    /// Test stub implementing `SessionExtension + TextInputSink` for
+    /// `InputTarget::extension::<T>()` tests, replacing the module-cmdline
+    /// dev-dependency.
+    struct MockTextInputSink;
+
+    impl reovim_driver_session::SessionExtension for MockTextInputSink {
+        fn create() -> Self {
+            Self
+        }
+    }
+
+    impl reovim_driver_session::TextInputSink for MockTextInputSink {
+        fn insert_char(&mut self, _ch: char) {}
+    }
+
     #[test]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_insert_char_to_creates_extension_target() {
-        // Test that insert_char_to creates an Extension target with correct TypeId
-        // We need a type that implements both SessionExtension and TextInputSink
-        // Use CmdlineState from the session driver
-        use reovim_module_cmdline::CmdlineState;
-
-        let result = ResolveResult::insert_char_to::<CmdlineState>('x');
+        let result = ResolveResult::insert_char_to::<MockTextInputSink>('x');
         if let ResolveResult::InsertChar { char: c, target } = result {
             assert_eq!(c, 'x');
-            // Verify it's an Extension target with the correct TypeId
-            let expected_type_id = std::any::TypeId::of::<CmdlineState>();
+            let expected_type_id = std::any::TypeId::of::<MockTextInputSink>();
             assert_eq!(target, InputTarget::Extension(expected_type_id));
         } else {
             panic!("expected InsertChar with Extension target");
@@ -1253,11 +1257,8 @@ mod tests {
 
     #[test]
     fn test_input_target_extension_creates_correct_type_id() {
-        // Test that InputTarget::extension::<T>() creates correct TypeId
-        use reovim_module_cmdline::CmdlineState;
-
-        let target = InputTarget::extension::<CmdlineState>();
-        let expected_type_id = std::any::TypeId::of::<CmdlineState>();
+        let target = InputTarget::extension::<MockTextInputSink>();
+        let expected_type_id = std::any::TypeId::of::<MockTextInputSink>();
         assert_eq!(target, InputTarget::Extension(expected_type_id));
     }
 

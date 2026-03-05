@@ -21,4 +21,3 @@ bitflags = "2.4"
 tracing = "0.1"
 
 [dev-dependencies]
-reovim-module-cmdline = { workspace = true }

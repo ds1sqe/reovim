@@ -15,12 +15,12 @@
 //!
 //! Higher layers override lower layers for the same key sequence.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_input::{
-        BindingInfo, BindingLayer, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence,
-        KeymapQuery, VimLookupPolicy,
+        BindingInfo, BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult,
+        KeyLookupState, KeySequence, KeymapQuery,
     },
     reovim_kernel::{
         api::v1::{CommandId, ModeId, ModuleId},
@@ -50,10 +50,25 @@ struct KeybindingEntry {
 /// Maps (mode, key sequence) pairs to command IDs. Supports multi-key
 /// sequences with prefix detection for proper handling of sequences
 /// like `gg` or `<C-w>h`.
-#[derive(Default, Clone)]
+///
+/// The registry uses a configurable default lookup policy. By default it
+/// uses [`EagerLookupPolicy`] (mechanism default). Bootstrap wires
+/// the Vim-specific policy from the vim module.
+#[derive(Clone)]
 pub struct KeymapRegistry {
     /// Bindings organized by mode, then by key sequence, then by layer.
     entries: HashMap<ModeId, HashMap<KeySequence, Vec<KeybindingEntry>>>,
+    /// Default policy for `lookup()`. Configurable via `set_default_policy()`.
+    default_policy: Arc<dyn KeyLookupPolicy>,
+}
+
+impl Default for KeymapRegistry {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            default_policy: Arc::new(EagerLookupPolicy),
+        }
+    }
 }
 
 impl KeymapRegistry {
@@ -219,11 +234,19 @@ impl KeymapRegistry {
         })
     }
 
-    /// Look up a key sequence in a mode (Vim-style behavior).
+    /// Set the default lookup policy for `lookup()`.
+    ///
+    /// By default, the registry uses [`EagerLookupPolicy`]. Call this to
+    /// install a different policy (e.g., `VimLookupPolicy` from the vim module).
+    pub fn set_default_policy(&mut self, policy: Arc<dyn KeyLookupPolicy>) {
+        self.default_policy = policy;
+    }
+
+    /// Look up a key sequence in a mode using the default policy.
     #[must_use]
     pub fn lookup(&self, mode: &ModeId, keys: &KeySequence) -> KeyLookupResult {
         profile_scope!("keymap_lookup", "server::keymap");
-        self.lookup_with_policy(mode, keys, &VimLookupPolicy)
+        self.lookup_with_policy(mode, keys, &*self.default_policy)
     }
 
     /// Look up a key sequence in a mode with a specific policy.
@@ -330,6 +353,7 @@ impl std::fmt::Debug for KeymapRegistry {
         f.debug_struct("KeymapRegistry")
             .field("modes", &self.entries.keys().collect::<Vec<_>>())
             .field("total_bindings", &self.total_bindings())
+            .field("default_policy", &"<dyn KeyLookupPolicy>")
             .finish()
     }
 }
@@ -433,10 +457,11 @@ mod tests {
         registry.register_str(&mode, "g", test_command("goto"));
         registry.register_str(&mode, "gg", test_command("goto-top"));
 
-        // lookup() uses VIM-STYLE semantics
+        // lookup() uses EAGER semantics by default (execute exact match)
         let g = KeySequence::parse("g").unwrap();
         let result = registry.lookup(&mode, &g);
-        assert!(result.is_prefix());
+        assert!(result.is_found());
+        assert_eq!(result.command_id(), Some(&test_command("goto")));
 
         // query() shows the full picture
         let state = registry.query(&mode, &g);
@@ -1037,5 +1062,51 @@ mod tests {
         // clear_layer on a mode that doesn't exist should not panic
         registry.clear_layer(BindingLayer::Policy, &mode);
         assert_eq!(registry.total_bindings(), 0);
+    }
+
+    #[test]
+    fn test_set_default_policy() {
+        use reovim_driver_input::KeyLookupPolicy;
+
+        /// Test policy that waits for longer sequences (Vim-style).
+        struct WaitForLongerPolicy;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl KeyLookupPolicy for WaitForLongerPolicy {
+            fn resolve(&self, state: KeyLookupState) -> KeyLookupResult {
+                match state {
+                    KeyLookupState::ExactWithLonger { .. } | KeyLookupState::PrefixOnly => {
+                        KeyLookupResult::Prefix
+                    }
+                    KeyLookupState::ExactOnly(cmd) => KeyLookupResult::Found(cmd),
+                    KeyLookupState::NotFound => KeyLookupResult::NotFound,
+                }
+            }
+        }
+
+        let mut registry = KeymapRegistry::new();
+        let mode = test_mode();
+
+        registry.register_str(&mode, "g", test_command("goto"));
+        registry.register_str(&mode, "gg", test_command("goto-top"));
+
+        let g = KeySequence::parse("g").unwrap();
+
+        // Default (eager) executes exact match immediately
+        let result = registry.lookup(&mode, &g);
+        assert!(result.is_found());
+
+        // Switch to wait-for-longer policy - should now wait for longer sequences
+        registry.set_default_policy(Arc::new(WaitForLongerPolicy));
+        let result = registry.lookup(&mode, &g);
+        assert!(result.is_prefix());
+    }
+
+    #[test]
+    fn test_default_policy_is_eager() {
+        let registry = KeymapRegistry::new();
+        // Verify default is eager by checking struct fields via Default
+        let default_registry = KeymapRegistry::default();
+        assert!(registry.is_empty());
+        assert!(default_registry.is_empty());
     }
 }

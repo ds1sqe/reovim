@@ -537,8 +537,34 @@ mod tests {
     #[cfg(feature = "grpc")]
     #[test]
     fn server_with_bridges() {
+        struct TestBridge;
+        impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+            fn kind(&self) -> &'static str {
+                "test-bridge"
+            }
+            fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
+                reovim_driver_session::bridges::ExtensionScope::Client
+            }
+            fn snapshot(
+                &self,
+                _: &reovim_driver_session::ExtensionMap,
+            ) -> Option<serde_json::Value> {
+                None
+            }
+            fn is_active(&self, _: &reovim_driver_session::ExtensionMap) -> bool {
+                false
+            }
+            fn on_mode_changed(
+                &self,
+                _from: &str,
+                _to: &str,
+                _: &mut reovim_driver_session::ExtensionMap,
+            ) {
+            }
+        }
+
         let mut registry = BridgeRegistry::new();
-        registry.register(reovim_module_cmdline::CmdlineBridge);
+        registry.register(TestBridge);
         let server = Server::new(ServerConfig::default()).with_bridges(registry);
         // Verify the bridge registry was set (it's inside an Arc)
         let _ = server;

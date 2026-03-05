@@ -28,6 +28,7 @@
 pub mod ast;
 pub mod command;
 pub mod engine;
+mod expander;
 pub mod ids;
 pub mod inheritance;
 pub mod loader;
@@ -42,9 +43,12 @@ pub mod variables;
 
 use std::path::Path;
 
+use std::sync::Arc;
+
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_session::SnippetExpanderRegistry,
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,
@@ -179,6 +183,10 @@ impl Module for SnippetModule {
         // 5. Register keybindings
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
+
+        // 6. Register SnippetExpander implementation (#542: decouple completion from this module).
+        let expander_registry = ctx.services.get_or_create::<SnippetExpanderRegistry>();
+        expander_registry.register(Arc::new(expander::SnippetExpanderImpl));
 
         pr_info!("Snippet module initialized with {command_count} commands");
         ProbeResult::Success

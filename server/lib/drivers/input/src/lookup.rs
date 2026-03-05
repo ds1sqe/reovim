@@ -243,30 +243,6 @@ impl KeyLookupResult {
 // Built-in Policies
 // ============================================================================
 
-/// Vim-style lookup policy: prefer longer sequences.
-///
-/// When an exact match exists AND longer bindings exist (e.g., `d` when `dd`
-/// also exists), this policy returns `Prefix` to wait for more keys.
-///
-/// This is the standard Vim behavior where typing `d` doesn't immediately
-/// execute anything - it waits to see if `dd`, `dw`, `d$`, etc. follow.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct VimLookupPolicy;
-
-impl KeyLookupPolicy for VimLookupPolicy {
-    fn resolve(&self, state: KeyLookupState) -> KeyLookupResult {
-        match state {
-            // Vim: if longer bindings exist, wait for more keys
-            KeyLookupState::ExactWithLonger { .. } | KeyLookupState::PrefixOnly => {
-                KeyLookupResult::Prefix
-            }
-            // Only execute if no longer bindings exist
-            KeyLookupState::ExactOnly(cmd) => KeyLookupResult::Found(cmd),
-            KeyLookupState::NotFound => KeyLookupResult::NotFound,
-        }
-    }
-}
-
 /// Eager lookup policy: execute exact matches immediately.
 ///
 /// When an exact match exists, execute it immediately regardless of whether
@@ -550,40 +526,6 @@ mod tests {
         assert_eq!(KeyLookupResult::Prefix, KeyLookupResult::Prefix);
         assert_eq!(KeyLookupResult::NotFound, KeyLookupResult::NotFound);
         assert_ne!(KeyLookupResult::Prefix, KeyLookupResult::NotFound);
-    }
-
-    // ========================================================================
-    // VimLookupPolicy tests
-    // ========================================================================
-
-    #[test]
-    fn test_vim_policy_exact_only_returns_found() {
-        let policy = VimLookupPolicy;
-        let cmd = test_command("delete_char");
-        let result = policy.resolve(KeyLookupState::ExactOnly(cmd.clone()));
-        assert_eq!(result, KeyLookupResult::Found(cmd));
-    }
-
-    #[test]
-    fn test_vim_policy_exact_with_longer_returns_prefix() {
-        let policy = VimLookupPolicy;
-        let cmd = test_command("delete_op");
-        let result = policy.resolve(KeyLookupState::ExactWithLonger { exact: cmd });
-        assert_eq!(result, KeyLookupResult::Prefix);
-    }
-
-    #[test]
-    fn test_vim_policy_prefix_only_returns_prefix() {
-        let policy = VimLookupPolicy;
-        let result = policy.resolve(KeyLookupState::PrefixOnly);
-        assert_eq!(result, KeyLookupResult::Prefix);
-    }
-
-    #[test]
-    fn test_vim_policy_not_found_returns_not_found() {
-        let policy = VimLookupPolicy;
-        let result = policy.resolve(KeyLookupState::NotFound);
-        assert_eq!(result, KeyLookupResult::NotFound);
     }
 
     // ========================================================================

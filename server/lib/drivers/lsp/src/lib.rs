@@ -40,6 +40,7 @@ mod config;
 mod error;
 pub mod jsonrpc;
 mod key;
+mod lifecycle;
 mod provider;
 mod registry;
 mod request;
@@ -64,6 +65,9 @@ pub use cache::{BufferDiagnostics, DiagnosticCache};
 
 // Provider trait and registry (Epic #520)
 pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
+
+// Lifecycle traits (#542 - cross-module decoupling)
+pub use lifecycle::{LspLifecycle, LspLifecycleRegistry};
 
 // Re-export essential LSP types
 pub mod lsp_types {

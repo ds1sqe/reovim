@@ -10,12 +10,16 @@ mod saturator;
 
 pub use saturator::{LspSaturator, LspSaturatorHandle};
 
+use std::sync::Arc;
+
 use {
-    reovim_driver_lsp::LspProviderRegistry,
+    reovim_driver_lsp::{LspLifecycleRegistry, LspProviderRegistry},
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version, pr_info,
     },
 };
+
+mod auto_starter;
 
 /// LSP module instance.
 ///
@@ -55,6 +59,10 @@ impl Module for LspModule {
         // Create the LSP provider registry (empty initially).
         // Providers are registered on-demand when language servers are spawned.
         let _registry = ctx.services.get_or_create::<LspProviderRegistry>();
+
+        // Register LspLifecycle implementation (#542: decouple completion from module-lsp).
+        let lifecycle_registry = ctx.services.get_or_create::<LspLifecycleRegistry>();
+        lifecycle_registry.register(Arc::new(auto_starter::LspAutoStarter));
 
         pr_info!("LSP module initialized");
         ProbeResult::Success

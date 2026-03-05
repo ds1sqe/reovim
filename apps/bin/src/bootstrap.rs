@@ -195,6 +195,8 @@ fn extract_registries(
     //    Each KeybindingRegistration declares modes as "module:name" strings
     //    (e.g., "vim:normal"). We resolve these to ModeId via mode_registry.
     let mut keymap_registry = KeymapRegistry::new();
+    // Wire Vim-style lookup policy (#542): wait for longer sequences (dd after d)
+    keymap_registry.set_default_policy(Arc::new(reovim_module_vim::VimLookupPolicy));
     if let Some(store) = services.get::<KeybindingStore>() {
         let mut wired = 0usize;
         for binding in store.take_keybindings() {

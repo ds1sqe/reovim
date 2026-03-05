@@ -2828,6 +2828,15 @@ mod tests {
         assert!(result.is_none());
     }
 
+    /// Test extension replacing module-cmdline dev-dependency.
+    struct TestSessionExtension;
+
+    impl reovim_driver_session::SessionExtension for TestSessionExtension {
+        fn create() -> Self {
+            Self
+        }
+    }
+
     #[test]
     fn test_with_client_extensions_reads_extensions() {
         let session = Session::new(SessionId::new("test"));
@@ -2835,27 +2844,21 @@ mod tests {
         session.add_client(client_id);
 
         // Initially empty
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
-            })
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
-        assert!(!has_cmdline);
+        assert!(!has_ext);
 
-        // Insert CmdlineState
+        // Insert extension
         session.update_client_state(client_id, |state| {
-            state
-                .extensions
-                .get_or_insert::<reovim_module_cmdline::CmdlineState>();
+            state.extensions.get_or_insert::<TestSessionExtension>();
         });
 
         // Now it exists
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
-            })
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
-        assert!(has_cmdline);
+        assert!(has_ext);
     }
 
     // ========================================================================
@@ -2875,18 +2878,16 @@ mod tests {
         let client_id = ClientId::new(1);
         session.add_client(client_id);
 
-        // Insert CmdlineState via mutable access
+        // Insert extension via mutable access
         session.with_client_extensions_mut(client_id, |ext| {
-            ext.get_or_insert::<reovim_module_cmdline::CmdlineState>();
+            ext.get_or_insert::<TestSessionExtension>();
         });
 
         // Verify via read access
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
-            })
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
-        assert!(has_cmdline);
+        assert!(has_ext);
     }
 
     // ========================================================================

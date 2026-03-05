@@ -61,7 +61,6 @@ tower-http = { version = "0.6", features = ["cors"], optional = true }
 [dev-dependencies]
 tempfile = "3.0"
 reovim-driver-buffer = { workspace = true }
-reovim-module-cmdline = { workspace = true }
 reovim-testing = { workspace = true }
 reovim-client-cli = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
