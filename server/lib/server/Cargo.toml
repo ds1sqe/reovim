@@ -1,6 +1,6 @@
 [package]
 name = "reovim-server"
-version = "0.9.5-dev"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
