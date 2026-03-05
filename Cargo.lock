@@ -2325,6 +2325,7 @@ name = "reovim-module-lsp"
 version = "0.10.0-dev"
 dependencies = [
  "lsp-types",
+ "parking_lot",
  "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",

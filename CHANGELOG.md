@@ -28,6 +28,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - `SyntaxSessionState.ensure_driver_from_path()` for automatic language detection and driver creation
 - `emit_syntax_updates` broadcasts token updates to stream subscribers on buffer modification
 - `build_token_update` standalone helper for extracting highlights from drivers
+- **Event-driven LSP lifecycle (#531, Phase 10)**: LSP server startup moved from
+  completion-trigger to kernel event subscriptions. `:e` command now emits
+  `FileOpened` and `FileTypeChanged` kernel events after file load, with
+  case-insensitive `file_type_from_extension()` mapping 17 extensions to LSP
+  language IDs. LSP module (`reovim-module-lsp`) subscribes to `FileOpened`,
+  `BufferClosed`, `BufferModified`, and `BufferSaved` events at
+  `priority::PLUGIN` via RAII subscription pattern. `LspBufferTracker`
+  (ServiceRegistry, RwLock-backed) tracks buffer-to-path/language mappings with
+  monotonically increasing version numbers for LSP spec compliance.
+  `LspStartingGuard` (AtomicBool) prevents concurrent server starts. Double-open
+  guard prevents duplicate `DidOpen` notifications. `send_request` failures are
+  logged as warnings. Four event handlers: `handle_file_opened` (auto-start +
+  DidOpen), `handle_buffer_closed` (DidClose), `handle_buffer_modified`
+  (DidChange with versioning), `handle_buffer_saved` (DidSave placeholder).
+  Completion module decoupled: removed `reovim-module-lsp` and `tokio`
+  dependencies, `fire_lsp_completion()` returns early without active provider.
+  `RecordingLspProvider` mock enables full send-path test coverage. 325 unit
+  tests across affected modules, zero clippy warnings.
 
 ### Changed
 

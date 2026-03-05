@@ -15,7 +15,10 @@
 
 use std::path::Path;
 
-use crate::{CommandError, ExCommandContext, ExCommandHandler};
+use {
+    crate::{CommandError, ExCommandContext, ExCommandHandler},
+    reovim_kernel::api::v1::events::kernel::{FileOpened, FileTypeChanged},
+};
 
 /// Edit command - open a file in the current buffer.
 ///
@@ -91,6 +94,21 @@ impl ExCommandHandler for EditCommand {
             buffer.set_modified(false);
         }
 
+        // Emit FileOpened event for subscribers (LSP, syntax, etc.)
+        let buffer_id_raw = buffer_id.as_usize() as u64;
+        ctx.kernel.event_bus.emit(FileOpened {
+            buffer_id: buffer_id_raw,
+            path: filename.to_string(),
+        });
+
+        // Emit FileTypeChanged if we can detect the language from the extension
+        if let Some(file_type) = file_type_from_extension(filename) {
+            ctx.kernel.event_bus.emit(FileTypeChanged {
+                buffer_id: buffer_id_raw,
+                file_type: file_type.to_string(),
+            });
+        }
+
         Ok(())
     }
 
@@ -103,6 +121,35 @@ impl ExCommandHandler for EditCommand {
 
     fn help(&self) -> &'static str {
         "Edit (open) a file in the current buffer"
+    }
+}
+
+/// Detect file type from file extension for `FileTypeChanged` events.
+///
+/// Returns the LSP-compatible language identifier, or `None` for unknown extensions.
+/// This will be unified into a shared `FiletypeRegistry` per #530.
+fn file_type_from_extension(filename: &str) -> Option<&'static str> {
+    let ext_os = Path::new(filename).extension()?.to_str()?;
+    let ext = ext_os.to_ascii_lowercase();
+    match ext.as_str() {
+        "rs" => Some("rust"),
+        "py" | "pyi" => Some("python"),
+        "ts" => Some("typescript"),
+        "tsx" => Some("typescriptreact"),
+        "js" => Some("javascript"),
+        "jsx" => Some("javascriptreact"),
+        "c" | "h" => Some("c"),
+        "cpp" | "cc" | "cxx" | "hpp" => Some("cpp"),
+        "go" => Some("go"),
+        "java" => Some("java"),
+        "lua" => Some("lua"),
+        "rb" => Some("ruby"),
+        "zig" => Some("zig"),
+        "toml" => Some("toml"),
+        "json" => Some("json"),
+        "yaml" | "yml" => Some("yaml"),
+        "md" | "markdown" => Some("markdown"),
+        _ => None,
     }
 }
 
@@ -454,5 +501,224 @@ mod tests {
         // Both should be valid since it's Copy
         assert_eq!(cmd.id(), "edit");
         assert_eq!(copy.id(), "edit");
+    }
+
+    // ========================================================================
+    // Event emission tests
+    // ========================================================================
+
+    #[test]
+    fn test_edit_emits_file_opened_event() {
+        use {
+            reovim_driver_vfs::MockVfs,
+            reovim_kernel::api::v1::{EventResult, events::kernel::FileOpened},
+            std::sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+        };
+
+        let kernel = make_kernel_with_buffers();
+        let buffer_id = kernel.buffers.create();
+        let mock_vfs = MockVfs::new();
+        mock_vfs.add_file_str("/test.rs", "fn main() {}");
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(mock_vfs);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        let _sub = kernel
+            .event_bus
+            .subscribe::<FileOpened, _>(100, move |event| {
+                assert_eq!(event.path, "/test.rs");
+                assert_eq!(event.buffer_id, buffer_id.as_usize() as u64);
+                received_clone.store(true, Ordering::Relaxed);
+                EventResult::Handled
+            });
+
+        let mut ctx = ExCommandContext::new(&kernel)
+            .with_buffer(buffer_id)
+            .with_vfs(vfs);
+        EditCommand.execute(&mut ctx, &["/test.rs"]).unwrap();
+        assert!(received.load(Ordering::Relaxed), "FileOpened event not emitted");
+    }
+
+    #[test]
+    fn test_edit_emits_file_type_changed_for_known_extension() {
+        use {
+            reovim_driver_vfs::MockVfs,
+            reovim_kernel::api::v1::{EventResult, events::kernel::FileTypeChanged},
+            std::sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+        };
+
+        let kernel = make_kernel_with_buffers();
+        let buffer_id = kernel.buffers.create();
+        let mock_vfs = MockVfs::new();
+        mock_vfs.add_file_str("/main.rs", "fn main() {}");
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(mock_vfs);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        let expected_bid = buffer_id.as_usize() as u64;
+        let _sub = kernel
+            .event_bus
+            .subscribe::<FileTypeChanged, _>(100, move |event| {
+                assert_eq!(event.file_type, "rust");
+                assert_eq!(event.buffer_id, expected_bid);
+                received_clone.store(true, Ordering::Relaxed);
+                EventResult::Handled
+            });
+
+        let mut ctx = ExCommandContext::new(&kernel)
+            .with_buffer(buffer_id)
+            .with_vfs(vfs);
+        EditCommand.execute(&mut ctx, &["/main.rs"]).unwrap();
+        assert!(received.load(Ordering::Relaxed), "FileTypeChanged event not emitted for .rs");
+    }
+
+    #[test]
+    fn test_edit_no_file_type_changed_for_unknown_extension() {
+        use {
+            reovim_driver_vfs::MockVfs,
+            reovim_kernel::api::v1::{EventResult, events::kernel::FileTypeChanged},
+            std::sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+        };
+
+        let kernel = make_kernel_with_buffers();
+        let buffer_id = kernel.buffers.create();
+        let mock_vfs = MockVfs::new();
+        mock_vfs.add_file_str("/data.xyz", "some content");
+        let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> = Arc::new(mock_vfs);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        let _sub = kernel
+            .event_bus
+            .subscribe::<FileTypeChanged, _>(100, move |event| {
+                let _ = event;
+                received_clone.store(true, Ordering::Relaxed);
+                EventResult::Handled
+            });
+
+        let mut ctx = ExCommandContext::new(&kernel)
+            .with_buffer(buffer_id)
+            .with_vfs(vfs);
+        EditCommand.execute(&mut ctx, &["/data.xyz"]).unwrap();
+        assert!(
+            !received.load(Ordering::Relaxed),
+            "FileTypeChanged should NOT be emitted for unknown extension"
+        );
+    }
+
+    #[test]
+    fn test_edit_no_events_on_failure() {
+        use {
+            reovim_kernel::api::v1::{EventResult, events::kernel::FileOpened},
+            std::sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+        };
+
+        let kernel = KernelContext::default();
+        let buffer_id = BufferId::from_raw(1);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let received_clone = Arc::clone(&received);
+        let _sub = kernel.event_bus.subscribe::<FileOpened, _>(100, move |_| {
+            received_clone.store(true, Ordering::Relaxed);
+            EventResult::Handled
+        });
+
+        // No VFS -> should fail before emitting events
+        let mut ctx = ExCommandContext::new(&kernel).with_buffer(buffer_id);
+        let result = EditCommand.execute(&mut ctx, &["file.txt"]);
+        assert!(result.is_err());
+        assert!(!received.load(Ordering::Relaxed), "FileOpened should NOT be emitted on failure");
+    }
+
+    // ========================================================================
+    // file_type_from_extension tests
+    // ========================================================================
+
+    #[test]
+    fn test_file_type_rust() {
+        assert_eq!(file_type_from_extension("main.rs"), Some("rust"));
+    }
+
+    #[test]
+    fn test_file_type_python() {
+        assert_eq!(file_type_from_extension("app.py"), Some("python"));
+        assert_eq!(file_type_from_extension("types.pyi"), Some("python"));
+    }
+
+    #[test]
+    fn test_file_type_typescript() {
+        assert_eq!(file_type_from_extension("index.ts"), Some("typescript"));
+        assert_eq!(file_type_from_extension("App.tsx"), Some("typescriptreact"));
+    }
+
+    #[test]
+    fn test_file_type_javascript() {
+        assert_eq!(file_type_from_extension("app.js"), Some("javascript"));
+        assert_eq!(file_type_from_extension("App.jsx"), Some("javascriptreact"));
+    }
+
+    #[test]
+    fn test_file_type_c_family() {
+        assert_eq!(file_type_from_extension("main.c"), Some("c"));
+        assert_eq!(file_type_from_extension("header.h"), Some("c"));
+        assert_eq!(file_type_from_extension("main.cpp"), Some("cpp"));
+        assert_eq!(file_type_from_extension("main.cc"), Some("cpp"));
+        assert_eq!(file_type_from_extension("main.cxx"), Some("cpp"));
+        assert_eq!(file_type_from_extension("header.hpp"), Some("cpp"));
+    }
+
+    #[test]
+    fn test_file_type_other_languages() {
+        assert_eq!(file_type_from_extension("main.go"), Some("go"));
+        assert_eq!(file_type_from_extension("Main.java"), Some("java"));
+        assert_eq!(file_type_from_extension("init.lua"), Some("lua"));
+        assert_eq!(file_type_from_extension("app.rb"), Some("ruby"));
+        assert_eq!(file_type_from_extension("main.zig"), Some("zig"));
+    }
+
+    #[test]
+    fn test_file_type_config_formats() {
+        assert_eq!(file_type_from_extension("Cargo.toml"), Some("toml"));
+        assert_eq!(file_type_from_extension("data.json"), Some("json"));
+        assert_eq!(file_type_from_extension("config.yaml"), Some("yaml"));
+        assert_eq!(file_type_from_extension("config.yml"), Some("yaml"));
+    }
+
+    #[test]
+    fn test_file_type_markdown() {
+        assert_eq!(file_type_from_extension("README.md"), Some("markdown"));
+        assert_eq!(file_type_from_extension("doc.markdown"), Some("markdown"));
+    }
+
+    #[test]
+    fn test_file_type_case_insensitive() {
+        assert_eq!(file_type_from_extension("MAIN.RS"), Some("rust"));
+        assert_eq!(file_type_from_extension("App.Py"), Some("python"));
+        assert_eq!(file_type_from_extension("index.TS"), Some("typescript"));
+        assert_eq!(file_type_from_extension("main.CPP"), Some("cpp"));
+    }
+
+    #[test]
+    fn test_file_type_unknown_extension() {
+        assert_eq!(file_type_from_extension("data.xyz"), None);
+        assert_eq!(file_type_from_extension("binary.bin"), None);
+    }
+
+    #[test]
+    fn test_file_type_no_extension() {
+        assert_eq!(file_type_from_extension("Makefile"), None);
+        assert_eq!(file_type_from_extension("Dockerfile"), None);
     }
 }
