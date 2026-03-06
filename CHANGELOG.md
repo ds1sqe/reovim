@@ -158,6 +158,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **LSP gd/gr deadlock (#532)**: Fix thread starvation that caused `gd` and `gr`
+  commands to always fail with "LSP request failed". `recv_timeout` blocked the
+  tokio worker thread, preventing the saturator's `tokio::select!` loop from
+  processing the request. New `recv_response()` helper in `driver-lsp` wraps
+  blocking waits in `tokio::task::block_in_place`, yielding the worker thread
+  to other async tasks. Requests now complete in ~2ms instead of timing out.
+
+- **Dedicated LSP traffic logger (#532)**: New `LspLogger` in `driver-lsp`
+  writes LSP JSON-RPC traffic, server stderr, and lifecycle events to a
+  dedicated log file. Activated via `REOVIM_LSP_LOG=1` (writes to
+  `~/.local/share/reovim/lsp-{language}.log`) or `REOVIM_LSP_LOG=/path/to/dir`.
+  Log format: `[HH:MM:SS.mmm] [lang] --> method params` for outgoing,
+  `<--` for responses, `<-n` for notifications, `err` for stderr.
+
 
 ### Security
 

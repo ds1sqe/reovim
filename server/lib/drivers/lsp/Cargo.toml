@@ -31,3 +31,6 @@ tracing.workspace = true
 
 # Concurrency (#542: LspLifecycleRegistry)
 parking_lot = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

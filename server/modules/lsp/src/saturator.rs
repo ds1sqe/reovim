@@ -21,7 +21,8 @@ use {
         VersionedTextDocumentIdentifier,
     },
     reovim_driver_lsp::{
-        CapabilityStore, DiagnosticCache, LspError, LspProvider, LspRequest, LspServerConfig,
+        CapabilityStore, DiagnosticCache, LspError, LspLogger, LspProvider, LspRequest,
+        LspServerConfig,
         client::Client,
         jsonrpc::{Message, Response},
         transport::Transport,
@@ -142,11 +143,19 @@ impl LspSaturator {
         let capability_store =
             Arc::new(CapabilityStore::new(lsp_types::ServerCapabilities::default()));
 
+        // Create dedicated LSP logger if REOVIM_LSP_LOG is set.
+        let logger = LspLogger::from_env(&language_id).map(Arc::new);
+
+        if let Some(ref log) = logger {
+            log.log_event(&format!("starting LSP server for {language_id}"));
+        }
+
         // Spawn saturator main loop (must be before initialize() to read response).
         let cache_clone = Arc::clone(&cache);
         let active_clone = Arc::clone(&active);
         let client_clone = Arc::clone(&client);
         let caps_clone = Arc::clone(&capability_store);
+        let logger_clone = logger.clone();
         tokio::spawn(Self::run(
             client_clone,
             stdout_reader,
@@ -154,17 +163,26 @@ impl LspSaturator {
             cache_clone,
             active_clone,
             caps_clone,
+            logger_clone,
         ));
 
         // Spawn stderr reader if available
         if let Some(stderr) = stderr {
-            tokio::spawn(Self::stderr_reader(stderr));
+            tokio::spawn(Self::stderr_reader(stderr, logger.clone()));
         }
 
         // Initialize the server — extract capabilities and server info (#521).
         let init_result = client.initialize().await?;
         capability_store.store(init_result.capabilities);
         active.store(true, Ordering::Relaxed);
+
+        if let Some(ref log) = logger {
+            let server_name = init_result
+                .server_info
+                .as_ref()
+                .map_or("unknown", |s| &s.name);
+            log.log_event(&format!("initialized ({server_name})"));
+        }
 
         Ok(LspSaturatorHandle {
             tx: request_tx,
@@ -189,6 +207,7 @@ impl LspSaturator {
         cache: Arc<DiagnosticCache>,
         active: Arc<AtomicBool>,
         capabilities: Arc<CapabilityStore>,
+        logger: Option<Arc<LspLogger>>,
     ) {
         info!("LSP saturator started");
 
@@ -198,10 +217,14 @@ impl LspSaturator {
                 result = Transport::recv(&mut stdout_reader) => {
                     match result {
                         Ok(message) => {
+                            Self::log_incoming(logger.as_ref(), &message);
                             Self::handle_server_message(&client, &cache, &capabilities, message).await;
                         }
                         Err(e) => {
                             error!("Failed to receive message: {e}");
+                            if let Some(ref log) = logger {
+                                log.log_event(&format!("transport error: {e}"));
+                            }
                             break;
                         }
                     }
@@ -209,6 +232,7 @@ impl LspSaturator {
 
                 // Handle outgoing requests from main thread
                 Some(request) = request_rx.recv() => {
+                    Self::log_outgoing(logger.as_ref(), &request);
                     Self::handle_request(&client, &cache, request).await;
                 }
 
@@ -217,6 +241,9 @@ impl LspSaturator {
         }
 
         active.store(false, Ordering::Relaxed);
+        if let Some(ref log) = logger {
+            log.log_event("saturator stopped");
+        }
         info!("LSP saturator stopped");
     }
 
@@ -469,9 +496,85 @@ impl LspSaturator {
         cache.remove(uri);
     }
 
+    /// Log an incoming message from the server.
+    fn log_incoming(logger: Option<&Arc<LspLogger>>, message: &Message) {
+        let Some(log) = logger else { return };
+        match message {
+            Message::Response(resp) => {
+                let id = format!("{:?}", resp.id);
+                let status = if resp.error.is_some() { "error" } else { "ok" };
+                log.log_response(&id, "response", status);
+            }
+            Message::Notification(notif) => {
+                log.log_server_notification(&notif.method, "");
+            }
+            Message::Request(req) => {
+                log.log_server_request(&req.method, &format!("id={:?}", req.id));
+            }
+        }
+    }
+
+    /// Log an outgoing request to the server.
+    fn log_outgoing(logger: Option<&Arc<LspLogger>>, request: &LspRequest) {
+        let Some(log) = logger else { return };
+        match request {
+            LspRequest::DidOpen {
+                uri, language_id, ..
+            } => {
+                log.log_sent(
+                    "textDocument/didOpen",
+                    &format!("{} lang={language_id}", uri.as_str()),
+                );
+            }
+            LspRequest::DidChange { uri, version, .. } => {
+                log.log_sent("textDocument/didChange", &format!("{} v={version}", uri.as_str()));
+            }
+            LspRequest::DidClose { uri } => {
+                log.log_sent("textDocument/didClose", uri.as_str());
+            }
+            LspRequest::GotoDefinition { uri, position, .. } => {
+                log.log_sent(
+                    "textDocument/definition",
+                    &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::References {
+                uri,
+                position,
+                include_declaration,
+                ..
+            } => {
+                log.log_sent(
+                    "textDocument/references",
+                    &format!(
+                        "{} {}:{} decl={include_declaration}",
+                        uri.as_str(),
+                        position.line,
+                        position.character
+                    ),
+                );
+            }
+            LspRequest::Hover { uri, position, .. } => {
+                log.log_sent(
+                    "textDocument/hover",
+                    &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::Completion { uri, position, .. } => {
+                log.log_sent(
+                    "textDocument/completion",
+                    &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::Shutdown => {
+                log.log_sent("shutdown", "");
+            }
+        }
+    }
+
     /// Read and log stderr from the server.
     #[cfg_attr(coverage_nightly, coverage(off))]
-    async fn stderr_reader(stderr: tokio::process::ChildStderr) {
+    async fn stderr_reader(stderr: tokio::process::ChildStderr, logger: Option<Arc<LspLogger>>) {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         let mut reader = BufReader::new(stderr);
@@ -485,6 +588,9 @@ impl LspSaturator {
                     let trimmed = line.trim();
                     if !trimmed.is_empty() {
                         debug!(target: "lsp_server", "{}", trimmed);
+                        if let Some(ref log) = logger {
+                            log.log_stderr(trimmed);
+                        }
                     }
                 }
                 Err(e) => {

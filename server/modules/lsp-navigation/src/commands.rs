@@ -9,7 +9,9 @@ use {
     lsp_types::GotoDefinitionResponse,
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
-    reovim_driver_lsp::{LspKey, LspProvider, LspProviderRegistry, LspRequest, uri_from_path},
+    reovim_driver_lsp::{
+        LspKey, LspProvider, LspProviderRegistry, LspRequest, recv_response, uri_from_path,
+    },
     reovim_driver_picker::{PickerData, PickerItem, push_items},
     reovim_driver_session::{
         BufferApi, ChangeTracker, ExtensionApi, ModeApi, SessionRuntime, TransitionContext,
@@ -18,6 +20,7 @@ use {
     reovim_kernel::api::v1::{CommandId, ServiceRegistry},
     reovim_module_microscope::{MicroscopeState, modes::MicroscopeMode},
     reovim_module_notification::{NotificationLevel, NotificationState},
+    tracing::{debug, info, warn},
 };
 
 use crate::ids;
@@ -46,6 +49,7 @@ impl CommandHandler for GotoDefinition {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         let Some(buf_id) = runtime.active_buffer() else {
+            debug!("gd: no active buffer");
             return CommandResult::Success;
         };
         let Some(file_path) = runtime.buffer_file_path(buf_id) else {
@@ -53,8 +57,11 @@ impl CommandHandler for GotoDefinition {
             return CommandResult::Success;
         };
         let Some(cursor) = runtime.cursor_position() else {
+            debug!("gd: no cursor position");
             return CommandResult::Success;
         };
+
+        info!(file = %file_path, line = cursor.line, col = cursor.column, "gd: goto definition");
 
         let services = runtime.kernel().services.clone();
         let Some(provider) = find_provider(&services, &file_path) else {
@@ -71,6 +78,7 @@ impl CommandHandler for GotoDefinition {
         // Cursor positions are bounded by terminal/buffer size, well within u32 range.
         #[allow(clippy::cast_possible_truncation)]
         let lsp_pos = lsp_types::Position::new(cursor.line as u32, cursor.column as u32);
+        info!(uri = %uri.as_str(), line = lsp_pos.line, character = lsp_pos.character, "gd: sending request");
         let (tx, rx) = reovim_kernel::api::v1::oneshot();
 
         if !provider.send_request(LspRequest::GotoDefinition {
@@ -78,17 +86,29 @@ impl CommandHandler for GotoDefinition {
             position: lsp_pos,
             response_tx: tx,
         }) {
+            warn!("gd: send_request returned false (server busy)");
             notify_info(runtime, "LSP server busy");
             return CommandResult::Success;
         }
 
-        let response = match rx.recv_timeout(LSP_TIMEOUT) {
-            Ok(Ok(Some(resp))) => resp,
+        debug!("gd: request sent, waiting for response (timeout={}s)", LSP_TIMEOUT.as_secs());
+        let response = match recv_response(&rx, LSP_TIMEOUT) {
+            Ok(Ok(Some(resp))) => {
+                info!("gd: received definition response");
+                resp
+            }
             Ok(Ok(None)) => {
+                info!("gd: server returned None (no definition)");
                 notify_info(runtime, "No definition found");
                 return CommandResult::Success;
             }
-            Ok(Err(_)) | Err(_) => {
+            Ok(Err(e)) => {
+                warn!("gd: LSP error: {e}");
+                notify_info(runtime, "LSP request failed");
+                return CommandResult::Success;
+            }
+            Err(e) => {
+                warn!("gd: recv_timeout error: {e}");
                 notify_info(runtime, "LSP request failed");
                 return CommandResult::Success;
             }
@@ -141,6 +161,8 @@ impl CommandHandler for References {
             return CommandResult::Success;
         };
 
+        info!(file = %file_path, line = cursor.line, col = cursor.column, "gr: find references");
+
         let services = runtime.kernel().services.clone();
         let Some(provider) = find_provider(&services, &file_path) else {
             notify_info(runtime, "No LSP server active");
@@ -156,6 +178,7 @@ impl CommandHandler for References {
         // Cursor positions are bounded by terminal/buffer size, well within u32 range.
         #[allow(clippy::cast_possible_truncation)]
         let lsp_pos = lsp_types::Position::new(cursor.line as u32, cursor.column as u32);
+        info!(uri = %uri.as_str(), line = lsp_pos.line, character = lsp_pos.character, "gr: sending request");
         let (tx, rx) = reovim_kernel::api::v1::oneshot();
 
         if !provider.send_request(LspRequest::References {
@@ -164,17 +187,29 @@ impl CommandHandler for References {
             include_declaration: true,
             response_tx: tx,
         }) {
+            warn!("gr: send_request returned false");
             notify_info(runtime, "LSP server busy");
             return CommandResult::Success;
         }
 
-        let locations = match rx.recv_timeout(LSP_TIMEOUT) {
-            Ok(Ok(Some(locs))) => locs,
+        debug!("gr: request sent, waiting for response");
+        let locations = match recv_response(&rx, LSP_TIMEOUT) {
+            Ok(Ok(Some(locs))) => {
+                info!(count = locs.len(), "gr: received references");
+                locs
+            }
             Ok(Ok(None)) => {
+                info!("gr: server returned None");
                 notify_info(runtime, "No references found");
                 return CommandResult::Success;
             }
-            Ok(Err(_)) | Err(_) => {
+            Ok(Err(e)) => {
+                warn!("gr: LSP error: {e}");
+                notify_info(runtime, "LSP request failed");
+                return CommandResult::Success;
+            }
+            Err(e) => {
+                warn!("gr: recv_timeout error: {e}");
                 notify_info(runtime, "LSP request failed");
                 return CommandResult::Success;
             }

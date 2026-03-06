@@ -42,10 +42,12 @@ mod error;
 pub mod jsonrpc;
 mod key;
 mod lifecycle;
+mod logger;
 mod provider;
 mod registry;
 mod request;
 mod response;
+mod sync;
 pub mod transport;
 mod types;
 
@@ -72,6 +74,12 @@ pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
 
 // Lifecycle traits (#542 - cross-module decoupling)
 pub use lifecycle::{LspLifecycle, LspLifecycleRegistry};
+
+// Sync helpers (blocking recv for command handlers)
+pub use sync::recv_response;
+
+// LSP traffic logger
+pub use logger::LspLogger;
 
 // Re-export essential LSP types
 pub mod lsp_types {
