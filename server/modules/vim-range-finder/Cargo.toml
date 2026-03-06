@@ -18,9 +18,15 @@ dynamic = []
 
 [dependencies]
 reovim-kernel = { workspace = true }
+reovim-driver-command = { workspace = true }
 reovim-driver-input = { workspace = true }
+reovim-driver-session = { workspace = true }
 reovim-module-range-finder = { workspace = true }
 reovim-module-macros = { workspace = true }
+
+[dev-dependencies]
+reovim-driver-buffer = { workspace = true }
+parking_lot = { workspace = true }
 
 [lints]
 workspace = true

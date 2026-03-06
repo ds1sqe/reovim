@@ -19,6 +19,8 @@
 //! - `vim` provides modes and core keybindings (no folding knowledge)
 //! - This module bridges them with explicit, visible coupling
 
+mod find_char;
+
 use {
     reovim_driver_input::{KeybindingStore, ModeInfoStore},
     reovim_kernel::api::v1::{
@@ -73,6 +75,17 @@ impl Module for VimRangeFinderModule {
 
         let store = ctx.services.get_or_create::<KeybindingStore>();
         store.add_all(self.keybindings());
+
+        // Register enhanced find-char command (#535).
+        // This overrides vim's basic EXECUTE_FIND_CHAR handler in the command
+        // registry (HashMap::insert replaces existing entries). When multiple
+        // matches exist for f/F/t/T, jump labels are shown instead of
+        // jumping to the first match.
+        let command_store = ctx
+            .services
+            .get_or_create::<reovim_driver_command::CommandHandlerStore>();
+        command_store.add(Box::new(find_char::EnhancedFindCharCommand));
+
         ProbeResult::Success
     }
 

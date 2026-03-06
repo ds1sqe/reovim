@@ -16,6 +16,8 @@ import {
   WhichKeyExtension,
   NotificationExtension,
   MicroscopeExtension,
+  RangeFinderJumpExtension,
+  RangeFinderFoldExtension,
 } from "../src/extensions/index.js";
 
 // ============ Test Fixtures ============
@@ -138,9 +140,9 @@ const DEFAULT_DELAY_MS = 500;
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 5 extensions with correct kinds", () => {
+  it("createExtensions returns 8 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(5);
+    expect(extensions).toHaveLength(8);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
@@ -148,6 +150,9 @@ describe("factory", () => {
     expect(kinds).toContain("notification");
     expect(kinds).toContain("microscope");
     expect(kinds).toContain("completion");
+    expect(kinds).toContain("explorer");
+    expect(kinds).toContain("range-finder-jump");
+    expect(kinds).toContain("range-finder-fold");
   });
 
   it("extensions start inactive", () => {
@@ -1294,5 +1299,357 @@ describe("MicroscopeExtension DOM rendering", () => {
     expect(
       selectedItems[0]?.querySelector(".microscope-item-display")?.textContent,
     ).toBe("item_5");
+  });
+});
+
+// ============ RangeFinderJump Extension ============
+
+describe("RangeFinderJumpExtension", () => {
+  let ext: RangeFinderJumpExtension;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    ext = new RangeFinderJumpExtension();
+    container = document.createElement("div");
+  });
+
+  afterEach(() => {
+    container.innerHTML = "";
+  });
+
+  it("kind returns range-finder-jump", () => {
+    expect(ext.kind()).toBe("range-finder-jump");
+  });
+
+  it("starts inactive", () => {
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("returns null state when inactive", () => {
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("activates on valid notification", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [{ line: 0, col: 5, label: "s" }],
+      }),
+    );
+    expect(ext.isActive()).toBe(true);
+  });
+
+  it("deactivates on active=false", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [{ line: 0, col: 5, label: "s" }],
+      }),
+    );
+    ext.applyNotification(JSON.stringify({ active: false }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("parses matches correctly", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [
+          { line: 1, col: 3, label: "a" },
+          { line: 5, col: 10, label: "bc" },
+        ],
+      }),
+    );
+    const state = ext.getState();
+    expect(state).not.toBeNull();
+    expect((state as Record<string, unknown>).active).toBe(true);
+    const matches = (state as Record<string, unknown>).matches as Array<Record<string, unknown>>;
+    expect(matches).toHaveLength(2);
+    expect(matches[0].label).toBe("a");
+    expect(matches[1].label).toBe("bc");
+  });
+
+  it("skips entries with missing fields", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [
+          { line: 0, col: 5, label: "a" },
+          { line: 1 }, // missing col and label
+          { col: 2, label: "b" }, // missing line
+        ],
+      }),
+    );
+    const state = ext.getState();
+    const matches = (state as Record<string, unknown>).matches as Array<Record<string, unknown>>;
+    expect(matches).toHaveLength(1);
+    expect(matches[0].label).toBe("a");
+  });
+
+  it("handles invalid JSON gracefully", () => {
+    ext.applyNotification("not json{{{");
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("handles non-array matches gracefully", () => {
+    ext.applyNotification(JSON.stringify({ active: true, matches: "not-array" }));
+    expect(ext.isActive()).toBe(true);
+    const state = ext.getState();
+    const matches = (state as Record<string, unknown>).matches as Array<unknown>;
+    expect(matches).toHaveLength(0);
+  });
+
+  it("renders jump labels", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [
+          { line: 0, col: 5, label: "s" },
+          { line: 2, col: 10, label: "ab" },
+        ],
+      }),
+    );
+    ext.render(container);
+
+    const overlay = container.querySelector(".range-finder-jump-overlay");
+    expect(overlay).not.toBeNull();
+
+    const labels = container.querySelectorAll(".jump-label");
+    expect(labels).toHaveLength(2);
+    expect(labels[0].textContent).toBe("s");
+    expect(labels[0].getAttribute("data-line")).toBe("0");
+    expect(labels[0].getAttribute("data-col")).toBe("5");
+    expect(labels[1].textContent).toBe("ab");
+  });
+
+  it("does not render when inactive", () => {
+    ext.render(container);
+    expect(container.querySelector(".range-finder-jump-overlay")).toBeNull();
+  });
+
+  it("does not render when active but no matches", () => {
+    ext.applyNotification(JSON.stringify({ active: true, matches: [] }));
+    ext.render(container);
+    expect(container.querySelector(".range-finder-jump-overlay")).toBeNull();
+  });
+
+  it("removes previous overlay on re-render", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [{ line: 0, col: 0, label: "x" }],
+      }),
+    );
+    ext.render(container);
+    ext.render(container);
+    const overlays = container.querySelectorAll(".range-finder-jump-overlay");
+    expect(overlays).toHaveLength(1);
+  });
+
+  it("hide removes overlay", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        active: true,
+        matches: [{ line: 0, col: 0, label: "x" }],
+      }),
+    );
+    ext.render(container);
+    ext.hide();
+    expect(container.querySelector(".range-finder-jump-overlay")).toBeNull();
+  });
+
+  it("hide is safe when no overlay exists", () => {
+    ext.hide();
+    // No error thrown
+  });
+});
+
+// ============ RangeFinderFold Extension ============
+
+describe("RangeFinderFoldExtension", () => {
+  let ext: RangeFinderFoldExtension;
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    ext = new RangeFinderFoldExtension();
+    container = document.createElement("div");
+  });
+
+  afterEach(() => {
+    container.innerHTML = "";
+  });
+
+  it("kind returns range-finder-fold", () => {
+    expect(ext.kind()).toBe("range-finder-fold");
+  });
+
+  it("starts inactive", () => {
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("returns null state when inactive", () => {
+    expect(ext.getState()).toBeNull();
+  });
+
+  it("activates on valid notification with folds", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 5, hidden_count: 3, preview: "fn foo() {" }] },
+      }),
+    );
+    expect(ext.isActive()).toBe(true);
+  });
+
+  it("stays inactive on empty folds", () => {
+    ext.applyNotification(JSON.stringify({ folds: {} }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("stays inactive on missing folds key", () => {
+    ext.applyNotification(JSON.stringify({ active: true }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("parses fold state correctly", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: {
+          "1": [{ start_line: 5, hidden_count: 3, preview: "fn foo() {" }],
+          "2": [{ start_line: 10, hidden_count: 2, preview: "fn bar() {" }],
+        },
+      }),
+    );
+    const state = ext.getState();
+    expect(state).not.toBeNull();
+    const folds = (state as Record<string, unknown>).folds as Record<string, unknown>;
+    expect(Object.keys(folds)).toHaveLength(2);
+  });
+
+  it("skips entries missing start_line", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ hidden_count: 5, preview: "a" }] },
+      }),
+    );
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("skips entries missing hidden_count", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 0, preview: "a" }] },
+      }),
+    );
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("defaults preview to empty string", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 0, hidden_count: 5 }] },
+      }),
+    );
+    expect(ext.isActive()).toBe(true);
+  });
+
+  it("handles invalid JSON gracefully", () => {
+    ext.applyNotification("not json{{{");
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("handles non-object folds value gracefully", () => {
+    ext.applyNotification(JSON.stringify({ folds: "not-object" }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("handles non-array buffer entries gracefully", () => {
+    ext.applyNotification(JSON.stringify({ folds: { "1": "not-array" } }));
+    expect(ext.isActive()).toBe(false);
+  });
+
+  it("replaces previous state on new notification", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 0, hidden_count: 3, preview: "a" }] },
+      }),
+    );
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "2": [{ start_line: 10, hidden_count: 2, preview: "b" }] },
+      }),
+    );
+    const state = ext.getState();
+    const folds = (state as Record<string, unknown>).folds as Record<string, unknown>;
+    expect(Object.keys(folds)).toContain("2");
+    expect(Object.keys(folds)).not.toContain("1");
+  });
+
+  it("renders fold markers", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 2, hidden_count: 6, preview: "fn foo() {" }] },
+      }),
+    );
+    ext.render(container);
+
+    const overlay = container.querySelector(".range-finder-fold-overlay");
+    expect(overlay).not.toBeNull();
+
+    const markers = container.querySelectorAll(".fold-marker");
+    expect(markers).toHaveLength(1);
+    expect(markers[0].textContent).toBe("--- 6 lines: fn foo() { ---");
+    expect(markers[0].getAttribute("data-buffer-id")).toBe("1");
+    expect(markers[0].getAttribute("data-start-line")).toBe("2");
+  });
+
+  it("does not render when inactive", () => {
+    ext.render(container);
+    expect(container.querySelector(".range-finder-fold-overlay")).toBeNull();
+  });
+
+  it("removes previous overlay on re-render", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 0, hidden_count: 3, preview: "a" }] },
+      }),
+    );
+    ext.render(container);
+    ext.render(container);
+    const overlays = container.querySelectorAll(".range-finder-fold-overlay");
+    expect(overlays).toHaveLength(1);
+  });
+
+  it("hide removes overlay", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: { "1": [{ start_line: 0, hidden_count: 3, preview: "a" }] },
+      }),
+    );
+    ext.render(container);
+    ext.hide();
+    expect(container.querySelector(".range-finder-fold-overlay")).toBeNull();
+  });
+
+  it("hide is safe when no overlay exists", () => {
+    ext.hide();
+    // No error thrown
+  });
+
+  it("renders multiple folds across buffers", () => {
+    ext.applyNotification(
+      JSON.stringify({
+        folds: {
+          "1": [{ start_line: 0, hidden_count: 3, preview: "a" }],
+          "2": [
+            { start_line: 5, hidden_count: 2, preview: "b" },
+            { start_line: 10, hidden_count: 4, preview: "c" },
+          ],
+        },
+      }),
+    );
+    ext.render(container);
+
+    const markers = container.querySelectorAll(".fold-marker");
+    expect(markers).toHaveLength(3);
   });
 });

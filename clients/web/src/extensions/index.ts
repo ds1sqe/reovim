@@ -12,6 +12,8 @@ export { NotificationExtension } from "./notification.js";
 export { MicroscopeExtension } from "./microscope.js";
 export { CompletionExtension } from "./completion.js";
 export { ExplorerExtension } from "./explorer.js";
+export { RangeFinderJumpExtension } from "./range-finder-jump.js";
+export { RangeFinderFoldExtension } from "./range-finder-fold.js";
 
 import type { WebExtension } from "./interface.js";
 import { CmdlineExtension } from "./cmdline.js";
@@ -20,7 +22,9 @@ import { NotificationExtension } from "./notification.js";
 import { MicroscopeExtension } from "./microscope.js";
 import { CompletionExtension } from "./completion.js";
 import { ExplorerExtension } from "./explorer.js";
+import { RangeFinderJumpExtension } from "./range-finder-jump.js";
+import { RangeFinderFoldExtension } from "./range-finder-fold.js";
 
 export function createExtensions(): WebExtension[] {
-  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension(), new CompletionExtension(), new ExplorerExtension()];
+  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension(), new CompletionExtension(), new ExplorerExtension(), new RangeFinderJumpExtension(), new RangeFinderFoldExtension()];
 }

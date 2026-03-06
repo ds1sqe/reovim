@@ -14,7 +14,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{
-        CommandContext, CommandHandler, CommandInfo, CommandQueryService, CommandResult,
+        CommandContext, CommandHandler, CommandInfo, CommandPriority, CommandQueryService,
+        CommandResult,
     },
     reovim_driver_session::{Session as DriverSession, SessionRuntime, api::CommandExecutor},
     reovim_driver_vfs::VfsDriver,
@@ -33,6 +34,8 @@ struct CommandEntry {
     handler: Arc<dyn CommandHandler>,
     /// The module that owns this command (if any).
     owner: Option<ModuleId>,
+    /// Registration priority (#545). Higher priority wins on conflict.
+    priority: CommandPriority,
 }
 
 /// Registry for command handlers.
@@ -59,14 +62,27 @@ impl CommandRegistry {
     /// Register a command handler (without module ownership).
     ///
     /// The command's ID is obtained from the handler via its `id()` method.
-    /// If a command with the same ID already exists, it is replaced.
+    /// If a command with the same ID already exists, the higher priority
+    /// handler wins. Equal priority uses last-wins semantics (#545).
     pub fn register(&mut self, handler: Arc<dyn CommandHandler>) {
         let id = handler.id();
+        let new_priority = handler.priority();
+
+        // Only replace if new handler has >= priority (#545)
+        if self
+            .entries
+            .get(&id)
+            .is_some_and(|existing| new_priority < existing.priority)
+        {
+            return;
+        }
+
         self.entries.insert(
             id,
             CommandEntry {
                 handler,
                 owner: None,
+                priority: new_priority,
             },
         );
     }
@@ -74,17 +90,29 @@ impl CommandRegistry {
     /// Register a command handler with module ownership.
     ///
     /// The command's ID is obtained from the handler via its `id()` method.
-    /// If a command with the same ID already exists, it is replaced.
+    /// If a command with the same ID already exists, the higher priority
+    /// handler wins. Equal priority uses last-wins semantics (#545).
     ///
     /// When the owning module is unloaded, this command will be automatically
     /// deregistered via [`Self::unregister_for_module`].
     pub fn register_for_module(&mut self, handler: Arc<dyn CommandHandler>, owner: ModuleId) {
         let id = handler.id();
+        let new_priority = handler.priority();
+
+        if self
+            .entries
+            .get(&id)
+            .is_some_and(|existing| new_priority < existing.priority)
+        {
+            return;
+        }
+
         self.entries.insert(
             id,
             CommandEntry {
                 handler,
                 owner: Some(owner),
+                priority: new_priority,
             },
         );
     }
@@ -482,10 +510,150 @@ mod tests {
         registry.register(Arc::new(TestCommand::new("same-cmd")));
         assert_eq!(registry.len(), 1);
 
-        // Register again - should replace
+        // Register again - should replace (same priority, last wins)
         registry.register(Arc::new(TestCommand::new("same-cmd")));
         assert_eq!(registry.len(), 1);
         assert!(registry.contains(&id));
+    }
+
+    // ========================================================================
+    // CommandPriority tests (#545)
+    // ========================================================================
+
+    /// Test command with configurable priority.
+    struct PriorityTestCommand {
+        id: CommandId,
+        name: &'static str,
+        priority: reovim_driver_command::CommandPriority,
+        desc: &'static str,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl PriorityTestCommand {
+        fn normal(name: &'static str) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                name,
+                priority: reovim_driver_command::CommandPriority::Normal,
+                desc: "Normal priority",
+            }
+        }
+
+        fn override_priority(name: &'static str) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                name,
+                priority: reovim_driver_command::CommandPriority::Override,
+                desc: "Override priority",
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for PriorityTestCommand {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+        fn description(&self) -> &'static str {
+            self.desc
+        }
+        fn names(&self) -> &[&'static str] {
+            std::slice::from_ref(&self.name)
+        }
+        fn priority(&self) -> reovim_driver_command::CommandPriority {
+            self.priority
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandHandler for PriorityTestCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
+    #[test]
+    fn test_override_priority_wins_over_normal() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Register normal first
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(registry.get(&id).unwrap().description(), "Normal priority");
+
+        // Register override second - should replace
+        registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
+        assert_eq!(
+            registry.get(&id).unwrap().description(),
+            "Override priority"
+        );
+    }
+
+    #[test]
+    fn test_normal_cannot_replace_override() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Register override first
+        registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
+        assert_eq!(
+            registry.get(&id).unwrap().description(),
+            "Override priority"
+        );
+
+        // Register normal second - should NOT replace
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(
+            registry.get(&id).unwrap().description(),
+            "Override priority"
+        );
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_equal_priority_last_wins() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Two normal-priority commands: last one wins
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains(&id));
+    }
+
+    #[test]
+    fn test_priority_with_register_for_module() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+        let owner = ModuleId::new("adapter");
+
+        // Register normal first (no owner)
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+
+        // Register override with module ownership - should replace
+        registry.register_for_module(
+            Arc::new(PriorityTestCommand::override_priority("cmd")),
+            owner,
+        );
+        assert_eq!(
+            registry.get(&id).unwrap().description(),
+            "Override priority"
+        );
+
+        // Try to replace with normal + different owner - should NOT replace
+        registry.register_for_module(
+            Arc::new(PriorityTestCommand::normal("cmd")),
+            ModuleId::new("other"),
+        );
+        assert_eq!(
+            registry.get(&id).unwrap().description(),
+            "Override priority"
+        );
     }
 
     #[test]

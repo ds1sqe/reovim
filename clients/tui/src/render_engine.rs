@@ -19,7 +19,7 @@ use {
 
 use crate::{
     LineNumberMode, SelectionState, TuiCoreState,
-    render_backend::{RenderBackend, TuiExtension},
+    render_backend::{RenderBackend, TuiExtension, ViewportContext},
 };
 
 /// Render configuration for a frame.
@@ -203,8 +203,15 @@ pub fn render_frame<B: RenderBackend>(
         .sum();
     let content_x = config.gutter_width + sidebar_width;
 
+    // Collect fold hidden ranges from extensions
+    let fold_ranges: Vec<(u32, u32)> = extensions
+        .iter()
+        .filter(|e| e.is_active())
+        .flat_map(|e| e.fold_hidden_lines().iter().copied())
+        .collect();
+
     // Render buffer content
-    render_buffer_content(backend, state, config, content_height, sidebar_width);
+    render_buffer_content(backend, state, config, content_height, sidebar_width, &fold_ranges);
 
     // Render selections (behind cursors — background overlay)
     render_remote_selections(backend, state, content_x, content_height);
@@ -220,10 +227,17 @@ pub fn render_frame<B: RenderBackend>(
     // Render statusline
     render_statusline(backend, state, width, height);
 
+    // Build viewport context for buffer-position extensions
+    let viewport = ViewportContext {
+        scroll_top: state.get_focused_scroll_top(),
+        content_x,
+        content_height,
+    };
+
     // Render active extensions (engine has ZERO knowledge of specific ones)
     for ext in extensions {
         if ext.is_active() {
-            ext.render(backend);
+            ext.render_with_viewport(backend, &viewport);
         }
     }
 }
@@ -234,6 +248,21 @@ pub fn render_frame<B: RenderBackend>(
 /// blend target when dimming styles for transparent windows.
 const DEFAULT_BG: Color = Color::Black;
 
+/// Check if a buffer line is hidden by any fold range.
+///
+/// Returns `true` if `line` falls within any `(start, count)` range,
+/// meaning `start <= line < start + count`.
+fn is_line_folded(line: usize, fold_ranges: &[(u32, u32)]) -> bool {
+    for &(start, count) in fold_ranges {
+        let start = start as usize;
+        let end = start + count as usize;
+        if line >= start && line < end {
+            return true;
+        }
+    }
+    false
+}
+
 /// Render buffer content.
 #[allow(clippy::cast_possible_truncation)]
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -243,6 +272,7 @@ fn render_buffer_content<B: RenderBackend>(
     config: &RenderConfig,
     content_height: u16,
     sidebar_width: u16,
+    fold_ranges: &[(u32, u32)],
 ) {
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
@@ -256,9 +286,16 @@ fn render_buffer_content<B: RenderBackend>(
 
     let scroll_top = state.get_focused_scroll_top();
 
-    for row in 0..content_height {
-        let line_idx = scroll_top + row as usize;
-        let screen_y = row;
+    // Build visible line indices, skipping folded lines
+    let mut screen_row: u16 = 0;
+    let mut line_idx = scroll_top;
+
+    while screen_row < content_height {
+        // Skip folded lines
+        if is_line_folded(line_idx, fold_ranges) {
+            line_idx += 1;
+            continue;
+        }
 
         // Render line number if enabled
         if config.show_line_numbers && gutter_width > 0 {
@@ -267,7 +304,7 @@ fn render_buffer_content<B: RenderBackend>(
             render_line_number(
                 backend,
                 sidebar_width,
-                screen_y,
+                screen_row,
                 gutter_width,
                 line_idx,
                 cursor_line,
@@ -279,14 +316,24 @@ fn render_buffer_content<B: RenderBackend>(
         if let Some(lines) = lines {
             if line_idx < lines.len() {
                 let line = &lines[line_idx];
-                render_line_content(backend, content_x, screen_y, width - content_x, line, opacity);
+                render_line_content(
+                    backend,
+                    content_x,
+                    screen_row,
+                    width - content_x,
+                    line,
+                    opacity,
+                );
             } else {
                 // Empty line indicator
                 let tilde_style =
                     apply_opacity(&Style::default().fg(Color::DarkGrey), opacity, DEFAULT_BG);
-                backend.set_cell(content_x, screen_y, '~', &tilde_style);
+                backend.set_cell(content_x, screen_row, '~', &tilde_style);
             }
         }
+
+        screen_row += 1;
+        line_idx += 1;
     }
 }
 
@@ -1714,5 +1761,42 @@ mod tests {
         assert_eq!(tilde_cell.char, '~');
         // The tilde's fg should be dimmed (darker than DarkGrey at 0.5 opacity)
         assert!(tilde_cell.style.fg.is_some());
+    }
+
+    // =========================================================================
+    // is_line_folded
+    // =========================================================================
+
+    #[test]
+    fn test_is_line_folded_empty_ranges() {
+        assert!(!is_line_folded(5, &[]));
+    }
+
+    #[test]
+    fn test_is_line_folded_within_range() {
+        let ranges = [(3, 4)]; // lines 3, 4, 5, 6 are hidden
+        assert!(!is_line_folded(2, &ranges));
+        assert!(is_line_folded(3, &ranges));
+        assert!(is_line_folded(5, &ranges));
+        assert!(is_line_folded(6, &ranges));
+        assert!(!is_line_folded(7, &ranges));
+    }
+
+    #[test]
+    fn test_is_line_folded_multiple_ranges() {
+        let ranges = [(3, 2), (10, 3)]; // lines 3-4 and 10-12 are hidden
+        assert!(is_line_folded(3, &ranges));
+        assert!(is_line_folded(4, &ranges));
+        assert!(!is_line_folded(5, &ranges));
+        assert!(is_line_folded(10, &ranges));
+        assert!(is_line_folded(12, &ranges));
+        assert!(!is_line_folded(13, &ranges));
+    }
+
+    #[test]
+    fn test_is_line_folded_boundary() {
+        let ranges = [(0, 1)]; // only line 0 is hidden
+        assert!(is_line_folded(0, &ranges));
+        assert!(!is_line_folded(1, &ranges));
     }
 }

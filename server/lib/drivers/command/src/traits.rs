@@ -10,6 +10,26 @@ use {
     reovim_kernel::api::v1::CommandId,
 };
 
+/// Priority level for command registration (#545).
+///
+/// When multiple handlers register for the same [`CommandId`],
+/// higher priority wins. Equal priority uses last-wins semantics
+/// (preserving existing `HashMap::insert` behavior).
+///
+/// # Usage
+///
+/// Base module commands use `Normal` (the default). Adapter modules
+/// that override a base command use `Override` to guarantee they win
+/// regardless of module initialization order.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum CommandPriority {
+    /// Default priority for base module commands.
+    #[default]
+    Normal = 0,
+    /// Override priority for adapter commands that enhance base behavior.
+    Override = 10,
+}
+
 /// Self-describing command metadata.
 ///
 /// Commands implement this trait to provide metadata about themselves:
@@ -66,6 +86,17 @@ pub trait Command: Send + Sync + 'static {
     /// `:w` and `:write` are aliases for the same command.
     fn names(&self) -> &[&'static str] {
         &[]
+    }
+
+    /// Registration priority (#545).
+    ///
+    /// When multiple handlers register for the same [`CommandId`],
+    /// higher priority wins. Equal priority uses last-wins semantics.
+    ///
+    /// Override this to [`CommandPriority::Override`] in adapter commands
+    /// that replace a base module's handler.
+    fn priority(&self) -> CommandPriority {
+        CommandPriority::Normal
     }
 }
 
@@ -590,5 +621,94 @@ mod tests {
         let cmd: Box<dyn CommandHandler> = Box::new(BoxableHandler);
         assert_eq!(cmd.id().name(), "boxable-handler");
         assert_eq!(cmd.description(), "Boxable handler");
+    }
+
+    // ========================================================================
+    // CommandPriority tests (#545)
+    // ========================================================================
+
+    #[test]
+    fn test_command_priority_default_is_normal() {
+        assert_eq!(CommandPriority::default(), CommandPriority::Normal);
+    }
+
+    #[test]
+    fn test_command_priority_ordering() {
+        assert!(CommandPriority::Normal < CommandPriority::Override);
+    }
+
+    #[test]
+    fn test_command_priority_equality() {
+        assert_eq!(CommandPriority::Normal, CommandPriority::Normal);
+        assert_eq!(CommandPriority::Override, CommandPriority::Override);
+        assert_ne!(CommandPriority::Normal, CommandPriority::Override);
+    }
+
+    #[test]
+    fn test_command_priority_debug() {
+        let debug = format!("{:?}", CommandPriority::Normal);
+        assert!(debug.contains("Normal"));
+        let debug = format!("{:?}", CommandPriority::Override);
+        assert!(debug.contains("Override"));
+    }
+
+    #[test]
+    fn test_command_priority_copy() {
+        let p = CommandPriority::Override;
+        let copied = p;
+        assert_eq!(p, copied);
+    }
+
+    #[test]
+    fn test_command_priority_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(CommandPriority::Normal);
+        set.insert(CommandPriority::Override);
+        assert_eq!(set.len(), 2);
+        set.insert(CommandPriority::Normal);
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_command_default_priority_is_normal() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct MinimalCommand;
+        impl Command for MinimalCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "minimal")
+            }
+            fn description(&self) -> &'static str {
+                "Minimal"
+            }
+        }
+
+        let cmd = MinimalCommand;
+        assert_eq!(cmd.priority(), CommandPriority::Normal);
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_command_custom_priority_override() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct OverrideCommand;
+        impl Command for OverrideCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "override")
+            }
+            fn description(&self) -> &'static str {
+                "Override"
+            }
+            fn priority(&self) -> CommandPriority {
+                CommandPriority::Override
+            }
+        }
+
+        let cmd = OverrideCommand;
+        assert_eq!(cmd.priority(), CommandPriority::Override);
+        assert!(cmd.priority() > CommandPriority::Normal);
     }
 }

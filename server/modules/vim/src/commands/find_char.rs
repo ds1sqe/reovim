@@ -76,7 +76,14 @@ impl CommandHandler for ExecuteFindChar {
             return CommandResult::error("No active buffer");
         };
 
-        // Build the find-char motion
+        // Get cursor position from active window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let cursor_line = window.cursor.line;
+        let cursor_col = window.cursor.column;
+
+        let cursor = Cursor::new(Position::new(cursor_line, cursor_col));
         let motion = Motion::FindChar {
             char: target_char,
             direction: if forward {
@@ -87,13 +94,6 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
-        // Get cursor position from active window
-        let Some(window) = runtime.windows().active() else {
-            return CommandResult::error("No active window");
-        };
-        let cursor = Cursor::new(Position::new(window.cursor.line, window.cursor.column));
-
-        // Calculate motion target using with_buffer_read callback
         let target = runtime.with_buffer_read(buffer_id, |buffer| {
             MotionEngine::calculate(buffer, &cursor, motion, count)
         });
@@ -202,7 +202,7 @@ mod tests {
             _: &CommandContext,
             _: &KernelContext,
         ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+            None // Command not found (no modules loaded in tests)
         }
     }
 

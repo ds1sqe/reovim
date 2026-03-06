@@ -192,12 +192,12 @@ mod tests {
         assert_eq!(bridges[0].kind(), "range-finder-jump");
         assert_eq!(bridges[1].kind(), "range-finder-fold");
 
-        // Verify commands were registered (2 jump + 5 fold = 7)
+        // Verify commands were registered (3 jump + 5 fold = 8)
         let command_store = services
             .get::<reovim_driver_command::CommandHandlerStore>()
             .unwrap();
         let handlers = command_store.take_handlers();
-        assert_eq!(handlers.len(), 7);
+        assert_eq!(handlers.len(), 8);
 
         // Verify resolver was registered (#524)
         let resolvers = services.get::<ResolverRegistry>().unwrap();

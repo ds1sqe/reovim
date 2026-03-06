@@ -2444,6 +2444,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -2629,7 +2630,11 @@ dependencies = [
 name = "reovim-module-vim-range-finder"
 version = "0.10.0-dev"
 dependencies = [
+ "parking_lot",
+ "reovim-driver-buffer",
+ "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-range-finder",
@@ -2805,6 +2810,7 @@ dependencies = [
  "reovim-tui-ext-explorer",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
+ "reovim-tui-ext-range-finder",
  "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
 ]
@@ -2829,6 +2835,15 @@ dependencies = [
 
 [[package]]
 name = "reovim-tui-ext-notification"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-range-finder"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",

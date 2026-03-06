@@ -104,6 +104,27 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   ABI version bumped to 1.2.0 (backward compatible). C header (`reovim.h`)
   updated with `ReovimYankType` enum and all new function declarations.
   333 unit tests (257 FFI + 76 Python), zero clippy warnings.
+- **Range-finder client extensions and enhanced f/t motions (#535)**:
+  - Phase 1: `ViewportContext` API on `TuiExtension` trait — `render_with_viewport()`
+    provides scroll offset and content geometry for buffer-position-aware rendering.
+    Default delegation to `render()` ensures backward compatibility.
+  - Phase 2: TUI jump label extension renders labeled overlay at buffer positions
+    with viewport-aware coordinate math (scroll subtraction, content offset).
+    Two-char label styling with dim second character.
+  - Phase 3: TUI fold extension with per-buffer fold state, hidden line range
+    caching via `fold_hidden_lines()` trait method, and active-buffer context tracking.
+  - Phase 4: Web client jump and fold extensions (`range-finder-jump.ts`,
+    `range-finder-fold.ts`) mirror TUI implementations with DOM rendering.
+  - Phase 5: Fold-aware render engine — `render_buffer_content` uses while-loop
+    that queries `fold_hidden_lines()` to skip hidden lines, preserving screen
+    real estate for visible content.
+  - Phase 6: Enhanced f/t motions with multi-match jump label dispatch.
+    `ExecuteFindChar` (vim module) detects multiple matches on a line and
+    dispatches to `StartFindCharJumpCommand` (range-finder) via `CommandId`
+    string — zero horizontal module coupling. Graceful fallback to first-match
+    when range-finder module is not loaded. `start_with_matches()` on
+    `JumpSessionState` bypasses two-char search, entering ShowingLabels directly.
+    Match positions serialized as JSON to avoid type coupling between modules.
 - **Tetromino game module** (`reovim-module-tetromino`) - Loadable module architecture proof-of-concept (#537)
   - Server-side: game engine, bridge, commands, modes (PLAY/PAUSED), key resolvers, keybindings
   - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece preview, score panel

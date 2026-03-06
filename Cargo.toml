@@ -81,6 +81,7 @@ members = [
     "clients/tui/extensions/completion",
     "clients/tui/extensions/explorer",
     "clients/tui/extensions/tetromino",
+    "clients/tui/extensions/range-finder",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI

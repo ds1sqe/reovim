@@ -95,7 +95,7 @@ pub use ex_handler::{ExCommandContext, ExCommandError, ExCommandHandler, ExComma
 pub use ex_registry::ExCommandHandlerStore;
 
 // Re-export traits
-pub use traits::{Command, CommandHandler};
+pub use traits::{Command, CommandHandler, CommandPriority};
 
 #[cfg(test)]
 mod tests {
