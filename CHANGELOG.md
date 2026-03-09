@@ -166,6 +166,26 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   - Add `Session::with_bridge_context()` combined-lock helper (clients + state read locks)
   - Fix `ExtensionScope::Shared` snapshot TODO in notification builder
 
+- **Architecture**: Unify command systems with Unix-style result and runtime signals (#547)
+  - `CommandResult` simplified to `Success`/`Error` only (Unix exit code model)
+  - Lifecycle side effects use `RuntimeSignal::Quit` through `SessionRuntime`
+  - Ex-commands unified into `CommandHandler` (single command system)
+  - `CommandNameIndex` provides name-based resolution with `complete()` delegation
+  - `parse_cmdline()` pure function extracts parsing from mode dispatch
+  - Re-entrant `CommandExecutor` with `get_handler()` + `Arc` pattern (max depth 16)
+  - Signal queue on `SessionRuntime`: `signal()` to enqueue, `take_signals()` to drain
+  - `should_quit` on `StateChanges` propagates quit signals through merge; `SendKeysResponse`
+    protocol field signals client to disconnect; TUI stops event loop on quit response
+  - `:q` checks `Buffer::is_modified()` on active buffer — returns E37 error for unsaved
+    changes; `:q!` (bang) bypasses the check
+  - Rename "ex-command" → "user command" in general system: `UserCommandEntry`,
+    `COMMAND_SOURCE_USER`, `has_user_names()`, `list_user_commands()`; vim module
+    retains "ex-command" as vim-specific concept
+  - gRPC `CommandService` migrated from `ExCommandRegistry` to `CommandNameIndex`
+  - FFI layers check signal queue after execution for backward-compatible quit codes
+  - Deleted: `ExCommandHandler`, `ExCommandRegistry`, `ExCommandDispatcher`,
+    `ExCommandHandlerStore`, `ExCommandQueryService`, `ExCommandInfo`
+
 - **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
   - Move `VimLookupPolicy` from driver-input to module-vim (policy belongs in modules)
   - Make `KeymapRegistry` lookup policy configurable via `Arc<dyn KeyLookupPolicy>`
@@ -178,6 +198,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 ### Performance
 
 ### Fixed
+
+- **Ex-command VFS propagation (#547)**: Fix `:e` command failing with "VFS not
+  available" when invoked via keyboard (ex-command path). `execute_ex_command`
+  in vim mode.rs was building a fresh `CommandContext` without propagating the
+  VFS driver from the outer context. Now propagates both `buffer_id` and `vfs`.
 
 - **LSP gd/gr deadlock (#532)**: Fix thread starvation that caused `gd` and `gr`
   commands to always fail with "LSP request failed". `recv_timeout` blocked the

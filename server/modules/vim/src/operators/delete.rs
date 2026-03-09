@@ -263,7 +263,8 @@ mod tests {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -284,13 +285,8 @@ mod tests {
         struct StubExecutor;
         #[cfg_attr(coverage_nightly, coverage(off))]
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");

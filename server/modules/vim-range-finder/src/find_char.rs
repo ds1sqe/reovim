@@ -43,8 +43,7 @@ use {
 ///
 /// Must match `vim::ids::EXECUTE_FIND_CHAR`. Constructed locally to avoid
 /// the adapter depending on the vim module (reverse coupling).
-pub const EXECUTE_FIND_CHAR: CommandId =
-    CommandId::new(ModuleId::new("vim"), "execute-find-char");
+pub const EXECUTE_FIND_CHAR: CommandId = CommandId::new(ModuleId::new("vim"), "execute-find-char");
 
 /// Enhanced find-char command that shows jump labels for multi-match cases.
 ///

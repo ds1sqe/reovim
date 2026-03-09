@@ -557,9 +557,15 @@ impl<O: TuiOutput> TuiApp<O> {
 
                 // Send vim notation to server (identity from token, #483)
                 if !key_event.vim_notation.is_empty() {
-                    let result = self.client.send_keys(&key_event.vim_notation).await;
-                    if let Err(e) = result {
-                        self.state.last_error = Some(format!("Send keys failed: {e}"));
+                    match self.client.send_keys(&key_event.vim_notation).await {
+                        Ok(resp) if resp.should_quit => {
+                            tracing::info!("Server signaled quit via SendKeysResponse");
+                            self.running = false;
+                        }
+                        Err(e) => {
+                            self.state.last_error = Some(format!("Send keys failed: {e}"));
+                        }
+                        _ => {}
                     }
                 }
             }

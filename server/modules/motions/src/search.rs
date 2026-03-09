@@ -447,7 +447,8 @@ mod tests {
         super::*,
         crate::ids,
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, Window, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, Window, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             KernelContext, ModeStack, ServiceRegistry,
@@ -523,13 +524,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _: &KernelCommandId,
-            _: &CommandContext,
-            _: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 

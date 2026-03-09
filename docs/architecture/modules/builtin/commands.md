@@ -82,11 +82,11 @@ provides command-line tab completion and discovery for clients:
 | RPC | Purpose |
 |-----|---------|
 | `SearchCommands` | Search commands by name prefix for tab completion |
-| `CompleteArgs` | Complete arguments for a specific ex-command |
+| `CompleteArgs` | Complete arguments for a specific user command |
 
-`SearchCommands` accepts a `CommandSource` filter to narrow results to ex-commands
-(`COMMAND_SOURCE_EX`), keybinding commands (`COMMAND_SOURCE_KEYBINDING`), or both
-(`COMMAND_SOURCE_ALL`). It returns matching `ExCommandEntry` and
+`SearchCommands` accepts a `CommandSource` filter to narrow results to user commands
+(`COMMAND_SOURCE_USER`), keybinding commands (`COMMAND_SOURCE_KEYBINDING`), or both
+(`COMMAND_SOURCE_ALL`). It returns matching `UserCommandEntry` and
 `KeybindingCommandEntry` records containing id, names/aliases, and help text.
 
 `CompleteArgs` delegates to the handler's `complete()` method, enabling per-command

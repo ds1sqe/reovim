@@ -26,9 +26,7 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_command::{
-        CommandHandlerStore, CommandQueryService, ExCommandHandlerStore, ExCommandRegistry,
-    },
+    reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
@@ -125,8 +123,10 @@ pub fn create_session_state() -> SessionState {
     services.register(command_query_snapshot);
     services.register(command_query_provider);
 
-    // Extract ex-command handlers and create registry (#465)
-    extract_ex_command_registry(&services);
+    // Build CommandNameIndex for vim dispatch (#547)
+    let name_index = Arc::new(command_registry.build_name_index());
+    tracing::info!(count = name_index.count(), "Built command name index");
+    services.register(name_index);
 
     // Create session state with populated registries
     let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
@@ -256,30 +256,6 @@ fn extract_registries(
     tracing::info!(count = resolver_registry.len(), "Extracted resolvers");
 
     (mode_registry, command_registry, keymap_registry, resolver_registry)
-}
-
-/// Extract ex-command handlers and create `ExCommandRegistry`.
-///
-/// Follows the same pattern as `extract_registries`:
-/// - `ExCommandHandlerStore` → `ExCommandRegistry`
-///
-/// The registry is stored back in `ServiceRegistry` so the vim module's
-/// `ExitCommandLineMode` can look it up at runtime.
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn extract_ex_command_registry(services: &Arc<ServiceRegistry>) {
-    // 5. Ex-commands: ExCommandHandlerStore → ExCommandRegistry (#465)
-    //    Ex-commands like :w, :q, :e are dispatched through this registry
-    if let Some(store) = services.get::<ExCommandHandlerStore>() {
-        let handlers = store.take_handlers();
-        let registry = ExCommandRegistry::from_handlers(handlers);
-        let count = registry.len();
-        services.register(Arc::new(registry));
-        tracing::info!(count, "Extracted ex-commands");
-    } else {
-        // No ex-commands registered - create empty registry
-        services.register(Arc::new(ExCommandRegistry::new()));
-        tracing::debug!("No ex-commands registered, created empty registry");
-    }
 }
 
 /// Resolve a mode string like `"vim:normal"` to a `ModeId`.
@@ -623,16 +599,6 @@ mod tests {
         let dir_str = dir.to_string_lossy();
         assert!(dir_str.contains("reovim"));
         assert!(dir_str.contains("modules"));
-    }
-
-    #[test]
-    fn test_extract_ex_command_registry_empty() {
-        let services = Arc::new(ServiceRegistry::new());
-        // Should not panic even without store
-        extract_ex_command_registry(&services);
-        // Should have created empty ExCommandRegistry
-        let reg = services.get::<ExCommandRegistry>();
-        assert!(reg.is_some());
     }
 
     #[test]

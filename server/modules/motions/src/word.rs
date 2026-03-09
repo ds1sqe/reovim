@@ -370,7 +370,7 @@ mod tests {
         reovim_driver_command::ArgValue,
         reovim_driver_session::{
             ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-            api::CommandExecutor,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             KernelContext, ModeId, ModeStack, ModuleId, ServiceRegistry,
@@ -447,13 +447,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _: &CommandId,
-            _: &CommandContext,
-            _: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -1131,14 +1126,11 @@ mod tests {
     }
 
     #[test]
-    fn test_stub_executor_returns_success() {
+    fn test_stub_executor_returns_none() {
         let executor = StubExecutor;
-        let ctx = KernelContext::default();
         let cmd_id = ids::WORD_FORWARD;
-        let args = CommandContext::new();
-        let result = executor.execute(&cmd_id, &args, &ctx);
-        assert!(result.is_some());
-        assert!(result.unwrap().is_success());
+        let result = executor.get_handle(&cmd_id);
+        assert!(result.is_none());
     }
 
     // =========================================================================

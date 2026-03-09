@@ -250,7 +250,11 @@ impl SessionState {
         client: reovim_driver_session::ClientContext<'_>,
         id: &CommandId,
         args: &CommandContext,
-    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
+    ) -> Option<(
+        CommandResult,
+        reovim_driver_session::api::StateChanges,
+        Vec<reovim_driver_command_types::RuntimeSignal>,
+    )> {
         // Flush pending edits before command execution
         self.app.flush_pending_edits();
         // Use per-client state (#471, #477, #515)
@@ -335,19 +339,17 @@ impl SessionState {
     {
         use {
             reovim_driver_input::ModeState,
-            reovim_driver_session::{SessionRuntime, api::CommandExecutor},
+            reovim_driver_session::{
+                SessionRuntime,
+                api::{CommandExecutor, CommandHandle},
+            },
         };
 
         // Stub command executor - commands are executed separately
         struct StubExecutor;
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &reovim_kernel::api::v1::KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
 
@@ -448,20 +450,16 @@ impl SessionState {
         use {
             reovim_driver_input::ModeState,
             reovim_driver_session::{
-                ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
+                ClientId as DriverClientId, SessionRuntime,
+                api::{CommandExecutor, CommandHandle},
             },
         };
 
         // Stub command executor - commands are executed separately
         struct StubExecutor;
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &reovim_kernel::api::v1::KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
 
@@ -601,17 +599,15 @@ impl SessionState {
     ///    `ModeTransition::Pop { ExecuteCommand { operator, range } }`
     /// 4. Runner pops the operator mode and executes the operator command
     pub fn try_on_command_complete(&mut self) -> Option<reovim_driver_input::ModeTransition> {
-        use reovim_driver_session::{SessionRuntime, api::CommandExecutor};
+        use reovim_driver_session::{
+            SessionRuntime,
+            api::{CommandExecutor, CommandHandle},
+        };
 
         struct StubExecutor;
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &reovim_kernel::api::v1::KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
 
@@ -678,18 +674,14 @@ impl SessionState {
         client: reovim_driver_session::ClientContext<'_>,
     ) -> Option<reovim_driver_input::ModeTransition> {
         use reovim_driver_session::{
-            ClientId as DriverClientId, SessionRuntime, api::CommandExecutor,
+            ClientId as DriverClientId, SessionRuntime,
+            api::{CommandExecutor, CommandHandle},
         };
 
         struct StubExecutor;
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &reovim_kernel::api::v1::KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
 
@@ -1699,7 +1691,7 @@ mod tests {
         );
 
         assert!(result.is_some());
-        let (cmd_result, _changes) = result.unwrap();
+        let (cmd_result, _changes, _signals) = result.unwrap();
         assert_eq!(cmd_result, CommandResult::Success);
     }
 

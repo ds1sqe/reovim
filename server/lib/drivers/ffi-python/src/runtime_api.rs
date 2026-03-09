@@ -406,7 +406,7 @@ impl PyRuntimeApi {
     /// Execute a command by ID string.
     ///
     /// Returns the command result as a string: `"success"`, `"quit"`,
-    /// `"force_quit"`, `"detach"`, or `"error: ..."`.
+    /// or `"error: ..."`.
     ///
     /// Raises `RuntimeError` if called outside a command callback.
     #[pyo3(signature = (cmd_id, count=None, register=None))]
@@ -427,12 +427,20 @@ impl PyRuntimeApi {
             ctx.set("register", reovim_driver_command_types::ArgValue::Register(r));
         }
 
-        with_runtime(|rt| match rt.execute_command(command_id, ctx) {
-            reovim_driver_command_types::CommandResult::Success => "success".to_string(),
-            reovim_driver_command_types::CommandResult::Quit => "quit".to_string(),
-            reovim_driver_command_types::CommandResult::ForceQuit => "force_quit".to_string(),
-            reovim_driver_command_types::CommandResult::Detach => "detach".to_string(),
-            reovim_driver_command_types::CommandResult::Error(e) => format!("error: {e}"),
+        with_runtime(|rt| {
+            let result = rt.execute_command(command_id, ctx);
+            let signals = rt.take_signals();
+            if signals
+                .iter()
+                .any(|s| matches!(s, reovim_driver_command_types::RuntimeSignal::Quit))
+            {
+                "quit".to_string()
+            } else {
+                match result {
+                    reovim_driver_command_types::CommandResult::Success => "success".to_string(),
+                    reovim_driver_command_types::CommandResult::Error(e) => format!("error: {e}"),
+                }
+            }
         })
         .map_err(|_| PyRuntimeError::new_err("no active runtime"))
     }

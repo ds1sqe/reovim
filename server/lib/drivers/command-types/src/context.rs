@@ -5,7 +5,7 @@
 use {
     crate::args::ArgValue,
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, Position},
+    reovim_kernel::api::v1::{BufferId, Position, WindowId},
     std::{collections::HashMap, sync::Arc},
 };
 
@@ -129,6 +129,26 @@ impl CommandContext {
     pub fn set_buffer_id(&mut self, id: BufferId) {
         self.args
             .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
+    }
+
+    /// Get the active window ID, if present.
+    ///
+    /// The window ID is set by the runner before command execution
+    /// to indicate which window the command should operate on.
+    #[must_use]
+    pub fn window_id(&self) -> Option<WindowId> {
+        match self.args.get("window_id") {
+            Some(ArgValue::WindowId(id)) => Some(WindowId::from_raw(*id)),
+            _ => None,
+        }
+    }
+
+    /// Set the active window ID.
+    ///
+    /// Called by the runner before dispatching a command.
+    pub fn set_window_id(&mut self, id: WindowId) {
+        self.args
+            .insert("window_id", ArgValue::WindowId(id.as_usize()));
     }
 
     /// Create a command context with VFS access.
@@ -310,6 +330,7 @@ mod tests {
         assert!(ctx.mode_name().is_none());
         assert!(ctx.cursor_position().is_none());
         assert!(ctx.buffer_id().is_none());
+        assert!(ctx.window_id().is_none());
         assert!(ctx.range().is_none());
         assert!(!ctx.is_operator_pending());
         assert!(!ctx.is_linewise());
@@ -455,6 +476,36 @@ mod tests {
         let mut ctx = CommandContext::new();
         ctx.set("buffer_id", ArgValue::Count(42));
         assert!(ctx.buffer_id().is_none());
+    }
+
+    // === window_id() tests ===
+
+    #[test]
+    fn test_command_context_window_id_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.window_id().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_window_id() {
+        let mut ctx = CommandContext::new();
+        let id = WindowId::from_raw(7);
+        ctx.set_window_id(id);
+        assert_eq!(ctx.window_id(), Some(WindowId::from_raw(7)));
+    }
+
+    #[test]
+    fn test_command_context_window_id_zero() {
+        let mut ctx = CommandContext::new();
+        ctx.set_window_id(WindowId::from_raw(0));
+        assert_eq!(ctx.window_id(), Some(WindowId::from_raw(0)));
+    }
+
+    #[test]
+    fn test_command_context_window_id_wrong_type_returns_none() {
+        let mut ctx = CommandContext::new();
+        ctx.set("window_id", ArgValue::Count(7));
+        assert!(ctx.window_id().is_none());
     }
 
     #[test]

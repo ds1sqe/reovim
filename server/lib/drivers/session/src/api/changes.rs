@@ -133,6 +133,14 @@ pub struct StateChanges {
     pub extension_changed: bool,
     /// Extension kinds that changed (e.g., `["cmdline"]`).
     pub extensions_updated: Vec<String>,
+
+    // === Lifecycle Signals (#547) ===
+    /// Whether a quit was requested during this operation.
+    ///
+    /// Set when a command pushes `RuntimeSignal::Quit`. Not included in
+    /// `has_changes()` — quit is a lifecycle signal, not a state change
+    /// that triggers notifications.
+    pub should_quit: bool,
 }
 
 impl StateChanges {
@@ -195,6 +203,8 @@ impl StateChanges {
                 self.extensions_updated.push(kind);
             }
         }
+        // #547: Lifecycle signals
+        self.should_quit |= other.should_quit;
     }
 
     // === Recording helpers ===
@@ -311,6 +321,14 @@ impl StateChanges {
         if !self.extensions_updated.contains(&kind) {
             self.extensions_updated.push(kind);
         }
+    }
+
+    /// Record that a quit was requested (#547).
+    ///
+    /// Called when a command pushes `RuntimeSignal::Quit`. The runner
+    /// uses this to signal the client to disconnect.
+    pub const fn record_quit_requested(&mut self) {
+        self.should_quit = true;
     }
 }
 
@@ -866,5 +884,53 @@ mod tests {
         let mut c = StateChanges::new();
         c.extension_changed = true;
         assert!(c.has_changes());
+    }
+
+    // === Quit signal tests (#547) ===
+
+    #[test]
+    fn test_quit_not_in_has_changes() {
+        let mut changes = StateChanges::new();
+        changes.record_quit_requested();
+        // should_quit is a lifecycle signal, NOT a state change
+        assert!(!changes.has_changes());
+        assert!(changes.should_quit);
+    }
+
+    #[test]
+    fn test_quit_default_false() {
+        let changes = StateChanges::new();
+        assert!(!changes.should_quit);
+    }
+
+    #[test]
+    fn test_merge_quit_signal() {
+        let mut a = StateChanges::new();
+        let mut b = StateChanges::new();
+        b.record_quit_requested();
+
+        a.merge(b);
+        assert!(a.should_quit);
+    }
+
+    #[test]
+    fn test_merge_quit_both_set() {
+        let mut a = StateChanges::new();
+        a.record_quit_requested();
+        let mut b = StateChanges::new();
+        b.record_quit_requested();
+
+        a.merge(b);
+        assert!(a.should_quit);
+    }
+
+    #[test]
+    fn test_merge_quit_preserves_existing() {
+        let mut a = StateChanges::new();
+        a.record_quit_requested();
+        let b = StateChanges::new();
+
+        a.merge(b);
+        assert!(a.should_quit);
     }
 }

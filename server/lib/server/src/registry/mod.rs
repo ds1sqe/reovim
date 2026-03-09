@@ -16,13 +16,11 @@
 //! the gRPC v2 server migration (Phase 9).
 
 mod command;
-mod ex_command;
 mod keymap;
 mod mode;
 
 pub use {
     command::{CommandQuerySnapshot, CommandRegistry},
-    ex_command::ExCommandRegistry,
     keymap::KeymapRegistry,
     mode::{ModeEntry, ModeRegistry},
 };

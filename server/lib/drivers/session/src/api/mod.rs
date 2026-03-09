@@ -91,7 +91,7 @@ pub use register::{RegisterApi, RegisterContent, YankType};
 pub use changes::{ChangeTracker, OptionChange, StateChanges};
 
 // Command API
-pub use command::{CommandApi, CommandExecutor};
+pub use command::{CommandApi, CommandExecutor, CommandHandle};
 
 // Extension API
 pub use extension::ExtensionApi;

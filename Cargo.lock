@@ -2223,7 +2223,9 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-command",
+ "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2253,6 +2255,7 @@ dependencies = [
 name = "reovim-module-defaults"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-driver-command",
  "reovim-kernel",
  "reovim-module-buffer-simple",
  "reovim-module-clipboard",

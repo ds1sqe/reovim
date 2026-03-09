@@ -225,7 +225,7 @@ impl BootstrapState {
 /// # Convention
 ///
 /// Follows the `*Context<'a>` naming convention used throughout the codebase
-/// (`OperatorContext`, `HandlerContext`, `ExCommandContext`, etc.).
+/// (`OperatorContext`, `HandlerContext`, `CommandContext`, etc.).
 ///
 /// [`SessionRuntime`]: crate::SessionRuntime
 pub struct ClientContext<'a> {

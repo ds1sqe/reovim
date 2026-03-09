@@ -1,44 +1,26 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Ex-commands module - POLICY.
 //!
-//! Reference: `lib/core/src/command_line/ex_command.rs` (concept-extraction, not migration)
-//!
 //! This module implements the standard ex-commands (colon commands):
 //! - `:q` / `:quit` - Quit the editor
 //! - `:w` / `:write` - Write the buffer to disk
 //! - `:wq` - Write and quit
-//!
-//! # Mechanism vs Policy
-//!
-//! - **Mechanism (Kernel)**: Buffer management, position types
-//! - **Policy (This Module)**: `ExCommandHandler` trait, what commands do
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reovim_module_commands::commands;
-//!
-//! // Get all commands registered by this module
-//! let cmds = commands();
-//! for cmd in &cmds {
-//!     println!("{}: {:?}", cmd.id(), cmd.names());
-//! }
-//! ```
+//! - `:e` / `:edit` - Open a file
+//! - `:colorscheme` - Switch color theme
+//! - `:detach` - Detach from server
+//! - `:servers` - List server instances
+//! - `:kill-server` - Kill the server
 
 mod colorscheme;
 mod edit;
 mod quit;
 mod session;
-mod types;
 mod write;
 
 use {
-    reovim_driver_command::ExCommandHandlerStore,
+    reovim_driver_command::{CommandHandler, CommandHandlerStore},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
-
-// Re-export command types
-pub use types::{CommandError, ExCommandContext, ExCommandHandler, Range};
 
 pub use {
     colorscheme::ColorschemeCommand,
@@ -48,18 +30,17 @@ pub use {
     write::{WriteCommand, WriteQuitCommand},
 };
 
-/// Returns all commands provided by this module.
+/// Returns all command handlers provided by this module.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
-    let mut cmds: Vec<Box<dyn ExCommandHandler>> = vec![
+pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
+    let mut cmds: Vec<Box<dyn CommandHandler>> = vec![
         Box::new(EditCommand),
         Box::new(QuitCommand),
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
         Box::new(ColorschemeCommand),
     ];
-    // Add session management commands from #350
-    cmds.extend(session::commands());
+    cmds.extend(session::command_handlers());
     cmds
 }
 
@@ -98,10 +79,10 @@ impl Module for CommandsModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        // Register ex-command handlers (#465)
-        let ex_store = ctx.services.get_or_create::<ExCommandHandlerStore>();
-        for handler in commands() {
-            ex_store.add(handler);
+        // Register command handlers (#547)
+        let store = ctx.services.get_or_create::<CommandHandlerStore>();
+        for handler in command_handlers() {
+            store.add(handler);
         }
 
         ProbeResult::Success
@@ -118,22 +99,22 @@ reovim_module_macros::declare_module!(CommandsModule);
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, reovim_driver_command::Command};
 
     // ========================================================================
-    // commands() function tests
+    // command_handlers() function tests
     // ========================================================================
 
     #[test]
-    fn test_commands_list_count() {
-        let cmds = commands();
+    fn test_command_handlers_count() {
+        let cmds = command_handlers();
         assert_eq!(cmds.len(), 8); // 5 base + 3 session commands
     }
 
     #[test]
-    fn test_commands_list_contains_all_ids() {
-        let cmds = commands();
-        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+    fn test_command_handlers_contains_all_ids() {
+        let cmds = command_handlers();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id().name()).collect();
         assert!(ids.contains(&"edit"));
         assert!(ids.contains(&"quit"));
         assert!(ids.contains(&"write"));
@@ -145,13 +126,13 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_unique_ids() {
-        let cmds = commands();
+    fn test_command_handlers_unique_ids() {
+        let cmds = command_handlers();
         let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
         for (i, id) in ids.iter().enumerate() {
             for (j, other) in ids.iter().enumerate() {
                 if i != j {
-                    assert_ne!(id, other, "duplicate command id: {id}");
+                    assert_ne!(id, other, "duplicate command id: {}", id.name());
                 }
             }
         }
@@ -182,9 +163,9 @@ mod tests {
         let detach = DetachCommand;
         let servers = ServersCommand;
         let kill = KillServerCommand;
-        assert_eq!(detach.id(), "detach");
-        assert_eq!(servers.id(), "servers");
-        assert_eq!(kill.id(), "kill-server");
+        assert_eq!(detach.id().name(), "detach");
+        assert_eq!(servers.id().name(), "servers");
+        assert_eq!(kill.id().name(), "kill-server");
     }
 
     // ========================================================================
@@ -245,8 +226,8 @@ mod tests {
         let result = module.init(&ctx);
         assert_eq!(result, ProbeResult::Success);
 
-        // Verify commands were registered in the ExCommandHandlerStore
-        let store = ctx.services.get::<ExCommandHandlerStore>().unwrap();
+        // Verify commands were registered in the CommandHandlerStore
+        let store = ctx.services.get::<CommandHandlerStore>().unwrap();
         assert_eq!(store.len(), 8);
     }
 
@@ -261,7 +242,7 @@ mod tests {
         module.init(&ctx);
         module.init(&ctx);
 
-        let store = ctx.services.get::<ExCommandHandlerStore>().unwrap();
+        let store = ctx.services.get::<CommandHandlerStore>().unwrap();
         assert_eq!(store.len(), 16); // 8 + 8
     }
 }

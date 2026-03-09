@@ -38,7 +38,7 @@ use reovim_kernel::api::v1::{
 // defaults is now ONLY a module list. Runner imports directly from module crates.
 
 // Import traits from their respective modules (mechanism vs policy)
-use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
+use {reovim_driver_command::CommandHandler, reovim_module_vim::Operator};
 
 // Internal-only imports for create_modules() and helper functions
 // Note: Client-side modules removed (Epic #465 Phase 11)
@@ -248,10 +248,10 @@ pub fn operators() -> Vec<Box<dyn Operator>> {
     vim::operators::operators()
 }
 
-/// Get all default commands.
+/// Get all default command handlers.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
-    commands::commands()
+pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
+    commands::command_handlers()
 }
 
 /// Get all default keybindings.
@@ -333,8 +333,8 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_not_empty() {
-        let cmds = commands();
+    fn test_command_handlers_not_empty() {
+        let cmds = command_handlers();
         assert!(!cmds.is_empty());
     }
 

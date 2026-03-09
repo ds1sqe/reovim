@@ -44,14 +44,8 @@ use crate::{
 /// Command returned `CommandResult::Success`.
 pub const REOVIM_CMD_SUCCESS: i32 = 0;
 
-/// Command returned `CommandResult::Quit`.
+/// Command signaled `RuntimeSignal::Quit` (via signal queue).
 pub const REOVIM_CMD_QUIT: i32 = 1;
-
-/// Command returned `CommandResult::ForceQuit`.
-pub const REOVIM_CMD_FORCE_QUIT: i32 = 2;
-
-/// Command returned `CommandResult::Detach`.
-pub const REOVIM_CMD_DETACH: i32 = 3;
 
 /// Command returned `CommandResult::Error(...)`.
 pub const REOVIM_CMD_ERROR: i32 = 4;
@@ -69,9 +63,7 @@ pub const REOVIM_CMD_ERROR: i32 = 4;
 /// # Returns
 ///
 /// - `REOVIM_CMD_SUCCESS` (0) on success
-/// - `REOVIM_CMD_QUIT` (1) if command requests quit
-/// - `REOVIM_CMD_FORCE_QUIT` (2) if command requests force quit
-/// - `REOVIM_CMD_DETACH` (3) if command requests detach
+/// - `REOVIM_CMD_QUIT` (1) if command signaled quit (via `RuntimeSignal`)
 /// - `REOVIM_CMD_ERROR` (4) if command returned an error
 /// - `REOVIM_ERR_NULL_PTR` if `cmd_id` is null
 /// - `REOVIM_ERR_INVALID_UTF8` if `cmd_id` is not valid UTF-8
@@ -108,15 +100,25 @@ pub unsafe extern "C" fn reovim_execute_command(
             ctx.set("register", reovim_driver_command_types::ArgValue::Register(register as char));
         }
 
-        match with_runtime(|rt| rt.execute_command(command_id.clone(), ctx)) {
+        match with_runtime(|rt| {
+            let result = rt.execute_command(command_id.clone(), ctx);
+            let signals = rt.take_signals();
+            (result, signals)
+        }) {
             Err(e) => e,
-            Ok(result) => match result {
-                CommandResult::Success => REOVIM_CMD_SUCCESS,
-                CommandResult::Quit => REOVIM_CMD_QUIT,
-                CommandResult::ForceQuit => REOVIM_CMD_FORCE_QUIT,
-                CommandResult::Detach => REOVIM_CMD_DETACH,
-                CommandResult::Error(_) => REOVIM_CMD_ERROR,
-            },
+            Ok((result, signals)) => {
+                if signals
+                    .iter()
+                    .any(|s| matches!(s, reovim_driver_command_types::RuntimeSignal::Quit))
+                {
+                    REOVIM_CMD_QUIT
+                } else {
+                    match result {
+                        CommandResult::Success => REOVIM_CMD_SUCCESS,
+                        CommandResult::Error(_) => REOVIM_CMD_ERROR,
+                    }
+                }
+            }
         }
     }))
 }
@@ -381,17 +383,9 @@ mod tests {
     fn test_command_result_constants() {
         assert_eq!(REOVIM_CMD_SUCCESS, 0);
         const { assert!(REOVIM_CMD_QUIT > 0) };
-        const { assert!(REOVIM_CMD_FORCE_QUIT > 0) };
-        const { assert!(REOVIM_CMD_DETACH > 0) };
         const { assert!(REOVIM_CMD_ERROR > 0) };
         // All distinct
-        let values = [
-            REOVIM_CMD_SUCCESS,
-            REOVIM_CMD_QUIT,
-            REOVIM_CMD_FORCE_QUIT,
-            REOVIM_CMD_DETACH,
-            REOVIM_CMD_ERROR,
-        ];
+        let values = [REOVIM_CMD_SUCCESS, REOVIM_CMD_QUIT, REOVIM_CMD_ERROR];
         for (i, &a) in values.iter().enumerate() {
             for (j, &b) in values.iter().enumerate() {
                 if i != j {

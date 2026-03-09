@@ -772,8 +772,11 @@ impl Session {
         client_id: ClientId,
         cmd_id: &reovim_kernel::api::v1::CommandId,
         args: &reovim_driver_command_types::CommandContext,
-    ) -> Option<(reovim_driver_command::CommandResult, reovim_driver_session::api::StateChanges)>
-    {
+    ) -> Option<(
+        reovim_driver_command::CommandResult,
+        reovim_driver_session::api::StateChanges,
+        Vec<reovim_driver_command_types::RuntimeSignal>,
+    )> {
         // Acquire both locks in consistent order to avoid deadlocks
         let mut clients = self.clients.write();
         let mut state = self.state.write();

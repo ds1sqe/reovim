@@ -91,6 +91,8 @@ pub enum ArgValue {
     Char(char),
     /// A position (line, column) for operator ranges (Epic #415).
     Position(usize, usize),
+    /// A window identifier (raw usize, converted to `WindowId` by helper).
+    WindowId(usize),
 }
 
 #[cfg(test)]
@@ -273,6 +275,14 @@ mod tests {
         let val = ArgValue::Char('x');
         assert_eq!(val, ArgValue::Char('x'));
         assert_ne!(val, ArgValue::Char('y'));
+    }
+
+    #[test]
+    fn test_arg_value_window_id() {
+        let val = ArgValue::WindowId(3);
+        assert_eq!(val, ArgValue::WindowId(3));
+        assert_ne!(val, ArgValue::WindowId(4));
+        assert_ne!(val, ArgValue::BufferId(3));
     }
 
     #[test]

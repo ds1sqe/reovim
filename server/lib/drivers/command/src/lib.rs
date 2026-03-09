@@ -61,9 +61,8 @@
 //! ```
 
 // Internal modules
-mod ex_dispatch;
-mod ex_handler;
-mod ex_registry;
+mod name_index;
+mod parse;
 mod provider;
 mod query;
 mod registry;
@@ -71,7 +70,7 @@ mod traits;
 
 // Re-export from command-types for backwards compatibility
 pub use reovim_driver_command_types::{
-    ArgKind, ArgSpec, ArgValue, CommandContext, CommandResult, MotionType,
+    ArgKind, ArgSpec, ArgValue, CommandContext, CommandResult, MotionType, RuntimeSignal,
 };
 
 // Re-export provider trait
@@ -81,18 +80,13 @@ pub use provider::CommandProvider;
 pub use registry::CommandHandlerStore;
 
 // Re-export query service (#453, #522)
-pub use query::{
-    CommandInfo, CommandQueryProvider, CommandQueryService, ExCommandInfo, ExCommandQueryService,
+pub use query::{CommandInfo, CommandQueryProvider, CommandQueryService};
+
+// Re-export name index and cmdline parser (#547)
+pub use {
+    name_index::CommandNameIndex,
+    parse::{ParsedCmdline, parse_cmdline},
 };
-
-// Re-export ex-command dispatcher and registry (#465)
-pub use ex_dispatch::{ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext};
-
-// Re-export ex-command handler (#465)
-pub use ex_handler::{ExCommandContext, ExCommandError, ExCommandHandler, ExCommandRange};
-
-// Re-export ex-command handler store (#465)
-pub use ex_registry::ExCommandHandlerStore;
 
 // Re-export traits
 pub use traits::{Command, CommandHandler, CommandPriority};
@@ -182,6 +176,7 @@ mod tests {
         let _ = ArgValue::BufferId(0);
         let _ = ArgValue::Char('x');
         let _ = ArgValue::Position(0, 0);
+        let _ = ArgValue::WindowId(0);
     }
 
     #[test]
@@ -189,9 +184,6 @@ mod tests {
         // Verify all CommandResult variants are accessible
         assert!(CommandResult::Success.is_success());
         assert!(CommandResult::Error("e".to_string()).is_error());
-        assert!(CommandResult::Quit.is_quit());
-        assert!(CommandResult::ForceQuit.is_quit());
-        assert!(CommandResult::Detach.is_detach());
     }
 
     #[test]
@@ -250,91 +242,28 @@ mod tests {
         assert_eq!(handlers[0].names(), &["test", "t"]);
     }
 
-    // Integration: ExCommandHandlerStore
+    // Integration: ParsedCmdline + parse_cmdline re-exports (#547)
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_ex_handler_store_integration() {
-        struct TestExCmd;
+    fn test_reexported_parse_cmdline() {
+        let parsed = parse_cmdline("w! file.txt").unwrap();
+        assert_eq!(parsed.name, "w");
+        assert!(parsed.bang);
+        assert_eq!(parsed.args, vec!["file.txt"]);
+        assert!(parse_cmdline("").is_none());
+    }
 
-        impl ExCommandHandler for TestExCmd {
-            fn id(&self) -> &'static str {
-                "test-ex"
-            }
-            fn names(&self) -> &[&'static str] {
-                &["texcmd", "tx"]
-            }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
+    // Integration: CommandNameIndex re-export (#547)
+    #[test]
+    fn test_reexported_command_name_index() {
+        let mut idx = CommandNameIndex::new();
+        let cmd: std::sync::Arc<dyn Command> = std::sync::Arc::new(TestCommand);
+        let id = cmd.id();
+        for &name in cmd.names() {
+            idx.insert(name.to_string(), id.clone(), std::sync::Arc::clone(&cmd));
         }
-
-        let store = ExCommandHandlerStore::new();
-        store.add(Box::new(TestExCmd));
-
-        let handlers = store.take_handlers();
-        assert_eq!(handlers.len(), 1);
-        assert_eq!(handlers[0].id(), "test-ex");
-        assert_eq!(handlers[0].names(), &["texcmd", "tx"]);
-    }
-
-    // Integration: ExCommandRegistry with dispatch
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_ex_registry_dispatch_integration() {
-        use reovim_kernel::api::v1::KernelContext;
-
-        struct WriteCmd;
-
-        impl ExCommandHandler for WriteCmd {
-            fn id(&self) -> &'static str {
-                "write"
-            }
-            fn names(&self) -> &[&'static str] {
-                &["w", "write"]
-            }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
-        }
-
-        let handlers: Vec<std::sync::Arc<dyn ExCommandHandler>> =
-            vec![std::sync::Arc::new(WriteCmd)];
-        let registry = ExCommandRegistry::from_handlers(handlers);
-
-        let kernel = KernelContext::default();
-        let ctx = ExDispatchContext::default();
-
-        assert_eq!(registry.dispatch("w", &kernel, &ctx), ExCommandResult::Success);
-        assert_eq!(registry.dispatch("write", &kernel, &ctx), ExCommandResult::Success);
-        assert!(matches!(
-            registry.dispatch("unknown", &kernel, &ctx),
-            ExCommandResult::NotFound(_)
-        ));
-    }
-
-    // Integration: ExCommandInfo + ExCommandQueryService re-exports (#453)
-    #[test]
-    fn test_ex_command_info_reexport() {
-        let info = ExCommandInfo {
-            id: "test".to_string(),
-            names: vec!["t".to_string()],
-            help: "Test".to_string(),
-        };
-        assert_eq!(info.id, "test");
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_ex_command_query_service_reexport() {
-        fn _accepts_dyn(_: &dyn ExCommandQueryService) {}
+        assert_eq!(idx.count(), 1);
+        assert!(idx.resolve("test").is_some());
+        assert!(idx.resolve("t").is_some());
     }
 
     // Integration: CommandQueryService + CommandInfo
@@ -347,7 +276,7 @@ mod tests {
         assert_eq!(info.names, vec!["test", "t"]);
         assert_eq!(info.description, "A test command");
         assert_eq!(info.args.len(), 1);
-        assert!(info.has_ex_names());
+        assert!(info.has_user_names());
     }
 
     #[test]
@@ -359,6 +288,6 @@ mod tests {
         assert!(info.names.is_empty());
         assert_eq!(info.description, "Minimal");
         assert!(info.args.is_empty());
-        assert!(!info.has_ex_names());
+        assert!(!info.has_user_names());
     }
 }

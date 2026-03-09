@@ -162,10 +162,10 @@ pub fn paste_commands() -> Vec<Box<dyn CommandHandler>> {
 mod tests {
     use {
         super::*,
-        reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
+        reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext},
         reovim_driver_session::{
             ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-            api::CommandExecutor,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ServiceRegistry,
@@ -240,13 +240,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _cmd: &KernelCommandId,
-            _ctx: &CommandContext,
-            _kernel: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 

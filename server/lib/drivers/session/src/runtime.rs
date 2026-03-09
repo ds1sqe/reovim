@@ -39,7 +39,7 @@
 
 use {
     reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
-    reovim_driver_command_types::{CommandContext, CommandResult},
+    reovim_driver_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_driver_display::{
         NavigateDirection, Rect, SplitDirection,
         layout::{LayerId, OverlayConstraints, WindowPlacement},
@@ -157,6 +157,14 @@ pub struct SessionRuntime<'a> {
     screen: Rect,
     /// Accumulated changes - runner takes at end.
     changes: StateChanges,
+    /// Signal queue — commands push signals during execution,
+    /// server drains after command returns (#547).
+    signals: Vec<RuntimeSignal>,
+    /// Recursion depth counter for re-entrant command execution (#547).
+    ///
+    /// Incremented before each `execute_command()` call, decremented after.
+    /// Max depth is 16 — deeper recursion returns an error.
+    command_depth: usize,
 }
 
 impl<'a> SessionRuntime<'a> {
@@ -229,6 +237,8 @@ impl<'a> SessionRuntime<'a> {
             executor,
             screen,
             changes: StateChanges::new(),
+            signals: Vec::new(),
+            command_depth: 0,
         }
     }
 
@@ -292,6 +302,8 @@ impl<'a> SessionRuntime<'a> {
             executor,
             screen,
             changes: StateChanges::new(),
+            signals: Vec::new(),
+            command_depth: 0,
         }
     }
 
@@ -325,6 +337,24 @@ impl<'a> SessionRuntime<'a> {
     pub const fn with_shared_extensions(mut self, extensions: &'a mut crate::ExtensionMap) -> Self {
         self.shared_extensions = Some(extensions);
         self
+    }
+
+    /// Push a lifecycle signal onto the queue (#547).
+    ///
+    /// Commands call this during execution. The server drains
+    /// the queue after the command returns and acts on the signals.
+    /// Same pattern as `StateChanges` — accumulate during execution,
+    /// drain after.
+    pub fn signal(&mut self, signal: RuntimeSignal) {
+        self.signals.push(signal);
+    }
+
+    /// Drain the signal queue, returning all accumulated signals (#547).
+    ///
+    /// Called by the server after command execution completes.
+    /// Returns the signals and empties the queue.
+    pub fn take_signals(&mut self) -> Vec<RuntimeSignal> {
+        std::mem::take(&mut self.signals)
     }
 
     // Note: has_client_mode_stack(), has_client_windows(), has_client_extensions()
@@ -1161,13 +1191,25 @@ impl UndoApi for SessionRuntime<'_> {
 
 impl CommandApi for SessionRuntime<'_> {
     fn execute_command(&mut self, cmd: CommandId, ctx: CommandContext) -> CommandResult {
-        // Execute command via the injected executor.
-        //
-        // KernelContext uses interior mutability (Arc<RwLock<...>>), so
-        // &KernelContext is sufficient for command execution.
-        self.executor
-            .execute(&cmd, &ctx, self.kernel)
-            .unwrap_or_else(|| CommandResult::Error(format!("command not found: {cmd:?}")))
+        // Recursion guard (#547): max depth 16.
+        if self.command_depth >= 16 {
+            return CommandResult::Error(
+                "command recursion limit exceeded (max depth: 16)".to_string(),
+            );
+        }
+        self.command_depth += 1;
+
+        // get_handle() returns an owned Arc, releasing the borrow on
+        // self.executor. This enables re-entrant execution: the returned
+        // handle can call back into self via handle.execute(self, &ctx).
+        let handle = self.executor.get_handle(&cmd);
+        let result = handle.map_or_else(
+            || CommandResult::Error(format!("command not found: {cmd:?}")),
+            |handle| handle.execute(self, &ctx),
+        );
+
+        self.command_depth -= 1;
+        result
     }
 }
 
@@ -1773,17 +1815,16 @@ mod tests {
         ModeId::with_discriminant(ModuleId::new("test"), "insert", 1)
     }
 
+    use std::sync::Arc;
+
+    use crate::api::CommandHandle;
+
     struct StubExecutor;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _cmd: &CommandId,
-            _ctx: &CommandContext,
-            _kernel: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -3339,8 +3380,8 @@ mod tests {
 
         let result =
             harness.with_runtime(|runtime| runtime.execute_command(cmd, CommandContext::new()));
-        // StubExecutor always returns Success
-        assert!(matches!(result, reovim_driver_command_types::CommandResult::Success));
+        // StubExecutor returns None (command not found) -> Error
+        assert!(matches!(result, reovim_driver_command_types::CommandResult::Error(_)));
     }
 
     // =========================================================================
@@ -3864,12 +3905,7 @@ mod tests {
 
         struct NullExecutor;
         impl CommandExecutor for NullExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &KernelContext,
-            ) -> Option<CommandResult> {
+            fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
                 None
             }
         }
@@ -3909,6 +3945,34 @@ mod tests {
         let cmd = CommandId::new(ModuleId::new("test"), "nonexistent");
         let result = runtime.execute_command(cmd, CommandContext::new());
         assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    // =========================================================================
+    // ExecuteCommand: recursion guard (#547)
+    // =========================================================================
+
+    #[test]
+    fn test_execute_command_recursion_guard() {
+        use {
+            crate::testing::TestSessionRuntime, reovim_driver_command_types::CommandContext,
+            reovim_kernel::api::v1::ModuleId,
+        };
+
+        let mut harness = TestSessionRuntime::new();
+        let cmd = CommandId::new(ModuleId::new("test"), "test_cmd");
+
+        // Manually set command_depth to 16 (the limit)
+        harness.with_runtime(|runtime| {
+            runtime.command_depth = 16;
+            let result = runtime.execute_command(cmd, CommandContext::new());
+            assert!(result.is_error());
+            match result {
+                CommandResult::Error(msg) => {
+                    assert!(msg.contains("recursion limit"));
+                }
+                CommandResult::Success => panic!("Expected recursion limit error"),
+            }
+        });
     }
 
     // =========================================================================
@@ -7330,6 +7394,82 @@ mod tests {
 
             BufferApi::set_active_buffer(runtime, buf_id);
             assert_eq!(BufferApi::active_buffer(runtime), buf_id);
+        });
+    }
+
+    // ========================================================================
+    // Signal queue tests (#547)
+    // ========================================================================
+
+    #[test]
+    fn test_signal_queue_initially_empty() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            let signals = runtime.take_signals();
+            assert!(signals.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_signal_push_and_take() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert_eq!(signals[0], RuntimeSignal::Quit);
+        });
+    }
+
+    #[test]
+    fn test_signal_take_drains_queue() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            let first = runtime.take_signals();
+            assert_eq!(first.len(), 1);
+
+            // Second take should be empty
+            let second = runtime.take_signals();
+            assert!(second.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_signal_multiple_fifo_order() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            runtime.signal(RuntimeSignal::Quit);
+            runtime.signal(RuntimeSignal::Quit);
+
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 3);
+            // All should be Quit (FIFO preserved)
+            for s in &signals {
+                assert_eq!(*s, RuntimeSignal::Quit);
+            }
+        });
+    }
+
+    #[test]
+    fn test_signal_queue_independent_of_state_changes() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            // Push a signal and also create state changes
+            runtime.signal(RuntimeSignal::Quit);
+            let changes = runtime.take_changes();
+            let signals = runtime.take_signals();
+
+            // Both should be independent
+            assert_eq!(signals.len(), 1);
+            // State changes are their own thing
+            drop(changes);
         });
     }
 }

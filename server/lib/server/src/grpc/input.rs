@@ -119,6 +119,7 @@ impl InputService for InputServiceImpl {
             return Ok(Response::new(SendKeysResponse {
                 ok: false,
                 status: KeyStatus::NotFound.into(),
+                should_quit: false,
             }));
         }
         // Independent/Sharing: proceed with normal input processing
@@ -288,6 +289,7 @@ impl InputService for InputServiceImpl {
         Ok(Response::new(SendKeysResponse {
             ok: any_handled,
             status: final_status.into(),
+            should_quit: accumulated_changes.should_quit,
         }))
     }
 }
@@ -554,9 +556,20 @@ impl InputServiceImpl {
                         changes.merge(pop_changes);
                     }
 
-                    // Merge command changes into accumulated changes
-                    if let Some(cmd_changes) = cmd_changes {
-                        changes.merge(cmd_changes.1);
+                    // Merge command changes and process signals (#547)
+                    if let Some((_, cmd_state_changes, signals)) = cmd_changes {
+                        changes.merge(cmd_state_changes);
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(
+                                        %client_id,
+                                        "Client requested quit via RuntimeSignal"
+                                    );
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
 
                     // Check if per-client mode changed
@@ -762,9 +775,9 @@ impl InputServiceImpl {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
-                // Phase #471/#479: Execute with per-client state, log errors to ring buffer
+                // Phase #471/#479/#547: Execute with per-client state, log errors, process signals
                 match session.execute_command_for_client(client_id, &command, &cmd_ctx) {
-                    Some((CommandResult::Error(ref e), cmd_changes)) => {
+                    Some((CommandResult::Error(ref e), cmd_changes, signals)) => {
                         changes.merge(cmd_changes);
                         // Phase #479: Log command failure to ring buffer (visible, not silent)
                         session.with_client_ring_buffer(client_id, |rb| {
@@ -774,13 +787,28 @@ impl InputServiceImpl {
                             );
                         });
                         tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
-                    Some((_, cmd_changes)) => {
+                    Some((_, cmd_changes, signals)) => {
                         changes.merge(cmd_changes);
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
                     None => {}
                 }
-                // Success/Quit/ForceQuit/Detach: handled elsewhere
                 // None (client not found or following): already logged in execute_command_for_client
             }
 

@@ -88,6 +88,17 @@ pub trait Command: Send + Sync + 'static {
         &[]
     }
 
+    /// Get tab-completion candidates for this command's arguments.
+    ///
+    /// Called when the user presses Tab while editing arguments for
+    /// this command. Returns a list of completion candidates matching
+    /// the partial input.
+    ///
+    /// Default implementation returns an empty list (no completions).
+    fn complete(&self, _partial: &str) -> Vec<String> {
+        vec![]
+    }
+
     /// Registration priority (#545).
     ///
     /// When multiple handlers register for the same [`CommandId`],
@@ -331,7 +342,7 @@ mod tests {
                 _runtime: &mut SessionRuntime<'_>,
                 _args: &CommandContext,
             ) -> CommandResult {
-                CommandResult::Quit
+                CommandResult::Success
             }
         }
 
@@ -502,7 +513,7 @@ mod tests {
                 _runtime: &mut SessionRuntime<'_>,
                 _args: &CommandContext,
             ) -> CommandResult {
-                CommandResult::ForceQuit
+                CommandResult::Success
             }
         }
 
@@ -530,7 +541,7 @@ mod tests {
                 _runtime: &mut SessionRuntime<'_>,
                 _args: &CommandContext,
             ) -> CommandResult {
-                CommandResult::Detach
+                CommandResult::Success
             }
         }
 
@@ -621,6 +632,55 @@ mod tests {
         let cmd: Box<dyn CommandHandler> = Box::new(BoxableHandler);
         assert_eq!(cmd.id().name(), "boxable-handler");
         assert_eq!(cmd.description(), "Boxable handler");
+    }
+
+    // ========================================================================
+    // Command::complete() tests (#547)
+    // ========================================================================
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_command_default_complete_is_empty() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct NoCompleteCommand;
+        impl Command for NoCompleteCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "no-complete")
+            }
+            fn description(&self) -> &'static str {
+                "No completions"
+            }
+        }
+
+        let cmd = NoCompleteCommand;
+        assert!(cmd.complete("").is_empty());
+        assert!(cmd.complete("foo").is_empty());
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_command_custom_complete() {
+        use reovim_kernel::api::v1::ModuleId;
+
+        struct CompletingCommand;
+        impl Command for CompletingCommand {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("test"), "completing")
+            }
+            fn description(&self) -> &'static str {
+                "With completions"
+            }
+            fn complete(&self, partial: &str) -> Vec<String> {
+                vec![format!("{partial}-dark"), format!("{partial}-light")]
+            }
+        }
+
+        let cmd = CompletingCommand;
+        let completions = cmd.complete("gru");
+        assert_eq!(completions.len(), 2);
+        assert_eq!(completions[0], "gru-dark");
+        assert_eq!(completions[1], "gru-light");
     }
 
     // ========================================================================
