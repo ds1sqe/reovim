@@ -83,6 +83,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   hover, definition, and references. Registration ID tracking enables
   proper unregistration by ID. 41 new tests across driver and module crates.
 
+- **LSP hover, signature help, write + DidSave**: Three LSP features completing
+  the core LSP integration on `reovim-lsp` branch.
+  - **Hover command (K)**: `HoverCommand` handler in `lsp-navigation` module sends
+    `LspRequest::Hover` with oneshot channel, formats all `HoverContents` variants
+    (Scalar/String, Scalar/LanguageString, Array, Markup) via `format_hover_content()`,
+    displays result through `NotificationState`. `has_hover_capability()` pure helper
+    checks server capabilities. `K` keybinding in `vim:normal` mode via `vim-lsp` adapter.
+  - **Signature help (`<C-k>`)**: `SignatureHelpCommand` handler sends
+    `LspRequest::SignatureHelp`, formats active signature label via
+    `format_signature_help()`. `has_signature_help_capability()` capability check.
+    New `LspRequest::SignatureHelp` variant with oneshot response channel.
+    `Client::signature_help()` async method. SignatureHelp client capability
+    advertised with dynamic registration, documentation format, parameter info,
+    and active parameter support. `<C-k>` keybinding in `vim:insert` mode.
+  - **Write command (`:w`)**: Replace placeholder with actual VFS-backed
+    implementation. Resolves target path (explicit arg or buffer's existing path),
+    reads buffer content, writes via `VfsDriver::write_str()`, renames buffer on
+    save-as, clears modified flag, emits `BufferSaved` kernel event.
+  - **DidSave notification**: `LspRequest::DidSave` variant with URI and optional
+    text. `Client::did_save()` sync notification method. Saturator `DidSave` handler.
+    `LspModule` subscribes to `BufferSaved` kernel events and forwards `DidSave`
+    notifications to all active LSP providers via `LspProviderRegistry`.
+  - 433 tests across 5 affected crates, zero clippy warnings.
+
 - **FFI execution API for external modules (#384)**: Full runtime bridge enabling
   C, Python, and Haskell modules to access the same capabilities as native Rust
   modules. Thread-local `RuntimeGuard`/`InitGuard` RAII pattern (inspired by

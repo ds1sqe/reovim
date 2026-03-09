@@ -428,6 +428,23 @@ impl LspSaturator {
                     let _ = response_tx.send(result);
                 });
             }
+            LspRequest::DidSave { uri, text } => {
+                debug!(uri = %uri.as_str(), "Sending didSave notification");
+                client.did_save(uri, text);
+            }
+            LspRequest::SignatureHelp {
+                uri,
+                position,
+                response_tx,
+            } => {
+                debug!(uri = %uri.as_str(), position = ?position, "Spawning signature_help task");
+                let client = Arc::clone(client);
+                tokio::spawn(async move {
+                    let result = client.signature_help(uri, position).await;
+                    debug!(success = result.is_ok(), "signature_help completed");
+                    let _ = response_tx.send(result);
+                });
+            }
             LspRequest::Shutdown => {
                 info!("Shutdown requested");
                 if let Err(e) = client.shutdown().await {
@@ -563,6 +580,15 @@ impl LspSaturator {
             LspRequest::Completion { uri, position, .. } => {
                 log.log_sent(
                     "textDocument/completion",
+                    &format!("{} {}:{}", uri.as_str(), position.line, position.character),
+                );
+            }
+            LspRequest::DidSave { uri, .. } => {
+                log.log_sent("textDocument/didSave", uri.as_str());
+            }
+            LspRequest::SignatureHelp { uri, position, .. } => {
+                log.log_sent(
+                    "textDocument/signatureHelp",
                     &format!("{} {}:{}", uri.as_str(), position.line, position.character),
                 );
             }

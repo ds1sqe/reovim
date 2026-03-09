@@ -368,6 +368,21 @@ impl Client {
                     }),
                     ..Default::default()
                 }),
+                // Enable signature help support
+                signature_help: Some(lsp_types::SignatureHelpClientCapabilities {
+                    dynamic_registration: Some(true),
+                    signature_information: Some(lsp_types::SignatureInformationSettings {
+                        documentation_format: Some(vec![
+                            lsp_types::MarkupKind::Markdown,
+                            lsp_types::MarkupKind::PlainText,
+                        ]),
+                        parameter_information: Some(lsp_types::ParameterInformationSettings {
+                            label_offset_support: Some(true),
+                        }),
+                        active_parameter_support: Some(true),
+                    }),
+                    context_support: Some(true),
+                }),
                 ..Default::default()
             }),
             // Enable work done progress support
@@ -468,6 +483,39 @@ impl Client {
         };
 
         self.request("textDocument/completion", params).await
+    }
+
+    /// Notify the server that a document was saved.
+    pub fn did_save(&self, uri: Uri, text: Option<String>) {
+        let params = lsp_types::DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text,
+        };
+        if let Err(e) = self.notify("textDocument/didSave", params) {
+            warn!("Failed to send didSave notification: {e}");
+        }
+    }
+
+    /// Get signature help at the given position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn signature_help(
+        &self,
+        uri: Uri,
+        position: Position,
+    ) -> Result<Option<lsp_types::SignatureHelp>, LspError> {
+        let params = lsp_types::SignatureHelpParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            context: None,
+        };
+
+        self.request("textDocument/signatureHelp", params).await
     }
 
     /// Shutdown the language server gracefully.

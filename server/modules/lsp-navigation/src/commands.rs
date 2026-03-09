@@ -6,7 +6,7 @@
 use std::{path::Path, sync::Arc, time::Duration};
 
 use {
-    lsp_types::GotoDefinitionResponse,
+    lsp_types::{GotoDefinitionResponse, HoverContents, MarkedString},
     reovim_driver_command::CommandHandler,
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_lsp::{
@@ -226,6 +226,182 @@ impl CommandHandler for References {
 }
 
 // ============================================================================
+// Hover command
+// ============================================================================
+
+/// Show hover information (LSP).
+pub struct HoverCommand;
+
+impl reovim_driver_command::Command for HoverCommand {
+    fn id(&self) -> CommandId {
+        ids::HOVER
+    }
+
+    fn description(&self) -> &'static str {
+        "Show hover information (LSP)"
+    }
+}
+
+impl CommandHandler for HoverCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let Some(buf_id) = runtime.active_buffer() else {
+            debug!("K: no active buffer");
+            return CommandResult::Success;
+        };
+        let Some(file_path) = runtime.buffer_file_path(buf_id) else {
+            notify_info(runtime, "No file associated with buffer");
+            return CommandResult::Success;
+        };
+        let Some(cursor) = runtime.cursor_position() else {
+            debug!("K: no cursor position");
+            return CommandResult::Success;
+        };
+
+        info!(file = %file_path, line = cursor.line, col = cursor.column, "K: hover");
+
+        let services = runtime.kernel().services.clone();
+        let Some(provider) = find_provider(&services, &file_path) else {
+            notify_info(runtime, "No LSP server active");
+            return CommandResult::Success;
+        };
+
+        if !has_hover_capability(&*provider) {
+            notify_info(runtime, "LSP server does not support hover");
+            return CommandResult::Success;
+        }
+
+        let uri = uri_from_path(Path::new(&file_path));
+        #[allow(clippy::cast_possible_truncation)]
+        let lsp_pos = lsp_types::Position::new(cursor.line as u32, cursor.column as u32);
+        let (tx, rx) = reovim_kernel::api::v1::oneshot();
+
+        if !provider.send_request(LspRequest::Hover {
+            uri,
+            position: lsp_pos,
+            response_tx: tx,
+        }) {
+            warn!("K: send_request returned false");
+            notify_info(runtime, "LSP server busy");
+            return CommandResult::Success;
+        }
+
+        debug!("K: request sent, waiting for response");
+        match recv_response(&rx, LSP_TIMEOUT) {
+            Ok(Ok(Some(hover))) => {
+                let text = format_hover_content(&hover);
+                if text.is_empty() {
+                    notify_info(runtime, "No hover information");
+                } else {
+                    notify_info(runtime, &text);
+                }
+            }
+            Ok(Ok(None)) => {
+                notify_info(runtime, "No hover information");
+            }
+            Ok(Err(e)) => {
+                warn!("K: LSP error: {e}");
+                notify_info(runtime, "LSP request failed");
+            }
+            Err(e) => {
+                warn!("K: recv_timeout error: {e}");
+                notify_info(runtime, "LSP request failed");
+            }
+        }
+
+        CommandResult::Success
+    }
+}
+
+// ============================================================================
+// SignatureHelp command
+// ============================================================================
+
+/// Show signature help (LSP).
+pub struct SignatureHelpCommand;
+
+impl reovim_driver_command::Command for SignatureHelpCommand {
+    fn id(&self) -> CommandId {
+        ids::SIGNATURE_HELP
+    }
+
+    fn description(&self) -> &'static str {
+        "Show signature help (LSP)"
+    }
+}
+
+impl CommandHandler for SignatureHelpCommand {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let Some(buf_id) = runtime.active_buffer() else {
+            debug!("sig-help: no active buffer");
+            return CommandResult::Success;
+        };
+        let Some(file_path) = runtime.buffer_file_path(buf_id) else {
+            notify_info(runtime, "No file associated with buffer");
+            return CommandResult::Success;
+        };
+        let Some(cursor) = runtime.cursor_position() else {
+            debug!("sig-help: no cursor position");
+            return CommandResult::Success;
+        };
+
+        info!(file = %file_path, line = cursor.line, col = cursor.column, "sig-help: request");
+
+        let services = runtime.kernel().services.clone();
+        let Some(provider) = find_provider(&services, &file_path) else {
+            notify_info(runtime, "No LSP server active");
+            return CommandResult::Success;
+        };
+
+        if !has_signature_help_capability(&*provider) {
+            notify_info(runtime, "LSP server does not support signature help");
+            return CommandResult::Success;
+        }
+
+        let uri = uri_from_path(Path::new(&file_path));
+        #[allow(clippy::cast_possible_truncation)]
+        let lsp_pos = lsp_types::Position::new(cursor.line as u32, cursor.column as u32);
+        let (tx, rx) = reovim_kernel::api::v1::oneshot();
+
+        if !provider.send_request(LspRequest::SignatureHelp {
+            uri,
+            position: lsp_pos,
+            response_tx: tx,
+        }) {
+            warn!("sig-help: send_request returned false");
+            notify_info(runtime, "LSP server busy");
+            return CommandResult::Success;
+        }
+
+        debug!("sig-help: request sent, waiting for response");
+        match recv_response(&rx, LSP_TIMEOUT) {
+            Ok(Ok(Some(help))) => {
+                let text = format_signature_help(&help);
+                if text.is_empty() {
+                    notify_info(runtime, "No signature help available");
+                } else {
+                    notify_info(runtime, &text);
+                }
+            }
+            Ok(Ok(None)) => {
+                notify_info(runtime, "No signature help available");
+            }
+            Ok(Err(e)) => {
+                warn!("sig-help: LSP error: {e}");
+                notify_info(runtime, "LSP request failed");
+            }
+            Err(e) => {
+                warn!("sig-help: recv_timeout error: {e}");
+                notify_info(runtime, "LSP request failed");
+            }
+        }
+
+        CommandResult::Success
+    }
+}
+
+// ============================================================================
 // Pure helper functions (fully testable)
 // ============================================================================
 
@@ -327,6 +503,58 @@ pub fn has_references_capability(provider: &dyn LspProvider) -> bool {
         .is_some_and(|caps| caps.references_provider.is_some())
 }
 
+/// Check if the provider supports hover.
+pub fn has_hover_capability(provider: &dyn LspProvider) -> bool {
+    provider
+        .capabilities()
+        .is_some_and(|caps| caps.hover_provider.is_some())
+}
+
+/// Check if the provider supports signature help.
+pub fn has_signature_help_capability(provider: &dyn LspProvider) -> bool {
+    provider
+        .capabilities()
+        .is_some_and(|caps| caps.signature_help_provider.is_some())
+}
+
+/// Format hover content for display.
+///
+/// Extracts text from all `HoverContents` variants:
+/// - `Scalar(String)`: plain text
+/// - `Scalar(LanguageString)`: code block with language tag
+/// - `Array`: multiple items joined with newlines
+/// - `Markup`: markdown content
+#[must_use]
+pub fn format_hover_content(hover: &lsp_types::Hover) -> String {
+    match &hover.contents {
+        HoverContents::Scalar(MarkedString::String(s)) => s.clone(),
+        HoverContents::Scalar(MarkedString::LanguageString(ls)) => {
+            format!("```{}\n{}\n```", ls.language, ls.value)
+        }
+        HoverContents::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                MarkedString::String(s) => s.clone(),
+                MarkedString::LanguageString(ls) => {
+                    format!("```{}\n{}\n```", ls.language, ls.value)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+        HoverContents::Markup(markup) => markup.value.clone(),
+    }
+}
+
+/// Format signature help for display.
+///
+/// Shows the active signature label.
+pub fn format_signature_help(help: &lsp_types::SignatureHelp) -> String {
+    let active_idx = help.active_signature.unwrap_or(0) as usize;
+    help.signatures
+        .get(active_idx)
+        .map_or_else(String::new, |sig| sig.label.clone())
+}
+
 // ============================================================================
 // Runtime helpers (coverage(off) - require real SessionRuntime)
 // ============================================================================
@@ -414,7 +642,12 @@ fn open_locations_picker(
 /// Collect all command handlers for registration.
 #[must_use]
 pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
-    vec![Box::new(GotoDefinition), Box::new(References)]
+    vec![
+        Box::new(GotoDefinition),
+        Box::new(References),
+        Box::new(HoverCommand),
+        Box::new(SignatureHelpCommand),
+    ]
 }
 
 #[cfg(test)]
@@ -509,16 +742,17 @@ mod tests {
     }
 
     #[test]
-    fn command_handlers_count() {
-        let handlers = command_handlers();
-        assert_eq!(handlers.len(), 2);
-    }
-
-    #[test]
     fn command_handlers_unique_ids() {
         let handlers = command_handlers();
         let ids: Vec<CommandId> = handlers.iter().map(|h| h.id()).collect();
-        assert_ne!(ids[0], ids[1]);
+        // All IDs must be unique
+        for (i, id) in ids.iter().enumerate() {
+            for (j, other) in ids.iter().enumerate() {
+                if i != j {
+                    assert_ne!(id, other, "duplicate command ID at {i} and {j}");
+                }
+            }
+        }
     }
 
     // ========================================================================
@@ -824,5 +1058,217 @@ mod tests {
     fn has_references_capability_none_caps() {
         let provider = MockProvider::inactive();
         assert!(!has_references_capability(&provider));
+    }
+
+    // ========================================================================
+    // Hover capability check tests
+    // ========================================================================
+
+    #[test]
+    fn has_hover_capability_with_provider() {
+        let caps = lsp_types::ServerCapabilities {
+            hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
+            ..Default::default()
+        };
+        let provider = MockProvider::active_with_caps(caps);
+        assert!(has_hover_capability(&provider));
+    }
+
+    #[test]
+    fn has_hover_capability_without() {
+        let caps = lsp_types::ServerCapabilities::default();
+        let provider = MockProvider::active_with_caps(caps);
+        assert!(!has_hover_capability(&provider));
+    }
+
+    #[test]
+    fn has_hover_capability_none_caps() {
+        let provider = MockProvider::inactive();
+        assert!(!has_hover_capability(&provider));
+    }
+
+    // ========================================================================
+    // Signature help capability check tests
+    // ========================================================================
+
+    #[test]
+    fn has_signature_help_capability_with_provider() {
+        let caps = lsp_types::ServerCapabilities {
+            signature_help_provider: Some(lsp_types::SignatureHelpOptions::default()),
+            ..Default::default()
+        };
+        let provider = MockProvider::active_with_caps(caps);
+        assert!(has_signature_help_capability(&provider));
+    }
+
+    #[test]
+    fn has_signature_help_capability_without() {
+        let caps = lsp_types::ServerCapabilities::default();
+        let provider = MockProvider::active_with_caps(caps);
+        assert!(!has_signature_help_capability(&provider));
+    }
+
+    #[test]
+    fn has_signature_help_capability_none_caps() {
+        let provider = MockProvider::inactive();
+        assert!(!has_signature_help_capability(&provider));
+    }
+
+    // ========================================================================
+    // format_hover_content tests
+    // ========================================================================
+
+    #[test]
+    fn format_hover_scalar_string() {
+        let hover = lsp_types::Hover {
+            contents: HoverContents::Scalar(MarkedString::String("hello world".to_string())),
+            range: None,
+        };
+        assert_eq!(format_hover_content(&hover), "hello world");
+    }
+
+    #[test]
+    fn format_hover_scalar_language_string() {
+        let hover = lsp_types::Hover {
+            contents: HoverContents::Scalar(MarkedString::LanguageString(
+                lsp_types::LanguageString {
+                    language: "rust".to_string(),
+                    value: "fn main() {}".to_string(),
+                },
+            )),
+            range: None,
+        };
+        assert_eq!(format_hover_content(&hover), "```rust\nfn main() {}\n```");
+    }
+
+    #[test]
+    fn format_hover_array() {
+        let hover = lsp_types::Hover {
+            contents: HoverContents::Array(vec![
+                MarkedString::String("Type: i32".to_string()),
+                MarkedString::LanguageString(lsp_types::LanguageString {
+                    language: "rust".to_string(),
+                    value: "let x: i32".to_string(),
+                }),
+            ]),
+            range: None,
+        };
+        let result = format_hover_content(&hover);
+        assert!(result.contains("Type: i32"));
+        assert!(result.contains("```rust\nlet x: i32\n```"));
+    }
+
+    #[test]
+    fn format_hover_markup() {
+        let hover = lsp_types::Hover {
+            contents: HoverContents::Markup(lsp_types::MarkupContent {
+                kind: lsp_types::MarkupKind::Markdown,
+                value: "## Documentation\nSome doc text".to_string(),
+            }),
+            range: None,
+        };
+        assert_eq!(format_hover_content(&hover), "## Documentation\nSome doc text");
+    }
+
+    #[test]
+    fn format_hover_empty_array() {
+        let hover = lsp_types::Hover {
+            contents: HoverContents::Array(vec![]),
+            range: None,
+        };
+        assert!(format_hover_content(&hover).is_empty());
+    }
+
+    // ========================================================================
+    // format_signature_help tests
+    // ========================================================================
+
+    #[test]
+    fn format_signature_help_single() {
+        let help = lsp_types::SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: "fn foo(x: i32, y: &str) -> bool".to_string(),
+                documentation: None,
+                parameters: None,
+                active_parameter: None,
+            }],
+            active_signature: Some(0),
+            active_parameter: None,
+        };
+        assert_eq!(format_signature_help(&help), "fn foo(x: i32, y: &str) -> bool");
+    }
+
+    #[test]
+    fn format_signature_help_multiple_active_second() {
+        let help = lsp_types::SignatureHelp {
+            signatures: vec![
+                lsp_types::SignatureInformation {
+                    label: "fn bar(a: u8)".to_string(),
+                    documentation: None,
+                    parameters: None,
+                    active_parameter: None,
+                },
+                lsp_types::SignatureInformation {
+                    label: "fn bar(a: u8, b: u8)".to_string(),
+                    documentation: None,
+                    parameters: None,
+                    active_parameter: None,
+                },
+            ],
+            active_signature: Some(1),
+            active_parameter: None,
+        };
+        assert_eq!(format_signature_help(&help), "fn bar(a: u8, b: u8)");
+    }
+
+    #[test]
+    fn format_signature_help_no_active() {
+        let help = lsp_types::SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: "fn default()".to_string(),
+                documentation: None,
+                parameters: None,
+                active_parameter: None,
+            }],
+            active_signature: None,
+            active_parameter: None,
+        };
+        assert_eq!(format_signature_help(&help), "fn default()");
+    }
+
+    #[test]
+    fn format_signature_help_empty_signatures() {
+        let help = lsp_types::SignatureHelp {
+            signatures: vec![],
+            active_signature: None,
+            active_parameter: None,
+        };
+        assert!(format_signature_help(&help).is_empty());
+    }
+
+    // ========================================================================
+    // Command metadata tests (Hover + SignatureHelp)
+    // ========================================================================
+
+    #[test]
+    fn hover_command_metadata() {
+        use reovim_driver_command::Command;
+        let cmd = HoverCommand;
+        assert_eq!(cmd.id(), ids::HOVER);
+        assert!(!cmd.description().is_empty());
+    }
+
+    #[test]
+    fn signature_help_command_metadata() {
+        use reovim_driver_command::Command;
+        let cmd = SignatureHelpCommand;
+        assert_eq!(cmd.id(), ids::SIGNATURE_HELP);
+        assert!(!cmd.description().is_empty());
+    }
+
+    #[test]
+    fn command_handlers_count() {
+        let handlers = command_handlers();
+        assert_eq!(handlers.len(), 4);
     }
 }

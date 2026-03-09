@@ -78,6 +78,14 @@ impl Module for VimLspModule {
                 .with_modes(&["vim:normal"])
                 .with_category("lsp")
                 .with_description("Find references (LSP)"),
+            KeybindingRegistration::new("K", lsp_nav::HOVER)
+                .with_modes(&["vim:normal"])
+                .with_category("lsp")
+                .with_description("Show hover information (LSP)"),
+            KeybindingRegistration::new("<C-k>", lsp_nav::SIGNATURE_HELP)
+                .with_modes(&["vim:insert"])
+                .with_category("lsp")
+                .with_description("Show signature help (LSP)"),
         ]
     }
 }
@@ -141,7 +149,7 @@ mod tests {
     #[test]
     fn keybindings_count() {
         let module = VimLspModule::new();
-        assert_eq!(module.keybindings().len(), 2);
+        assert_eq!(module.keybindings().len(), 4);
     }
 
     #[test]
@@ -150,14 +158,35 @@ mod tests {
         let keys: Vec<_> = module.keybindings().iter().map(|kb| kb.keys).collect();
         assert!(keys.contains(&"gd"));
         assert!(keys.contains(&"gr"));
+        assert!(keys.contains(&"K"));
+        assert!(keys.contains(&"<C-k>"));
     }
 
     #[test]
-    fn keybindings_target_vim_normal() {
+    fn keybindings_normal_mode() {
         let module = VimLspModule::new();
-        for kb in module.keybindings() {
-            assert!(kb.modes.contains(&"vim:normal"));
-        }
+        let normal_keys: Vec<_> = module
+            .keybindings()
+            .into_iter()
+            .filter(|kb| kb.modes.contains(&"vim:normal"))
+            .map(|kb| kb.keys)
+            .collect();
+        assert!(normal_keys.contains(&"gd"));
+        assert!(normal_keys.contains(&"gr"));
+        assert!(normal_keys.contains(&"K"));
+    }
+
+    #[test]
+    fn keybindings_insert_mode() {
+        let module = VimLspModule::new();
+        assert!(
+            module
+                .keybindings()
+                .into_iter()
+                .filter(|kb| kb.modes.contains(&"vim:insert"))
+                .map(|kb| kb.keys)
+                .any(|k| k == "<C-k>")
+        );
     }
 
     #[test]

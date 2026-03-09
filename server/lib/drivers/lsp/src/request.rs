@@ -6,7 +6,9 @@
 use std::fmt;
 
 use {
-    lsp_types::{CompletionResponse, GotoDefinitionResponse, Hover, Location, Position, Uri},
+    lsp_types::{
+        CompletionResponse, GotoDefinitionResponse, Hover, Location, Position, SignatureHelp, Uri,
+    },
     reovim_kernel::api::v1::OneshotSender,
 };
 
@@ -99,6 +101,22 @@ pub enum LspRequest {
         /// Response channel.
         response_tx: OneshotSender<NavigationResult<Option<CompletionResponse>>>,
     },
+    /// Notify server that a document was saved.
+    DidSave {
+        /// Document URI.
+        uri: Uri,
+        /// Document content (included if server requests it via save options).
+        text: Option<String>,
+    },
+    /// Request signature help at a position.
+    SignatureHelp {
+        /// Document URI.
+        uri: Uri,
+        /// Cursor position.
+        position: Position,
+        /// Response channel.
+        response_tx: OneshotSender<NavigationResult<Option<SignatureHelp>>>,
+    },
     /// Request server shutdown.
     Shutdown,
 }
@@ -147,6 +165,15 @@ impl fmt::Debug for LspRequest {
                 .finish_non_exhaustive(),
             Self::Completion { uri, position, .. } => f
                 .debug_struct("Completion")
+                .field("uri", uri)
+                .field("position", position)
+                .finish_non_exhaustive(),
+            Self::DidSave { uri, .. } => f
+                .debug_struct("DidSave")
+                .field("uri", uri)
+                .finish_non_exhaustive(),
+            Self::SignatureHelp { uri, position, .. } => f
+                .debug_struct("SignatureHelp")
                 .field("uri", uri)
                 .field("position", position)
                 .finish_non_exhaustive(),
@@ -261,5 +288,41 @@ mod tests {
         let debug_str = format!("{req:?}");
         assert!(debug_str.contains("Hover"));
         assert!(debug_str.contains("position"));
+    }
+
+    #[test]
+    fn test_did_save_debug() {
+        let req = LspRequest::DidSave {
+            uri: make_uri("file:///test.rs"),
+            text: Some("fn main() {}".to_string()),
+        };
+        let debug_str = format!("{req:?}");
+        assert!(debug_str.contains("DidSave"));
+        assert!(debug_str.contains("test.rs"));
+        // text should NOT be in debug output (finish_non_exhaustive)
+    }
+
+    #[test]
+    fn test_did_save_no_text_debug() {
+        let req = LspRequest::DidSave {
+            uri: make_uri("file:///test.rs"),
+            text: None,
+        };
+        let debug_str = format!("{req:?}");
+        assert!(debug_str.contains("DidSave"));
+    }
+
+    #[test]
+    fn test_signature_help_debug() {
+        let (tx, _rx) = reovim_kernel::api::v1::oneshot();
+        let req = LspRequest::SignatureHelp {
+            uri: make_uri("file:///test.rs"),
+            position: Position::new(3, 7),
+            response_tx: tx,
+        };
+        let debug_str = format!("{req:?}");
+        assert!(debug_str.contains("SignatureHelp"));
+        assert!(debug_str.contains("position"));
+        assert!(!debug_str.contains("response_tx"));
     }
 }
