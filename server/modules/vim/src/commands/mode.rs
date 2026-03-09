@@ -291,6 +291,12 @@ impl CommandHandler for ExitCommandLineMode {
         // Get the cmdline input
         let cmdline = runtime.ext_mut::<CmdlineState>().take_cmdline_input();
 
+        // Exit cmdline and return to normal BEFORE dispatching the action.
+        // This ensures any mode transition made by the action (e.g., push_mode)
+        // stacks on top of NORMAL rather than being clobbered by set_mode below.
+        runtime.ext_mut::<CmdlineState>().exit();
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
+
         match prompt {
             CmdlinePrompt::SearchForward | CmdlinePrompt::SearchBackward => {
                 // Handle search
@@ -319,9 +325,6 @@ impl CommandHandler for ExitCommandLineMode {
             }
         }
 
-        // Deactivate cmdline and clear input
-        runtime.ext_mut::<CmdlineState>().exit();
-        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
