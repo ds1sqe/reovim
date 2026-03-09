@@ -526,7 +526,7 @@ fn build_option_notification(
 ///
 /// Returns `None` if the bridge is unknown or the extension has no state.
 #[allow(clippy::cast_possible_truncation)]
-fn build_extension_notification(
+pub(crate) fn build_extension_notification(
     kind: &str,
     session: &Session,
     timestamp: u64,

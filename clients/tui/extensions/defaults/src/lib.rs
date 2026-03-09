@@ -52,7 +52,7 @@ mod tests {
         assert!(kinds.contains(&"microscope"));
         assert!(kinds.contains(&"completion"));
         assert!(kinds.contains(&"explorer"));
-        assert!(kinds.contains(&"tetromino"));
+        assert!(kinds.contains(&"polyblocks"));
         assert!(kinds.contains(&"range-finder-jump"));
         assert!(kinds.contains(&"range-finder-fold"));
     }

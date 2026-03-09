@@ -10,13 +10,15 @@ pub mod render;
 use reovim_driver_display::render_backend::{RenderBackend, TuiExtension};
 
 /// Board dimensions from the server game logic.
-const BOARD_HEIGHT: usize = 22;
-const BOARD_WIDTH: usize = 12;
+const BOARD_HEIGHT: usize = 16;
+const BOARD_WIDTH: usize = 8;
 
 /// Deserialized tetromino state from server notification.
 #[derive(Debug, Default)]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct TetrominoData {
     pub active: bool,
+    pub screen: String,
     pub paused: bool,
     pub game_over: bool,
     pub score: u64,
@@ -28,6 +30,14 @@ pub(crate) struct TetrominoData {
     pub active_piece: Option<PieceData>,
     pub ghost_piece: Option<PieceData>,
     pub held_piece: Option<HeldPieceData>,
+    pub rooms: Vec<RoomData>,
+    pub players: Vec<PlayerData>,
+    pub self_ready: bool,
+    pub room_id: u64,
+    pub opponents: Vec<OpponentData>,
+    pub countdown_remaining: u64,
+    pub winner_id: Option<u64>,
+    pub result_players: Vec<ResultPlayerData>,
 }
 
 /// Deserialized held piece data (type + color only, no cells).
@@ -42,6 +52,37 @@ pub(crate) struct HeldPieceData {
 pub(crate) struct PieceData {
     pub color: String,
     pub cells: Vec<(i64, i64)>,
+}
+
+/// Deserialized room data for lobby display.
+#[derive(Debug)]
+pub(crate) struct RoomData {
+    pub id: u64,
+    pub player_count: u64,
+    pub status: String,
+}
+
+/// Deserialized player data for room display.
+#[derive(Debug)]
+pub(crate) struct PlayerData {
+    pub id: u64,
+    pub ready: bool,
+}
+
+/// Deserialized opponent data for multiplayer display.
+#[derive(Debug)]
+pub(crate) struct OpponentData {
+    pub client_id: u64,
+    pub board: Vec<Vec<String>>,
+    pub score: u64,
+    pub game_over: bool,
+}
+
+/// Deserialized player score data for result screen.
+#[derive(Debug)]
+pub(crate) struct ResultPlayerData {
+    pub id: u64,
+    pub score: u64,
 }
 
 /// Tetromino game TUI extension.
@@ -87,9 +128,152 @@ fn parse_piece_data(json: &serde_json::Value) -> Option<PieceData> {
     Some(PieceData { color, cells })
 }
 
+/// Parse lobby screen fields from JSON.
+fn parse_lobby(data: &mut TetrominoData, json: &serde_json::Value) {
+    data.rooms = json["rooms"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| {
+                    Some(RoomData {
+                        id: r["id"].as_u64()?,
+                        player_count: r["playerCount"].as_u64().unwrap_or(0),
+                        status: r["status"].as_str().unwrap_or("").to_owned(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+}
+
+/// Parse result screen fields from JSON.
+fn parse_result(data: &mut TetrominoData, json: &serde_json::Value) {
+    data.winner_id = json["winnerId"].as_u64();
+    data.result_players = json["players"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|p| {
+                    Some(ResultPlayerData {
+                        id: p["id"].as_u64()?,
+                        score: p["score"].as_u64().unwrap_or(0),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+}
+
+/// Parse countdown screen fields from JSON.
+fn parse_countdown(data: &mut TetrominoData, json: &serde_json::Value) {
+    data.room_id = json["roomId"].as_u64().unwrap_or(0);
+    data.countdown_remaining = json["remaining"].as_u64().unwrap_or(0);
+}
+
+/// Parse room screen fields from JSON.
+fn parse_room(data: &mut TetrominoData, json: &serde_json::Value) {
+    data.room_id = json["roomId"].as_u64().unwrap_or(0);
+    data.self_ready = json["selfReady"].as_bool().unwrap_or(false);
+    data.players = json["players"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|p| {
+                    Some(PlayerData {
+                        id: p["id"].as_u64()?,
+                        ready: p["ready"].as_bool().unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+}
+
+/// Parse game screen fields from JSON.
+fn parse_game_screen(data: &mut TetrominoData, json: &serde_json::Value) {
+    data.paused = json["paused"].as_bool().unwrap_or(false);
+    data.game_over = json["gameOver"].as_bool().unwrap_or(false);
+    data.score = json["score"].as_u64().unwrap_or(0);
+    data.level = json["level"].as_u64().unwrap_or(0);
+    data.lines_cleared = json["linesCleared"].as_u64().unwrap_or(0);
+    json["nextPiece"]
+        .as_str()
+        .unwrap_or("")
+        .clone_into(&mut data.next_piece);
+    json["nextPieceColor"]
+        .as_str()
+        .unwrap_or("")
+        .clone_into(&mut data.next_piece_color);
+
+    // Parse board
+    if let Some(rows) = json["board"].as_array() {
+        data.board = rows
+            .iter()
+            .map(|row| {
+                row.as_array()
+                    .map(|cols| {
+                        cols.iter()
+                            .map(|c| c.as_str().unwrap_or("").to_owned())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+    }
+
+    data.active_piece = parse_piece_data(&json["activePiece"]);
+    data.ghost_piece = parse_piece_data(&json["ghostPiece"]);
+
+    if json["heldPiece"].is_object() {
+        let held = &json["heldPiece"];
+        data.held_piece = Some(HeldPieceData {
+            piece_type: held["type"].as_str().unwrap_or("").to_owned(),
+            color: held["color"].as_str().unwrap_or("").to_owned(),
+        });
+    } else {
+        data.held_piece = None;
+    }
+
+    // Parse opponents (multiplayer)
+    data.opponents = json["opponents"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|o| {
+                    Some(OpponentData {
+                        client_id: o["clientId"].as_u64()?,
+                        board: parse_board_json(&o["board"]),
+                        score: o["score"].as_u64().unwrap_or(0),
+                        game_over: o["gameOver"].as_bool().unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+}
+
+/// Parse a board JSON array into Vec<Vec<String>>.
+fn parse_board_json(json: &serde_json::Value) -> Vec<Vec<String>> {
+    json.as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|row| {
+                    row.as_array()
+                        .map(|cols| {
+                            cols.iter()
+                                .map(|c| c.as_str().unwrap_or("").to_owned())
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 impl TuiExtension for TetrominoExtension {
     fn kind(&self) -> &'static str {
-        "tetromino"
+        "polyblocks"
     }
 
     fn is_active(&self) -> bool {
@@ -108,51 +292,22 @@ impl TuiExtension for TetrominoExtension {
         }
 
         self.data.active = true;
-        self.data.paused = json["paused"].as_bool().unwrap_or(false);
-        self.data.game_over = json["gameOver"].as_bool().unwrap_or(false);
-        self.data.score = json["score"].as_u64().unwrap_or(0);
-        self.data.level = json["level"].as_u64().unwrap_or(0);
-        self.data.lines_cleared = json["linesCleared"].as_u64().unwrap_or(0);
-        json["nextPiece"]
+
+        // Parse screen field
+        json["screen"]
             .as_str()
-            .unwrap_or("")
-            .clone_into(&mut self.data.next_piece);
-        json["nextPieceColor"]
-            .as_str()
-            .unwrap_or("")
-            .clone_into(&mut self.data.next_piece_color);
+            .unwrap_or("game")
+            .clone_into(&mut self.data.screen);
 
-        // Parse board (2D array of color strings)
-        if let Some(rows) = json["board"].as_array() {
-            self.data.board = rows
-                .iter()
-                .map(|row| {
-                    row.as_array()
-                        .map(|cols| {
-                            cols.iter()
-                                .map(|c| c.as_str().unwrap_or("").to_owned())
-                                .collect()
-                        })
-                        .unwrap_or_default()
-                })
-                .collect();
-        }
-
-        // Parse active piece
-        self.data.active_piece = parse_piece_data(&json["activePiece"]);
-
-        // Parse ghost piece
-        self.data.ghost_piece = parse_piece_data(&json["ghostPiece"]);
-
-        // Parse held piece
-        if json["heldPiece"].is_object() {
-            let held = &json["heldPiece"];
-            self.data.held_piece = Some(HeldPieceData {
-                piece_type: held["type"].as_str().unwrap_or("").to_owned(),
-                color: held["color"].as_str().unwrap_or("").to_owned(),
-            });
-        } else {
-            self.data.held_piece = None;
+        match self.data.screen.as_str() {
+            "menu" => {
+                // No extra data for menu
+            }
+            "lobby" => parse_lobby(&mut self.data, &json),
+            "room" => parse_room(&mut self.data, &json),
+            "countdown" => parse_countdown(&mut self.data, &json),
+            "result" => parse_result(&mut self.data, &json),
+            _ => parse_game_screen(&mut self.data, &json),
         }
     }
 
@@ -168,7 +323,7 @@ mod tests {
     #[test]
     fn extension_kind() {
         let ext = TetrominoExtension::new();
-        assert_eq!(ext.kind(), "tetromino");
+        assert_eq!(ext.kind(), "polyblocks");
     }
 
     #[test]
@@ -207,7 +362,7 @@ mod tests {
         assert_eq!(ext.data.score, 100);
         assert_eq!(ext.data.level, 1);
         assert_eq!(ext.data.lines_cleared, 5);
-        assert_eq!(ext.data.next_piece, "T");
+        assert_eq!(ext.data.next_piece, "Tee");
         assert_eq!(ext.data.next_piece_color, "rose");
     }
 
@@ -231,14 +386,14 @@ mod tests {
         let mut ext = TetrominoExtension::new();
         ext.apply_notification(&make_game_json(false, false, 0, 0, 0));
         let piece = ext.data.active_piece.as_ref().unwrap();
-        assert_eq!(piece.color, "amber");
+        assert_eq!(piece.color, "lime");
         assert_eq!(piece.cells.len(), 4);
     }
 
     #[test]
     fn apply_notification_no_active_piece() {
         let mut ext = TetrominoExtension::new();
-        let json = r#"{"active":true,"paused":false,"gameOver":true,"score":0,"level":0,"linesCleared":0,"nextPiece":"T","nextPieceColor":"rose","board":[],"activePiece":null}"#;
+        let json = r#"{"active":true,"screen":"game","paused":false,"gameOver":true,"score":0,"level":0,"linesCleared":0,"nextPiece":"Tee","nextPieceColor":"rose","board":[],"activePiece":null}"#;
         ext.apply_notification(json);
         assert!(ext.data.active_piece.is_none());
     }
@@ -327,7 +482,7 @@ mod tests {
         ext.apply_notification(&make_game_json(false, false, 0, 0, 0));
         assert!(ext.data.ghost_piece.is_some());
         let ghost = ext.data.ghost_piece.as_ref().unwrap();
-        assert_eq!(ghost.color, "amber");
+        assert_eq!(ghost.color, "lime");
     }
 
     #[test]
@@ -337,7 +492,7 @@ mod tests {
         ext.apply_notification(&json);
         assert!(ext.data.held_piece.is_some());
         let held = ext.data.held_piece.as_ref().unwrap();
-        assert_eq!(held.piece_type, "T");
+        assert_eq!(held.piece_type, "Tee");
         assert_eq!(held.color, "rose");
     }
 
@@ -356,13 +511,134 @@ mod tests {
     #[test]
     fn parse_piece_data_valid() {
         let json: serde_json::Value = serde_json::json!({
-            "type": "I",
-            "color": "amber",
+            "type": "Bar",
+            "color": "lime",
             "cells": [[0, 4], [0, 5], [0, 6], [0, 7]],
         });
         let piece = super::parse_piece_data(&json).unwrap();
-        assert_eq!(piece.color, "amber");
+        assert_eq!(piece.color, "lime");
         assert_eq!(piece.cells.len(), 4);
+    }
+
+    // =========================================================================
+    // Menu / Lobby / Room screen tests
+    // =========================================================================
+
+    #[test]
+    fn apply_notification_menu_screen() {
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"menu"}"#);
+        assert!(ext.is_active());
+        assert_eq!(ext.data.screen, "menu");
+    }
+
+    #[test]
+    fn apply_notification_lobby_screen() {
+        let mut ext = TetrominoExtension::new();
+        let json = r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":2,"status":"Waiting"}]}"#;
+        ext.apply_notification(json);
+        assert!(ext.is_active());
+        assert_eq!(ext.data.screen, "lobby");
+        assert_eq!(ext.data.rooms.len(), 1);
+        assert_eq!(ext.data.rooms[0].id, 1);
+        assert_eq!(ext.data.rooms[0].player_count, 2);
+    }
+
+    #[test]
+    fn apply_notification_lobby_empty_rooms() {
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"lobby","rooms":[]}"#);
+        assert!(ext.data.rooms.is_empty());
+    }
+
+    #[test]
+    fn apply_notification_room_screen() {
+        let mut ext = TetrominoExtension::new();
+        let json = r#"{"active":true,"screen":"room","roomId":1,"selfReady":true,"players":[{"id":1,"ready":true},{"id":2,"ready":false}]}"#;
+        ext.apply_notification(json);
+        assert_eq!(ext.data.screen, "room");
+        assert_eq!(ext.data.room_id, 1);
+        assert!(ext.data.self_ready);
+        assert_eq!(ext.data.players.len(), 2);
+        assert!(ext.data.players[0].ready);
+        assert!(!ext.data.players[1].ready);
+    }
+
+    #[test]
+    fn apply_notification_game_with_opponents() {
+        let mut ext = TetrominoExtension::new();
+        let json = make_game_json_with_opponents();
+        ext.apply_notification(&json);
+        assert_eq!(ext.data.opponents.len(), 1);
+        assert_eq!(ext.data.opponents[0].client_id, 2);
+        assert_eq!(ext.data.opponents[0].score, 50);
+    }
+
+    #[test]
+    fn room_data_debug() {
+        let room = RoomData {
+            id: 1,
+            player_count: 2,
+            status: "Waiting".to_owned(),
+        };
+        let debug = format!("{room:?}");
+        assert!(debug.contains("RoomData"));
+    }
+
+    #[test]
+    fn player_data_debug() {
+        let player = PlayerData { id: 1, ready: true };
+        let debug = format!("{player:?}");
+        assert!(debug.contains("PlayerData"));
+    }
+
+    #[test]
+    fn opponent_data_debug() {
+        let opp = OpponentData {
+            client_id: 2,
+            board: vec![],
+            score: 100,
+            game_over: false,
+        };
+        let debug = format!("{opp:?}");
+        assert!(debug.contains("OpponentData"));
+    }
+
+    #[test]
+    fn held_piece_data_debug() {
+        let held = HeldPieceData {
+            piece_type: "Tee".to_owned(),
+            color: "rose".to_owned(),
+        };
+        let debug = format!("{held:?}");
+        assert!(debug.contains("rose"));
+    }
+
+    #[test]
+    fn render_menu_no_panic() {
+        use reovim_driver_display::FrameBuffer;
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"menu"}"#);
+        let mut fb = FrameBuffer::new(80, 30);
+        ext.render(&mut fb);
+    }
+
+    #[test]
+    fn render_lobby_no_panic() {
+        use reovim_driver_display::FrameBuffer;
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":1,"status":"Waiting"}]}"#);
+        let mut fb = FrameBuffer::new(80, 30);
+        ext.render(&mut fb);
+    }
+
+    #[test]
+    fn render_room_no_panic() {
+        use reovim_driver_display::FrameBuffer;
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"room","roomId":1,"selfReady":false,"players":[{"id":1,"ready":false}]}"#);
+        let mut fb = FrameBuffer::new(80, 30);
+        ext.render(&mut fb);
     }
 
     /// Helper to build a full game JSON notification.
@@ -377,17 +653,17 @@ mod tests {
         let active_piece = if game_over {
             "null".to_owned()
         } else {
-            r#"{"type":"I","color":"amber","cells":[[0,4],[0,5],[0,6],[0,7]]}"#.to_owned()
+            r#"{"type":"Bar","color":"lime","cells":[[0,2],[0,3],[0,4],[0,5]]}"#.to_owned()
         };
 
         let ghost_piece = if game_over {
             "null".to_owned()
         } else {
-            r#"{"type":"I","color":"amber","cells":[[20,4],[20,5],[20,6],[20,7]]}"#.to_owned()
+            r#"{"type":"Bar","color":"lime","cells":[[15,2],[15,3],[15,4],[15,5]]}"#.to_owned()
         };
 
         format!(
-            r#"{{"active":true,"paused":{paused},"gameOver":{game_over},"score":{score},"level":{level},"linesCleared":{lines},"nextPiece":"T","nextPieceColor":"rose","board":{board},"activePiece":{active_piece},"ghostPiece":{ghost_piece},"heldPiece":null}}"#
+            r#"{{"active":true,"screen":"game","paused":{paused},"gameOver":{game_over},"score":{score},"level":{level},"linesCleared":{lines},"nextPiece":"Tee","nextPieceColor":"rose","board":{board},"activePiece":{active_piece},"ghostPiece":{ghost_piece},"heldPiece":null}}"#
         )
     }
 
@@ -399,7 +675,75 @@ mod tests {
         lines: u64,
     ) -> String {
         let base = make_game_json(paused, game_over, score, level, lines);
-        // Replace "heldPiece":null with an actual held piece
-        base.replace(r#""heldPiece":null"#, r#""heldPiece":{"type":"T","color":"rose"}"#)
+        base.replace(r#""heldPiece":null"#, r#""heldPiece":{"type":"Tee","color":"rose"}"#)
+    }
+
+    fn make_game_json_with_opponents() -> String {
+        let base = make_game_json(false, false, 100, 1, 5);
+        // Add opponents array
+        let opponents = r#","opponents":[{"clientId":2,"board":[],"score":50,"gameOver":false}]}"#;
+        base.strip_suffix('}').unwrap().to_owned() + opponents
+    }
+
+    #[test]
+    fn apply_notification_countdown_screen() {
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"countdown","roomId":1,"remaining":2}"#);
+        assert!(ext.is_active());
+        assert_eq!(ext.data.screen, "countdown");
+        assert_eq!(ext.data.room_id, 1);
+        assert_eq!(ext.data.countdown_remaining, 2);
+    }
+
+    #[test]
+    fn render_countdown_no_panic() {
+        use reovim_driver_display::FrameBuffer;
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"countdown","roomId":1,"remaining":3}"#);
+        let mut fb = FrameBuffer::new(80, 30);
+        ext.render(&mut fb);
+    }
+
+    #[test]
+    fn apply_notification_result_screen() {
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(r#"{"active":true,"screen":"result","winnerId":2,"players":[{"id":1,"score":100},{"id":2,"score":500}]}"#);
+        assert!(ext.is_active());
+        assert_eq!(ext.data.screen, "result");
+        assert_eq!(ext.data.winner_id, Some(2));
+        assert_eq!(ext.data.result_players.len(), 2);
+        assert_eq!(ext.data.result_players[0].id, 1);
+        assert_eq!(ext.data.result_players[0].score, 100);
+        assert_eq!(ext.data.result_players[1].id, 2);
+        assert_eq!(ext.data.result_players[1].score, 500);
+    }
+
+    #[test]
+    fn apply_notification_result_no_winner() {
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(
+            r#"{"active":true,"screen":"result","winnerId":null,"players":[{"id":1,"score":0}]}"#,
+        );
+        assert_eq!(ext.data.screen, "result");
+        assert!(ext.data.winner_id.is_none());
+        assert_eq!(ext.data.result_players.len(), 1);
+    }
+
+    #[test]
+    fn render_result_no_panic() {
+        use reovim_driver_display::FrameBuffer;
+        let mut ext = TetrominoExtension::new();
+        ext.apply_notification(
+            r#"{"active":true,"screen":"result","winnerId":1,"players":[{"id":1,"score":300}]}"#,
+        );
+        let mut fb = FrameBuffer::new(80, 30);
+        ext.render(&mut fb);
+    }
+
+    #[test]
+    fn result_player_data_debug() {
+        let p = ResultPlayerData { id: 1, score: 999 };
+        let debug = format!("{p:?}");
+        assert!(debug.contains("999"));
     }
 }

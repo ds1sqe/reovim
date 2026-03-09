@@ -1,62 +1,75 @@
 //! Pure tetromino game logic with zero framework dependencies.
 //!
-//! All functions are pure and testable. The board is 12 columns x 22 rows,
+//! All functions are pure and testable. The board is 8 columns x 16 rows,
 //! with row 0 at the top. Pieces use the standard 7 tetrominoes with
 //! nudge-based wall kicks.
 
 /// Board width in cells.
-pub const BOARD_WIDTH: usize = 12;
+pub const BOARD_WIDTH: usize = 8;
 
 /// Board height in cells.
-pub const BOARD_HEIGHT: usize = 22;
+pub const BOARD_HEIGHT: usize = 16;
 
-/// Cell color corresponding to each tetromino type.
+/// Cell color corresponding to each piece type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BlockColor {
-    Amber,  // I
-    Teal,   // O
-    Rose,   // T
-    Sky,    // S
-    Lime,   // Z
-    Violet, // J
-    Coral,  // L
+    White,  // Pip
+    Amber,  // Dash
+    Teal,   // Line
+    Sky,    // Arc
+    Lime,   // Bar
+    Rose,   // Tee
+    Violet, // Skew
+    Coral,  // Zag
+    Blue,   // Bend
+    Gold,   // Star
+    Grey,   // Garbage blocks
 }
 
-/// The 7 standard tetrominoes.
+/// The 10 polyblocks piece types (mixed sizes, 1-5 cells).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PieceType {
-    I,
-    O,
-    T,
-    S,
-    Z,
-    J,
-    L,
+    Pip,  // 1 cell
+    Dash, // 2 cells
+    Line, // 3 cells
+    Arc,  // 3 cells
+    Bar,  // 4 cells (horizontal/vertical)
+    Tee,  // 4 cells (T-shape)
+    Skew, // 4 cells (S-shape)
+    Zag,  // 4 cells (Z-shape)
+    Bend, // 4 cells (J-shape)
+    Star, // 5 cells (plus shape)
 }
 
 impl PieceType {
     /// All piece types for iteration.
-    pub const ALL: [Self; 7] = [
-        Self::I,
-        Self::O,
-        Self::T,
-        Self::S,
-        Self::Z,
-        Self::J,
-        Self::L,
+    pub const ALL: [Self; 10] = [
+        Self::Pip,
+        Self::Dash,
+        Self::Line,
+        Self::Arc,
+        Self::Bar,
+        Self::Tee,
+        Self::Skew,
+        Self::Zag,
+        Self::Bend,
+        Self::Star,
     ];
 
     /// Get the block color for this piece type.
     #[must_use]
     pub const fn color(self) -> BlockColor {
         match self {
-            Self::I => BlockColor::Amber,
-            Self::O => BlockColor::Teal,
-            Self::T => BlockColor::Rose,
-            Self::S => BlockColor::Sky,
-            Self::Z => BlockColor::Lime,
-            Self::J => BlockColor::Violet,
-            Self::L => BlockColor::Coral,
+            Self::Pip => BlockColor::White,
+            Self::Dash => BlockColor::Amber,
+            Self::Line => BlockColor::Teal,
+            Self::Arc => BlockColor::Sky,
+            Self::Bar => BlockColor::Lime,
+            Self::Tee => BlockColor::Rose,
+            Self::Skew => BlockColor::Violet,
+            Self::Zag => BlockColor::Coral,
+            Self::Bend => BlockColor::Blue,
+            Self::Star => BlockColor::Gold,
         }
     }
 
@@ -64,13 +77,16 @@ impl PieceType {
     #[must_use]
     pub const fn color_name(self) -> &'static str {
         match self {
-            Self::I => "amber",
-            Self::O => "teal",
-            Self::T => "rose",
-            Self::S => "sky",
-            Self::Z => "lime",
-            Self::J => "violet",
-            Self::L => "coral",
+            Self::Pip => "white",
+            Self::Dash => "amber",
+            Self::Line => "teal",
+            Self::Arc => "sky",
+            Self::Bar => "lime",
+            Self::Tee => "rose",
+            Self::Skew => "violet",
+            Self::Zag => "coral",
+            Self::Bend => "blue",
+            Self::Star => "gold",
         }
     }
 
@@ -78,13 +94,16 @@ impl PieceType {
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::I => "I",
-            Self::O => "O",
-            Self::T => "T",
-            Self::S => "S",
-            Self::Z => "Z",
-            Self::J => "J",
-            Self::L => "L",
+            Self::Pip => "Pip",
+            Self::Dash => "Dash",
+            Self::Line => "Line",
+            Self::Arc => "Arc",
+            Self::Bar => "Bar",
+            Self::Tee => "Tee",
+            Self::Skew => "Skew",
+            Self::Zag => "Zag",
+            Self::Bend => "Bend",
+            Self::Star => "Star",
         }
     }
 }
@@ -156,41 +175,51 @@ pub struct GameState {
 
 /// Get the cell offsets for a piece at a given rotation.
 ///
-/// Returns 4 `(row, col)` offsets relative to the piece's origin.
+/// Returns `(row, col)` offsets relative to the piece's origin.
+/// Slice length varies by piece type (1-5 cells).
 #[must_use]
-pub const fn piece_cells(piece: PieceType, rotation: Rotation) -> [(i32, i32); 4] {
+pub const fn piece_cells(piece: PieceType, rotation: Rotation) -> &'static [(i32, i32)] {
     match piece {
-        PieceType::I => match rotation {
-            Rotation::R0 | Rotation::R180 => [(0, 0), (0, 1), (0, 2), (0, 3)],
-            Rotation::R90 | Rotation::R270 => [(0, 0), (1, 0), (2, 0), (3, 0)],
+        PieceType::Pip => &[(0, 0)],
+        PieceType::Dash => match rotation {
+            Rotation::R0 | Rotation::R180 => &[(0, 0), (0, 1)],
+            Rotation::R90 | Rotation::R270 => &[(0, 0), (1, 0)],
         },
-        PieceType::O => [(0, 0), (0, 1), (1, 0), (1, 1)],
-        PieceType::T => match rotation {
-            Rotation::R0 => [(0, 0), (0, 1), (0, 2), (1, 1)],
-            Rotation::R90 => [(0, 0), (1, 0), (2, 0), (1, 1)],
-            Rotation::R180 => [(1, 0), (1, 1), (1, 2), (0, 1)],
-            Rotation::R270 => [(0, 1), (1, 1), (2, 1), (1, 0)],
+        PieceType::Line => match rotation {
+            Rotation::R0 | Rotation::R180 => &[(0, 0), (0, 1), (0, 2)],
+            Rotation::R90 | Rotation::R270 => &[(0, 0), (1, 0), (2, 0)],
         },
-        PieceType::S => match rotation {
-            Rotation::R0 | Rotation::R180 => [(0, 1), (0, 2), (1, 0), (1, 1)],
-            Rotation::R90 | Rotation::R270 => [(0, 0), (1, 0), (1, 1), (2, 1)],
+        PieceType::Arc => match rotation {
+            Rotation::R0 => &[(0, 0), (0, 1), (1, 0)],
+            Rotation::R90 => &[(0, 0), (0, 1), (1, 1)],
+            Rotation::R180 => &[(0, 1), (1, 0), (1, 1)],
+            Rotation::R270 => &[(0, 0), (1, 0), (1, 1)],
         },
-        PieceType::Z => match rotation {
-            Rotation::R0 | Rotation::R180 => [(0, 0), (0, 1), (1, 1), (1, 2)],
-            Rotation::R90 | Rotation::R270 => [(0, 1), (1, 0), (1, 1), (2, 0)],
+        PieceType::Bar => match rotation {
+            Rotation::R0 | Rotation::R180 => &[(0, 0), (0, 1), (0, 2), (0, 3)],
+            Rotation::R90 | Rotation::R270 => &[(0, 0), (1, 0), (2, 0), (3, 0)],
         },
-        PieceType::J => match rotation {
-            Rotation::R0 => [(0, 0), (1, 0), (1, 1), (1, 2)],
-            Rotation::R90 => [(0, 0), (0, 1), (1, 0), (2, 0)],
-            Rotation::R180 => [(0, 0), (0, 1), (0, 2), (1, 2)],
-            Rotation::R270 => [(0, 1), (1, 1), (2, 0), (2, 1)],
+        PieceType::Tee => match rotation {
+            Rotation::R0 => &[(0, 0), (0, 1), (0, 2), (1, 1)],
+            Rotation::R90 => &[(0, 0), (1, 0), (2, 0), (1, 1)],
+            Rotation::R180 => &[(0, 1), (1, 0), (1, 1), (1, 2)],
+            Rotation::R270 => &[(0, 1), (1, 0), (1, 1), (2, 1)],
         },
-        PieceType::L => match rotation {
-            Rotation::R0 => [(0, 2), (1, 0), (1, 1), (1, 2)],
-            Rotation::R90 => [(0, 0), (1, 0), (2, 0), (2, 1)],
-            Rotation::R180 => [(0, 0), (0, 1), (0, 2), (1, 0)],
-            Rotation::R270 => [(0, 0), (0, 1), (1, 1), (2, 1)],
+        PieceType::Skew => match rotation {
+            Rotation::R0 | Rotation::R180 => &[(0, 1), (0, 2), (1, 0), (1, 1)],
+            Rotation::R90 | Rotation::R270 => &[(0, 0), (1, 0), (1, 1), (2, 1)],
         },
+        PieceType::Zag => match rotation {
+            Rotation::R0 | Rotation::R180 => &[(0, 0), (0, 1), (1, 1), (1, 2)],
+            Rotation::R90 | Rotation::R270 => &[(0, 1), (1, 0), (1, 1), (2, 0)],
+        },
+        PieceType::Bend => match rotation {
+            Rotation::R0 => &[(0, 0), (1, 0), (1, 1), (1, 2)],
+            Rotation::R90 => &[(0, 0), (0, 1), (1, 0), (2, 0)],
+            Rotation::R180 => &[(0, 0), (0, 1), (0, 2), (1, 2)],
+            Rotation::R270 => &[(0, 1), (1, 1), (2, 0), (2, 1)],
+        },
+        PieceType::Star => &[(0, 1), (1, 0), (1, 1), (1, 2), (2, 1)],
     }
 }
 
@@ -202,7 +231,7 @@ pub const fn piece_cells(piece: PieceType, rotation: Rotation) -> [(i32, i32); 4
     clippy::cast_sign_loss
 )]
 pub fn collides(board: &Board, piece: &ActivePiece) -> bool {
-    for (dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
+    for &(dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
         let r = piece.row + dr;
         let c = piece.col + dc;
         if c < 0 || c >= BOARD_WIDTH as i32 || r >= BOARD_HEIGHT as i32 {
@@ -224,7 +253,7 @@ pub fn collides(board: &Board, piece: &ActivePiece) -> bool {
 )]
 pub fn lock_piece(board: &mut Board, piece: &ActivePiece) {
     let color = piece.piece_type.color();
-    for (dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
+    for &(dr, dc) in piece_cells(piece.piece_type, piece.rotation) {
         let r = piece.row + dr;
         let c = piece.col + dc;
         if r >= 0 && r < BOARD_HEIGHT as i32 && c >= 0 && c < BOARD_WIDTH as i32 {
@@ -305,8 +334,8 @@ const NUDGES_STANDARD: &[(i32, i32)] = &[
     (0, -1), // nudge up
 ];
 
-/// I-piece nudge offsets: standard + larger horizontal shifts.
-const NUDGES_I: &[(i32, i32)] = &[
+/// Wide-piece (Bar) nudge offsets: standard + larger horizontal shifts.
+const NUDGES_WIDE: &[(i32, i32)] = &[
     (0, 0),  // try in place
     (-1, 0), // nudge left
     (1, 0),  // nudge right
@@ -324,8 +353,8 @@ fn try_rotate_with_nudges(
     piece: &ActivePiece,
     to_rot: Rotation,
 ) -> Option<ActivePiece> {
-    let offsets = if piece.piece_type == PieceType::I {
-        NUDGES_I
+    let offsets = if piece.piece_type == PieceType::Bar {
+        NUDGES_WIDE
     } else {
         NUDGES_STANDARD
     };
@@ -415,14 +444,32 @@ pub fn hard_drop(board: &Board, piece: &ActivePiece) -> ActivePiece {
     }
 }
 
+/// R0 width of each piece type (for spawn centering).
+const fn piece_r0_width(piece: PieceType) -> i32 {
+    match piece {
+        PieceType::Pip => 1,
+        PieceType::Dash | PieceType::Arc => 2,
+        PieceType::Line
+        | PieceType::Tee
+        | PieceType::Skew
+        | PieceType::Zag
+        | PieceType::Bend
+        | PieceType::Star => 3,
+        PieceType::Bar => 4,
+    }
+}
+
 /// Spawn a new piece at the top center of the board.
+// BOARD_WIDTH is a small constant (8) — truncation/wrap is impossible.
 #[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 pub const fn spawn_piece(piece_type: PieceType) -> ActivePiece {
+    let width = piece_r0_width(piece_type);
     ActivePiece {
         piece_type,
         rotation: Rotation::R0,
         row: 0,
-        col: 4, // spawn column for 12-wide board
+        col: (BOARD_WIDTH as i32 - width) / 2,
     }
 }
 
@@ -506,6 +553,21 @@ pub fn absolute_cells(piece: &ActivePiece) -> Vec<(i32, i32)> {
         .collect()
 }
 
+/// Apply one garbage line: shift all rows up, insert garbage at bottom.
+///
+/// `gap_col` is the column index that remains empty. Clamped to valid range.
+/// Pure function — caller provides the random column.
+pub fn apply_garbage_line(game: &mut GameState, gap_col: usize) {
+    // Shift all rows up by 1
+    for row in 0..(BOARD_HEIGHT - 1) {
+        game.board[row] = game.board[row + 1];
+    }
+    // Fill bottom row with grey blocks, one gap
+    let mut garbage_row = [Some(BlockColor::Grey); BOARD_WIDTH];
+    garbage_row[gap_col.min(BOARD_WIDTH - 1)] = None;
+    game.board[BOARD_HEIGHT - 1] = garbage_row;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,58 +577,67 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn piece_type_all_has_seven() {
-        assert_eq!(PieceType::ALL.len(), 7);
+    fn piece_type_all_has_ten() {
+        assert_eq!(PieceType::ALL.len(), 10);
     }
 
     #[test]
     fn piece_type_colors() {
-        assert_eq!(PieceType::I.color(), BlockColor::Amber);
-        assert_eq!(PieceType::O.color(), BlockColor::Teal);
-        assert_eq!(PieceType::T.color(), BlockColor::Rose);
-        assert_eq!(PieceType::S.color(), BlockColor::Sky);
-        assert_eq!(PieceType::Z.color(), BlockColor::Lime);
-        assert_eq!(PieceType::J.color(), BlockColor::Violet);
-        assert_eq!(PieceType::L.color(), BlockColor::Coral);
+        assert_eq!(PieceType::Pip.color(), BlockColor::White);
+        assert_eq!(PieceType::Dash.color(), BlockColor::Amber);
+        assert_eq!(PieceType::Line.color(), BlockColor::Teal);
+        assert_eq!(PieceType::Arc.color(), BlockColor::Sky);
+        assert_eq!(PieceType::Bar.color(), BlockColor::Lime);
+        assert_eq!(PieceType::Tee.color(), BlockColor::Rose);
+        assert_eq!(PieceType::Skew.color(), BlockColor::Violet);
+        assert_eq!(PieceType::Zag.color(), BlockColor::Coral);
+        assert_eq!(PieceType::Bend.color(), BlockColor::Blue);
+        assert_eq!(PieceType::Star.color(), BlockColor::Gold);
     }
 
     #[test]
     fn piece_type_color_names() {
-        assert_eq!(PieceType::I.color_name(), "amber");
-        assert_eq!(PieceType::O.color_name(), "teal");
-        assert_eq!(PieceType::T.color_name(), "rose");
-        assert_eq!(PieceType::S.color_name(), "sky");
-        assert_eq!(PieceType::Z.color_name(), "lime");
-        assert_eq!(PieceType::J.color_name(), "violet");
-        assert_eq!(PieceType::L.color_name(), "coral");
+        assert_eq!(PieceType::Pip.color_name(), "white");
+        assert_eq!(PieceType::Dash.color_name(), "amber");
+        assert_eq!(PieceType::Line.color_name(), "teal");
+        assert_eq!(PieceType::Arc.color_name(), "sky");
+        assert_eq!(PieceType::Bar.color_name(), "lime");
+        assert_eq!(PieceType::Tee.color_name(), "rose");
+        assert_eq!(PieceType::Skew.color_name(), "violet");
+        assert_eq!(PieceType::Zag.color_name(), "coral");
+        assert_eq!(PieceType::Bend.color_name(), "blue");
+        assert_eq!(PieceType::Star.color_name(), "gold");
     }
 
     #[test]
     fn piece_type_names() {
-        assert_eq!(PieceType::I.name(), "I");
-        assert_eq!(PieceType::O.name(), "O");
-        assert_eq!(PieceType::T.name(), "T");
-        assert_eq!(PieceType::S.name(), "S");
-        assert_eq!(PieceType::Z.name(), "Z");
-        assert_eq!(PieceType::J.name(), "J");
-        assert_eq!(PieceType::L.name(), "L");
+        assert_eq!(PieceType::Pip.name(), "Pip");
+        assert_eq!(PieceType::Dash.name(), "Dash");
+        assert_eq!(PieceType::Line.name(), "Line");
+        assert_eq!(PieceType::Arc.name(), "Arc");
+        assert_eq!(PieceType::Bar.name(), "Bar");
+        assert_eq!(PieceType::Tee.name(), "Tee");
+        assert_eq!(PieceType::Skew.name(), "Skew");
+        assert_eq!(PieceType::Zag.name(), "Zag");
+        assert_eq!(PieceType::Bend.name(), "Bend");
+        assert_eq!(PieceType::Star.name(), "Star");
     }
 
     #[test]
     fn piece_type_debug() {
-        let debug = format!("{:?}", PieceType::I);
-        assert!(debug.contains('I'));
+        let debug = format!("{:?}", PieceType::Pip);
+        assert!(debug.contains("Pip"));
     }
 
     #[test]
     fn piece_type_eq() {
-        assert_eq!(PieceType::I, PieceType::I);
-        assert_ne!(PieceType::I, PieceType::O);
+        assert_eq!(PieceType::Bar, PieceType::Bar);
+        assert_ne!(PieceType::Bar, PieceType::Tee);
     }
 
     #[test]
     fn piece_type_clone() {
-        let p = PieceType::T;
+        let p = PieceType::Tee;
         #[allow(clippy::clone_on_copy)]
         let cloned = p.clone();
         assert_eq!(p, cloned);
@@ -631,98 +702,120 @@ mod tests {
     }
 
     // =========================================================================
-    // piece_cells - all rotations for all pieces
+    // piece_cells — all rotations for all pieces
     // =========================================================================
 
     #[test]
-    fn i_piece_cells_r0() {
-        let cells = piece_cells(PieceType::I, Rotation::R0);
-        assert_eq!(cells, [(0, 0), (0, 1), (0, 2), (0, 3)]);
+    fn pip_piece_cells_symmetric() {
+        assert_eq!(piece_cells(PieceType::Pip, Rotation::R0), [(0, 0)]);
+        assert_eq!(piece_cells(PieceType::Pip, Rotation::R90), [(0, 0)]);
+        assert_eq!(piece_cells(PieceType::Pip, Rotation::R180), [(0, 0)]);
+        assert_eq!(piece_cells(PieceType::Pip, Rotation::R270), [(0, 0)]);
     }
 
     #[test]
-    fn i_piece_cells_r90() {
-        let cells = piece_cells(PieceType::I, Rotation::R90);
-        assert_eq!(cells, [(0, 0), (1, 0), (2, 0), (3, 0)]);
+    fn dash_piece_cells() {
+        let h = piece_cells(PieceType::Dash, Rotation::R0);
+        assert_eq!(h, [(0, 0), (0, 1)]);
+        assert_eq!(piece_cells(PieceType::Dash, Rotation::R180), h);
+        let v = piece_cells(PieceType::Dash, Rotation::R90);
+        assert_eq!(v, [(0, 0), (1, 0)]);
+        assert_eq!(piece_cells(PieceType::Dash, Rotation::R270), v);
     }
 
     #[test]
-    fn i_piece_cells_r180() {
-        // Same as R0 for I piece
-        assert_eq!(
-            piece_cells(PieceType::I, Rotation::R180),
-            piece_cells(PieceType::I, Rotation::R0)
-        );
+    fn line_piece_cells() {
+        let h = piece_cells(PieceType::Line, Rotation::R0);
+        assert_eq!(h, [(0, 0), (0, 1), (0, 2)]);
+        assert_eq!(piece_cells(PieceType::Line, Rotation::R180), h);
+        let v = piece_cells(PieceType::Line, Rotation::R90);
+        assert_eq!(v, [(0, 0), (1, 0), (2, 0)]);
+        assert_eq!(piece_cells(PieceType::Line, Rotation::R270), v);
     }
 
     #[test]
-    fn i_piece_cells_r270() {
-        // Same as R90 for I piece
-        assert_eq!(
-            piece_cells(PieceType::I, Rotation::R270),
-            piece_cells(PieceType::I, Rotation::R90)
-        );
+    fn arc_piece_cells_all_rotations() {
+        assert_eq!(piece_cells(PieceType::Arc, Rotation::R0), [(0, 0), (0, 1), (1, 0)]);
+        assert_eq!(piece_cells(PieceType::Arc, Rotation::R90), [(0, 0), (0, 1), (1, 1)]);
+        assert_eq!(piece_cells(PieceType::Arc, Rotation::R180), [(0, 1), (1, 0), (1, 1)]);
+        assert_eq!(piece_cells(PieceType::Arc, Rotation::R270), [(0, 0), (1, 0), (1, 1)]);
     }
 
     #[test]
-    fn o_piece_all_rotations_identical() {
-        let base = piece_cells(PieceType::O, Rotation::R0);
-        assert_eq!(piece_cells(PieceType::O, Rotation::R90), base);
-        assert_eq!(piece_cells(PieceType::O, Rotation::R180), base);
-        assert_eq!(piece_cells(PieceType::O, Rotation::R270), base);
+    fn bar_piece_cells() {
+        let h = piece_cells(PieceType::Bar, Rotation::R0);
+        assert_eq!(h, [(0, 0), (0, 1), (0, 2), (0, 3)]);
+        assert_eq!(piece_cells(PieceType::Bar, Rotation::R180), h);
+        let v = piece_cells(PieceType::Bar, Rotation::R90);
+        assert_eq!(v, [(0, 0), (1, 0), (2, 0), (3, 0)]);
+        assert_eq!(piece_cells(PieceType::Bar, Rotation::R270), v);
     }
 
     #[test]
-    fn t_piece_cells_all_rotations() {
-        assert_eq!(piece_cells(PieceType::T, Rotation::R0), [(0, 0), (0, 1), (0, 2), (1, 1)]);
-        assert_eq!(piece_cells(PieceType::T, Rotation::R90), [(0, 0), (1, 0), (2, 0), (1, 1)]);
-        assert_eq!(piece_cells(PieceType::T, Rotation::R180), [(1, 0), (1, 1), (1, 2), (0, 1)]);
-        assert_eq!(piece_cells(PieceType::T, Rotation::R270), [(0, 1), (1, 1), (2, 1), (1, 0)]);
+    fn tee_piece_cells_all_rotations() {
+        assert_eq!(piece_cells(PieceType::Tee, Rotation::R0), [(0, 0), (0, 1), (0, 2), (1, 1)]);
+        assert_eq!(piece_cells(PieceType::Tee, Rotation::R90), [(0, 0), (1, 0), (2, 0), (1, 1)]);
+        assert_eq!(piece_cells(PieceType::Tee, Rotation::R180), [(0, 1), (1, 0), (1, 1), (1, 2)]);
+        assert_eq!(piece_cells(PieceType::Tee, Rotation::R270), [(0, 1), (1, 0), (1, 1), (2, 1)]);
     }
 
     #[test]
-    fn s_piece_cells_all_rotations() {
-        let horiz = piece_cells(PieceType::S, Rotation::R0);
-        assert_eq!(horiz, [(0, 1), (0, 2), (1, 0), (1, 1)]);
-        assert_eq!(piece_cells(PieceType::S, Rotation::R180), horiz);
-
-        let vert = piece_cells(PieceType::S, Rotation::R90);
-        assert_eq!(vert, [(0, 0), (1, 0), (1, 1), (2, 1)]);
-        assert_eq!(piece_cells(PieceType::S, Rotation::R270), vert);
+    fn skew_piece_cells() {
+        let h = piece_cells(PieceType::Skew, Rotation::R0);
+        assert_eq!(h, [(0, 1), (0, 2), (1, 0), (1, 1)]);
+        assert_eq!(piece_cells(PieceType::Skew, Rotation::R180), h);
+        let v = piece_cells(PieceType::Skew, Rotation::R90);
+        assert_eq!(v, [(0, 0), (1, 0), (1, 1), (2, 1)]);
+        assert_eq!(piece_cells(PieceType::Skew, Rotation::R270), v);
     }
 
     #[test]
-    fn z_piece_cells_all_rotations() {
-        let horiz = piece_cells(PieceType::Z, Rotation::R0);
-        assert_eq!(horiz, [(0, 0), (0, 1), (1, 1), (1, 2)]);
-        assert_eq!(piece_cells(PieceType::Z, Rotation::R180), horiz);
-
-        let vert = piece_cells(PieceType::Z, Rotation::R90);
-        assert_eq!(vert, [(0, 1), (1, 0), (1, 1), (2, 0)]);
-        assert_eq!(piece_cells(PieceType::Z, Rotation::R270), vert);
+    fn zag_piece_cells() {
+        let h = piece_cells(PieceType::Zag, Rotation::R0);
+        assert_eq!(h, [(0, 0), (0, 1), (1, 1), (1, 2)]);
+        assert_eq!(piece_cells(PieceType::Zag, Rotation::R180), h);
+        let v = piece_cells(PieceType::Zag, Rotation::R90);
+        assert_eq!(v, [(0, 1), (1, 0), (1, 1), (2, 0)]);
+        assert_eq!(piece_cells(PieceType::Zag, Rotation::R270), v);
     }
 
     #[test]
-    fn j_piece_cells_all_rotations() {
-        assert_eq!(piece_cells(PieceType::J, Rotation::R0), [(0, 0), (1, 0), (1, 1), (1, 2)]);
-        assert_eq!(piece_cells(PieceType::J, Rotation::R90), [(0, 0), (0, 1), (1, 0), (2, 0)]);
-        assert_eq!(piece_cells(PieceType::J, Rotation::R180), [(0, 0), (0, 1), (0, 2), (1, 2)]);
-        assert_eq!(piece_cells(PieceType::J, Rotation::R270), [(0, 1), (1, 1), (2, 0), (2, 1)]);
+    fn bend_piece_cells_all_rotations() {
+        assert_eq!(piece_cells(PieceType::Bend, Rotation::R0), [(0, 0), (1, 0), (1, 1), (1, 2)]);
+        assert_eq!(piece_cells(PieceType::Bend, Rotation::R90), [(0, 0), (0, 1), (1, 0), (2, 0)]);
+        assert_eq!(piece_cells(PieceType::Bend, Rotation::R180), [(0, 0), (0, 1), (0, 2), (1, 2)]);
+        assert_eq!(piece_cells(PieceType::Bend, Rotation::R270), [(0, 1), (1, 1), (2, 0), (2, 1)]);
     }
 
     #[test]
-    fn l_piece_cells_all_rotations() {
-        assert_eq!(piece_cells(PieceType::L, Rotation::R0), [(0, 2), (1, 0), (1, 1), (1, 2)]);
-        assert_eq!(piece_cells(PieceType::L, Rotation::R90), [(0, 0), (1, 0), (2, 0), (2, 1)]);
-        assert_eq!(piece_cells(PieceType::L, Rotation::R180), [(0, 0), (0, 1), (0, 2), (1, 0)]);
-        assert_eq!(piece_cells(PieceType::L, Rotation::R270), [(0, 0), (0, 1), (1, 1), (2, 1)]);
+    fn star_piece_cells_symmetric() {
+        let cells = piece_cells(PieceType::Star, Rotation::R0);
+        assert_eq!(cells, [(0, 1), (1, 0), (1, 1), (1, 2), (2, 1)]);
+        // Star is rotationally symmetric
+        assert_eq!(piece_cells(PieceType::Star, Rotation::R90), cells);
+        assert_eq!(piece_cells(PieceType::Star, Rotation::R180), cells);
+        assert_eq!(piece_cells(PieceType::Star, Rotation::R270), cells);
     }
 
     #[test]
-    fn each_piece_has_four_cells() {
+    fn piece_cell_counts() {
+        assert_eq!(piece_cells(PieceType::Pip, Rotation::R0).len(), 1);
+        assert_eq!(piece_cells(PieceType::Dash, Rotation::R0).len(), 2);
+        assert_eq!(piece_cells(PieceType::Line, Rotation::R0).len(), 3);
+        assert_eq!(piece_cells(PieceType::Arc, Rotation::R0).len(), 3);
+        assert_eq!(piece_cells(PieceType::Bar, Rotation::R0).len(), 4);
+        assert_eq!(piece_cells(PieceType::Tee, Rotation::R0).len(), 4);
+        assert_eq!(piece_cells(PieceType::Skew, Rotation::R0).len(), 4);
+        assert_eq!(piece_cells(PieceType::Zag, Rotation::R0).len(), 4);
+        assert_eq!(piece_cells(PieceType::Bend, Rotation::R0).len(), 4);
+        assert_eq!(piece_cells(PieceType::Star, Rotation::R0).len(), 5);
+    }
+
+    #[test]
+    fn all_rotations_nonempty() {
         for piece in PieceType::ALL {
             for rot in [Rotation::R0, Rotation::R90, Rotation::R180, Rotation::R270] {
-                assert_eq!(piece_cells(piece, rot).len(), 4);
+                assert!(!piece_cells(piece, rot).is_empty());
             }
         }
     }
@@ -734,7 +827,7 @@ mod tests {
     #[test]
     fn no_collision_on_empty_board() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        let piece = spawn_piece(PieceType::T);
+        let piece = spawn_piece(PieceType::Tee);
         assert!(!collides(&board, &piece));
     }
 
@@ -742,7 +835,7 @@ mod tests {
     fn collision_left_wall() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R0,
             row: 5,
             col: -1,
@@ -754,10 +847,10 @@ mod tests {
     fn collision_right_wall() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R0,
             row: 5,
-            col: 10,
+            col: 6,
         };
         assert!(collides(&board, &piece));
     }
@@ -766,9 +859,9 @@ mod tests {
     fn collision_floor() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
-            row: 20,
+            row: 14,
             col: 5,
         };
         assert!(collides(&board, &piece));
@@ -779,7 +872,7 @@ mod tests {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         board[5][4] = Some(BlockColor::Amber);
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Arc,
             rotation: Rotation::R0,
             row: 4,
             col: 4,
@@ -791,7 +884,7 @@ mod tests {
     fn no_collision_above_board() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
             row: -2,
             col: 5,
@@ -807,31 +900,29 @@ mod tests {
     fn lock_piece_places_cells() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Arc,
             rotation: Rotation::R0,
             row: 0,
             col: 0,
         };
         lock_piece(&mut board, &piece);
-        assert_eq!(board[0][0], Some(BlockColor::Teal));
-        assert_eq!(board[0][1], Some(BlockColor::Teal));
-        assert_eq!(board[1][0], Some(BlockColor::Teal));
-        assert_eq!(board[1][1], Some(BlockColor::Teal));
+        assert_eq!(board[0][0], Some(BlockColor::Sky));
+        assert_eq!(board[0][1], Some(BlockColor::Sky));
+        assert_eq!(board[1][0], Some(BlockColor::Sky));
     }
 
     #[test]
     fn lock_piece_skips_negative_rows() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
             row: -2,
             col: 5,
         };
         lock_piece(&mut board, &piece);
-        // Only rows 0 and 1 should have blocks (rows -2 and -1 are skipped)
-        assert_eq!(board[0][5], Some(BlockColor::Amber));
-        assert_eq!(board[1][5], Some(BlockColor::Amber));
+        assert_eq!(board[0][5], Some(BlockColor::Lime));
+        assert_eq!(board[1][5], Some(BlockColor::Lime));
     }
 
     // =========================================================================
@@ -841,48 +932,45 @@ mod tests {
     #[test]
     fn clear_no_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[21][0] = Some(BlockColor::Amber);
+        board[15][0] = Some(BlockColor::Amber);
         assert_eq!(clear_lines(&mut board), 0);
-        assert_eq!(board[21][0], Some(BlockColor::Amber));
+        assert_eq!(board[15][0], Some(BlockColor::Amber));
     }
 
     #[test]
     fn clear_single_line() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[21].fill(Some(BlockColor::Amber));
-        board[20][0] = Some(BlockColor::Lime);
+        board[15].fill(Some(BlockColor::Amber));
+        board[14][0] = Some(BlockColor::Lime);
         assert_eq!(clear_lines(&mut board), 1);
-        // Row 20 should have shifted down to 21
-        assert_eq!(board[21][0], Some(BlockColor::Lime));
-        // Row 20 should now be empty
-        assert!(board[20].iter().all(Option::is_none));
+        assert_eq!(board[15][0], Some(BlockColor::Lime));
+        assert!(board[14].iter().all(Option::is_none));
     }
 
     #[test]
     fn clear_double_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[20].fill(Some(BlockColor::Amber));
-        board[21].fill(Some(BlockColor::Lime));
+        board[14].fill(Some(BlockColor::Amber));
+        board[15].fill(Some(BlockColor::Lime));
         assert_eq!(clear_lines(&mut board), 2);
     }
 
     #[test]
     fn clear_triple_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        board[19].fill(Some(BlockColor::Violet));
-        board[20].fill(Some(BlockColor::Amber));
-        board[21].fill(Some(BlockColor::Lime));
+        board[13].fill(Some(BlockColor::Violet));
+        board[14].fill(Some(BlockColor::Amber));
+        board[15].fill(Some(BlockColor::Lime));
         assert_eq!(clear_lines(&mut board), 3);
     }
 
     #[test]
     fn clear_four_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        for row in &mut board[18..22] {
+        for row in &mut board[12..16] {
             row.fill(Some(BlockColor::Sky));
         }
         assert_eq!(clear_lines(&mut board), 4);
-        // All rows should be empty after clearing 4 bottom rows
         for row in &board {
             assert!(row.iter().all(Option::is_none));
         }
@@ -891,13 +979,11 @@ mod tests {
     #[test]
     fn clear_non_contiguous_lines() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // Fill rows 19 and 21 (not 20)
-        board[19].fill(Some(BlockColor::Amber));
-        board[21].fill(Some(BlockColor::Lime));
-        board[20][0] = Some(BlockColor::Violet);
+        board[13].fill(Some(BlockColor::Amber));
+        board[15].fill(Some(BlockColor::Lime));
+        board[14][0] = Some(BlockColor::Violet);
         assert_eq!(clear_lines(&mut board), 2);
-        // The partial row 20 should shift down
-        assert_eq!(board[21][0], Some(BlockColor::Violet));
+        assert_eq!(board[15][0], Some(BlockColor::Violet));
     }
 
     // =========================================================================
@@ -979,13 +1065,13 @@ mod tests {
     fn move_left_success() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
-            col: 5,
+            col: 4,
         };
         let moved = try_move_left(&board, &piece).unwrap();
-        assert_eq!(moved.col, 4);
+        assert_eq!(moved.col, 3);
         assert_eq!(moved.row, 5);
     }
 
@@ -993,7 +1079,7 @@ mod tests {
     fn move_left_blocked() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
             col: 0,
@@ -1005,23 +1091,23 @@ mod tests {
     fn move_right_success() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
-            col: 5,
+            col: 3,
         };
         let moved = try_move_right(&board, &piece).unwrap();
-        assert_eq!(moved.col, 6);
+        assert_eq!(moved.col, 4);
     }
 
     #[test]
     fn move_right_blocked() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
-            col: 9,
+            col: 6,
         };
         assert!(try_move_right(&board, &piece).is_none());
     }
@@ -1030,7 +1116,7 @@ mod tests {
     fn move_down_success() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
             row: 5,
             col: 5,
@@ -1043,9 +1129,9 @@ mod tests {
     fn move_down_blocked_at_floor() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
-            row: 20,
+            row: 15,
             col: 5,
         };
         assert!(try_move_down(&board, &piece).is_none());
@@ -1059,13 +1145,13 @@ mod tests {
     fn hard_drop_to_bottom() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
             row: 0,
             col: 5,
         };
         let dropped = hard_drop(&board, &piece);
-        assert_eq!(dropped.row, 20);
+        assert_eq!(dropped.row, 15);
     }
 
     #[test]
@@ -1073,13 +1159,13 @@ mod tests {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         board[10][5] = Some(BlockColor::Amber);
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
             row: 0,
             col: 5,
         };
         let dropped = hard_drop(&board, &piece);
-        assert_eq!(dropped.row, 8);
+        assert_eq!(dropped.row, 9);
     }
 
     // =========================================================================
@@ -1090,26 +1176,25 @@ mod tests {
     fn rotate_cw_success() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
-            col: 5,
+            col: 4,
         };
         let rotated = try_rotate_cw(&board, &piece).unwrap();
         assert_eq!(rotated.rotation, Rotation::R90);
     }
 
     #[test]
-    fn rotate_cw_blocked() {
+    fn rotate_cw_near_bottom() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
-            row: 20,
-            col: 5,
+            row: 14,
+            col: 2,
         };
-        // R90 -> R180 is horizontal, at row 20, col 5, cells span (20,5)..(20,8)
-        // That's within bounds, so this should succeed
+        // R90 -> R180 is horizontal at (14,2)-(14,5) — fits
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
     }
@@ -1117,16 +1202,12 @@ mod tests {
     #[test]
     fn rotate_cw_blocked_at_wall() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // I piece vertical at col 11 can't rotate to horizontal
-        // R90->R180: horizontal cells at col 11,12,13,14 — all OOB.
-        // Nudge left 1: col 10 -> 10,11,12,13 — still OOB.
-        // Nudge left 2: col 9 -> 9,10,11,12 — col 12 OOB.
-        // Nudge right: worse. Nudge up: same cols. All fail.
+        // Bar vertical at col 7 can't rotate to horizontal — all nudges fail
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
             row: 5,
-            col: 11,
+            col: 7,
         };
         assert!(try_rotate_cw(&board, &piece).is_none());
     }
@@ -1136,12 +1217,28 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn spawn_at_top_center() {
-        let piece = spawn_piece(PieceType::T);
-        assert_eq!(piece.row, 0);
-        assert_eq!(piece.col, 4);
-        assert_eq!(piece.rotation, Rotation::R0);
-        assert_eq!(piece.piece_type, PieceType::T);
+    fn spawn_centering() {
+        // Pip (width 1): col = (8-1)/2 = 3
+        assert_eq!(spawn_piece(PieceType::Pip).col, 3);
+        // Dash (width 2): col = (8-2)/2 = 3
+        assert_eq!(spawn_piece(PieceType::Dash).col, 3);
+        // Tee (width 3): col = (8-3)/2 = 2
+        assert_eq!(spawn_piece(PieceType::Tee).col, 2);
+        // Bar (width 4): col = (8-4)/2 = 2
+        assert_eq!(spawn_piece(PieceType::Bar).col, 2);
+        // Star (width 3): col = (8-3)/2 = 2
+        assert_eq!(spawn_piece(PieceType::Star).col, 2);
+    }
+
+    #[test]
+    fn spawn_all_pieces_valid() {
+        let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
+        for piece_type in PieceType::ALL {
+            let piece = spawn_piece(piece_type);
+            assert_eq!(piece.row, 0);
+            assert_eq!(piece.rotation, Rotation::R0);
+            assert!(!collides(&board, &piece), "Spawn collision for {piece_type:?}");
+        }
     }
 
     // =========================================================================
@@ -1150,17 +1247,16 @@ mod tests {
 
     #[test]
     fn new_game_initial_state() {
-        let state = new_game(PieceType::T, PieceType::I);
+        let state = new_game(PieceType::Tee, PieceType::Bar);
         assert!(state.active_piece.is_some());
-        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::T);
-        assert_eq!(state.next_piece, PieceType::I);
+        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::Tee);
+        assert_eq!(state.next_piece, PieceType::Bar);
         assert!(state.held_piece.is_none());
         assert!(!state.hold_used);
         assert_eq!(state.score, 0);
         assert_eq!(state.level, 0);
         assert_eq!(state.lines_cleared, 0);
         assert!(!state.game_over);
-        // Board should be empty
         for row in &state.board {
             assert!(row.iter().all(Option::is_none));
         }
@@ -1172,9 +1268,9 @@ mod tests {
 
     #[test]
     fn tick_moves_piece_down() {
-        let mut state = new_game(PieceType::O, PieceType::T);
+        let mut state = new_game(PieceType::Tee, PieceType::Bar);
         let orig_row = state.active_piece.as_ref().unwrap().row;
-        let (lines, locked) = tick(&mut state, PieceType::I);
+        let (lines, locked) = tick(&mut state, PieceType::Pip);
         assert_eq!(lines, 0);
         assert!(!locked);
         assert_eq!(state.active_piece.as_ref().unwrap().row, orig_row + 1);
@@ -1182,34 +1278,31 @@ mod tests {
 
     #[test]
     fn tick_locks_at_bottom() {
-        let mut state = new_game(PieceType::O, PieceType::T);
-        // Move piece to near bottom
-        state.active_piece.as_mut().unwrap().row = 20;
-        let (lines, locked) = tick(&mut state, PieceType::I);
+        let mut state = new_game(PieceType::Dash, PieceType::Tee);
+        state.active_piece.as_mut().unwrap().row = 15;
+        let (lines, locked) = tick(&mut state, PieceType::Pip);
         assert!(locked);
         assert_eq!(lines, 0);
-        // New piece should be spawned
-        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::T);
-        assert_eq!(state.next_piece, PieceType::I);
+        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::Tee);
+        assert_eq!(state.next_piece, PieceType::Pip);
     }
 
     #[test]
     fn tick_clears_lines() {
-        let mut state = new_game(PieceType::O, PieceType::T);
-        // Fill bottom two rows except cols 0-1
-        for col in 2..BOARD_WIDTH {
-            state.board[20][col] = Some(BlockColor::Amber);
-            state.board[21][col] = Some(BlockColor::Amber);
+        let mut state = new_game(PieceType::Dash, PieceType::Tee);
+        // Fill bottom two rows except col 0
+        for col in 1..BOARD_WIDTH {
+            state.board[14][col] = Some(BlockColor::Amber);
+            state.board[15][col] = Some(BlockColor::Amber);
         }
-        // Place O piece at bottom-left (cols 0-1, rows 20-21)
+        // Place Dash piece vertically at bottom-left
         state.active_piece = Some(ActivePiece {
-            piece_type: PieceType::O,
-            rotation: Rotation::R0,
-            row: 20,
+            piece_type: PieceType::Dash,
+            rotation: Rotation::R90,
+            row: 14,
             col: 0,
         });
-        let (lines, locked) = tick(&mut state, PieceType::I);
-        // Can't move down, so piece locks and clears 2 lines
+        let (lines, locked) = tick(&mut state, PieceType::Pip);
         assert!(locked);
         assert_eq!(lines, 2);
         assert_eq!(state.lines_cleared, 2);
@@ -1218,15 +1311,16 @@ mod tests {
 
     #[test]
     fn tick_game_over() {
-        let mut state = new_game(PieceType::O, PieceType::O);
-        // Fill the top so the next spawn collides
-        for col in 4..6 {
+        let mut state = new_game(PieceType::Tee, PieceType::Tee);
+        // Fill top rows partially so they don't clear but next spawn collides.
+        // Tee spawns at col 2 with cells (0,2)(0,3)(0,4)(1,3) — fill those spots.
+        // Leave col 0 empty so the rows don't get cleared.
+        for col in 1..BOARD_WIDTH {
             state.board[0][col] = Some(BlockColor::Amber);
             state.board[1][col] = Some(BlockColor::Amber);
         }
-        // Force lock the current piece
-        state.active_piece.as_mut().unwrap().row = 20;
-        let (_lines, locked) = tick(&mut state, PieceType::T);
+        state.active_piece.as_mut().unwrap().row = 14;
+        let (_lines, locked) = tick(&mut state, PieceType::Pip);
         assert!(locked);
         assert!(state.game_over);
         assert!(state.active_piece.is_none());
@@ -1234,18 +1328,18 @@ mod tests {
 
     #[test]
     fn tick_when_game_over_does_nothing() {
-        let mut state = new_game(PieceType::T, PieceType::I);
+        let mut state = new_game(PieceType::Tee, PieceType::Bar);
         state.game_over = true;
-        let (lines, locked) = tick(&mut state, PieceType::O);
+        let (lines, locked) = tick(&mut state, PieceType::Pip);
         assert_eq!(lines, 0);
         assert!(!locked);
     }
 
     #[test]
     fn tick_no_active_piece() {
-        let mut state = new_game(PieceType::T, PieceType::I);
+        let mut state = new_game(PieceType::Tee, PieceType::Bar);
         state.active_piece = None;
-        let (lines, locked) = tick(&mut state, PieceType::O);
+        let (lines, locked) = tick(&mut state, PieceType::Pip);
         assert_eq!(lines, 0);
         assert!(!locked);
     }
@@ -1257,13 +1351,13 @@ mod tests {
     #[test]
     fn absolute_cells_of_piece() {
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Arc,
             rotation: Rotation::R0,
             row: 5,
             col: 4,
         };
         let cells = absolute_cells(&piece);
-        assert_eq!(cells, vec![(5, 4), (5, 5), (6, 4), (6, 5)]);
+        assert_eq!(cells, vec![(5, 4), (5, 5), (6, 4)]);
     }
 
     // =========================================================================
@@ -1272,14 +1366,14 @@ mod tests {
 
     #[test]
     fn active_piece_debug() {
-        let piece = spawn_piece(PieceType::I);
+        let piece = spawn_piece(PieceType::Bar);
         let debug = format!("{piece:?}");
         assert!(debug.contains("ActivePiece"));
     }
 
     #[test]
     fn active_piece_clone() {
-        let piece = spawn_piece(PieceType::T);
+        let piece = spawn_piece(PieceType::Tee);
         let cloned = piece.clone();
         assert_eq!(cloned.piece_type, piece.piece_type);
         assert_eq!(cloned.row, piece.row);
@@ -1288,14 +1382,14 @@ mod tests {
 
     #[test]
     fn game_state_debug() {
-        let state = new_game(PieceType::T, PieceType::I);
+        let state = new_game(PieceType::Tee, PieceType::Bar);
         let debug = format!("{state:?}");
         assert!(debug.contains("GameState"));
     }
 
     #[test]
     fn game_state_clone() {
-        let state = new_game(PieceType::T, PieceType::I);
+        let state = new_game(PieceType::Tee, PieceType::Bar);
         let cloned = state.clone();
         assert_eq!(cloned.score, state.score);
         assert_eq!(cloned.level, state.level);
@@ -1331,10 +1425,10 @@ mod tests {
     fn rotate_ccw_success() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
-            col: 5,
+            col: 4,
         };
         let rotated = try_rotate_ccw(&board, &piece).unwrap();
         assert_eq!(rotated.rotation, Rotation::R270);
@@ -1342,14 +1436,13 @@ mod tests {
 
     #[test]
     fn rotate_ccw_blocked() {
-        // Surrounded on all sides — no wall kick can help
         let mut blocked = [[Some(BlockColor::Amber); BOARD_WIDTH]; BOARD_HEIGHT];
         blocked[10][5] = None;
         blocked[11][5] = None;
         blocked[12][5] = None;
         blocked[13][5] = None;
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
             row: 10,
             col: 5,
@@ -1358,88 +1451,76 @@ mod tests {
     }
 
     // =========================================================================
-    // Wall kicks (SRS)
+    // Wall kicks
     // =========================================================================
 
     #[test]
     fn wall_kick_cw_near_floor() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // T piece at R0 near floor, row=20. CW to R90 would put a cell
-        // at row 22 (out of bounds). Nudge up (0,-1) kicks it to fit.
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
-            row: 20,
+            row: 14,
             col: 4,
         };
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
-        let r = rotated.unwrap();
-        assert_eq!(r.rotation, Rotation::R90);
+        assert_eq!(rotated.unwrap().rotation, Rotation::R90);
     }
 
     #[test]
     fn wall_kick_cw_with_blocks() {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // Place blocks that prevent basic rotation
         board[6][5] = Some(BlockColor::Lime);
-        // T piece at R0, col=4, row=5. CW to R90 would put a cell at (6,4)
-        // which is clear, but (5,5)+(6,4)+(7,4) — actually let's check:
-        // R90 cells: (0,0),(1,0),(2,0),(1,1) => at col=4: (5,4),(6,4),(7,4),(6,5)
-        // (6,5) is blocked. Nudge left (-1,0) => col=3: (5,3),(6,3),(7,3),(6,4) — fits.
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R0,
             row: 5,
             col: 4,
         };
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
-        let r = rotated.unwrap();
-        assert_eq!(r.rotation, Rotation::R90);
+        assert_eq!(rotated.unwrap().rotation, Rotation::R90);
     }
 
     #[test]
-    fn wall_kick_i_piece() {
+    fn wall_kick_bar_piece() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
-        // I piece vertical (R90) at col=9, rotating CW to R180 (horizontal).
-        // R180 cells at col=9: (5,9)(5,10)(5,11)(5,12) — col 12 OOB.
-        // Nudge left (-1,0) to col=8: (5,8)(5,9)(5,10)(5,11) — fits.
+        // Bar vertical at col=5, rotating CW to horizontal.
+        // R180 cells at col=5: (5,5)(5,6)(5,7)(5,8) — col 8 OOB.
+        // Nudge left to col=4: fits.
         let piece = ActivePiece {
-            piece_type: PieceType::I,
+            piece_type: PieceType::Bar,
             rotation: Rotation::R90,
             row: 5,
-            col: 9,
+            col: 5,
         };
         let rotated = try_rotate_cw(&board, &piece);
         assert!(rotated.is_some());
-        let r = rotated.unwrap();
-        assert_eq!(r.rotation, Rotation::R180);
+        assert_eq!(rotated.unwrap().rotation, Rotation::R180);
     }
 
     #[test]
     fn wall_kick_ccw_at_wall() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::T,
+            piece_type: PieceType::Tee,
             rotation: Rotation::R90,
             row: 5,
             col: -1,
         };
-        let rotated = try_rotate_ccw(&board, &piece);
-        assert!(rotated.is_some());
+        assert!(try_rotate_ccw(&board, &piece).is_some());
     }
 
     #[test]
-    fn o_piece_no_wall_kick_needed() {
+    fn pip_rotation_always_succeeds() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Pip,
             rotation: Rotation::R0,
             row: 5,
             col: 5,
         };
-        // O piece rotation is identity — always succeeds
         let rotated = try_rotate_cw(&board, &piece).unwrap();
         assert_eq!(rotated.rotation, Rotation::R90);
     }
@@ -1452,13 +1533,13 @@ mod tests {
     fn ghost_piece_on_empty_board() {
         let board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
             row: 0,
             col: 5,
         };
         let ghost = ghost_piece(&board, &piece);
-        assert_eq!(ghost.row, 20); // O piece lands at row 20 (rows 20-21)
+        assert_eq!(ghost.row, 15);
     }
 
     #[test]
@@ -1466,13 +1547,13 @@ mod tests {
         let mut board = [[None; BOARD_WIDTH]; BOARD_HEIGHT];
         board[10][5] = Some(BlockColor::Lime);
         let piece = ActivePiece {
-            piece_type: PieceType::O,
+            piece_type: PieceType::Dash,
             rotation: Rotation::R0,
             row: 0,
             col: 5,
         };
         let ghost = ghost_piece(&board, &piece);
-        assert_eq!(ghost.row, 8);
+        assert_eq!(ghost.row, 9);
     }
 
     // =========================================================================
@@ -1481,35 +1562,113 @@ mod tests {
 
     #[test]
     fn lock_and_advance_resets_hold() {
-        let mut state = new_game(PieceType::O, PieceType::T);
+        let mut state = new_game(PieceType::Dash, PieceType::Tee);
         state.hold_used = true;
-        state.active_piece.as_mut().unwrap().row = 20;
+        state.active_piece.as_mut().unwrap().row = 15;
         let piece = state.active_piece.clone().unwrap();
-        lock_and_advance(&mut state, &piece, PieceType::I);
+        lock_and_advance(&mut state, &piece, PieceType::Pip);
         assert!(!state.hold_used);
     }
 
     #[test]
     fn lock_and_advance_spawns_next() {
-        let mut state = new_game(PieceType::O, PieceType::T);
-        state.active_piece.as_mut().unwrap().row = 20;
+        let mut state = new_game(PieceType::Dash, PieceType::Tee);
+        state.active_piece.as_mut().unwrap().row = 15;
         let piece = state.active_piece.clone().unwrap();
-        lock_and_advance(&mut state, &piece, PieceType::I);
-        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::T);
-        assert_eq!(state.next_piece, PieceType::I);
+        lock_and_advance(&mut state, &piece, PieceType::Pip);
+        assert_eq!(state.active_piece.as_ref().unwrap().piece_type, PieceType::Tee);
+        assert_eq!(state.next_piece, PieceType::Pip);
     }
 
     #[test]
     fn lock_and_advance_game_over() {
-        let mut state = new_game(PieceType::O, PieceType::O);
-        // Fill spawn zone
-        for col in 4..6 {
+        let mut state = new_game(PieceType::Dash, PieceType::Tee);
+        // Fill top rows partially (leave col 0 empty to avoid line clears).
+        // Tee spawns at col 2 with cells (0,2)(0,3)(0,4)(1,3).
+        for col in 1..BOARD_WIDTH {
             state.board[0][col] = Some(BlockColor::Amber);
             state.board[1][col] = Some(BlockColor::Amber);
         }
-        state.active_piece.as_mut().unwrap().row = 20;
+        state.active_piece.as_mut().unwrap().row = 15;
         let piece = state.active_piece.clone().unwrap();
-        lock_and_advance(&mut state, &piece, PieceType::T);
+        lock_and_advance(&mut state, &piece, PieceType::Pip);
         assert!(state.game_over);
+    }
+
+    // =========================================================================
+    // apply_garbage_line
+    // =========================================================================
+
+    #[test]
+    fn garbage_line_shifts_rows_up() {
+        let mut state = new_game(PieceType::Tee, PieceType::Tee);
+        state.board[BOARD_HEIGHT - 1][0] = Some(BlockColor::Amber);
+        apply_garbage_line(&mut state, 3);
+        assert_eq!(state.board[BOARD_HEIGHT - 2][0], Some(BlockColor::Amber));
+    }
+
+    #[test]
+    fn garbage_line_fills_bottom_with_grey() {
+        let mut state = new_game(PieceType::Tee, PieceType::Tee);
+        apply_garbage_line(&mut state, 5);
+        let bottom = &state.board[BOARD_HEIGHT - 1];
+        for (col, cell) in bottom.iter().enumerate() {
+            if col == 5 {
+                assert!(cell.is_none());
+            } else {
+                assert_eq!(*cell, Some(BlockColor::Grey));
+            }
+        }
+    }
+
+    #[test]
+    fn garbage_line_gap_clamped() {
+        let mut state = new_game(PieceType::Tee, PieceType::Tee);
+        apply_garbage_line(&mut state, 999);
+        let bottom = &state.board[BOARD_HEIGHT - 1];
+        assert!(bottom[BOARD_WIDTH - 1].is_none());
+        assert_eq!(bottom[0], Some(BlockColor::Grey));
+    }
+
+    #[test]
+    fn garbage_line_multiple() {
+        let mut state = new_game(PieceType::Tee, PieceType::Tee);
+        apply_garbage_line(&mut state, 0);
+        apply_garbage_line(&mut state, 1);
+        let bottom = &state.board[BOARD_HEIGHT - 1];
+        assert!(bottom[1].is_none());
+        let second = &state.board[BOARD_HEIGHT - 2];
+        assert!(second[0].is_none());
+    }
+
+    // =========================================================================
+    // BlockColor variants
+    // =========================================================================
+
+    #[test]
+    fn block_color_grey_debug() {
+        let debug = format!("{:?}", BlockColor::Grey);
+        assert!(debug.contains("Grey"));
+    }
+
+    #[test]
+    fn block_color_grey_eq() {
+        assert_eq!(BlockColor::Grey, BlockColor::Grey);
+        assert_ne!(BlockColor::Grey, BlockColor::Amber);
+    }
+
+    #[test]
+    fn block_color_grey_copy() {
+        let a = BlockColor::Grey;
+        let b = a;
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn block_color_new_variants() {
+        let debug = format!("{:?}", BlockColor::White);
+        assert!(debug.contains("White"));
+        assert_eq!(BlockColor::Blue, BlockColor::Blue);
+        assert_ne!(BlockColor::Gold, BlockColor::White);
     }
 }

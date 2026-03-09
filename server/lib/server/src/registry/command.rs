@@ -23,12 +23,10 @@ use {
     },
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
-        api::v1::{CommandId, ModuleId, Service},
+        api::v1::{CommandId, KernelContext, ModuleId, Service},
         profile_scope,
     },
 };
-
-use crate::app::AppState;
 
 /// Entry in the command registry with optional ownership tracking.
 #[derive(Clone)]
@@ -154,9 +152,10 @@ impl CommandRegistry {
     /// * `id` - The command ID to execute
     /// * `driver_session` - Driver session (for shared state like buffers)
     /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
-    /// * `app` - Application state (contains `KernelContext`)
+    /// * `kernel` - Kernel context (buffers, event bus, options)
     /// * `vfs` - VFS driver for file operations
     /// * `args` - Command arguments (count, register, etc.)
+    /// * `shared_extensions` - Optional shared extension map for cross-client state (#543)
     #[must_use]
     #[allow(clippy::too_many_arguments)] // bundled via ClientContext, remaining are distinct concerns
     pub fn execute_for_client(
@@ -165,9 +164,10 @@ impl CommandRegistry {
         id: &CommandId,
         driver_session: &mut DriverSession,
         client: reovim_driver_session::ClientContext<'_>,
-        app: &AppState,
+        kernel: &KernelContext,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
+        shared_extensions: Option<&mut reovim_driver_session::ExtensionMap>,
     ) -> Option<(
         CommandResult,
         reovim_driver_session::api::StateChanges,
@@ -189,13 +189,13 @@ impl CommandRegistry {
             // The owner enables undo_mine()/redo_mine() for per-client undo
             // Passing `self` (CommandRegistry) enables re-entrant command execution
             let driver_client_id = DriverClientId::new(client_id);
-            let mut runtime = SessionRuntime::with_owner(
-                driver_client_id,
-                driver_session,
-                client,
-                &app.kernel,
-                self,
-            );
+            let mut runtime =
+                SessionRuntime::with_owner(driver_client_id, driver_session, client, kernel, self);
+
+            // Wire up session-wide shared extensions (#543)
+            if let Some(ext) = shared_extensions {
+                runtime = runtime.with_shared_extensions(ext);
+            }
 
             // Execute command
             let result = entry.handler.execute(&mut runtime, &ctx);
@@ -452,7 +452,6 @@ mod tests {
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone()); // #491
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
 
@@ -484,9 +483,10 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_some());
         let (cmd_result, _changes, _signals) = result.unwrap();
@@ -766,7 +766,6 @@ mod tests {
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
         let id = CommandId::new(ModuleId::new("test"), "nonexistent");
@@ -798,9 +797,10 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_none());
     }
@@ -865,7 +865,6 @@ mod tests {
 
         let buffer_id = BufferId::from_raw(1);
 
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
 
@@ -896,9 +895,10 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_some());
     }

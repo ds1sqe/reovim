@@ -105,6 +105,7 @@ mod runtime;
 mod snippet_expander;
 pub mod tab;
 pub mod testing;
+pub mod tick;
 mod transition;
 mod types;
 
@@ -156,3 +157,6 @@ pub use notification_drain::{NotificationDrain, NotificationDrainRegistry};
 
 // Snippet expander trait (#542 - decouple completion from snippet module)
 pub use snippet_expander::{SnippetExpander, SnippetExpanderRegistry};
+
+// Tick scheduler (#546 - periodic state advancement)
+pub use tick::{TickScheduler, TickSchedulerHandle};

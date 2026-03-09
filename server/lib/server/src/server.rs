@@ -292,6 +292,26 @@ impl Server {
         // Bridges are now collected from BridgeProvider by bootstrap, not hardcoded here.
         let bridges = Arc::clone(&self.bridge_registry);
 
+        // Tick scheduler for server-driven state advancement (#546).
+        // Modules call TickSchedulerHandle.start() to begin periodic ticking.
+        {
+            use reovim_driver_session::TickSchedulerHandle;
+
+            let tick_scheduler = Arc::new(crate::tick::TokioTickScheduler::new(
+                Arc::clone(&self.sessions),
+                default_session_id.clone(),
+                Arc::clone(&bridges),
+            ));
+
+            if let Some(session) = self.sessions.get(&default_session_id) {
+                session.with_state_mut_sync(|state| {
+                    let handle = state.app.services.get_or_create::<TickSchedulerHandle>();
+                    handle
+                        .set(tick_scheduler as Arc<dyn reovim_driver_session::tick::TickScheduler>);
+                });
+            }
+        }
+
         // Create all gRPC services
         let buffer_service =
             BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());

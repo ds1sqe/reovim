@@ -125,18 +125,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     when range-finder module is not loaded. `start_with_matches()` on
     `JumpSessionState` bypasses two-char search, entering ShowingLabels directly.
     Match positions serialized as JSON to avoid type coupling between modules.
-- **Tetromino game module** (`reovim-module-tetromino`) - Loadable module architecture proof-of-concept (#537)
-  - Server-side: game engine, bridge, commands, modes (PLAY/PAUSED), key resolvers, keybindings
-  - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece preview, score panel
+- **Polyblocks game module** (`reovim-module-tetromino`) - Loadable module architecture proof-of-concept (#537, #544)
+  - Server-side: game engine, bridge, commands, modes (MENU/PLAY/PAUSED/LOBBY/ROOM/RESULT), key resolvers, keybindings
+  - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece, hold piece, score, opponent view
   - Start with `<C-t>` in normal mode; hjkl/arrows for movement, Space for hard drop, p to pause, q/Esc to quit
   - Ghost piece (landing preview), hold piece (`c`), CCW rotation (`z`)
+  - **Multiplayer** (#544): lobby system with room creation, ready-toggle countdown,
+    per-client game state via `ExtensionMap`, shared `TetrominoLobbyState` for room tracking,
+    opponent board snapshot in bridge context, tick-based countdown propagation to all players,
+    forfeit detection on quit (surviving player wins), result screen with return-to-lobby
+  - **Tick scheduler** (#544): `TickSchedulerHandle` in `ServiceRegistry` for gravity ticks,
+    server-side `TickManager` spawns per-client tokio tasks, bridge `tick()` handles
+    countdown, gravity, line clearing, and match-finished detection
   - Original game mechanics distinct from Tetris:
-    - 12x22 board (not 10x20), quadratic scoring `lines^2 * 50 * (level+1)`
+    - 8x16 board (not 10x20), 10 piece types including L-shapes and diagonals
+    - Quadratic scoring `lines^2 * 50 * (level+1)`
     - Nudge rotation system (not SRS wall kicks)
     - History-4 randomizer with reroll (not 7-bag)
     - Exponential speed curve `900 * 0.85^level` (min 80ms)
-    - Custom color palette: Amber/Teal/Rose/Sky/Lime/Violet/Coral
+    - Custom color palette: Amber/Teal/Rose/Sky/Lime/Violet/Coral/Sand/Mint/Slate
     - Soft drop 2pt/cell, hard drop 3pt/cell, no T-spin detection
+  - **Bug fixes** (#544): countdown now propagates to all players via tick catch-up,
+    quit during multiplayer match triggers forfeit (mark_dead + finish_match),
+    mode stack preserved on quit by converting resolver ModeTransition::Set to
+    ResolveResult::Execute (delegates to command handlers using safe set_mode)
 
 ### Changed
 

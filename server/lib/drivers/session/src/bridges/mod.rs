@@ -155,6 +155,20 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     ) -> Option<serde_json::Value> {
         self.snapshot(extensions)
     }
+
+    /// Advance extension state on a timer tick (#546).
+    ///
+    /// Called by the tick scheduler at regular intervals, independent of key input.
+    /// Returns `true` if state was modified and clients should be notified.
+    ///
+    /// Default implementation returns `false` (no tick behavior).
+    fn tick(
+        &self,
+        _client_extensions: &mut ExtensionMap,
+        _shared_extensions: &mut ExtensionMap,
+    ) -> bool {
+        false
+    }
 }
 
 /// Registry of extension state bridges.
@@ -432,6 +446,14 @@ mod tests {
         let mut map = ExtensionMap::new();
         // Default impl is a no-op — should not panic.
         bridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+    }
+
+    #[test]
+    fn test_tick_default_returns_false() {
+        let bridge = DummyBridge::new("test");
+        let mut client = ExtensionMap::new();
+        let mut shared = ExtensionMap::new();
+        assert!(!bridge.tick(&mut client, &mut shared));
     }
 
     #[test]

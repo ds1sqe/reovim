@@ -522,6 +522,29 @@ impl Session {
         Some(result)
     }
 
+    /// Execute a tick closure with mutable access to client + shared extensions (#546).
+    ///
+    /// Lock order: clients (write) → state (write). Same order as
+    /// [`resolve_key_for_client`](Self::resolve_key_for_client).
+    /// Returns `None` if client not connected or input is ignored (Following).
+    ///
+    /// Used by `TokioTickScheduler` for periodic state advancement.
+    #[cfg(feature = "grpc")]
+    pub fn with_tick_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ExtensionMap, &mut ExtensionMap) -> R,
+    {
+        let mut clients = self.clients.write();
+        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+
+        let mut state = self.state.write();
+        let result = f(&mut target_client.state.extensions, &mut state.app.extensions);
+        drop(state);
+        drop(clients);
+        Some(result)
+    }
+
     /// Get count of connected clients.
     #[must_use]
     pub fn client_count(&self) -> usize {
@@ -3152,5 +3175,99 @@ mod tests {
         let ids = session.connected_client_ids();
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].as_usize(), 2);
+    }
+
+    // =========================================================================
+    // with_tick_mut (#546)
+    // =========================================================================
+
+    #[test]
+    fn with_tick_mut_returns_none_for_unknown_client() {
+        let session = Session::new(SessionId::new("tick-test"));
+        let result = session.with_tick_mut(ClientId::new(99), |_, _| true);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn with_tick_mut_calls_closure() {
+        use reovim_driver_session::SessionExtension;
+
+        #[derive(Default)]
+        struct Counter {
+            count: usize,
+        }
+        impl SessionExtension for Counter {
+            fn create() -> Self {
+                Self::default()
+            }
+        }
+
+        let session = Session::new(SessionId::new("tick-test"));
+        session.add_client(ClientId::new(1));
+
+        let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext| {
+            let counter = client_ext.get_or_insert::<Counter>();
+            counter.count += 1;
+            counter.count
+        });
+        assert_eq!(result, Some(1));
+
+        // Second call accumulates
+        let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext| {
+            let counter = client_ext.get_or_insert::<Counter>();
+            counter.count += 1;
+            counter.count
+        });
+        assert_eq!(result, Some(2));
+    }
+
+    #[test]
+    fn with_tick_mut_accesses_shared_extensions() {
+        use reovim_driver_session::SessionExtension;
+
+        #[derive(Default)]
+        struct SharedData {
+            value: u32,
+        }
+        impl SessionExtension for SharedData {
+            fn create() -> Self {
+                Self::default()
+            }
+        }
+
+        let session = Session::new(SessionId::new("tick-shared"));
+        session.add_client(ClientId::new(1));
+
+        // Set shared state
+        session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext| {
+            let data = shared_ext.get_or_insert::<SharedData>();
+            data.value = 42;
+        });
+
+        // Read it back
+        let result = session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext| {
+            let data = shared_ext.get_or_insert::<SharedData>();
+            data.value
+        });
+        assert_eq!(result, Some(42));
+    }
+
+    #[test]
+    fn with_tick_mut_returns_none_for_following_client() {
+        use crate::session::ClientRelation;
+
+        let session = Session::new(SessionId::new("tick-follow"));
+        session.add_client(ClientId::new(1));
+        session.add_client(ClientId::new(2));
+        let _ = session.set_client_relation(
+            ClientId::new(2),
+            Some(ClientRelation::Following {
+                target: ClientId::new(1),
+            }),
+        );
+
+        // Following clients have input ignored
+        let result = session.with_tick_mut(ClientId::new(2), |_, _| true);
+        assert!(result.is_none());
     }
 }

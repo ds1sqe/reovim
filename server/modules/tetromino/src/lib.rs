@@ -50,7 +50,7 @@ impl Module for TetrominoModule {
     }
 
     fn name(&self) -> &'static str {
-        "Tetromino"
+        "Polyblocks"
     }
 
     fn version(&self) -> Version {
@@ -78,10 +78,19 @@ impl Module for TetrominoModule {
         let resolver_registry = ctx.services.get_or_create::<ResolverRegistry>();
         resolver_registry.register(resolver::PlayResolver::new());
         resolver_registry.register(resolver::PausedResolver::new());
+        resolver_registry.register(resolver::MenuResolver::new());
+        resolver_registry.register(resolver::LobbyResolver::new());
+        resolver_registry.register(resolver::RoomResolver::new());
+        resolver_registry.register(resolver::ResultResolver::new());
 
         // Register keybindings.
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
+
+        // Ensure TickSchedulerHandle exists for server layer to populate (#546).
+        let _ = ctx
+            .services
+            .get_or_create::<reovim_driver_session::TickSchedulerHandle>();
 
         ProbeResult::Success
     }
@@ -92,10 +101,39 @@ impl Module for TetrominoModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Normal mode: start tetromino
-            KeybindingRegistration::new("<C-t>", ids::START)
-                .with_modes(&["vim:normal"])
-                .with_description("Start tetromino game"),
+            // Menu mode
+            KeybindingRegistration::new("s", ids::START_SINGLE)
+                .with_modes(&["tetromino:MENU"])
+                .with_description("Single player"),
+            KeybindingRegistration::new("m", ids::ENTER_LOBBY)
+                .with_modes(&["tetromino:MENU"])
+                .with_description("Multiplayer"),
+            KeybindingRegistration::new("q", ids::QUIT)
+                .with_modes(&["tetromino:MENU"])
+                .with_description("Quit"),
+            KeybindingRegistration::new("<Esc>", ids::QUIT)
+                .with_modes(&["tetromino:MENU"])
+                .with_description("Quit"),
+            // Lobby mode
+            KeybindingRegistration::new("c", ids::CREATE_ROOM)
+                .with_modes(&["tetromino:LOBBY"])
+                .with_description("Create room"),
+            KeybindingRegistration::new("q", ids::LEAVE_LOBBY)
+                .with_modes(&["tetromino:LOBBY"])
+                .with_description("Back to menu"),
+            KeybindingRegistration::new("<Esc>", ids::LEAVE_LOBBY)
+                .with_modes(&["tetromino:LOBBY"])
+                .with_description("Back to menu"),
+            // Room mode
+            KeybindingRegistration::new("r", ids::READY_TOGGLE)
+                .with_modes(&["tetromino:ROOM"])
+                .with_description("Toggle ready"),
+            KeybindingRegistration::new("q", ids::LEAVE_ROOM)
+                .with_modes(&["tetromino:ROOM"])
+                .with_description("Leave room"),
+            KeybindingRegistration::new("<Esc>", ids::LEAVE_ROOM)
+                .with_modes(&["tetromino:ROOM"])
+                .with_description("Leave room"),
             // Play mode: movement
             KeybindingRegistration::new("h", ids::MOVE_LEFT)
                 .with_modes(&["tetromino:PLAY"])
@@ -153,6 +191,13 @@ impl Module for TetrominoModule {
             KeybindingRegistration::new("<Esc>", ids::QUIT)
                 .with_modes(&["tetromino:PAUSED"])
                 .with_description("Quit game"),
+            // Result mode
+            KeybindingRegistration::new("q", ids::RETURN_LOBBY)
+                .with_modes(&["tetromino:RESULT"])
+                .with_description("Return to lobby"),
+            KeybindingRegistration::new("<Esc>", ids::RETURN_LOBBY)
+                .with_modes(&["tetromino:RESULT"])
+                .with_description("Return to lobby"),
         ]
     }
 }
@@ -173,7 +218,7 @@ mod tests {
     #[test]
     fn module_name() {
         let module = TetrominoModule::new();
-        assert_eq!(module.name(), "Tetromino");
+        assert_eq!(module.name(), "Polyblocks");
     }
 
     #[test]
@@ -212,17 +257,21 @@ mod tests {
         let provider = services.get::<BridgeProvider>().unwrap();
         let bridges = provider.take_bridges();
         assert_eq!(bridges.len(), 1);
-        assert_eq!(bridges[0].kind(), "tetromino");
+        assert_eq!(bridges[0].kind(), "polyblocks");
 
         // Verify modes were registered.
         let mode_store = services.get::<ModeInfoStore>();
         assert!(mode_store.is_some());
         let mode_infos = mode_store.unwrap().take_modes();
-        assert_eq!(mode_infos.len(), 2);
+        assert_eq!(mode_infos.len(), 6);
 
         let names: Vec<&str> = mode_infos.iter().map(|m| m.display_name).collect();
         assert!(names.contains(&"PLAY"));
         assert!(names.contains(&"PAUSED"));
+        assert!(names.contains(&"MENU"));
+        assert!(names.contains(&"LOBBY"));
+        assert!(names.contains(&"ROOM"));
+        assert!(names.contains(&"RESULT"));
 
         // Verify commands were registered.
         let command_store = services.get::<CommandHandlerStore>();
@@ -235,6 +284,10 @@ mod tests {
         // Verify keybindings were registered.
         let keybinding_store = services.get::<KeybindingStore>();
         assert!(keybinding_store.is_some());
+
+        // Verify TickSchedulerHandle was registered (#546).
+        let tick_handle = services.get::<reovim_driver_session::TickSchedulerHandle>();
+        assert!(tick_handle.is_some());
     }
 
     #[test]
@@ -266,6 +319,62 @@ mod tests {
             .count();
         // p, q, Esc = 3
         assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn keybindings_menu_mode_count() {
+        let module = TetrominoModule::new();
+        let bindings = module.keybindings();
+        let count = bindings
+            .iter()
+            .filter(|b| b.modes.contains(&"tetromino:MENU"))
+            .count();
+        // s, m, q, Esc = 4
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn keybindings_lobby_mode_count() {
+        let module = TetrominoModule::new();
+        let bindings = module.keybindings();
+        let count = bindings
+            .iter()
+            .filter(|b| b.modes.contains(&"tetromino:LOBBY"))
+            .count();
+        // c, q, Esc = 3
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn keybindings_room_mode_count() {
+        let module = TetrominoModule::new();
+        let bindings = module.keybindings();
+        let count = bindings
+            .iter()
+            .filter(|b| b.modes.contains(&"tetromino:ROOM"))
+            .count();
+        // r, q, Esc = 3
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn keybindings_result_mode_count() {
+        let module = TetrominoModule::new();
+        let bindings = module.keybindings();
+        let count = bindings
+            .iter()
+            .filter(|b| b.modes.contains(&"tetromino:RESULT"))
+            .count();
+        // q, Esc = 2
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn no_vim_normal_keybindings() {
+        let module = TetrominoModule::new();
+        let bindings = module.keybindings();
+        // No vim:normal bindings — use `:polyblocks` ex-command instead (#547)
+        assert!(!bindings.iter().any(|b| b.modes.contains(&"vim:normal")));
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

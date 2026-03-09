@@ -259,14 +259,18 @@ impl SessionState {
         self.app.flush_pending_edits();
         // Use per-client state (#471, #477, #515)
         // Pass client_id for per-client undo support
+        // Pass shared extensions for session-wide state (#543)
+        let kernel = &self.app.kernel;
+        let shared_ext = &mut self.app.extensions;
         self.command_registry.execute_for_client(
             client_id,
             id,
             &mut self.driver_session,
             client,
-            &self.app,
+            kernel,
             &self.vfs,
             args,
+            Some(shared_ext),
         )
     }
 
