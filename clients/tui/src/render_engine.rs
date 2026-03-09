@@ -12,7 +12,7 @@
 use {
     reovim_arch::Color,
     reovim_driver_display::{
-        Style, dim_style,
+        AnnotationCacheManager, Style, ThemeManager, dim_style,
         ui::{display_width, truncate_end},
     },
 };
@@ -175,7 +175,7 @@ fn apply_opacity(style: &Style, opacity: f32, default_bg: Color) -> Style {
 /// # Current Implementation
 ///
 /// This is a basic implementation that renders:
-/// - Buffer content (simple text, no syntax highlighting yet)
+/// - Buffer content with syntax highlighting (tokens from `AnnotationCacheManager`)
 /// - Remote selections (dimmed background overlay)
 /// - Local selection (background overlay)
 /// - Remote cursors (CBF-8 colorblind-friendly palette)
@@ -186,6 +186,8 @@ pub fn render_frame<B: RenderBackend>(
     state: &TuiCoreState,
     config: &RenderConfig,
     extensions: &[Box<dyn TuiExtension>],
+    token_cache: &AnnotationCacheManager,
+    theme: &ThemeManager,
 ) {
     // Clear the backend
     backend.clear();
@@ -211,7 +213,16 @@ pub fn render_frame<B: RenderBackend>(
         .collect();
 
     // Render buffer content
-    render_buffer_content(backend, state, config, content_height, sidebar_width, &fold_ranges);
+    render_buffer_content(
+        backend,
+        state,
+        config,
+        content_height,
+        sidebar_width,
+        &fold_ranges,
+        token_cache,
+        theme,
+    );
 
     // Render selections (behind cursors — background overlay)
     render_remote_selections(backend, state, content_x, content_height);
@@ -264,7 +275,7 @@ fn is_line_folded(line: usize, fold_ranges: &[(u32, u32)]) -> bool {
 }
 
 /// Render buffer content.
-#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_buffer_content<B: RenderBackend>(
     backend: &mut B,
@@ -273,6 +284,8 @@ fn render_buffer_content<B: RenderBackend>(
     content_height: u16,
     sidebar_width: u16,
     fold_ranges: &[(u32, u32)],
+    token_cache: &AnnotationCacheManager,
+    theme: &ThemeManager,
 ) {
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
@@ -323,6 +336,10 @@ fn render_buffer_content<B: RenderBackend>(
                     width - content_x,
                     line,
                     opacity,
+                    buffer_id,
+                    line_idx,
+                    token_cache,
+                    theme,
                 );
             } else {
                 // Empty line indicator
@@ -378,8 +395,12 @@ fn render_line_number<B: RenderBackend>(
     backend.write_str(x, y, &display, &style);
 }
 
-/// Render a line of buffer content.
-#[allow(clippy::cast_possible_truncation)]
+/// Render a line of buffer content with syntax highlighting.
+///
+/// Queries `token_cache` for cached syntax tokens on this line,
+/// resolves each token's category to a `Style` via `theme`, and
+/// renders characters with the appropriate colors.
+#[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
 fn render_line_content<B: RenderBackend>(
     backend: &mut B,
     x: u16,
@@ -387,16 +408,33 @@ fn render_line_content<B: RenderBackend>(
     width: u16,
     line: &str,
     opacity: f32,
+    buffer_id: Option<u64>,
+    line_idx: usize,
+    token_cache: &AnnotationCacheManager,
+    theme: &ThemeManager,
 ) {
-    // TODO(#494): Syntax highlighting — accept token spans from tree-sitter driver
-    let style = apply_opacity(&Style::default(), opacity, DEFAULT_BG);
+    let tokens = buffer_id
+        .map(|bid| token_cache.tokens_for_line(bid, line_idx as u32))
+        .unwrap_or_default();
+
+    let default_style = apply_opacity(&Style::default(), opacity, DEFAULT_BG);
 
     for (col, ch) in line.chars().enumerate() {
-        let col = col as u16;
-        if col >= width {
+        let col_u16 = col as u16;
+        if col_u16 >= width {
             break;
         }
-        backend.set_cell(x + col, y, ch, &style);
+
+        let col_u32 = col as u32;
+        let style = tokens
+            .iter()
+            .find(|t| col_u32 >= t.start_col && col_u32 < t.end_col)
+            .map_or_else(
+                || default_style.clone(),
+                |t| apply_opacity(&theme.get_style(&t.category), opacity, DEFAULT_BG),
+            );
+
+        backend.set_cell(x + col_u16, y, ch, &style);
     }
 }
 
@@ -757,9 +795,14 @@ mod tests {
     use {
         super::*,
         crate::{CursorPosition, RemoteClient},
-        reovim_driver_display::FrameBuffer,
+        reovim_driver_display::{BuiltinTheme, CachedAnnotationKind, FrameBuffer, TokenSpan},
         reovim_protocol::v2::WindowInfo,
     };
+
+    /// Helper: create default token cache and theme for tests.
+    fn test_syntax() -> (AnnotationCacheManager, ThemeManager) {
+        (AnnotationCacheManager::new(), ThemeManager::new(BuiltinTheme::Dark.load()))
+    }
 
     /// Helper: create a `WindowInfo` with a buffer.
     fn window(id: u64, buffer_id: u64) -> WindowInfo {
@@ -824,7 +867,8 @@ mod tests {
         let state = TuiCoreState::new(1);
         let config = RenderConfig::default();
 
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Should have rendered statusline
         let last_row = fb.row(23).unwrap();
@@ -884,7 +928,8 @@ mod tests {
         state.add_remote_client(remote);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Columns 2..=4 should have dimmed selection bg.
         // Column 5 is the cursor position — cursor overwrites selection bg.
@@ -918,7 +963,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         let expected_bg = Some(dimmed_client_color(3));
 
@@ -968,7 +1014,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         let expected_bg = Some(dimmed_client_color(4));
 
@@ -1015,7 +1062,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // No selection background should appear — cells should have default bg
         let wrong_bg = Some(dimmed_client_color(5));
@@ -1044,7 +1092,8 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         let expected_bg = Some(LOCAL_SELECTION_BG);
         for col in 3..=8u16 {
@@ -1087,7 +1136,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         let expected_bg = Some(dimmed_client_color(6));
 
@@ -1141,7 +1191,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Label on cursor row (3), after "hello world" (len 11) + 1 gap = col 12
         let expected_fg = Some(client_color(2));
@@ -1187,7 +1238,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Label on row 0 after "fn main()" (len 9) + 1 gap = col 10
         let expected_fg = Some(client_color(3));
@@ -1226,7 +1278,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Label should be truncated to MAX_LABEL_WIDTH
         let truncated_label = label_text("very-long-username-that-exceeds-limit", "NORMAL");
@@ -1268,7 +1321,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // "long content here!" is 18 chars, label_x = 19 (18+1).
         // Label " charlie [N] " is 14 chars. 19 + 14 = 33 > 20.
@@ -1303,7 +1357,8 @@ mod tests {
         });
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // No label should appear anywhere (client is in a different buffer)
         let label_fg = Some(client_color(6));
@@ -1410,7 +1465,8 @@ mod tests {
             .insert(100, vec!["hello world".to_string(), "second line".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // First line should contain 'h' at position (0, 0)
         let cell = fb.get(0, 0).unwrap();
@@ -1432,7 +1488,8 @@ mod tests {
         state.buffer_cache.insert(100, vec!["hello".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Row 1 should have tilde (line beyond buffer content)
         let cell = fb.get(0, 1).unwrap();
@@ -1461,7 +1518,8 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Content should be offset by gutter_width
         let cell = fb.get(4, 0).unwrap();
@@ -1490,7 +1548,8 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Should render without panicking
         let cell = fb.get(4, 0).unwrap();
@@ -1520,7 +1579,8 @@ mod tests {
             gutter_width: 4,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Content at gutter offset
         let cell = fb.get(4, 0).unwrap();
@@ -1542,7 +1602,8 @@ mod tests {
             render_self_cursor: true,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Self cursor at (5, 2) should have inverse video style
         let cell = fb.get(5, 2).unwrap();
@@ -1559,7 +1620,8 @@ mod tests {
         state.update_local_cursor(1, 3, 7);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Statusline at row 9 (height - 1)
         // Should contain mode indicator
@@ -1575,7 +1637,8 @@ mod tests {
         // No cursor set - should show "?:?"
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Statusline should be rendered (row 9)
         let last_row = fb.row(9).unwrap();
@@ -1589,7 +1652,8 @@ mod tests {
         let config = RenderConfig::default();
 
         // Should not panic with no windows
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
     }
 
     #[test]
@@ -1606,7 +1670,8 @@ mod tests {
         };
 
         // Should not panic (skips cursor rendering when no data)
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
     }
 
     #[test]
@@ -1649,7 +1714,8 @@ mod tests {
             .insert(100, vec!["abcdefghijklmnop".to_string()]);
 
         let config = RenderConfig::default();
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // First character should be 'a'
         let cell = fb.get(0, 0).unwrap();
@@ -1719,7 +1785,8 @@ mod tests {
             opacity: 1.0,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config_full, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config_full, &[], &tc, &tm);
         let full_style = fb.get(0, 0).unwrap().style.clone();
 
         // Render at half opacity
@@ -1728,7 +1795,7 @@ mod tests {
             opacity: 0.5,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb_dim, &state, &config_dim, &[]);
+        render_frame(&mut fb_dim, &state, &config_dim, &[], &tc, &tm);
         let dim_style = fb_dim.get(0, 0).unwrap().style.clone();
 
         // Content characters should be the same
@@ -1754,7 +1821,8 @@ mod tests {
             opacity: 0.5,
             ..RenderConfig::default()
         };
-        render_frame(&mut fb, &state, &config, &[]);
+        let (tc, tm) = test_syntax();
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
         // Row 1 should have a dimmed tilde
         let tilde_cell = fb.get(0, 1).unwrap();
@@ -1798,5 +1866,235 @@ mod tests {
         let ranges = [(0, 1)]; // only line 0 is hidden
         assert!(is_line_folded(0, &ranges));
         assert!(!is_line_folded(1, &ranges));
+    }
+
+    // =========================================================================
+    // Syntax highlighting integration
+    // =========================================================================
+
+    /// Helper: populate token cache with tokens for a buffer.
+    fn populate_tokens(
+        tc: &mut AnnotationCacheManager,
+        buffer_id: u64,
+        content: &str,
+        tokens: &[TokenSpan],
+    ) {
+        let cache = tc.get_or_create(buffer_id);
+        cache.rebuild_line_offsets(content);
+        cache.apply_update(tokens, 0, u64::MAX, true, content);
+    }
+
+    #[test]
+    fn test_render_line_content_applies_syntax_tokens() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "fn main" — "fn" is keyword (cols 0..2)
+        let content = "fn main";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 2,
+                category: "keyword".to_string(),
+                kind: CachedAnnotationKind::Highlight,
+            }],
+        );
+
+        render_line_content(&mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm);
+
+        // "fn" (cols 0,1) should have keyword style from theme
+        let keyword_style = tm.get_style("keyword");
+        let cell_f = fb.get(0, 0).unwrap();
+        let cell_n = fb.get(1, 0).unwrap();
+        assert_eq!(cell_f.char, 'f');
+        assert_eq!(cell_n.char, 'n');
+        assert_eq!(cell_f.style.fg, keyword_style.fg, "keyword fg mismatch");
+        assert_eq!(cell_n.style.fg, keyword_style.fg, "keyword fg mismatch");
+
+        // " " (col 2) and "main" should have default style (no token)
+        let cell_space = fb.get(2, 0).unwrap();
+        let default_style = Style::default();
+        assert_ne!(
+            cell_f.style.fg, default_style.fg,
+            "keyword should differ from default"
+        );
+        // Space and 'm' should NOT have the keyword color
+        assert_ne!(cell_space.style.fg, keyword_style.fg);
+    }
+
+    #[test]
+    fn test_render_line_content_no_tokens_uses_default_style() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm);
+
+        // All chars should be rendered with default style
+        for col in 0..5u16 {
+            let cell = fb.get(col, 0).unwrap();
+            assert_eq!(cell.style.fg, Style::default().fg);
+        }
+    }
+
+    #[test]
+    fn test_render_line_content_no_buffer_id_uses_default() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // buffer_id=None should not query token cache
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, None, 0, &tc, &tm);
+
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'h');
+        assert_eq!(cell.style.fg, Style::default().fg);
+    }
+
+    #[test]
+    fn test_render_line_content_token_beyond_width_stops() {
+        let mut fb = FrameBuffer::new(3, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "fn main()";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 2,
+                category: "keyword".to_string(),
+                kind: CachedAnnotationKind::Highlight,
+            }],
+        );
+
+        // Width=3, so only "fn " is rendered (cols 0,1,2)
+        render_line_content(&mut fb, 0, 0, 3, content, 1.0, Some(1), 0, &tc, &tm);
+
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'f');
+        let keyword_style = tm.get_style("keyword");
+        assert_eq!(cell.style.fg, keyword_style.fg);
+
+        // Col 2 (' ') should be default style — not keyword
+        let cell_space = fb.get(2, 0).unwrap();
+        assert_eq!(cell_space.char, ' ');
+        assert_ne!(cell_space.style.fg, keyword_style.fg);
+    }
+
+    #[test]
+    fn test_render_line_content_multiple_tokens() {
+        let mut fb = FrameBuffer::new(30, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "fn main" — "fn"=keyword, "main"=function
+        let content = "fn main";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[
+                TokenSpan {
+                    start_byte: 0,
+                    end_byte: 2,
+                    category: "keyword".to_string(),
+                    kind: CachedAnnotationKind::Highlight,
+                },
+                TokenSpan {
+                    start_byte: 3,
+                    end_byte: 7,
+                    category: "function".to_string(),
+                    kind: CachedAnnotationKind::Highlight,
+                },
+            ],
+        );
+
+        render_line_content(&mut fb, 0, 0, 30, content, 1.0, Some(1), 0, &tc, &tm);
+
+        let keyword_style = tm.get_style("keyword");
+        let function_style = tm.get_style("function");
+
+        // "fn" should have keyword style
+        assert_eq!(fb.get(0, 0).unwrap().style.fg, keyword_style.fg);
+        assert_eq!(fb.get(1, 0).unwrap().style.fg, keyword_style.fg);
+
+        // "main" (cols 3-6) should have function style
+        assert_eq!(fb.get(3, 0).unwrap().style.fg, function_style.fg);
+        assert_eq!(fb.get(6, 0).unwrap().style.fg, function_style.fg);
+    }
+
+    #[test]
+    fn test_render_line_content_correct_line_index() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // Two-line content, tokens only on line 1
+        let content = "hello\nfn world";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 6,
+                end_byte: 8,
+                category: "keyword".to_string(),
+                kind: CachedAnnotationKind::Highlight,
+            }],
+        );
+
+        // Render line 0 ("hello") — should have no keyword styling
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm);
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.style.fg, Style::default().fg);
+
+        // Render line 1 ("fn world") — "fn" should have keyword styling
+        let mut fb2 = FrameBuffer::new(20, 1);
+        render_line_content(&mut fb2, 0, 0, 20, "fn world", 1.0, Some(1), 1, &tc, &tm);
+        let keyword_style = tm.get_style("keyword");
+        assert_eq!(fb2.get(0, 0).unwrap().style.fg, keyword_style.fg);
+    }
+
+    #[test]
+    fn test_render_frame_with_syntax_tokens() {
+        let mut fb = FrameBuffer::new(40, 24);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "fn main()";
+        populate_tokens(
+            &mut tc,
+            42,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 2,
+                category: "keyword".to_string(),
+                kind: CachedAnnotationKind::Highlight,
+            }],
+        );
+
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 42));
+        state.focused_window_id = 1;
+        state
+            .buffer_cache
+            .insert(42, vec!["fn main()".to_string()]);
+        let config = RenderConfig::default();
+
+        render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+
+        // "fn" at content area should have keyword color
+        let keyword_style = tm.get_style("keyword");
+        let cell = fb.get(0, 0).unwrap();
+        assert_eq!(cell.char, 'f');
+        assert_eq!(cell.style.fg, keyword_style.fg);
     }
 }

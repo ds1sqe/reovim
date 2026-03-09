@@ -6,6 +6,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **TUI syntax highlighting (#548)**: Wire `AnnotationCacheManager` and `ThemeManager`
+  into the TUI render engine for per-character syntax coloring. `render_line_content()`
+  queries cached tokens for each line and resolves categories to styled colors via
+  the theme system. Completes the last-mile gap: tree-sitter tokens now produce
+  visible colored output in the terminal.
 - Syntax session integration: wire SyntaxDriver into session model for live token streaming (#539)
 - Layered annotation system: open `HighlightCategory(Arc<str>)` replaces closed `HighlightGroup` enum (#540)
   - `Annotation` type with `AnnotationKind` (Highlight, Conceal, Background, VirtualText)

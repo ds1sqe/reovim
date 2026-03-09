@@ -687,7 +687,14 @@ impl<O: TuiOutput> TuiApp<O> {
             .compute_scroll_top(self.state.focused_window_id, content_height);
 
         // Always render to FrameBuffer (common output)
-        render_frame(&mut self.frame_buffer, &self.state, &config, &self.extensions);
+        render_frame(
+            &mut self.frame_buffer,
+            &self.state,
+            &config,
+            &self.extensions,
+            &self.token_cache_manager,
+            &self.theme_manager,
+        );
 
         // Flush to display (terminal for interactive, no-op for headless)
         self.output.flush(&self.frame_buffer)?;
