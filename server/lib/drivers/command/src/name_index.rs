@@ -109,25 +109,20 @@ impl CommandNameIndex {
             0 => Ok(None),
             1 => Ok(Some(matches[0])),
             _ => {
-                // Check if all matches are aliases for the same command
-                let first_id = matches[0].0;
-                if matches.iter().all(|(id, _)| *id == first_id) {
-                    Ok(Some(matches[0]))
-                } else {
-                    // Collect candidate names for the error message
-                    let mut candidates: Vec<String> = self
-                        .by_name
-                        .iter()
-                        .filter(|(n, _)| n.starts_with(name))
-                        .map(|(n, _)| n.clone())
-                        .collect();
-                    candidates.sort();
-                    candidates.dedup();
-                    Err(AmbiguousPrefix {
-                        prefix: name.to_string(),
-                        candidates,
-                    })
-                }
+                // search_by_prefix() already deduplicates by CommandId,
+                // so 2+ results means genuinely distinct commands.
+                let mut candidates: Vec<String> = self
+                    .by_name
+                    .iter()
+                    .filter(|(n, _)| n.starts_with(name))
+                    .map(|(n, _)| n.clone())
+                    .collect();
+                candidates.sort();
+                candidates.dedup();
+                Err(AmbiguousPrefix {
+                    prefix: name.to_string(),
+                    candidates,
+                })
             }
         }
     }
@@ -434,8 +429,9 @@ mod tests {
     #[test]
     fn test_resolve_prefix_alias_dedup() {
         let idx = make_index();
-        // "qu" matches "quit" (prefix), and "q" is exact but "qu" is prefix
-        // Only one command matches (quit), so no ambiguity
+        // "qu" matches "quit" (prefix of "quit" name). search_by_prefix
+        // deduplicates by CommandId, so "q" and "quit" (same command)
+        // yield a single match — no ambiguity.
         let result = idx.resolve_prefix("qu").unwrap().unwrap();
         assert_eq!(result.0.name(), "quit");
     }
@@ -453,6 +449,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_resolve_prefix_ambiguous() {
         // Create an index with two distinct commands sharing a prefix
         let mut idx = CommandNameIndex::new();

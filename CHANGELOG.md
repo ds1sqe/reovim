@@ -279,6 +279,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   are the same command). Returns `AmbiguousPrefix` error (E464) when a
   prefix matches multiple distinct commands. `execute_ex_command()` updated
   to use `resolve_prefix()` for all command resolution.
+- **MC/DC coverage + E2E tests for ex-command system (#556)**: Achieve 100% MC/DC
+  coverage on `name_index.rs` and `parse.rs` with targeted tests for tab separators,
+  single-quote backslash handling, unclosed double-quote trailing backslash, and
+  compound condition edge cases. Add 8 headless-capture integration tests for
+  ex-command execution: `:write`/`:w`, prefix matching (`:wri`), unknown command
+  error (E492), `:edit`, insert-then-write workflow, and sequential command execution.
 
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
