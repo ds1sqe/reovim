@@ -4,14 +4,16 @@
 //! extracted from `completion/src/commands.rs::try_auto_start_lsp()` to
 //! decouple the completion module from direct module-lsp imports.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use {
     reovim_driver_lsp::{
         LspKey, LspLifecycle, LspProvider, LspProviderRegistry, LspRequest, LspServerConfig,
         uri_from_path,
     },
-    reovim_driver_session::{PendingLevel, PendingNotificationQueue},
+    reovim_driver_session::{
+        ClientId as DriverClientId, PendingLevel, PendingNotificationQueue, TickSchedulerHandle,
+    },
     reovim_kernel::api::v1::ServiceRegistry,
     tracing::{info, warn},
 };
@@ -72,6 +74,19 @@ impl LspLifecycle for LspAutoStarter {
                         info!("LSP server registered and ready");
                         if let Some(q) = &notify_queue {
                             q.push(PendingLevel::Success, "Language server ready");
+                        }
+
+                        // Start diagnostic tick (#564). DiagnosticBridge is
+                        // shared-scope and only touches shared_extensions, so
+                        // any connected client_id works as the lock anchor.
+                        // Client 1 is always the first connected client.
+                        if let Some(tick_handle) = services_clone.get::<TickSchedulerHandle>() {
+                            tick_handle.start(
+                                DriverClientId::new(1),
+                                "diagnostics",
+                                Duration::from_millis(500),
+                            );
+                            info!("Diagnostic tick started");
                         }
                     }
                     Err(e) => {

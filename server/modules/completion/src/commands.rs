@@ -5,7 +5,7 @@
 //! `ExtensionMap`.
 
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -474,7 +474,10 @@ fn try_auto_start_lsp(
     buffer_content: &str,
     buffer_id: u64,
 ) {
-    // Only Rust is supported for now.
+    // Only Rust is supported for completion auto-start.
+    // Note: LspModule's FileOpened handler (#564) uses config_for_language()
+    // which supports all configured languages. This Rust-only guard is
+    // specific to the completion trigger path (<C-Space>).
     if lang != "rust" {
         return;
     }
@@ -522,59 +525,8 @@ fn try_auto_start_lsp(
     // fire_lsp_completion() finds it and skips try_auto_start_lsp entirely.
 }
 
-/// Walk up from a file path to find the project root.
-///
-/// Looks for `Cargo.toml` (Rust), `package.json` (JS/TS), or `pyproject.toml` (Python).
-/// Returns the directory containing the project marker file.
-#[must_use]
-pub fn find_project_root(file_path: &Path) -> Option<PathBuf> {
-    let markers = ["Cargo.toml", "package.json", "pyproject.toml", "go.mod"];
-
-    let mut dir = if file_path.is_file() {
-        file_path.parent()?
-    } else {
-        file_path
-    };
-
-    loop {
-        for marker in &markers {
-            if dir.join(marker).exists() {
-                return Some(dir.to_path_buf());
-            }
-        }
-        dir = dir.parent()?;
-    }
-}
-
-/// Derive the language ID from a file path's extension.
-///
-/// Maps file extensions to LSP language identifiers used for server
-/// lookup and `textDocument/didOpen` notifications.
-#[must_use]
-pub fn language_id_from_path(path: &str) -> Option<String> {
-    let ext = Path::new(path).extension()?.to_str()?;
-    let lang = match ext {
-        "rs" => "rust",
-        "py" | "pyi" => "python",
-        "ts" => "typescript",
-        "tsx" => "typescriptreact",
-        "js" => "javascript",
-        "jsx" => "javascriptreact",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-        "go" => "go",
-        "java" => "java",
-        "lua" => "lua",
-        "rb" => "ruby",
-        "zig" => "zig",
-        "toml" => "toml",
-        "json" => "json",
-        "yaml" | "yml" => "yaml",
-        "md" | "markdown" => "markdown",
-        _ => return None,
-    };
-    Some(lang.to_owned())
-}
+// Re-export from driver-lsp (#564: shared helpers moved to driver layer).
+pub use reovim_driver_lsp::{find_project_root, language_id_from_path};
 
 /// Collect all command handlers for registration.
 #[must_use]

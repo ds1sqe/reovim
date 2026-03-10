@@ -55,7 +55,9 @@ mod types;
 pub use error::{LspError, ModuleError};
 
 // Configuration
-pub use config::{LspServerConfig, uri_from_path};
+pub use config::{
+    LspServerConfig, config_for_language, find_project_root, language_id_from_path, uri_from_path,
+};
 
 // Request/Response types
 pub use {

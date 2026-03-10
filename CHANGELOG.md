@@ -321,6 +321,25 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   fallback for safety. Also fixed column off-by-one in `CursorUp`/`CursorDown`
   that allowed cursor one past the end of a line (now matches kernel `MotionEngine`).
 
+- **DiagnosticBridge dead registry fix (#555)**: Fix `DiagnosticBridge` capturing
+  `Arc<LspProviderRegistry>` and `Arc<DiagnosticPathIndex>` from a temporary
+  `ServiceRegistry` created during `collect_bridges()` bootstrap, disconnected
+  from the real session registries where LSP servers register. Made
+  `DiagnosticBridge` a stateless unit struct that looks up services at tick time
+  via a new `&ServiceRegistry` parameter on `ExtensionStateBridge::tick()`.
+  `Session::with_tick_mut()` now passes the live session `ServiceRegistry` to
+  tick callbacks. TetrominoBridge updated with the new signature (unused param).
+
+- **LSP auto-start on file open and diagnostic tick (#564)**: Fix LSP servers
+  only starting on `<C-Space>` completion trigger instead of when files are
+  opened. `LspModule` now subscribes to `FileOpened` events: if an LSP provider
+  is already active for the language, it sends `DidOpen`; otherwise it auto-starts
+  the server via `LspLifecycle`. Diagnostic tick (`TickSchedulerHandle.start()`)
+  is now called after successful LSP server registration in `LspAutoStarter`,
+  enabling `DiagnosticBridge` to poll diagnostics on a 500ms interval. Shared
+  helpers `find_project_root`, `language_id_from_path`, and `config_for_language`
+  moved from completion module to `reovim-driver-lsp` for cross-module reuse.
+
 - **Ex-command VFS propagation (#547)**: Fix `:e` command failing with "VFS not
   available" when invoked via keyboard (ex-command path). `execute_ex_command`
   in vim mode.rs was building a fresh `CommandContext` without propagating the
