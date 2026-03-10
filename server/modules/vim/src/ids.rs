@@ -244,7 +244,7 @@ pub const ENTER_SEARCH_BACKWARD: CommandId = CommandId::new(MODULE, "enter-searc
 /// command context metadata:
 /// - `find_char`: The target character (`ArgValue::Char`)
 /// - `find_direction`: "forward" or "backward" (`ArgValue::String`)
-/// - `find_inclusive`: true for f/F, false for t/T (`ArgValue::Bool`)
+/// - `find_inclusive`: true for f/F, false for t/T (`ArgValue::Bang`)
 pub const EXECUTE_FIND_CHAR: CommandId = CommandId::new(MODULE, "execute-find-char");
 
 // =============================================================================

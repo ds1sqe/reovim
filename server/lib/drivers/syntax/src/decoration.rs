@@ -227,12 +227,7 @@ mod tests {
             kind: AnnotationKind::Conceal { replacement: None },
             category: HighlightCategory::new("test"),
         };
-        assert!(matches!(
-            rule.kind,
-            AnnotationKind::Conceal {
-                replacement: None
-            }
-        ));
+        assert!(matches!(rule.kind, AnnotationKind::Conceal { replacement: None }));
 
         // Background
         let rule = DecorationRule {
@@ -503,19 +498,13 @@ mod tests {
         assert_eq!(annotations.len(), 3);
 
         assert_eq!(annotations[0].category.as_str(), "markup.heading.1");
-        assert!(matches!(
-            annotations[0].kind,
-            AnnotationKind::Conceal { .. }
-        ));
+        assert!(matches!(annotations[0].kind, AnnotationKind::Conceal { .. }));
 
         assert_eq!(annotations[1].category.as_str(), "markup.raw.block");
         assert_eq!(annotations[1].kind, AnnotationKind::Background);
 
         assert_eq!(annotations[2].category.as_str(), "markup.list");
-        assert!(matches!(
-            annotations[2].kind,
-            AnnotationKind::Conceal { .. }
-        ));
+        assert!(matches!(annotations[2].kind, AnnotationKind::Conceal { .. }));
     }
 
     #[test]

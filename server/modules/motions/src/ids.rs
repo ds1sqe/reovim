@@ -67,6 +67,14 @@ pub const WHOLE_LINE: CommandId = CommandId::new(MODULE, "whole-line");
 // Find Character Motions
 // =============================================================================
 
+/// Coordinator command for find-char motions (#563).
+///
+/// WARNING: Do NOT override this command. It records `FindCharState` for
+/// repeat (`;`/`,`) and then delegates to `EXECUTE_FIND_CHAR`. Overriding
+/// this would break repeat recording for all providers. Override
+/// `EXECUTE_FIND_CHAR` instead.
+pub const DISPATCH_FIND_CHAR: CommandId = CommandId::new(MODULE, "dispatch-find-char");
+
 /// Find character forward (f).
 pub const FIND_CHAR_FORWARD: CommandId = CommandId::new(MODULE, "find-char-forward");
 

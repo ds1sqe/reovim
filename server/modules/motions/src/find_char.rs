@@ -2,25 +2,84 @@
 //!
 //! Implements vim find-char motions: `f`, `F`, `t`, `T`, `;`, `,`.
 //!
-//! # Architecture (Epic #385)
+//! # Architecture (#563, Epic #385)
 //!
-//! These commands are **intercepted by the vim resolver** before execution.
-//! The resolver handles `pending_char` state via `VimSessionState`. These command
-//! definitions exist only for:
-//! 1. Keybinding registration (command IDs)
-//! 2. Command metadata (description, args)
+//! ## Coordinator + Execution Split
 //!
-//! The actual find-char logic lives in:
-//! - `VimNormalResolver::classify_find_char_command()` - intercepts these commands
-//! - `vim::commands::ExecuteFindChar` - executes the motion with char from context
+//! `DISPATCH_FIND_CHAR` (coordinator) records `FindCharState` for repeat,
+//! then delegates to `EXECUTE_FIND_CHAR` (execution). Providers override
+//! `EXECUTE_FIND_CHAR` only — they never touch repeat state.
+//!
+//! ## Stub Commands (f/F/t/T)
+//!
+//! These are **intercepted by the vim resolver** before execution.
+//! They exist only for keybinding registration and command metadata.
+//!
+//! ## Repeat Handlers (;/,)
+//!
+//! `RepeatFindSame` and `RepeatFindReverse` read `FindCharState` and
+//! delegate to `EXECUTE_FIND_CHAR` with stored parameters.
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::SessionRuntime,
-    reovim_kernel::api::v1::CommandId,
+    reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::{
+        FindCharState, SessionRuntime,
+        api::{CommandApi, ExtensionApi},
+    },
+    reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
 use crate::ids;
+
+/// The execution command ID for find-char (defined by vim module).
+/// Constructed locally to avoid compile-time dependency on vim module.
+const EXECUTE_FIND_CHAR: CommandId = CommandId::new(ModuleId::new("vim"), "execute-find-char");
+
+// =============================================================================
+// Dispatch Find Char (coordinator) (#563)
+// =============================================================================
+
+/// Coordinator command for find-char motions.
+///
+/// Records `FindCharState` for `;`/`,` repeat, then delegates to
+/// `EXECUTE_FIND_CHAR`. This ensures repeat state is always recorded
+/// regardless of which provider handles execution.
+///
+/// WARNING: Do NOT override this command. Overriding would break repeat
+/// recording for all providers. Override `EXECUTE_FIND_CHAR` instead.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DispatchFindChar;
+
+impl Command for DispatchFindChar {
+    fn id(&self) -> CommandId {
+        ids::DISPATCH_FIND_CHAR
+    }
+
+    fn description(&self) -> &'static str {
+        "Record find-char state and delegate to execute-find-char"
+    }
+}
+
+impl CommandHandler for DispatchFindChar {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(target_char) = args.char("find_char") else {
+            return CommandResult::error("find_char argument required");
+        };
+        let forward = args.string("find_direction") != Some("backward");
+        let inclusive = match args.get("find_inclusive") {
+            Some(ArgValue::Bang(b)) => *b,
+            _ => true,
+        };
+
+        // Record state for ;/, repeat
+        runtime
+            .ext_mut::<FindCharState>()
+            .record(target_char, forward, inclusive);
+
+        // Delegate to EXECUTE_FIND_CHAR (same context)
+        runtime.execute_command(EXECUTE_FIND_CHAR, args.clone())
+    }
+}
 
 // =============================================================================
 // Find Char Forward (f)
@@ -144,9 +203,8 @@ impl CommandHandler for TillCharBackward {
 /// Repeat last find-char in the same direction.
 ///
 /// After using `f`, `F`, `t`, or `T`, press `;` to repeat that motion
-/// in the same direction.
-///
-/// Note: Repeat logic is handled by vim resolver via `VimSessionState.last_find`.
+/// in the same direction. Reads `FindCharState` and delegates to
+/// `EXECUTE_FIND_CHAR` with stored parameters.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RepeatFindSame;
 
@@ -161,9 +219,27 @@ impl Command for RepeatFindSame {
 }
 
 impl CommandHandler for RepeatFindSame {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via VimSessionState.last_find (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(record) = runtime.ext_mut::<FindCharState>().last().copied() else {
+            return CommandResult::error("No previous find-char");
+        };
+
+        let mut ctx = args.clone();
+        ctx.set("find_char", ArgValue::Char(record.char()));
+        ctx.set(
+            "find_direction",
+            ArgValue::String(
+                if record.forward() {
+                    "forward"
+                } else {
+                    "backward"
+                }
+                .to_string(),
+            ),
+        );
+        ctx.set("find_inclusive", ArgValue::Bang(record.inclusive()));
+
+        runtime.execute_command(EXECUTE_FIND_CHAR, ctx)
     }
 }
 
@@ -174,9 +250,8 @@ impl CommandHandler for RepeatFindSame {
 /// Repeat last find-char in the opposite direction.
 ///
 /// After using `f`, `F`, `t`, or `T`, press `,` to repeat that motion
-/// in the opposite direction.
-///
-/// Note: Repeat logic is handled by vim resolver via `VimSessionState.last_find`.
+/// in the opposite direction. Reads `FindCharState`, reverses direction,
+/// and delegates to `EXECUTE_FIND_CHAR`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct RepeatFindReverse;
 
@@ -191,9 +266,28 @@ impl Command for RepeatFindReverse {
 }
 
 impl CommandHandler for RepeatFindReverse {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
-        // TODO(#394): Implement via VimSessionState.last_find (escape hatch until API supports this)
-        CommandResult::Success
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(record) = runtime.ext_mut::<FindCharState>().last().copied() else {
+            return CommandResult::error("No previous find-char");
+        };
+        let reversed = record.reversed();
+
+        let mut ctx = args.clone();
+        ctx.set("find_char", ArgValue::Char(reversed.char()));
+        ctx.set(
+            "find_direction",
+            ArgValue::String(
+                if reversed.forward() {
+                    "forward"
+                } else {
+                    "backward"
+                }
+                .to_string(),
+            ),
+        );
+        ctx.set("find_inclusive", ArgValue::Bang(reversed.inclusive()));
+
+        runtime.execute_command(EXECUTE_FIND_CHAR, ctx)
     }
 }
 
@@ -205,6 +299,7 @@ impl CommandHandler for RepeatFindReverse {
 #[must_use]
 pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
     vec![
+        Box::new(DispatchFindChar),
         Box::new(FindCharForward),
         Box::new(FindCharBackward),
         Box::new(TillCharForward),
@@ -224,8 +319,8 @@ mod tests {
         super::*,
         crate::ids,
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, Window, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
+            ClientId, ExtensionMap, FindCharState, Session, Window, WindowLayout,
+            api::{CommandExecutor, CommandHandle, ExtensionApi},
         },
         reovim_kernel::api::{
             KernelContext, ModeStack, ServiceRegistry,
@@ -382,8 +477,66 @@ mod tests {
     }
 
     // =========================================================================
+    // RecordingExecutor (test infrastructure for coordinator/repeat tests)
+    // =========================================================================
+
+    use std::sync::Mutex;
+
+    /// Captures command ID and context for delegation assertions.
+    struct RecordingExecutor {
+        calls: Arc<Mutex<Vec<(CommandId, CommandContext)>>>,
+    }
+
+    impl RecordingExecutor {
+        fn new() -> Self {
+            Self {
+                calls: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+
+        fn take_calls(&self) -> Vec<(CommandId, CommandContext)> {
+            self.calls.lock().unwrap().drain(..).collect()
+        }
+    }
+
+    struct RecordingHandle {
+        calls: Arc<Mutex<Vec<(CommandId, CommandContext)>>>,
+        id: CommandId,
+    }
+
+    impl CommandHandle for RecordingHandle {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            ctx: &CommandContext,
+        ) -> CommandResult {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((self.id.clone(), ctx.clone()));
+            CommandResult::Success
+        }
+    }
+
+    impl CommandExecutor for RecordingExecutor {
+        fn get_handle(&self, id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            let calls = Arc::clone(&self.calls);
+            let id = id.clone();
+            Some(std::sync::Arc::new(RecordingHandle { calls, id }))
+        }
+    }
+
+    // =========================================================================
     // Command ID Tests
     // =========================================================================
+
+    #[test]
+    fn test_dispatch_find_char_id() {
+        let cmd = DispatchFindChar;
+        assert_eq!(cmd.id().module(), &ids::MODULE);
+        assert_eq!(cmd.id().name(), "dispatch-find-char");
+        assert_eq!(cmd.description(), "Record find-char state and delegate to execute-find-char");
+    }
 
     #[test]
     fn test_find_char_forward_id() {
@@ -436,7 +589,7 @@ mod tests {
     #[test]
     fn test_all_commands_count() {
         let cmds = all_commands();
-        assert_eq!(cmds.len(), 6); // f, F, t, T, ;, ,
+        assert_eq!(cmds.len(), 7); // dispatch, f, F, t, T, ;, ,
     }
 
     // =========================================================================
@@ -513,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn test_repeat_find_same_execute_returns_success() {
+    fn test_repeat_find_same_no_prior_find_returns_error() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
         let mut state = TestState::with_window(buffer_id);
@@ -522,11 +675,11 @@ mod tests {
         let args = CommandContext::new();
 
         let result = RepeatFindSame.execute(&mut runtime, &args);
-        assert!(result.is_success());
+        assert!(matches!(result, CommandResult::Error(_)));
     }
 
     #[test]
-    fn test_repeat_find_reverse_execute_returns_success() {
+    fn test_repeat_find_reverse_no_prior_find_returns_error() {
         let kernel = create_test_context();
         let buffer_id = setup_buffer(&kernel, "hello world");
         let mut state = TestState::with_window(buffer_id);
@@ -535,7 +688,7 @@ mod tests {
         let args = CommandContext::new();
 
         let result = RepeatFindReverse.execute(&mut runtime, &args);
-        assert!(result.is_success());
+        assert!(matches!(result, CommandResult::Error(_)));
     }
 
     // =========================================================================
@@ -690,5 +843,242 @@ mod tests {
                 }
             }
         }
+    }
+
+    // =========================================================================
+    // DispatchFindChar trait coverage
+    // =========================================================================
+
+    #[test]
+    fn test_dispatch_find_char_clone() {
+        let cmd = DispatchFindChar;
+        let cloned = cmd;
+        assert_eq!(cloned.id(), cmd.id());
+    }
+
+    #[test]
+    fn test_dispatch_find_char_debug() {
+        assert!(!format!("{DispatchFindChar:?}").is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_find_char_default() {
+        let _: DispatchFindChar = DispatchFindChar;
+    }
+
+    // =========================================================================
+    // DispatchFindChar execution tests (with RecordingExecutor)
+    // =========================================================================
+
+    #[test]
+    fn test_dispatch_find_char_records_state_and_delegates() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set("find_char", ArgValue::Char('o'));
+        args.set("find_direction", ArgValue::String("forward".to_string()));
+        args.set("find_inclusive", ArgValue::Bang(true));
+
+        let result = DispatchFindChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // Verify state was recorded
+        let find_state = runtime.ext_mut::<FindCharState>();
+        let record = find_state.last().unwrap();
+        assert_eq!(record.char(), 'o');
+        assert!(record.forward());
+        assert!(record.inclusive());
+
+        // Verify delegation to EXECUTE_FIND_CHAR
+        let calls = executor.take_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0.name(), "execute-find-char");
+        assert_eq!(calls[0].0.module().as_str(), "vim");
+    }
+
+    #[test]
+    fn test_dispatch_find_char_backward_till() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let mut args = CommandContext::new();
+        args.set("find_char", ArgValue::Char('l'));
+        args.set("find_direction", ArgValue::String("backward".to_string()));
+        args.set("find_inclusive", ArgValue::Bang(false));
+
+        let result = DispatchFindChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let find_state = runtime.ext_mut::<FindCharState>();
+        let record = find_state.last().unwrap();
+        assert_eq!(record.char(), 'l');
+        assert!(!record.forward());
+        assert!(!record.inclusive());
+    }
+
+    #[test]
+    fn test_dispatch_find_char_missing_arg() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        let args = CommandContext::new();
+        let result = DispatchFindChar.execute(&mut runtime, &args);
+        assert!(matches!(result, CommandResult::Error(_)));
+
+        // No delegation should have happened
+        let calls = executor.take_calls();
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_dispatch_find_char_defaults() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Only set find_char, let direction and inclusive use defaults
+        let mut args = CommandContext::new();
+        args.set("find_char", ArgValue::Char('x'));
+
+        let result = DispatchFindChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let find_state = runtime.ext_mut::<FindCharState>();
+        let record = find_state.last().unwrap();
+        assert_eq!(record.char(), 'x');
+        assert!(record.forward()); // default: forward
+        assert!(record.inclusive()); // default: inclusive
+    }
+
+    // =========================================================================
+    // RepeatFindSame execution tests (with RecordingExecutor + prior state)
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_find_same_delegates_with_stored_params() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Pre-populate FindCharState
+        runtime.ext_mut::<FindCharState>().record('o', true, true);
+
+        let args = CommandContext::new();
+        let result = RepeatFindSame.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let calls = executor.take_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0.name(), "execute-find-char");
+        assert_eq!(calls[0].1.char("find_char"), Some('o'));
+        assert_eq!(calls[0].1.string("find_direction"), Some("forward"));
+        assert!(matches!(calls[0].1.get("find_inclusive"), Some(ArgValue::Bang(true))));
+    }
+
+    #[test]
+    fn test_repeat_find_same_backward_till() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        runtime.ext_mut::<FindCharState>().record('l', false, false);
+
+        let args = CommandContext::new();
+        let result = RepeatFindSame.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let calls = executor.take_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1.char("find_char"), Some('l'));
+        assert_eq!(calls[0].1.string("find_direction"), Some("backward"));
+        assert!(matches!(calls[0].1.get("find_inclusive"), Some(ArgValue::Bang(false))));
+    }
+
+    // =========================================================================
+    // RepeatFindReverse execution tests (with RecordingExecutor + prior state)
+    // =========================================================================
+
+    #[test]
+    fn test_repeat_find_reverse_delegates_with_reversed_params() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Pre-populate: forward find 'o'
+        runtime.ext_mut::<FindCharState>().record('o', true, true);
+
+        let args = CommandContext::new();
+        let result = RepeatFindReverse.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let calls = executor.take_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0.name(), "execute-find-char");
+        assert_eq!(calls[0].1.char("find_char"), Some('o'));
+        // Direction reversed: forward → backward
+        assert_eq!(calls[0].1.string("find_direction"), Some("backward"));
+        // Inclusive preserved
+        assert!(matches!(calls[0].1.get("find_inclusive"), Some(ArgValue::Bang(true))));
+    }
+
+    #[test]
+    fn test_repeat_find_reverse_from_backward() {
+        let kernel = create_test_context();
+        let buffer_id = setup_buffer(&kernel, "hello world");
+        let mut state = TestState::with_window(buffer_id);
+        let executor = RecordingExecutor::new();
+        let mut runtime = state.runtime(&kernel, &executor);
+
+        // Pre-populate: backward till 'l'
+        runtime.ext_mut::<FindCharState>().record('l', false, false);
+
+        let args = CommandContext::new();
+        let result = RepeatFindReverse.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let calls = executor.take_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].1.char("find_char"), Some('l'));
+        // Direction reversed: backward → forward
+        assert_eq!(calls[0].1.string("find_direction"), Some("forward"));
+        // Inclusive preserved (false stays false)
+        assert!(matches!(calls[0].1.get("find_inclusive"), Some(ArgValue::Bang(false))));
+    }
+
+    // =========================================================================
+    // RecordingExecutor infrastructure test
+    // =========================================================================
+
+    #[test]
+    fn test_recording_executor_returns_handle() {
+        let executor = RecordingExecutor::new();
+        let cmd_id = ids::DISPATCH_FIND_CHAR;
+        let handle = executor.get_handle(&cmd_id);
+        assert!(handle.is_some());
+    }
+
+    #[test]
+    fn test_recording_executor_take_calls_empty() {
+        let executor = RecordingExecutor::new();
+        let calls = executor.take_calls();
+        assert!(calls.is_empty());
     }
 }

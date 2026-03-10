@@ -66,6 +66,7 @@ mod clipboard;
 mod command;
 mod compositor;
 mod extension;
+mod find_char;
 mod mode;
 mod register;
 mod search;
@@ -77,6 +78,9 @@ pub use buffer::{BufferApi, BufferError, Selection, SelectionMode};
 
 // Clipboard API (#515)
 pub use clipboard::ClipboardApi;
+
+// Find-char state extension (#563)
+pub use find_char::{FindCharRecord, FindCharState};
 
 // Search state extension
 pub use search::SearchState;

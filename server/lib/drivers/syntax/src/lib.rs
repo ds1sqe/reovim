@@ -93,7 +93,7 @@ pub use {
 
 // Types
 pub use {
-    decoration::{apply_rules, DecorationCapture, DecorationRule},
+    decoration::{DecorationCapture, DecorationRule, apply_rules},
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
     highlight::{Annotation, AnnotationKind, HighlightCategory},

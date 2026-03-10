@@ -1057,10 +1057,7 @@ mod tests {
         // All 4 lines should have a Background token
         for line in 0..4 {
             let tokens = cache.tokens_for_line(line);
-            assert!(
-                !tokens.is_empty(),
-                "Line {line} should have a Background token"
-            );
+            assert!(!tokens.is_empty(), "Line {line} should have a Background token");
             assert_eq!(
                 tokens[0].kind,
                 CachedAnnotationKind::Background,

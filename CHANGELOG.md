@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Find-char repeat with extensible coordinator pattern (#563)**: Implement `;`
+  (repeat last find-char same direction) and `,` (repeat reversed) using a two-command
+  coordinator/execution split. `DISPATCH_FIND_CHAR` (motions module) records
+  `FindCharState` then delegates to overridable `EXECUTE_FIND_CHAR` (vim module),
+  enabling future providers (range-finder, easymotion) via `Priority::Override`.
+  Policy-free `FindCharRecord` and `FindCharState` types in session driver follow
+  `SearchState` precedent. Keybindings added to normal and all operator modes
+  (delete, yank, change). `LastFind` removed from vim module (replaced by shared state).
 - **Decoration system (#551)**: General-purpose decoration engine for markdown
   rendering with block and inline decorations. Language modules provide tree-sitter
   queries and declarative `DecorationRule` mappings; the `SyntaxDriver` trait

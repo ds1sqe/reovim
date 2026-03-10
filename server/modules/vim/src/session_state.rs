@@ -84,11 +84,6 @@ pub struct VimSessionState {
     /// is stored here until the next character is typed.
     pub pending_char: Option<PendingCharOp>,
 
-    /// Last find-char operation for ; and , repeat.
-    ///
-    /// Updated each time a find-char motion successfully moves the cursor.
-    pub last_find: Option<LastFind>,
-
     /// Numeric prefix accumulator.
     ///
     /// When digits are pressed before a command (e.g., `5j`), the count
@@ -404,18 +399,6 @@ impl PendingCharOp {
     }
 }
 
-/// Record of the last find-char operation for ; and , repeat.
-///
-/// Stores the character and operation type so that `;` can repeat
-/// the same find and `,` can repeat in the opposite direction.
-#[derive(Debug, Clone, Copy)]
-pub struct LastFind {
-    /// The character that was searched for.
-    pub char: char,
-    /// The type of find operation (f, F, t, or T).
-    pub op: PendingCharOp,
-}
-
 // =============================================================================
 // Dot Repeat Support (Epic #465)
 // =============================================================================
@@ -469,30 +452,6 @@ pub struct LastChange {
     pub register: Option<char>,
 }
 
-impl LastFind {
-    /// Create a new last-find record.
-    #[must_use]
-    pub const fn new(char: char, op: PendingCharOp) -> Self {
-        Self { char, op }
-    }
-
-    /// Get the reversed operation for , (repeat in opposite direction).
-    #[must_use]
-    pub const fn reversed(&self) -> Self {
-        let op = match self.op {
-            PendingCharOp::FindForward => PendingCharOp::FindBackward,
-            PendingCharOp::FindBackward => PendingCharOp::FindForward,
-            PendingCharOp::TillForward => PendingCharOp::TillBackward,
-            PendingCharOp::TillBackward => PendingCharOp::TillForward,
-            PendingCharOp::Replace => PendingCharOp::Replace, // Replace doesn't reverse
-        };
-        Self {
-            char: self.char,
-            op,
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(clippy::field_reassign_with_default)]
 mod tests {
@@ -505,7 +464,6 @@ mod tests {
         let state = VimSessionState::default();
         assert!(state.pending_char.is_none());
         assert!(state.pending_textobj_range.is_none());
-        assert!(state.last_find.is_none());
         assert!(state.pending_count.is_none());
         assert!(state.pending_register.is_none());
         assert!(!state.is_pending());
@@ -577,18 +535,6 @@ mod tests {
 
         assert!(PendingCharOp::FindForward.is_motion());
         assert!(!PendingCharOp::Replace.is_motion());
-    }
-
-    #[test]
-    fn test_last_find_reversed() {
-        let find = LastFind::new('x', PendingCharOp::FindForward);
-        let reversed = find.reversed();
-        assert_eq!(reversed.char, 'x');
-        assert_eq!(reversed.op, PendingCharOp::FindBackward);
-
-        let till = LastFind::new('y', PendingCharOp::TillBackward);
-        let reversed = till.reversed();
-        assert_eq!(reversed.op, PendingCharOp::TillForward);
     }
 
     // ========================================================================
@@ -822,66 +768,6 @@ mod tests {
     }
 
     // ========================================================================
-    // LastFind additional tests
-    // ========================================================================
-
-    #[test]
-    fn test_last_find_new() {
-        let find = LastFind::new('a', PendingCharOp::FindForward);
-        assert_eq!(find.char, 'a');
-        assert_eq!(find.op, PendingCharOp::FindForward);
-    }
-
-    #[test]
-    fn test_last_find_reversed_find_forward() {
-        let find = LastFind::new('x', PendingCharOp::FindForward);
-        let rev = find.reversed();
-        assert_eq!(rev.char, 'x');
-        assert_eq!(rev.op, PendingCharOp::FindBackward);
-    }
-
-    #[test]
-    fn test_last_find_reversed_find_backward() {
-        let find = LastFind::new('y', PendingCharOp::FindBackward);
-        let rev = find.reversed();
-        assert_eq!(rev.char, 'y');
-        assert_eq!(rev.op, PendingCharOp::FindForward);
-    }
-
-    #[test]
-    fn test_last_find_reversed_till_forward() {
-        let find = LastFind::new('z', PendingCharOp::TillForward);
-        let rev = find.reversed();
-        assert_eq!(rev.char, 'z');
-        assert_eq!(rev.op, PendingCharOp::TillBackward);
-    }
-
-    #[test]
-    fn test_last_find_reversed_till_backward() {
-        let find = LastFind::new('w', PendingCharOp::TillBackward);
-        let rev = find.reversed();
-        assert_eq!(rev.char, 'w');
-        assert_eq!(rev.op, PendingCharOp::TillForward);
-    }
-
-    #[test]
-    fn test_last_find_reversed_replace() {
-        // Replace doesn't have a direction to reverse
-        let find = LastFind::new('r', PendingCharOp::Replace);
-        let rev = find.reversed();
-        assert_eq!(rev.char, 'r');
-        assert_eq!(rev.op, PendingCharOp::Replace);
-    }
-
-    #[test]
-    fn test_last_find_double_reversed() {
-        let find = LastFind::new('x', PendingCharOp::FindForward);
-        let double_rev = find.reversed().reversed();
-        assert_eq!(double_rev.char, 'x');
-        assert_eq!(double_rev.op, PendingCharOp::FindForward);
-    }
-
-    // ========================================================================
     // ChangeType and LastChange tests (Epic #465)
     // ========================================================================
 
@@ -1061,13 +947,6 @@ mod tests {
         let op = PendingCharOp::FindForward;
         let debug = format!("{op:?}");
         assert!(debug.contains("FindForward"));
-    }
-
-    #[test]
-    fn test_last_find_debug() {
-        let find = LastFind::new('x', PendingCharOp::TillForward);
-        let debug = format!("{find:?}");
-        assert!(debug.contains("LastFind"));
     }
 
     #[test]
@@ -1261,15 +1140,6 @@ mod tests {
         let op = PendingCharOp::TillBackward;
         let copied = op;
         assert_eq!(copied, op);
-    }
-
-    #[test]
-    fn test_last_find_with_unicode_char() {
-        let find = LastFind::new('\u{00e9}', PendingCharOp::FindForward); // e with accent
-        assert_eq!(find.char, '\u{00e9}');
-        let rev = find.reversed();
-        assert_eq!(rev.char, '\u{00e9}');
-        assert_eq!(rev.op, PendingCharOp::FindBackward);
     }
 
     #[test]

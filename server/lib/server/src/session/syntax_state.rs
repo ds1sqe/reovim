@@ -279,9 +279,7 @@ pub fn annotation_kind_to_proto(kind: &DriverAnnotationKind) -> Option<Annotatio
             kind: Some(annotation_kind::Kind::Background(BackgroundKind {})),
         }),
         DriverAnnotationKind::VirtualText { text } => Some(AnnotationKind {
-            kind: Some(annotation_kind::Kind::VirtualText(VirtualTextKind {
-                text: text.clone(),
-            })),
+            kind: Some(annotation_kind::Kind::VirtualText(VirtualTextKind { text: text.clone() })),
         }),
     }
 }
@@ -655,8 +653,7 @@ mod tests {
 
     #[test]
     fn test_annotation_kind_to_proto_conceal_no_replacement() {
-        let result =
-            annotation_kind_to_proto(&DriverAnnotationKind::Conceal { replacement: None });
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::Conceal { replacement: None });
         let kind = result.expect("Conceal should produce Some").kind.unwrap();
         match kind {
             annotation_kind::Kind::Conceal(c) => assert!(c.replacement.is_none()),
@@ -681,7 +678,10 @@ mod tests {
     #[test]
     fn test_annotation_kind_to_proto_background() {
         let result = annotation_kind_to_proto(&DriverAnnotationKind::Background);
-        let kind = result.expect("Background should produce Some").kind.unwrap();
+        let kind = result
+            .expect("Background should produce Some")
+            .kind
+            .unwrap();
         assert!(matches!(kind, annotation_kind::Kind::Background(_)));
     }
 
@@ -690,7 +690,10 @@ mod tests {
         let result = annotation_kind_to_proto(&DriverAnnotationKind::VirtualText {
             text: "ghost".into(),
         });
-        let kind = result.expect("VirtualText should produce Some").kind.unwrap();
+        let kind = result
+            .expect("VirtualText should produce Some")
+            .kind
+            .unwrap();
         match kind {
             annotation_kind::Kind::VirtualText(vt) => assert_eq!(vt.text, "ghost"),
             other => panic!("Expected VirtualText, got {other:?}"),
@@ -708,7 +711,7 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl SyntaxDriver for MixedAnnotationDriver {
-        fn language(&self) -> &str {
+        fn language(&self) -> &'static str {
             "markdown"
         }
 
@@ -759,11 +762,11 @@ mod tests {
         let mut syntax = SyntaxSessionState::new();
         let id = buffer_id(1);
 
-        syntax.set(
-            id,
-            Box::new(MixedAnnotationDriver { parsed: false }),
-        );
-        syntax.get_mut(id).unwrap().parse("# heading\n```\ncode\n```\n");
+        syntax.set(id, Box::new(MixedAnnotationDriver { parsed: false }));
+        syntax
+            .get_mut(id)
+            .unwrap()
+            .parse("# heading\n```\ncode\n```\n");
 
         let update = build_token_update(&syntax, id, 4, true).unwrap();
         assert_eq!(update.tokens.len(), 4);
@@ -772,7 +775,13 @@ mod tests {
         assert!(update.tokens[0].kind.is_none());
 
         // Token 1: Conceal with replacement
-        let kind1 = update.tokens[1].kind.as_ref().unwrap().kind.as_ref().unwrap();
+        let kind1 = update.tokens[1]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
         match kind1 {
             annotation_kind::Kind::Conceal(c) => {
                 assert_eq!(c.replacement.as_deref(), Some("icon "));
@@ -781,11 +790,23 @@ mod tests {
         }
 
         // Token 2: Background
-        let kind2 = update.tokens[2].kind.as_ref().unwrap().kind.as_ref().unwrap();
+        let kind2 = update.tokens[2]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
         assert!(matches!(kind2, annotation_kind::Kind::Background(_)));
 
         // Token 3: VirtualText
-        let kind3 = update.tokens[3].kind.as_ref().unwrap().kind.as_ref().unwrap();
+        let kind3 = update.tokens[3]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
         match kind3 {
             annotation_kind::Kind::VirtualText(vt) => assert_eq!(vt.text, "ghost"),
             other => panic!("Expected VirtualText, got {other:?}"),
@@ -798,10 +819,7 @@ mod tests {
         let mut stream = SyntaxStreamState::new();
         let id = buffer_id(1);
 
-        syntax.set(
-            id,
-            Box::new(MixedAnnotationDriver { parsed: false }),
-        );
+        syntax.set(id, Box::new(MixedAnnotationDriver { parsed: false }));
         syntax.get_mut(id).unwrap().parse("# heading");
 
         let mut rx = stream.subscribe();

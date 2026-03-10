@@ -22,11 +22,19 @@ use {
 };
 
 use crate::{
-    ids::EXECUTE_FIND_CHAR,
     macros::notation_to_keys,
     modes::VimMode,
     session_state::{PendingCharOp, VimSessionState},
 };
+
+/// Coordinator command dispatched for find-char motions (#563).
+/// Defined locally to reference the motions module's command without
+/// compile-time dependency.
+const DISPATCH_FIND_CHAR: reovim_kernel::api::v1::CommandId =
+    reovim_kernel::api::v1::CommandId::new(
+        reovim_kernel::api::v1::ModuleId::new("motions"),
+        "dispatch-find-char",
+    );
 
 /// Pending macro operation.
 ///
@@ -705,7 +713,7 @@ impl ModeKeyResolver for VimNormalResolver {
                 let inclusive = pending_op.is_find();
                 ctx.metadata
                     .insert("find_inclusive".to_string(), ArgValue::Bool(inclusive));
-                return ResolveResult::Execute(EXECUTE_FIND_CHAR, ctx);
+                return ResolveResult::Execute(DISPATCH_FIND_CHAR, ctx);
             }
 
             // Replace operation (r) — dispatch to editor::REPLACE_CHAR
@@ -2068,7 +2076,7 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('a'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(ctx.metadata.get("find_char"), Some(&ArgValue::Char('a')));
             assert_eq!(
                 ctx.metadata.get("find_direction"),
@@ -2122,7 +2130,7 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('x'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(ctx.metadata.get("find_char"), Some(&ArgValue::Char('x')));
             assert_eq!(
                 ctx.metadata.get("find_direction"),
@@ -2155,7 +2163,7 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('z'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(
                 ctx.metadata.get("find_direction"),
                 Some(&ArgValue::String("backward".to_string()))

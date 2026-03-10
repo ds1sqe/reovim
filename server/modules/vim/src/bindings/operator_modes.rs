@@ -213,6 +213,15 @@ fn delete_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[DELETE_MODE])
             .with_category("motion")
             .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 
@@ -459,6 +468,15 @@ fn yank_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[YANK_MODE])
             .with_category("motion")
             .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 
@@ -703,6 +721,15 @@ fn change_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[CHANGE_MODE])
             .with_category("motion")
             .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 

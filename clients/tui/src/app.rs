@@ -30,8 +30,8 @@ use {
         ThemeManager, TokenSpan,
     },
     reovim_protocol::v2::{
-        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
-        annotation_kind, option_changed_payload::Value as OptionValue,
+        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect, annotation_kind,
+        option_changed_payload::Value as OptionValue,
     },
     tokio::{select, sync::mpsc, time::interval},
     tonic::Streaming,

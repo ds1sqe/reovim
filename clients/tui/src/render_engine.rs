@@ -472,11 +472,7 @@ fn render_line_content<B: RenderBackend>(
             apply_opacity(conceal_style, opacity, DEFAULT_BG)
         } else {
             // Map display column back to source column for highlight lookup
-            let source_col = concealed
-                .col_mapping
-                .get(display_col)
-                .copied()
-                .unwrap_or(0);
+            let source_col = concealed.col_mapping.get(display_col).copied().unwrap_or(0);
             let source_col = u32::from(source_col);
 
             tokens
@@ -518,9 +514,7 @@ fn render_line_content<B: RenderBackend>(
                         })
                         .map_or_else(
                             || default_style.clone(),
-                            |t| {
-                                apply_opacity(&theme.get_style(&t.category), opacity, DEFAULT_BG)
-                            },
+                            |t| apply_opacity(&theme.get_style(&t.category), opacity, DEFAULT_BG),
                         );
                     if let Some(bg_color) = bg.bg {
                         existing.bg = Some(bg_color);
@@ -841,7 +835,13 @@ fn render_self_cursor<B: RenderBackend>(
     let visual_col = if state.is_insert_mode() {
         cursor.column as u16
     } else {
-        compute_cursor_visual_col(state, cursor.line as usize, cursor.column as usize, token_cache, theme)
+        compute_cursor_visual_col(
+            state,
+            cursor.line as usize,
+            cursor.column as usize,
+            token_cache,
+            theme,
+        )
     };
     let screen_col = visual_col + gutter_width;
 

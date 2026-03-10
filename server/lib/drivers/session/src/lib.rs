@@ -138,9 +138,9 @@ pub use runtime::SessionRuntime;
 // Session API traits (re-export for convenience)
 pub use api::{
     BufferApi, BufferError, ChangeTracker, ClipboardApi, CommandApi, CommandExecutor,
-    CommandHandle, CompositorApi, CompositorError, ExtensionApi, ModeApi,
-    ModeError as ApiModeError, RegisterApi, RegisterContent, Selection, SelectionMode, SessionApi,
-    SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
+    CommandHandle, CompositorApi, CompositorError, ExtensionApi, FindCharRecord, FindCharState,
+    ModeApi, ModeError as ApiModeError, RegisterApi, RegisterContent, Selection, SelectionMode,
+    SessionApi, SessionApiDyn, StateChanges, WindowApi, WindowError, YankType,
 };
 
 // Tab page management (#401)

@@ -79,7 +79,7 @@ pub use modes::{VIM_MODULE, VimMode};
 pub use providers::{VimDefaultModeProvider, VimModuleProviderExt};
 
 // Re-export session state (Epic #385 - Server Simplification)
-pub use session_state::{LastFind, PendingCharOp, VimSessionState};
+pub use session_state::{PendingCharOp, VimSessionState};
 
 // Re-export OperatorId (Epic #385 - operators are vim policy, not kernel mechanism)
 pub use ids::{CHANGE, DELETE, OperatorId, YANK};

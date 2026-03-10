@@ -783,8 +783,7 @@ impl SyntaxDriver for TreeSitterDriver {
                 let capture_names = deco_query.capture_names();
                 let mut captures = Vec::new();
 
-                let mut matches =
-                    cursor.matches(deco_query, tree.root_node(), content.as_bytes());
+                let mut matches = cursor.matches(deco_query, tree.root_node(), content.as_bytes());
                 while let Some(match_) = matches.next() {
                     for capture in match_.captures {
                         let name = &capture_names[capture.index as usize];
@@ -814,11 +813,8 @@ impl SyntaxDriver for TreeSitterDriver {
                 let capture_names = inline_query.capture_names();
                 let mut captures = Vec::new();
 
-                let mut matches = cursor.matches(
-                    inline_query,
-                    inline_tree.root_node(),
-                    content.as_bytes(),
-                );
+                let mut matches =
+                    cursor.matches(inline_query, inline_tree.root_node(), content.as_bytes());
                 while let Some(match_) = matches.next() {
                     for capture in match_.captures {
                         let name = &capture_names[capture.index as usize];
@@ -1632,10 +1628,7 @@ mod tests {
 
         driver.parse("fn main() {}");
         let decorations = driver.decorations(0..100);
-        assert!(
-            decorations.is_empty(),
-            "Driver without decoration query should return empty"
-        );
+        assert!(decorations.is_empty(), "Driver without decoration query should return empty");
     }
 
     #[test]
@@ -1659,10 +1652,7 @@ mod tests {
 
         // Not parsed yet
         let decorations = driver.decorations(0..100);
-        assert!(
-            decorations.is_empty(),
-            "Should return empty before parse"
-        );
+        assert!(decorations.is_empty(), "Should return empty before parse");
     }
 
     #[test]
@@ -1717,10 +1707,7 @@ mod tests {
         driver.parse("let x = 1;");
         let decorations = driver.decorations(0..100);
 
-        assert!(
-            decorations.is_empty(),
-            "No rules match 'ident' captures, should be empty"
-        );
+        assert!(decorations.is_empty(), "No rules match 'ident' captures, should be empty");
     }
 
     #[test]
@@ -1750,10 +1737,7 @@ mod tests {
         // Query only the first line (bytes 0..13)
         let decorations = driver.decorations(0..13);
         // "main" is at bytes 3..7
-        assert!(
-            !decorations.is_empty(),
-            "Should find identifier in first line"
-        );
+        assert!(!decorations.is_empty(), "Should find identifier in first line");
         for d in &decorations {
             assert!(
                 d.start_byte < 13,
@@ -1807,8 +1791,7 @@ mod tests {
 
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
-        let deco_query =
-            Arc::new(Query::new(&language, "(let_declaration \"let\" @kw)").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(let_declaration \"let\" @kw)").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "kw".into(),

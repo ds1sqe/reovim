@@ -264,10 +264,7 @@ fn markdown_decoration_rules() -> Vec<DecorationRule> {
         DecorationRule {
             capture_name: "horizontal_rule".into(),
             kind: AnnotationKind::Conceal {
-                replacement: Some(
-                    "\u{2500}"
-                        .repeat(40)
-                ),
+                replacement: Some("\u{2500}".repeat(40)),
             },
             category: HighlightCategory::new("punctuation.special"),
         },
@@ -283,9 +280,7 @@ fn markdown_inline_decoration_rules() -> Vec<DecorationRule> {
         // Code span delimiters (backticks) → Conceal (hide)
         DecorationRule {
             capture_name: "code_span.delimiter".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: None,
-            },
+            kind: AnnotationKind::Conceal { replacement: None },
             category: HighlightCategory::new("markup.raw.inline"),
         },
         // Code span content → Background
@@ -315,9 +310,7 @@ fn markdown_inline_decoration_rules() -> Vec<DecorationRule> {
         // Link destination (URL) → Conceal (hide the URL)
         DecorationRule {
             capture_name: "link.destination".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: None,
-            },
+            kind: AnnotationKind::Conceal { replacement: None },
             category: HighlightCategory::new("markup.link.url"),
         },
     ]
@@ -951,7 +944,9 @@ MIT
         );
 
         // Verify the h1 marker is concealed with the correct icon
-        let h1 = decos.iter().find(|a| a.category.as_str() == "markup.heading.1");
+        let h1 = decos
+            .iter()
+            .find(|a| a.category.as_str() == "markup.heading.1");
         assert!(h1.is_some(), "Expected markup.heading.1 decoration");
         assert!(
             matches!(&h1.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{f0965}')),
@@ -1004,12 +999,12 @@ MIT
         driver.parse("- minus\n+ plus\n* star\n");
         let decos = driver.decorations(0..100);
 
-        let bullets: Vec<_> = decos
+        let bullet_count = decos
             .iter()
             .filter(|a| a.category.as_str() == "markup.list")
-            .collect();
+            .count();
 
-        assert_eq!(bullets.len(), 3, "Expected 3 bullet decorations for -, +, *");
+        assert_eq!(bullet_count, 3, "Expected 3 bullet decorations for -, +, *");
     }
 
     #[test]
@@ -1114,11 +1109,15 @@ MIT
 
         // Should only get h1 decoration, not h2
         assert!(
-            decos.iter().any(|a| a.category.as_str() == "markup.heading.1"),
+            decos
+                .iter()
+                .any(|a| a.category.as_str() == "markup.heading.1"),
             "Should include h1 in range 0..5"
         );
         assert!(
-            !decos.iter().any(|a| a.category.as_str() == "markup.heading.2"),
+            !decos
+                .iter()
+                .any(|a| a.category.as_str() == "markup.heading.2"),
             "Should NOT include h2 in range 0..5"
         );
     }
@@ -1138,7 +1137,9 @@ MIT
 
         // Decorations should have different kinds than plain Highlight
         assert!(
-            decos.iter().all(|a| !matches!(a.kind, AnnotationKind::Highlight)),
+            decos
+                .iter()
+                .all(|a| !matches!(a.kind, AnnotationKind::Highlight)),
             "Decorations should not use Highlight kind (that's what highlights() returns)"
         );
     }
@@ -1146,7 +1147,11 @@ MIT
     #[test]
     fn test_decoration_rules_count() {
         let rules = markdown_decoration_rules();
-        assert_eq!(rules.len(), 12, "Expected 12 decoration rules (6 headings + bullet + 2 checkboxes + code_block + blockquote + hr)");
+        assert_eq!(
+            rules.len(),
+            12,
+            "Expected 12 decoration rules (6 headings + bullet + 2 checkboxes + code_block + blockquote + hr)"
+        );
     }
 
     // ========================================================================
@@ -1218,10 +1223,7 @@ MIT
             a.category.as_str() == "markup.raw.inline"
                 && matches!(a.kind, AnnotationKind::Conceal { .. })
         });
-        assert!(
-            code_delim.is_some(),
-            "Expected concealed backtick delimiters"
-        );
+        assert!(code_delim.is_some(), "Expected concealed backtick delimiters");
     }
 
     #[test]
@@ -1250,10 +1252,7 @@ MIT
             a.category.as_str() == "markup.link.url"
                 && matches!(a.kind, AnnotationKind::Conceal { replacement: None })
         });
-        assert!(
-            link_url.is_some(),
-            "Expected concealed link destination for URL"
-        );
+        assert!(link_url.is_some(), "Expected concealed link destination for URL");
     }
 
     #[test]
@@ -1271,9 +1270,7 @@ MIT
         assert!(heading, "Should have block-level heading decoration");
 
         // Inline decoration: emphasis
-        let emphasis = decos
-            .iter()
-            .any(|a| a.category.as_str() == "markup.italic");
+        let emphasis = decos.iter().any(|a| a.category.as_str() == "markup.italic");
         assert!(emphasis, "Should have inline emphasis decoration");
 
         // Block decoration: bullet
