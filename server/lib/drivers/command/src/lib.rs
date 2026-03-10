@@ -82,10 +82,10 @@ pub use registry::CommandHandlerStore;
 // Re-export query service (#453, #522)
 pub use query::{CommandInfo, CommandQueryProvider, CommandQueryService};
 
-// Re-export name index and cmdline parser (#547)
+// Re-export name index and cmdline parser (#547, #559)
 pub use {
     name_index::CommandNameIndex,
-    parse::{ParsedCmdline, parse_cmdline},
+    parse::{ArgError, ParsedCmdline, bind_args, parse_cmdline, tokenize_args},
 };
 
 // Re-export traits
@@ -161,6 +161,7 @@ mod tests {
         let _ = ArgKind::Bang;
         let _ = ArgKind::BufferId;
         let _ = ArgKind::Char;
+        let _ = ArgKind::Rest;
     }
 
     #[test]

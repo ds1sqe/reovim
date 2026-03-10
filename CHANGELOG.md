@@ -256,6 +256,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Messages are cleared on next normal-mode keypress. Bridge updated to serialize
   `message`/`message_kind` fields and report `is_active` when a message is present.
 
+- **Tokenizer + ArgParser + ArgKind::Rest (#559)**: Add quote-aware `tokenize_args()`
+  (double/single quotes, backslash escapes), `ArgError` enum with Display (E471/E488/E474),
+  `bind_args()` for spec-driven argument binding, `raw_args` field on `ParsedCmdline`,
+  and `ArgKind::Rest` variant for consuming all remaining text. Pure mechanism in the
+  command driver layer.
+
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
   `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature

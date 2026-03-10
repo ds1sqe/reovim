@@ -68,6 +68,8 @@ pub enum ArgKind {
     BufferId,
     /// Single character (e.g., for find-char operations).
     Char,
+    /// All remaining text after previous arguments (e.g., `:colorscheme dark`).
+    Rest,
 }
 
 /// Argument value parsed from user input.
@@ -134,6 +136,7 @@ mod tests {
             ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
+            ArgKind::Rest,
         ];
         for kind in kinds {
             let spec = ArgSpec::required("test", kind, "desc");
@@ -155,6 +158,7 @@ mod tests {
             ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
+            ArgKind::Rest,
         ];
         for kind in kinds {
             let spec = ArgSpec::optional("test", kind, "desc");
@@ -194,6 +198,7 @@ mod tests {
         assert_ne!(ArgKind::Bang, ArgKind::Bool);
         assert_ne!(ArgKind::Bang, ArgKind::BufferId);
         assert_ne!(ArgKind::Char, ArgKind::Count);
+        assert_ne!(ArgKind::Rest, ArgKind::String);
     }
 
     #[test]
@@ -218,6 +223,7 @@ mod tests {
         assert_eq!(format!("{:?}", ArgKind::Bool), "Bool");
         assert_eq!(format!("{:?}", ArgKind::BufferId), "BufferId");
         assert_eq!(format!("{:?}", ArgKind::Char), "Char");
+        assert_eq!(format!("{:?}", ArgKind::Rest), "Rest");
     }
 
     // === ArgValue tests ===
