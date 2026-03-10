@@ -23,7 +23,11 @@ use {
     tracing::{debug, info, warn},
 };
 
-use crate::ids;
+use crate::{
+    hover_state::{HoverContentType, HoverState},
+    ids,
+    signature_help_state::SignatureHelpState,
+};
 
 /// Timeout for LSP request/response.
 const LSP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -293,7 +297,20 @@ impl CommandHandler for HoverCommand {
                 if text.is_empty() {
                     notify_info(runtime, "No hover information");
                 } else {
-                    notify_info(runtime, &text);
+                    let content_type = hover_content_type(&hover.contents);
+                    let state = runtime.ext_mut::<HoverState>();
+                    // Cursor positions and buffer IDs are bounded well within u32/u64.
+                    #[allow(clippy::cast_possible_truncation)]
+                    state.show(
+                        text,
+                        content_type,
+                        buf_id.as_usize() as u64,
+                        cursor.line as u32,
+                        cursor.column as u32,
+                    );
+                    runtime
+                        .take_changes()
+                        .record_extension_change("hover".into());
                 }
             }
             Ok(Ok(None)) => {
@@ -381,7 +398,18 @@ impl CommandHandler for SignatureHelpCommand {
                 if text.is_empty() {
                     notify_info(runtime, "No signature help available");
                 } else {
-                    notify_info(runtime, &text);
+                    let state = runtime.ext_mut::<SignatureHelpState>();
+                    // Cursor positions and buffer IDs are bounded well within u32/u64.
+                    #[allow(clippy::cast_possible_truncation)]
+                    state.show(
+                        text,
+                        buf_id.as_usize() as u64,
+                        cursor.line as u32,
+                        cursor.column as u32,
+                    );
+                    runtime
+                        .take_changes()
+                        .record_extension_change("signature-help".into());
                 }
             }
             Ok(Ok(None)) => {
@@ -517,6 +545,22 @@ pub fn has_signature_help_capability(provider: &dyn LspProvider) -> bool {
         .is_some_and(|caps| caps.signature_help_provider.is_some())
 }
 
+/// Determine the content type from hover contents.
+///
+/// - `Scalar(String)`: plain text
+/// - `Markup(PlainText)`: plain text
+/// - `Scalar(LanguageString)`, `Array`, `Markup(Markdown)`: markdown
+#[must_use]
+pub fn hover_content_type(contents: &HoverContents) -> HoverContentType {
+    match contents {
+        HoverContents::Scalar(MarkedString::String(_)) => HoverContentType::PlainText,
+        HoverContents::Markup(markup) if markup.kind == lsp_types::MarkupKind::PlainText => {
+            HoverContentType::PlainText
+        }
+        _ => HoverContentType::Markdown,
+    }
+}
+
 /// Format hover content for display.
 ///
 /// Extracts text from all `HoverContents` variants:
@@ -547,12 +591,17 @@ pub fn format_hover_content(hover: &lsp_types::Hover) -> String {
 
 /// Format signature help for display.
 ///
-/// Shows the active signature label.
+/// Shows the active signature label. If `active_signature` is out of range,
+/// returns an empty string and logs a warning.
 pub fn format_signature_help(help: &lsp_types::SignatureHelp) -> String {
     let active_idx = help.active_signature.unwrap_or(0) as usize;
-    help.signatures
-        .get(active_idx)
-        .map_or_else(String::new, |sig| sig.label.clone())
+    if let Some(sig) = help.signatures.get(active_idx) {
+        return sig.label.clone();
+    }
+    if !help.signatures.is_empty() {
+        warn!(active_idx, count = help.signatures.len(), "active_signature index out of range");
+    }
+    String::new()
 }
 
 // ============================================================================
@@ -1180,6 +1229,50 @@ mod tests {
     }
 
     // ========================================================================
+    // hover_content_type tests
+    // ========================================================================
+
+    #[test]
+    fn hover_content_type_scalar_string() {
+        let contents = HoverContents::Scalar(MarkedString::String("plain".into()));
+        assert_eq!(hover_content_type(&contents), HoverContentType::PlainText);
+    }
+
+    #[test]
+    fn hover_content_type_scalar_language_string() {
+        let contents =
+            HoverContents::Scalar(MarkedString::LanguageString(lsp_types::LanguageString {
+                language: "rust".to_string(),
+                value: "fn main()".to_string(),
+            }));
+        assert_eq!(hover_content_type(&contents), HoverContentType::Markdown);
+    }
+
+    #[test]
+    fn hover_content_type_array() {
+        let contents = HoverContents::Array(vec![]);
+        assert_eq!(hover_content_type(&contents), HoverContentType::Markdown);
+    }
+
+    #[test]
+    fn hover_content_type_markup() {
+        let contents = HoverContents::Markup(lsp_types::MarkupContent {
+            kind: lsp_types::MarkupKind::Markdown,
+            value: "# Title".to_string(),
+        });
+        assert_eq!(hover_content_type(&contents), HoverContentType::Markdown);
+    }
+
+    #[test]
+    fn hover_content_type_markup_plaintext() {
+        let contents = HoverContents::Markup(lsp_types::MarkupContent {
+            kind: lsp_types::MarkupKind::PlainText,
+            value: "plain text content".to_string(),
+        });
+        assert_eq!(hover_content_type(&contents), HoverContentType::PlainText);
+    }
+
+    // ========================================================================
     // format_signature_help tests
     // ========================================================================
 
@@ -1243,6 +1336,22 @@ mod tests {
             active_signature: None,
             active_parameter: None,
         };
+        assert!(format_signature_help(&help).is_empty());
+    }
+
+    #[test]
+    fn format_signature_help_active_out_of_range() {
+        let help = lsp_types::SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: "fn foo()".to_string(),
+                documentation: None,
+                parameters: None,
+                active_parameter: None,
+            }],
+            active_signature: Some(5),
+            active_parameter: None,
+        };
+        // OOB index returns empty string.
         assert!(format_signature_help(&help).is_empty());
     }
 

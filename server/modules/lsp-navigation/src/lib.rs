@@ -6,14 +6,19 @@
 //! references open in the microscope picker.
 
 pub mod commands;
+pub mod hover_bridge;
+pub mod hover_state;
 pub mod ids;
 mod picker;
+pub mod signature_help_bridge;
+pub mod signature_help_state;
 
 use std::sync::Arc;
 
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_picker::PickerRegistry,
+    reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -62,6 +67,11 @@ impl Module for LspNavigationModule {
         for handler in commands::command_handlers() {
             command_store.add(handler);
         }
+
+        // Register extension bridges for state serialization.
+        let bridge_provider = ctx.services.get_or_create::<BridgeProvider>();
+        bridge_provider.register(hover_bridge::HoverBridge);
+        bridge_provider.register(signature_help_bridge::SignatureHelpBridge);
 
         ProbeResult::Success
     }
@@ -134,6 +144,13 @@ mod tests {
         // Verify command handlers were registered.
         let command_store = services.get::<CommandHandlerStore>();
         assert!(command_store.is_some());
+
+        // Verify extension bridges were registered.
+        let bridge_provider = services.get::<BridgeProvider>();
+        assert!(bridge_provider.is_some());
+        let bridges = bridge_provider.unwrap().take_bridges();
+        assert!(bridges.iter().any(|b| b.kind() == "hover"));
+        assert!(bridges.iter().any(|b| b.kind() == "signature-help"));
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

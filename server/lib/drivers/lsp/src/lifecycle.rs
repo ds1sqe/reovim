@@ -31,6 +31,7 @@ pub trait LspLifecycle: Send + Sync {
         language_id: String,
         file_path: String,
         buffer_content: String,
+        buffer_id: u64,
     );
 }
 
@@ -107,6 +108,7 @@ mod tests {
             _language_id: String,
             _file_path: String,
             _buffer_content: String,
+            _buffer_id: u64,
         ) {
             self.called
                 .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -161,6 +163,7 @@ mod tests {
             "rust".to_owned(),
             "/tmp/main.rs".to_owned(),
             "fn main() {}".to_owned(),
+            1,
         );
 
         assert!(mock.was_called());

@@ -375,7 +375,7 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
         Some(p) if p.is_active() => p,
         _ => {
             // No active provider — try to auto-start one.
-            try_auto_start_lsp(services, &file_path, &lang, &ctx.content);
+            try_auto_start_lsp(services, &file_path, &lang, &ctx.content, ctx.buffer_id as u64);
             return;
         }
     };
@@ -472,6 +472,7 @@ fn try_auto_start_lsp(
     file_path: &str,
     lang: &str,
     buffer_content: &str,
+    buffer_id: u64,
 ) {
     // Only Rust is supported for now.
     if lang != "rust" {
@@ -515,6 +516,7 @@ fn try_auto_start_lsp(
         lang.to_owned(),
         file_path.to_owned(),
         buffer_content.to_owned(),
+        buffer_id,
     );
     // Guard not reset here — once the provider registers in LspProviderRegistry,
     // fire_lsp_completion() finds it and skips try_auto_start_lsp entirely.

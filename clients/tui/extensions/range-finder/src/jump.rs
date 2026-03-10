@@ -331,6 +331,7 @@ mod tests {
             scroll_top: 0,
             content_x: 4,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -352,6 +353,7 @@ mod tests {
             scroll_top: 10, // line 5 is above viewport
             content_x: 4,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -369,6 +371,7 @@ mod tests {
             scroll_top: 0,
             content_x: 4,
             content_height: 20, // only 20 rows, line 30 is below
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -385,6 +388,7 @@ mod tests {
             scroll_top: 0,
             content_x: 2,
             content_height: 10,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -407,6 +411,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 10,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -422,6 +427,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -436,6 +442,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -451,6 +458,7 @@ mod tests {
             scroll_top: 10, // line 15 is at screen row 5
             content_x: 3,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -469,6 +477,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 10, // rows 0-9 visible
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -486,6 +495,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 10, // rows 0-9 visible, line 10 is out
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 11);
         ext.render_with_viewport(&mut fb, &viewport);

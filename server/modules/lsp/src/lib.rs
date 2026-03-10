@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use {
     reovim_driver_lsp::{LspLifecycleRegistry, LspProviderRegistry, LspRequest, uri_from_path},
+    reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Subscription,
         Version, events::kernel::BufferSaved, pr_info,
@@ -22,6 +23,8 @@ use {
 };
 
 mod auto_starter;
+pub mod diagnostic_bridge;
+pub mod diagnostic_state;
 
 /// LSP module instance.
 ///
@@ -68,7 +71,19 @@ impl Module for LspModule {
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Create the LSP provider registry (empty initially).
         // Providers are registered on-demand when language servers are spawned.
-        let _registry = ctx.services.get_or_create::<LspProviderRegistry>();
+        let registry = ctx.services.get_or_create::<LspProviderRegistry>();
+
+        // Create the diagnostic path index for URI-to-BufferId resolution.
+        let path_index = ctx
+            .services
+            .get_or_create::<diagnostic_bridge::DiagnosticPathIndex>();
+
+        // Register the diagnostic bridge (holds Arcs to registry and path index).
+        let bridge_provider = ctx.services.get_or_create::<BridgeProvider>();
+        bridge_provider.register(diagnostic_bridge::DiagnosticBridge::new(
+            Arc::clone(&registry),
+            Arc::clone(&path_index),
+        ));
 
         // Register LspLifecycle implementation (#542: decouple completion from module-lsp).
         let lifecycle_registry = ctx.services.get_or_create::<LspLifecycleRegistry>();
@@ -76,6 +91,7 @@ impl Module for LspModule {
 
         // Subscribe to BufferSaved events → send DidSave to active LSP servers.
         let services = Arc::clone(&ctx.services);
+        let path_index_clone = Arc::clone(&path_index);
         let sub = ctx
             .kernel
             .event_bus
@@ -86,6 +102,9 @@ impl Module for LspModule {
 
                 let path = std::path::Path::new(&event.path);
                 let uri = uri_from_path(path);
+
+                // Populate diagnostic path index with buffer_id ↔ URI mapping.
+                path_index_clone.insert(uri.as_str().to_string(), event.buffer_id);
 
                 // Send DidSave to all active providers (typically one).
                 for key in registry.keys() {
@@ -189,6 +208,19 @@ mod tests {
         // Verify that LspProviderRegistry was created in services
         let registry = services.get::<LspProviderRegistry>();
         assert!(registry.is_some(), "LspProviderRegistry should be registered in services");
+
+        // Verify that DiagnosticPathIndex was created
+        let path_index = services.get::<diagnostic_bridge::DiagnosticPathIndex>();
+        assert!(path_index.is_some(), "DiagnosticPathIndex should be registered");
+
+        // Verify that DiagnosticBridge was registered via BridgeProvider
+        let bridge_provider = services.get::<BridgeProvider>();
+        assert!(bridge_provider.is_some(), "BridgeProvider should be registered");
+        let bridges = bridge_provider.unwrap().take_bridges();
+        assert!(
+            bridges.iter().any(|b| b.kind() == "diagnostics"),
+            "DiagnosticBridge should be registered"
+        );
     }
 
     #[test]

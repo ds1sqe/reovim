@@ -243,6 +243,7 @@ pub fn render_frame<B: RenderBackend>(
         scroll_top: state.get_focused_scroll_top(),
         content_x,
         content_height,
+        buffer_id: state.get_focused_buffer_id(),
     };
 
     // Render active extensions (engine has ZERO knowledge of specific ones)

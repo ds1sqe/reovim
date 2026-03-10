@@ -381,6 +381,7 @@ mod tests {
             scroll_top: 0,
             content_x: 4,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(60, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -405,6 +406,7 @@ mod tests {
             scroll_top: 10,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -424,6 +426,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 20);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -438,6 +441,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -460,6 +464,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -479,6 +484,7 @@ mod tests {
             scroll_top: 0,
             content_x: 0,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(40, 10);
         ext.render_with_viewport(&mut fb, &viewport);

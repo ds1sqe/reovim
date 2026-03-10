@@ -26,7 +26,7 @@ reovim-driver-lsp = { workspace = true }
 # Module FFI macros
 reovim-module-macros = { workspace = true }
 
-# Session driver (PendingNotificationQueue for lifecycle notifications)
+# Session driver (PendingNotificationQueue, BridgeProvider, ExtensionMap)
 reovim-driver-session = { workspace = true }
 
 # Async runtime

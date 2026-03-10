@@ -29,6 +29,9 @@ pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
         Box::new(reovim_tui_ext_tetromino::TetrominoExtension::new()),
         Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
         Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
+        Box::new(reovim_tui_ext_hover::HoverExtension::new()),
+        Box::new(reovim_tui_ext_signature_help::SignatureHelpExtension::new()),
+        Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
     ]
 }
 
@@ -39,7 +42,7 @@ mod tests {
     #[test]
     fn test_create_extensions_count() {
         let exts = create_extensions();
-        assert_eq!(exts.len(), 9);
+        assert_eq!(exts.len(), 12);
     }
 
     #[test]
@@ -55,6 +58,9 @@ mod tests {
         assert!(kinds.contains(&"polyblocks"));
         assert!(kinds.contains(&"range-finder-jump"));
         assert!(kinds.contains(&"range-finder-fold"));
+        assert!(kinds.contains(&"hover"));
+        assert!(kinds.contains(&"signature-help"));
+        assert!(kinds.contains(&"diagnostics"));
     }
 
     #[test]

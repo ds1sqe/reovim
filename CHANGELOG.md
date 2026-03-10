@@ -107,6 +107,42 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     notifications to all active LSP providers via `LspProviderRegistry`.
   - 433 tests across 5 affected crates, zero clippy warnings.
 
+- **LSP extension pairs for hover and signature help (#550)**: Upgrade hover
+  and signature help from toast notifications to dedicated TUI popup extensions
+  using the `ExtensionStateBridge` + `TuiExtension` pattern.
+  - **Server-side**: `HoverState` and `SignatureHelpState` session extensions
+    store active content and origin position. `HoverBridge` and
+    `SignatureHelpBridge` implement `ExtensionStateBridge` (client scope) with
+    JSON serialization and auto-dismiss on mode change. Both registered via
+    `BridgeProvider` in `lsp-navigation` module `init()`. `HoverCommand` and
+    `SignatureHelpCommand` now set extension state instead of `notify_info()`.
+    `hover_content_type()` detects PlainText vs Markdown from `HoverContents`.
+  - **TUI hover extension**: `HoverExtension` renders multi-line bordered popup
+    near cursor with content-type-aware border color (cyan=markdown,
+    grey=plaintext). Popup width scales with terminal (max 60%, min 20 cols).
+    Positioned below origin, falls back above or top.
+  - **TUI signature help extension**: `SignatureHelpExtension` renders
+    single-line bordered popup with yellow border above origin. Falls back
+    below or top when no room above.
+  - Both TUI extensions use typed `#[derive(Deserialize)]` for JSON parsing
+    with `Origin::BufferPosition` deserialization.
+  - 179 tests across 4 crates (118 lsp-navigation + 4 defaults + 37 hover
+    + 24 signature-help), zero clippy warnings.
+
+- **LSP diagnostics extension pair (#550)**: Inline diagnostic rendering via
+  `DiagnosticBridge` (shared scope, tick-based) + `DiagnosticsExtension`.
+  - **Server-side**: `DiagnosticSnapshot` and `DiagnosticPathIndex` (URI-to-buffer
+    mapping) services. `DiagnosticBridge` reads `LspProviderRegistry` caches
+    on `tick()`, resolves URIs to buffer IDs, and populates snapshot in shared
+    `ExtensionMap`. `entries_eq` comparison avoids unnecessary notifications.
+    `convert_severity` maps LSP severity enum to internal `DiagnosticSeverity`.
+  - **TUI extension**: `DiagnosticsExtension` renders colored underlines on
+    single-line diagnostics and right-aligned virtual text (severity prefix +
+    message). Uses `ViewportContext::buffer_id` to filter for focused buffer.
+    `ViewportContext` extended with `buffer_id: Option<u64>` field.
+  - 118 tests across 3 crates (89 lsp + 4 defaults + 25 diagnostics), zero
+    clippy warnings.
+
 - **FFI execution API for external modules (#384)**: Full runtime bridge enabling
   C, Python, and Haskell modules to access the same capabilities as native Rust
   modules. Thread-local `RuntimeGuard`/`InitGuard` RAII pattern (inspired by

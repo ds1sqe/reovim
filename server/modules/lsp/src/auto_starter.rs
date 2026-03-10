@@ -16,6 +16,8 @@ use {
     tracing::{info, warn},
 };
 
+use crate::diagnostic_bridge::DiagnosticPathIndex;
+
 use crate::LspSaturator;
 
 /// Auto-starts LSP servers using [`LspSaturator`].
@@ -34,7 +36,15 @@ impl LspLifecycle for LspAutoStarter {
         language_id: String,
         file_path: String,
         buffer_content: String,
+        buffer_id: u64,
     ) {
+        // Populate DiagnosticPathIndex so URI→BufferId resolution works
+        // even before a BufferSaved event fires.
+        let uri = uri_from_path(std::path::Path::new(&file_path));
+        if let Some(path_index) = services.get::<DiagnosticPathIndex>() {
+            path_index.insert(uri.as_str().to_string(), buffer_id);
+        }
+
         let services_clone = Arc::clone(services);
         let notify_queue = services.get::<PendingNotificationQueue>();
 

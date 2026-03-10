@@ -28,6 +28,7 @@ reovim-module-notification = { workspace = true }
 reovim-module-microscope = { workspace = true }
 reovim-module-macros = { workspace = true }
 lsp-types = "0.97"
+serde_json = { workspace = true }
 tracing.workspace = true
 
 [dev-dependencies]

@@ -137,6 +137,11 @@ pub struct ViewportContext {
     pub content_x: u16,
     /// Number of visible buffer rows (terminal height minus statusline).
     pub content_height: u16,
+    /// Buffer ID of the focused window (`None` if unknown).
+    ///
+    /// Used by inline extensions (e.g., diagnostics) that filter entries
+    /// by the current buffer.
+    pub buffer_id: Option<u64>,
 }
 
 // ============================================================================
@@ -431,6 +436,7 @@ mod tests {
             scroll_top: 10,
             content_x: 4,
             content_height: 20,
+            buffer_id: None,
         };
         assert_eq!(ctx.scroll_top, 10);
         assert_eq!(ctx.content_x, 4);
@@ -443,6 +449,7 @@ mod tests {
             scroll_top: 5,
             content_x: 3,
             content_height: 15,
+            buffer_id: None,
         };
         let cloned = ctx.clone();
         assert_eq!(cloned.scroll_top, ctx.scroll_top);
@@ -456,6 +463,7 @@ mod tests {
             scroll_top: 0,
             content_x: 4,
             content_height: 24,
+            buffer_id: None,
         };
         let debug = format!("{ctx:?}");
         assert!(debug.contains("scroll_top"));
@@ -477,6 +485,7 @@ mod tests {
             scroll_top: 0,
             content_x: 4,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(10, 5);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -495,6 +504,7 @@ mod tests {
             scroll_top: 100,
             content_x: 6,
             content_height: 30,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(10, 5);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -540,6 +550,7 @@ mod tests {
             scroll_top: 0,
             content_x: 5,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);
@@ -563,6 +574,7 @@ mod tests {
             scroll_top: 10, // scrolled past line 0
             content_x: 5,
             content_height: 20,
+            buffer_id: None,
         };
         let mut fb = FrameBuffer::new(20, 10);
         ext.render_with_viewport(&mut fb, &viewport);

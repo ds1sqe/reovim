@@ -2367,6 +2367,7 @@ dependencies = [
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-notification",
+ "serde_json",
  "tempfile",
  "tracing",
 ]
@@ -2810,12 +2811,25 @@ dependencies = [
  "reovim-driver-display",
  "reovim-tui-ext-cmdline",
  "reovim-tui-ext-completion",
+ "reovim-tui-ext-diagnostics",
  "reovim-tui-ext-explorer",
+ "reovim-tui-ext-hover",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
  "reovim-tui-ext-range-finder",
+ "reovim-tui-ext-signature-help",
  "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
+]
+
+[[package]]
+name = "reovim-tui-ext-diagnostics"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2824,6 +2838,16 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-hover"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
  "serde_json",
 ]
 
@@ -2851,6 +2875,16 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-signature-help"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
  "serde_json",
 ]
 

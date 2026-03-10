@@ -25,3 +25,6 @@ reovim-tui-ext-completion = { path = "../completion" }
 reovim-tui-ext-explorer = { path = "../explorer" }
 reovim-tui-ext-tetromino = { path = "../tetromino" }
 reovim-tui-ext-range-finder = { path = "../range-finder" }
+reovim-tui-ext-hover = { path = "../hover" }
+reovim-tui-ext-signature-help = { path = "../signature-help" }
+reovim-tui-ext-diagnostics = { path = "../diagnostics" }
