@@ -66,9 +66,14 @@ impl CommandHandler for CursorUp {
             return CommandResult::Success;
         }
 
-        // Get line length for column clamping
+        // Get line length for column clamping (#552: match kernel MotionEngine pattern)
         let line_len = runtime.buffer_line_len(buffer_id, new_line).unwrap_or(0);
-        let new_col = old_pos.column.min(line_len);
+        let max_col = if line_len == 0 {
+            0
+        } else {
+            line_len.saturating_sub(1)
+        };
+        let new_col = old_pos.column.min(max_col);
         let new_pos = Position::new(new_line, new_col);
 
         // In operator-pending mode, return range for the operator
@@ -143,9 +148,14 @@ impl CommandHandler for CursorDown {
             return CommandResult::Success;
         }
 
-        // Get line length for column clamping
+        // Get line length for column clamping (#552: match kernel MotionEngine pattern)
         let line_len = runtime.buffer_line_len(buffer_id, new_line).unwrap_or(0);
-        let new_col = old_pos.column.min(line_len);
+        let max_col = if line_len == 0 {
+            0
+        } else {
+            line_len.saturating_sub(1)
+        };
+        let new_col = old_pos.column.min(max_col);
         let new_pos = Position::new(new_line, new_col);
 
         // In operator-pending mode, return range for the operator
@@ -1001,8 +1011,8 @@ mod tests {
         drop(runtime);
         let window = state.windows.active().unwrap();
         assert_eq!(window.cursor.line, 1);
-        // "hi" has len 2, so column clamped to min(10, 2) = 2
-        assert_eq!(window.cursor.column, 2);
+        // "hi" has len 2, valid columns 0-1, so column clamped to 1 (#552)
+        assert_eq!(window.cursor.column, 1);
     }
 
     #[test]
@@ -1026,8 +1036,8 @@ mod tests {
         drop(runtime);
         let window = state.windows.active().unwrap();
         assert_eq!(window.cursor.line, 0);
-        // "hi" has len 2, so column clamped to min(10, 2) = 2
-        assert_eq!(window.cursor.column, 2);
+        // "hi" has len 2, valid columns 0-1, so column clamped to 1 (#552)
+        assert_eq!(window.cursor.column, 1);
     }
 
     // =========================================================================

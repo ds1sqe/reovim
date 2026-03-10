@@ -275,8 +275,7 @@ mod tests {
     #[test]
     #[allow(clippy::cast_possible_truncation)]
     fn test_can_undo_false_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = harness.active_buffer().unwrap().as_usize() as ReovimBufferId;
@@ -291,8 +290,7 @@ mod tests {
     #[test]
     #[allow(clippy::cast_possible_truncation)]
     fn test_can_redo_false_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = harness.active_buffer().unwrap().as_usize() as ReovimBufferId;
@@ -307,8 +305,7 @@ mod tests {
     #[test]
     #[allow(clippy::cast_possible_truncation)]
     fn test_undo_nothing_to_undo() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = harness.active_buffer().unwrap().as_usize() as ReovimBufferId;
@@ -316,17 +313,13 @@ mod tests {
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut cursor = ReovimPosition::new(0, 0);
-        assert_eq!(
-            unsafe { reovim_undo(bid, &raw mut cursor) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_undo(bid, &raw mut cursor) }, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     #[allow(clippy::cast_possible_truncation)]
     fn test_redo_nothing_to_redo() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = harness.active_buffer().unwrap().as_usize() as ReovimBufferId;
@@ -334,9 +327,6 @@ mod tests {
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut cursor = ReovimPosition::new(0, 0);
-        assert_eq!(
-            unsafe { reovim_redo(bid, &raw mut cursor) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_redo(bid, &raw mut cursor) }, REOVIM_ERR_NOT_FOUND);
     }
 }

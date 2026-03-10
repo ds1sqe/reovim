@@ -660,8 +660,7 @@ mod tests {
 
     #[test]
     fn test_execute_command_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();

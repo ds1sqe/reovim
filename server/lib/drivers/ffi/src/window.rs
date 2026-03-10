@@ -400,8 +400,7 @@ mod tests {
 
     #[test]
     fn test_active_window_found() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -414,73 +413,56 @@ mod tests {
 
     #[test]
     fn test_active_window_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::new();
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut out: ReovimWindowId = 0;
-        assert_eq!(
-            unsafe { reovim_active_window(&raw mut out) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_active_window(&raw mut out) }, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_cursor_position_found() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut pos = ReovimPosition::new(0, 0);
-        assert_eq!(
-            unsafe { reovim_cursor_position(&raw mut pos) },
-            REOVIM_OK
-        );
+        assert_eq!(unsafe { reovim_cursor_position(&raw mut pos) }, REOVIM_OK);
     }
 
     #[test]
     fn test_cursor_position_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::new();
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut pos = ReovimPosition::new(0, 0);
-        assert_eq!(
-            unsafe { reovim_cursor_position(&raw mut pos) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_cursor_position(&raw mut pos) }, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_window_count_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut count: u32 = 0;
-        assert_eq!(
-            unsafe { reovim_window_count(&raw mut count) },
-            REOVIM_OK
-        );
+        assert_eq!(unsafe { reovim_window_count(&raw mut count) }, REOVIM_OK);
         assert!(count >= 1);
     }
 
     #[test]
     fn test_window_buffer_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -491,33 +473,25 @@ mod tests {
         assert_eq!(unsafe { reovim_active_window(&raw mut wid) }, REOVIM_OK);
 
         let mut buf_id: ReovimBufferId = 0;
-        assert_eq!(
-            unsafe { reovim_window_buffer(wid, &raw mut buf_id) },
-            REOVIM_OK
-        );
+        assert_eq!(unsafe { reovim_window_buffer(wid, &raw mut buf_id) }, REOVIM_OK);
         assert_ne!(buf_id, 0);
     }
 
     #[test]
     fn test_window_buffer_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut buf_id: ReovimBufferId = 0;
-        assert_eq!(
-            unsafe { reovim_window_buffer(99999, &raw mut buf_id) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_window_buffer(99999, &raw mut buf_id) }, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_create_window_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -530,24 +504,19 @@ mod tests {
 
     #[test]
     fn test_close_window_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         // With only one window, kernel returns LAST_WINDOW before NOT_FOUND
-        assert_eq!(
-            unsafe { reovim_close_window(99999) },
-            REOVIM_ERR_LAST_WINDOW
-        );
+        assert_eq!(unsafe { reovim_close_window(99999) }, REOVIM_ERR_LAST_WINDOW);
     }
 
     #[test]
     fn test_close_window_last_window_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -555,16 +524,12 @@ mod tests {
 
         let mut wid: ReovimWindowId = 0;
         assert_eq!(unsafe { reovim_active_window(&raw mut wid) }, REOVIM_OK);
-        assert_eq!(
-            unsafe { reovim_close_window(wid) },
-            REOVIM_ERR_LAST_WINDOW
-        );
+        assert_eq!(unsafe { reovim_close_window(wid) }, REOVIM_ERR_LAST_WINDOW);
     }
 
     #[test]
     fn test_focus_window_success_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -577,16 +542,12 @@ mod tests {
 
     #[test]
     fn test_focus_window_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
-        assert_eq!(
-            unsafe { reovim_focus_window(99999) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_focus_window(99999) }, REOVIM_ERR_NOT_FOUND);
     }
 }

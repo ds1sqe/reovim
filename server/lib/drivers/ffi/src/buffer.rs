@@ -790,8 +790,7 @@ mod tests {
 
     #[test]
     fn test_active_buffer_found() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let expected = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -805,24 +804,19 @@ mod tests {
 
     #[test]
     fn test_active_buffer_not_found_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::new();
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut out: ReovimBufferId = 0;
-        assert_eq!(
-            unsafe { reovim_active_buffer(&raw mut out) },
-            REOVIM_ERR_NOT_FOUND
-        );
+        assert_eq!(unsafe { reovim_active_buffer(&raw mut out) }, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_buffer_queries_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello world");
         let bid = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -840,18 +834,12 @@ mod tests {
 
         // buffer_line_count → Ok(Some)
         let mut count: u32 = 0;
-        assert_eq!(
-            unsafe { reovim_buffer_line_count(bid, &raw mut count) },
-            REOVIM_OK
-        );
+        assert_eq!(unsafe { reovim_buffer_line_count(bid, &raw mut count) }, REOVIM_OK);
         assert_eq!(count, 1);
 
         // buffer_line_len → Ok(Some)
         let mut len: u32 = 0;
-        assert_eq!(
-            unsafe { reovim_buffer_line_len(bid, 0, &raw mut len) },
-            REOVIM_OK
-        );
+        assert_eq!(unsafe { reovim_buffer_line_len(bid, 0, &raw mut len) }, REOVIM_OK);
         assert_eq!(len, 11);
 
         // buffer_content → Ok(Some)
@@ -884,8 +872,7 @@ mod tests {
 
     #[test]
     fn test_buffer_line_out_of_range_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -902,8 +889,7 @@ mod tests {
 
     #[test]
     fn test_buffer_queries_invalid_buffer() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("x");
         let mut rt = harness.runtime();
@@ -959,8 +945,7 @@ mod tests {
 
     #[test]
     fn test_buffer_line_len_out_of_range_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let bid = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -976,8 +961,7 @@ mod tests {
 
     #[test]
     fn test_buffer_mutations_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello world");
         let bid = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -1002,8 +986,7 @@ mod tests {
 
     #[test]
     fn test_buffer_lifecycle_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("existing");
         let original_bid = buffer_id_to_ffi(harness.active_buffer().unwrap());
@@ -1024,9 +1007,6 @@ mod tests {
 
         // delete_buffer (last buffer) → Ok(Err(CannotDeleteLastBuffer))
         // Note: kernel checks "last buffer" before "not found"
-        assert_eq!(
-            unsafe { reovim_delete_buffer(original_bid) },
-            REOVIM_ERR_LAST_BUFFER
-        );
+        assert_eq!(unsafe { reovim_delete_buffer(original_bid) }, REOVIM_ERR_LAST_BUFFER);
     }
 }

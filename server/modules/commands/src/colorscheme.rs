@@ -289,10 +289,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = ColorschemeCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("dark".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("dark".to_string()));
             let result = cmd.execute(runtime, &ctx);
             assert!(result.is_success());
         });

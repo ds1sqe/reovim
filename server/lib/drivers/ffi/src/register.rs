@@ -294,8 +294,7 @@ mod tests {
 
     #[test]
     fn test_get_register_empty_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -316,8 +315,7 @@ mod tests {
 
     #[test]
     fn test_set_register_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -331,8 +329,7 @@ mod tests {
 
     #[test]
     fn test_get_register_after_set_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -350,13 +347,7 @@ mod tests {
         let mut result = ReovimStringResult::err(0);
         let mut yank_type = ReovimYankType::Characterwise;
         let ret = unsafe {
-            reovim_get_register(
-                b'a',
-                buf.as_mut_ptr(),
-                64,
-                &raw mut result,
-                &raw mut yank_type,
-            )
+            reovim_get_register(b'a', buf.as_mut_ptr(), 64, &raw mut result, &raw mut yank_type)
         };
         assert_eq!(ret, REOVIM_OK);
         assert_eq!(&buf[..result.length as usize], b"hello reg");

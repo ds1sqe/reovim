@@ -291,10 +291,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = EditCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("test.rs".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("test.rs".to_string()));
             // No buffer_id set
             let result = cmd.execute(runtime, &ctx);
             assert!(result.is_error());
@@ -310,10 +307,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = EditCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("test.rs".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("test.rs".to_string()));
             ctx.set_buffer_id(buffer_id);
             // No VFS set
             let result = cmd.execute(runtime, &ctx);
@@ -336,10 +330,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = EditCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("nonexistent.rs".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("nonexistent.rs".to_string()));
             ctx.set_buffer_id(buffer_id);
             ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
             let result = cmd.execute(runtime, &ctx);
@@ -362,10 +353,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = EditCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("/tmp/test.rs".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("/tmp/test.rs".to_string()));
             ctx.set_buffer_id(buffer_id);
             ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
             let result = cmd.execute(runtime, &ctx);
@@ -383,15 +371,12 @@ mod tests {
         let mut harness = TestSessionRuntime::with_buffer("original");
         let buffer_id = harness.active_buffer().unwrap();
         let mock_vfs = Arc::new(MockVfs::new());
-        mock_vfs.add_file("/tmp/binary.bin", &[0xFF, 0xFE, 0x80, 0x90]);
+        mock_vfs.add_file("/tmp/binary.bin", [0xFF, 0xFE, 0x80, 0x90]);
 
         harness.with_runtime(|runtime| {
             let cmd = EditCommand;
             let mut ctx = CommandContext::new();
-            ctx.set(
-                "file",
-                reovim_driver_command::ArgValue::String("/tmp/binary.bin".to_string()),
-            );
+            ctx.set("file", reovim_driver_command::ArgValue::String("/tmp/binary.bin".to_string()));
             ctx.set_buffer_id(buffer_id);
             ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
             let result = cmd.execute(runtime, &ctx);

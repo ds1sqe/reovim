@@ -1918,10 +1918,7 @@ mod tests {
         // " " (col 2) and "main" should have default style (no token)
         let cell_space = fb.get(2, 0).unwrap();
         let default_style = Style::default();
-        assert_ne!(
-            cell_f.style.fg, default_style.fg,
-            "keyword should differ from default"
-        );
+        assert_ne!(cell_f.style.fg, default_style.fg, "keyword should differ from default");
         // Space and 'm' should NOT have the keyword color
         assert_ne!(cell_space.style.fg, keyword_style.fg);
     }
@@ -2084,9 +2081,7 @@ mod tests {
         let mut state = TuiCoreState::new(1);
         state.windows.push(window(1, 42));
         state.focused_window_id = 1;
-        state
-            .buffer_cache
-            .insert(42, vec!["fn main()".to_string()]);
+        state.buffer_cache.insert(42, vec!["fn main()".to_string()]);
         let config = RenderConfig::default();
 
         render_frame(&mut fb, &state, &config, &[], &tc, &tm);

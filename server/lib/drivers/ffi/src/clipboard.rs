@@ -289,39 +289,34 @@ mod tests {
 
     #[test]
     fn test_paste_from_clipboard_empty_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut result = ReovimStringResult::ok(0);
-        let ret =
-            unsafe { reovim_paste_from_clipboard(std::ptr::null_mut(), 0, &raw mut result) };
+        let ret = unsafe { reovim_paste_from_clipboard(std::ptr::null_mut(), 0, &raw mut result) };
         // Clipboard is empty in test harness → Ok(None)
         assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_paste_from_selection_empty_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
         let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
         let mut result = ReovimStringResult::ok(0);
-        let ret =
-            unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, &raw mut result) };
+        let ret = unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, &raw mut result) };
         assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
     }
 
     #[test]
     fn test_copy_to_clipboard_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();
@@ -335,8 +330,7 @@ mod tests {
 
     #[test]
     fn test_copy_to_selection_with_runtime() {
-        use crate::runtime::RuntimeGuard;
-        use reovim_driver_session::testing::TestSessionRuntime;
+        use {crate::runtime::RuntimeGuard, reovim_driver_session::testing::TestSessionRuntime};
 
         let mut harness = TestSessionRuntime::with_buffer("hello");
         let mut rt = harness.runtime();

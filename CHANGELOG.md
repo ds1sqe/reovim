@@ -240,6 +240,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Cursor at invalid position after linewise delete (#552)**: Fix `dj`, `dk`, and
+  `dd` on boundary lines leaving the cursor pointing to a deleted line. Added
+  `cursor_after` field to `OperatorContext` so operators communicate their desired
+  post-execution cursor position back to `execute_operator()`, with a clamped
+  fallback for safety. Also fixed column off-by-one in `CursorUp`/`CursorDown`
+  that allowed cursor one past the end of a line (now matches kernel `MotionEngine`).
+
 - **Ex-command VFS propagation (#547)**: Fix `:e` command failing with "VFS not
   available" when invoked via keyboard (ex-command path). `execute_ex_command`
   in vim mode.rs was building a fresh `CommandContext` without propagating the

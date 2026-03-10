@@ -137,8 +137,9 @@ impl Operator for ChangeOperator {
             buffer.delete_range(start, end);
         }
 
-        // Cursor after change is at delete_pos (where insertion will happen)
+        // Cursor after change is at delete_pos (where insertion will happen) (#552)
         let cursor_after = delete_pos;
+        ctx.cursor_after = Some(cursor_after);
 
         drop(buffer);
 
@@ -350,6 +351,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = change.execute(&mut op_ctx, range);
@@ -373,6 +375,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Change "hello" (columns 0..5) - deletes text, leaves buffer ready for insert
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
@@ -404,6 +407,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         // Change from (0,3) to (1,3) => deletes "lo\nwor"
         let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
@@ -431,6 +435,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // cc on first line - should clear content but keep line for insertion
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
@@ -458,6 +463,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // cc on last line
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -485,6 +491,7 @@ mod tests {
             register: Register::Slot('b'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = change.execute(&mut op_ctx, range);
@@ -511,6 +518,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         // Empty range
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 3));
@@ -540,6 +548,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // End beyond buffer should be clamped
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(99, 0));
@@ -567,6 +576,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
+            cursor_after: None,
         };
         // Change from (0,1) to (2,2) => "aa\nbbb\ncc"
         let range = super::super::Range::new(Position::new(0, 1), Position::new(2, 2));
@@ -594,6 +604,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Change just 'h' (0,0) to (0,1)
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 1));
@@ -625,6 +636,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Change lines 1-2 (linewise)
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(2, 0));
@@ -672,6 +684,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // End column beyond line - should be clamped
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 100));
@@ -699,6 +712,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         let result = change.execute(&mut op_ctx, range);
@@ -725,6 +739,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
+            cursor_after: None,
         };
         // Change from (0,2) to (1,3) => "llo\nwor"
         let range = super::super::Range::new(Position::new(0, 2), Position::new(1, 3));
@@ -752,6 +767,7 @@ mod tests {
             register: Register::Slot('z'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 6), Position::new(0, 11));
         let result = change.execute(&mut op_ctx, range);
@@ -870,6 +886,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = change.execute(&mut op_ctx, range);
@@ -903,6 +920,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         let result = change.execute(&mut op_ctx, range);
@@ -929,6 +947,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         // Empty range - no deleted text, so no undo recording
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 3));
@@ -959,6 +978,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Linewise change of last line in buffer
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -987,6 +1007,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 1), Position::new(2, 2));
         let result = change.execute(&mut op_ctx, range);
@@ -1051,6 +1072,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Linewise change of all lines in buffer (Case 3: last line in buffer)
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
@@ -1080,6 +1102,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         change.execute(&mut op_ctx, range).unwrap();
@@ -1105,6 +1128,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         change.execute(&mut op_ctx, range).unwrap();
@@ -1131,6 +1155,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 8));
         change.execute(&mut op_ctx, range).unwrap();
@@ -1141,5 +1166,35 @@ mod tests {
         assert_eq!(records[0].cursor_before, cursor_before);
         // cursor_after should be at delete_pos (start of range)
         assert_eq!(records[0].cursor_after, Position::new(0, 3));
+    }
+
+    // ========================================================================
+    // cursor_after tests (#552)
+    // ========================================================================
+
+    #[test]
+    fn test_change_sets_cursor_after() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let change = ChangeOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+            cursor_after: None,
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = change.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        // cursor_after = delete_pos = start of range
+        assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
     }
 }
