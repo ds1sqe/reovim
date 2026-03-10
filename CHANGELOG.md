@@ -272,6 +272,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `WriteBufferCommand` (editor module) — `WriteCommand` (commands module) is now
   the canonical `:w`.
 
+- **Prefix matching for ex-commands (#561)**: Add `resolve_prefix()` to
+  `CommandNameIndex` for Vim-style prefix resolution (`:colo` resolves to
+  `:colorscheme`, `:wri` to `:write`). Exact matches take priority over
+  prefixes. Alias deduplication prevents false ambiguity (e.g., `w`/`write`
+  are the same command). Returns `AmbiguousPrefix` error (E464) when a
+  prefix matches multiple distinct commands. `execute_ex_command()` updated
+  to use `resolve_prefix()` for all command resolution.
+
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
   `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature

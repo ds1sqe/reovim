@@ -349,17 +349,22 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
         return;
     };
 
-    let Some((cmd_id, cmd)) = name_index.resolve_entry(&parsed.name) else {
-        let msg = format!("E492: Not an editor command: {}", parsed.name);
-        runtime
-            .ext_mut::<CmdlineState>()
-            .set_message(CmdlineMessage::Error(msg));
-        return;
+    let (cmd_id, specs) = match name_index.resolve_prefix(&parsed.name) {
+        Ok(Some((id, cmd))) => (id.clone(), cmd.args()),
+        Ok(None) => {
+            let msg = format!("E492: Not an editor command: {}", parsed.name);
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(msg));
+            return;
+        }
+        Err(ambiguous) => {
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(ambiguous.to_string()));
+            return;
+        }
     };
-
-    // Bind arguments to the command's ArgSpec declarations
-    let specs = cmd.args();
-    let cmd_id = cmd_id.clone();
     // Drop the borrow on name_index before calling execute_command
     drop(name_index);
 

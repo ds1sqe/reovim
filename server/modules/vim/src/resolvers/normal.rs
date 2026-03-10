@@ -27,7 +27,7 @@ use crate::{
     session_state::{PendingCharOp, VimSessionState},
 };
 
-            use reovim_module_cmdline::CmdlineState;
+use reovim_module_cmdline::CmdlineState;
 
 /// Coordinator command dispatched for find-char motions (#563).
 /// Defined locally to reference the motions module's command without

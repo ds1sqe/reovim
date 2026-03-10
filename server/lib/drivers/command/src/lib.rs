@@ -82,9 +82,9 @@ pub use registry::CommandHandlerStore;
 // Re-export query service (#453, #522)
 pub use query::{CommandInfo, CommandQueryProvider, CommandQueryService};
 
-// Re-export name index and cmdline parser (#547, #559)
+// Re-export name index and cmdline parser (#547, #559, #561)
 pub use {
-    name_index::CommandNameIndex,
+    name_index::{AmbiguousPrefix, CommandNameIndex},
     parse::{ArgError, ParsedCmdline, bind_args, parse_cmdline, tokenize_args},
 };
 
@@ -265,6 +265,28 @@ mod tests {
         assert_eq!(idx.count(), 1);
         assert!(idx.resolve("test").is_some());
         assert!(idx.resolve("t").is_some());
+    }
+
+    // Integration: resolve_prefix + AmbiguousPrefix re-exports (#561)
+    #[test]
+    fn test_reexported_resolve_prefix() {
+        let mut idx = CommandNameIndex::new();
+        let cmd: std::sync::Arc<dyn Command> = std::sync::Arc::new(TestCommand);
+        let id = cmd.id();
+        for &name in cmd.names() {
+            idx.insert(name.to_string(), id.clone(), std::sync::Arc::clone(&cmd));
+        }
+        // "tes" prefix resolves to TestCommand
+        let result = idx.resolve_prefix("tes").unwrap().unwrap();
+        assert_eq!(result.0.name(), "test-cmd");
+    }
+
+    #[test]
+    fn test_reexported_ambiguous_prefix() {
+        let _ = AmbiguousPrefix {
+            prefix: "s".to_string(),
+            candidates: vec!["set".to_string()],
+        };
     }
 
     // Integration: CommandQueryService + CommandInfo
