@@ -119,9 +119,10 @@ impl TickScheduler for TokioTickScheduler {
                 };
 
                 // Phase 1: Mutate under write locks
-                let changed = session.with_tick_mut(server_client_id, |client_ext, shared_ext| {
-                    bridge.tick(client_ext, shared_ext)
-                });
+                let changed =
+                    session.with_tick_mut(server_client_id, |client_ext, shared_ext, services| {
+                        bridge.tick(client_ext, shared_ext, services)
+                    });
 
                 // Phase 2: Emit notification under read locks (if changed)
                 if changed == Some(true) {

@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use reovim_kernel::api::v1::ServiceRegistry;
+
 use parking_lot::RwLock;
 #[cfg(feature = "grpc")]
 use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
@@ -532,14 +534,16 @@ impl Session {
     #[cfg(feature = "grpc")]
     pub fn with_tick_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
     where
-        F: FnOnce(&mut ExtensionMap, &mut ExtensionMap) -> R,
+        F: FnOnce(&mut ExtensionMap, &mut ExtensionMap, &ServiceRegistry) -> R,
     {
         let mut clients = self.clients.write();
         let target_id = Self::find_input_target(&clients, client_id)?;
         let target_client = clients.get_mut(&target_id)?;
 
         let mut state = self.state.write();
-        let result = f(&mut target_client.state.extensions, &mut state.app.extensions);
+        // Clone the Arc before taking mutable borrows on extensions (#555).
+        let services = std::sync::Arc::clone(&state.app.services);
+        let result = f(&mut target_client.state.extensions, &mut state.app.extensions, &services);
         drop(state);
         drop(clients);
         Some(result)
@@ -3184,7 +3188,7 @@ mod tests {
     #[test]
     fn with_tick_mut_returns_none_for_unknown_client() {
         let session = Session::new(SessionId::new("tick-test"));
-        let result = session.with_tick_mut(ClientId::new(99), |_, _| true);
+        let result = session.with_tick_mut(ClientId::new(99), |_, _, _| true);
         assert!(result.is_none());
     }
 
@@ -3205,19 +3209,21 @@ mod tests {
         let session = Session::new(SessionId::new("tick-test"));
         session.add_client(ClientId::new(1));
 
-        let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext| {
-            let counter = client_ext.get_or_insert::<Counter>();
-            counter.count += 1;
-            counter.count
-        });
+        let result =
+            session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+                let counter = client_ext.get_or_insert::<Counter>();
+                counter.count += 1;
+                counter.count
+            });
         assert_eq!(result, Some(1));
 
         // Second call accumulates
-        let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext| {
-            let counter = client_ext.get_or_insert::<Counter>();
-            counter.count += 1;
-            counter.count
-        });
+        let result =
+            session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+                let counter = client_ext.get_or_insert::<Counter>();
+                counter.count += 1;
+                counter.count
+            });
         assert_eq!(result, Some(2));
     }
 
@@ -3239,16 +3245,17 @@ mod tests {
         session.add_client(ClientId::new(1));
 
         // Set shared state
-        session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext| {
+        session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
             let data = shared_ext.get_or_insert::<SharedData>();
             data.value = 42;
         });
 
         // Read it back
-        let result = session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext| {
-            let data = shared_ext.get_or_insert::<SharedData>();
-            data.value
-        });
+        let result =
+            session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
+                let data = shared_ext.get_or_insert::<SharedData>();
+                data.value
+            });
         assert_eq!(result, Some(42));
     }
 
@@ -3267,7 +3274,7 @@ mod tests {
         );
 
         // Following clients have input ignored
-        let result = session.with_tick_mut(ClientId::new(2), |_, _| true);
+        let result = session.with_tick_mut(ClientId::new(2), |_, _, _| true);
         assert!(result.is_none());
     }
 }

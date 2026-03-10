@@ -4,10 +4,7 @@
 //! resolves URIs to buffer IDs via `DiagnosticPathIndex`, and
 //! serializes the result for gRPC transmission to TUI clients.
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Mutex};
 
 use {
     reovim_driver_lsp::LspProviderRegistry,
@@ -15,7 +12,7 @@ use {
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
     },
-    reovim_kernel::api::v1::Service,
+    reovim_kernel::api::v1::{Service, ServiceRegistry},
 };
 
 use crate::diagnostic_state::{
@@ -88,28 +85,11 @@ impl DiagnosticPathIndex {
 
 /// Bridge for diagnostic state (LSP `publishDiagnostics`).
 ///
-/// Unlike `HoverBridge` and `SignatureHelpBridge` (unit structs), this bridge
-/// holds `Arc` references to the provider registry and path index. The
-/// `tick()` method reads diagnostic caches directly and populates a
-/// `DiagnosticSnapshot` in the shared `ExtensionMap`.
-pub struct DiagnosticBridge {
-    provider_registry: Arc<LspProviderRegistry>,
-    path_index: Arc<DiagnosticPathIndex>,
-}
-
-impl DiagnosticBridge {
-    /// Create a new diagnostic bridge.
-    #[must_use]
-    pub fn new(
-        provider_registry: Arc<LspProviderRegistry>,
-        path_index: Arc<DiagnosticPathIndex>,
-    ) -> Self {
-        Self {
-            provider_registry,
-            path_index,
-        }
-    }
-}
+/// Stateless unit struct — looks up `LspProviderRegistry` and
+/// `DiagnosticPathIndex` from the live session `ServiceRegistry` at
+/// tick time (#555). This avoids capturing `Arc` references during
+/// `init()` which would point to a dead temporary registry.
+pub struct DiagnosticBridge;
 
 impl ExtensionStateBridge for DiagnosticBridge {
     fn kind(&self) -> &'static str {
@@ -170,16 +150,23 @@ impl ExtensionStateBridge for DiagnosticBridge {
         &self,
         _client_extensions: &mut ExtensionMap,
         shared_extensions: &mut ExtensionMap,
+        services: &ServiceRegistry,
     ) -> bool {
+        let Some(provider_registry) = services.get::<LspProviderRegistry>() else {
+            return false;
+        };
+        let path_index = services.get::<DiagnosticPathIndex>();
+
         let mut entries = Vec::new();
 
-        for key in self.provider_registry.keys() {
-            if let Some(provider) = self.provider_registry.get(&key)
+        for key in provider_registry.keys() {
+            if let Some(provider) = provider_registry.get(&key)
                 && provider.is_active()
             {
                 let all_diags = provider.diagnostics().get_all();
                 for (uri_str, buffer_diags) in &all_diags {
-                    if let Some(buffer_id) = self.path_index.get(uri_str) {
+                    let buffer_id = path_index.as_ref().and_then(|idx| idx.get(uri_str));
+                    if let Some(buffer_id) = buffer_id {
                         let items: Vec<DiagnosticItem> = buffer_diags
                             .diagnostics
                             .iter()
@@ -255,6 +242,8 @@ mod tests {
         reovim_driver_lsp::{DiagnosticCache, LspKey, LspProvider, LspRequest},
     };
 
+    use std::sync::Arc;
+
     use super::*;
 
     // ========================================================================
@@ -323,22 +312,23 @@ mod tests {
     // DiagnosticBridge basic tests
     // ========================================================================
 
-    fn make_bridge() -> (DiagnosticBridge, Arc<LspProviderRegistry>, Arc<DiagnosticPathIndex>) {
-        let registry = Arc::new(LspProviderRegistry::new());
-        let path_index = Arc::new(DiagnosticPathIndex::default());
-        let bridge = DiagnosticBridge::new(Arc::clone(&registry), Arc::clone(&path_index));
-        (bridge, registry, path_index)
+    fn make_bridge() -> (DiagnosticBridge, ServiceRegistry) {
+        let services = ServiceRegistry::new();
+        // Pre-populate services so tick() can find them.
+        let _ = services.get_or_create::<LspProviderRegistry>();
+        let _ = services.get_or_create::<DiagnosticPathIndex>();
+        (DiagnosticBridge, services)
     }
 
     #[test]
     fn bridge_kind() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         assert_eq!(bridge.kind(), "diagnostics");
     }
 
     #[test]
     fn bridge_scope() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         assert_eq!(bridge.scope(), ExtensionScope::Shared);
     }
 
@@ -348,14 +338,14 @@ mod tests {
 
     #[test]
     fn snapshot_no_state_returns_none() {
-        let (bridge, _, _) = make_bridge();
+        let (bridge, _services) = make_bridge();
         let map = ExtensionMap::new();
         assert!(bridge.snapshot(&map).is_none());
     }
 
     #[test]
     fn snapshot_empty_entries() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let mut map = ExtensionMap::new();
         map.get_or_insert::<DiagnosticSnapshot>();
 
@@ -365,7 +355,7 @@ mod tests {
 
     #[test]
     fn snapshot_with_entries() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let mut map = ExtensionMap::new();
         let snap = map.get_or_insert::<DiagnosticSnapshot>();
         snap.entries.push(BufferDiagnosticEntry {
@@ -395,7 +385,7 @@ mod tests {
 
     #[test]
     fn snapshot_null_source() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let mut map = ExtensionMap::new();
         let snap = map.get_or_insert::<DiagnosticSnapshot>();
         snap.entries.push(BufferDiagnosticEntry {
@@ -422,14 +412,14 @@ mod tests {
 
     #[test]
     fn is_active_no_state() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let map = ExtensionMap::new();
         assert!(!bridge.is_active(&map));
     }
 
     #[test]
     fn is_active_empty() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let mut map = ExtensionMap::new();
         map.get_or_insert::<DiagnosticSnapshot>();
         assert!(!bridge.is_active(&map));
@@ -437,7 +427,7 @@ mod tests {
 
     #[test]
     fn is_active_with_entries() {
-        let (bridge, _, _) = make_bridge();
+        let bridge = DiagnosticBridge;
         let mut map = ExtensionMap::new();
         let snap = map.get_or_insert::<DiagnosticSnapshot>();
         snap.entries.push(BufferDiagnosticEntry {
@@ -521,26 +511,28 @@ mod tests {
 
     #[test]
     fn tick_no_providers() {
-        let (bridge, _, _) = make_bridge();
+        let (bridge, services) = make_bridge();
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
-        assert!(!bridge.tick(&mut client, &mut shared));
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     #[test]
     fn tick_inactive_provider_skipped() {
-        let (bridge, registry, _) = make_bridge();
+        let (bridge, services) = make_bridge();
         let provider = MockLspProvider::new(false);
-        registry.register(LspKey::Language("rust".to_owned()), Arc::new(provider));
+        services
+            .get_or_create::<LspProviderRegistry>()
+            .register(LspKey::Language("rust".to_owned()), Arc::new(provider));
 
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
-        assert!(!bridge.tick(&mut client, &mut shared));
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     #[test]
     fn tick_uri_not_in_index_skipped() {
-        let (bridge, registry, _) = make_bridge();
+        let (bridge, services) = make_bridge();
         let provider = MockLspProvider::new(true);
         let uri: lsp_types::Uri = "file:///unknown.rs".parse().unwrap();
         provider.diagnostics().store(
@@ -552,17 +544,19 @@ mod tests {
                 0,
             )],
         );
-        registry.register(LspKey::Language("rust".to_owned()), Arc::new(provider));
+        services
+            .get_or_create::<LspProviderRegistry>()
+            .register(LspKey::Language("rust".to_owned()), Arc::new(provider));
 
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
         // URI not in path index, so no entries populated.
-        assert!(!bridge.tick(&mut client, &mut shared));
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     #[test]
     fn tick_populates_snapshot() {
-        let (bridge, registry, path_index) = make_bridge();
+        let (bridge, services) = make_bridge();
 
         // Register provider with diagnostics.
         let provider = MockLspProvider::new(true);
@@ -576,16 +570,20 @@ mod tests {
                 5,
             )],
         );
-        registry.register(LspKey::Language("rust".to_owned()), Arc::new(provider));
+        services
+            .get_or_create::<LspProviderRegistry>()
+            .register(LspKey::Language("rust".to_owned()), Arc::new(provider));
 
         // Map URI to buffer ID.
-        path_index.insert("file:///test.rs".to_owned(), 42);
+        services
+            .get_or_create::<DiagnosticPathIndex>()
+            .insert("file:///test.rs".to_owned(), 42);
 
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
 
         // First tick should populate and return true.
-        assert!(bridge.tick(&mut client, &mut shared));
+        assert!(bridge.tick(&mut client, &mut shared, &services));
 
         let snap = shared.get::<DiagnosticSnapshot>().unwrap();
         assert_eq!(snap.entries.len(), 1);
@@ -599,7 +597,7 @@ mod tests {
 
     #[test]
     fn tick_unchanged_returns_false() {
-        let (bridge, registry, path_index) = make_bridge();
+        let (bridge, services) = make_bridge();
 
         let provider = MockLspProvider::new(true);
         let uri: lsp_types::Uri = "file:///test.rs".parse().unwrap();
@@ -612,33 +610,41 @@ mod tests {
                 0,
             )],
         );
-        registry.register(LspKey::Language("rust".to_owned()), Arc::new(provider));
-        path_index.insert("file:///test.rs".to_owned(), 1);
+        services
+            .get_or_create::<LspProviderRegistry>()
+            .register(LspKey::Language("rust".to_owned()), Arc::new(provider));
+        services
+            .get_or_create::<DiagnosticPathIndex>()
+            .insert("file:///test.rs".to_owned(), 1);
 
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
 
         // First tick: changed.
-        assert!(bridge.tick(&mut client, &mut shared));
+        assert!(bridge.tick(&mut client, &mut shared, &services));
         // Second tick: same data, not changed.
-        assert!(!bridge.tick(&mut client, &mut shared));
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     #[test]
     fn tick_empty_diagnostics_skipped() {
-        let (bridge, registry, path_index) = make_bridge();
+        let (bridge, services) = make_bridge();
 
         let provider = MockLspProvider::new(true);
         let uri: lsp_types::Uri = "file:///test.rs".parse().unwrap();
         provider.diagnostics().store(&uri, None, vec![]);
-        registry.register(LspKey::Language("rust".to_owned()), Arc::new(provider));
-        path_index.insert("file:///test.rs".to_owned(), 1);
+        services
+            .get_or_create::<LspProviderRegistry>()
+            .register(LspKey::Language("rust".to_owned()), Arc::new(provider));
+        services
+            .get_or_create::<DiagnosticPathIndex>()
+            .insert("file:///test.rs".to_owned(), 1);
 
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
 
         // Empty diagnostics should not create entries.
-        assert!(!bridge.tick(&mut client, &mut shared));
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     // ========================================================================

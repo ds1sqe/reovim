@@ -192,6 +192,7 @@ impl ExtensionStateBridge for TetrominoBridge {
         &self,
         client_extensions: &mut ExtensionMap,
         shared_extensions: &mut ExtensionMap,
+        _services: &reovim_kernel::api::v1::ServiceRegistry,
     ) -> bool {
         // Extract active/screen/room early, drop borrow before re-borrowing.
         let (active, screen, room_id) = {
@@ -408,7 +409,13 @@ mod tests {
             game::{ActivePiece, BlockColor, PieceType, Rotation},
             state::{ClientId, RoomId},
         },
+        reovim_kernel::api::v1::ServiceRegistry,
     };
+
+    /// Empty service registry for tick tests (tetromino doesn't use services).
+    fn services() -> ServiceRegistry {
+        ServiceRegistry::new()
+    }
 
     #[test]
     fn bridge_kind() {
@@ -852,7 +859,7 @@ mod tests {
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
         // get_or_insert creates default (inactive) state — should return false
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -860,7 +867,7 @@ mod tests {
         let mut client = ExtensionMap::new();
         client.get_or_insert::<TetrominoState>();
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -871,7 +878,7 @@ mod tests {
         state.start_game();
         state.paused = true;
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -882,7 +889,7 @@ mod tests {
         state.start_game();
         state.game.as_mut().unwrap().game_over = true;
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -892,7 +899,7 @@ mod tests {
         state.active = true;
         // game is None
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -908,7 +915,7 @@ mod tests {
             .unwrap();
         let mut shared = ExtensionMap::new();
 
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         // last_tick should have been reset
         let state = client.get::<TetrominoState>().unwrap();
         assert!(state.last_tick.elapsed() < std::time::Duration::from_secs(1));
@@ -923,7 +930,7 @@ mod tests {
         state.start_game();
         // last_tick is now — not due yet
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -946,7 +953,7 @@ mod tests {
         let state = client.get_or_insert::<TetrominoState>();
         state.current_room = Some(room_id);
 
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         // Garbage should have been applied
         let game = client
             .get::<TetrominoState>()
@@ -976,7 +983,7 @@ mod tests {
         let state = client.get_or_insert::<TetrominoState>();
         state.current_room = Some(room_id);
         // No garbage queued, tick not due → false
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -990,7 +997,7 @@ mod tests {
         // No current_room set
         let mut shared = ExtensionMap::new();
         // Should not panic, just skip garbage
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -1003,7 +1010,7 @@ mod tests {
         state.current_room = Some(RoomId(1));
         // No client_id set
         let mut shared = ExtensionMap::new();
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     // =========================================================================
@@ -1094,7 +1101,7 @@ mod tests {
         state.current_room = Some(room_id);
 
         // Countdown just started — should return true (notify for display update)
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         // Screen should still be Countdown
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Countdown);
@@ -1123,7 +1130,7 @@ mod tests {
         let state = client.get_or_insert::<TetrominoState>();
         state.current_room = Some(room_id);
 
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         // Screen should transition to Game
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Game);
@@ -1144,7 +1151,7 @@ mod tests {
         let mut shared = ExtensionMap::new();
 
         // Still returns true (countdown screen active, just no room to check)
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     // =========================================================================
@@ -1274,7 +1281,7 @@ mod tests {
         let state = client.get_or_insert::<TetrominoState>();
         state.current_room = Some(room_id);
 
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
 
         // Player should be marked dead
         let lobby = shared.get::<TetrominoLobbyState>().unwrap();
@@ -1309,7 +1316,7 @@ mod tests {
         let state = client.get_or_insert::<TetrominoState>();
         state.current_room = Some(room_id);
 
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
 
         let lobby = shared.get::<TetrominoLobbyState>().unwrap();
         assert!(lobby.rooms[&room_id].dead_players.contains(&ClientId(1)));
@@ -1330,7 +1337,7 @@ mod tests {
         let mut shared = ExtensionMap::new();
 
         // Single player game over — tick returns false, no death detection
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Game);
     }
@@ -1357,7 +1364,7 @@ mod tests {
         state.current_room = Some(room_id);
 
         // Room screen + lobby Countdown -> screen becomes Countdown
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Countdown);
     }
@@ -1380,7 +1387,7 @@ mod tests {
         state.current_room = Some(room_id);
 
         // Room screen + lobby InProgress -> screen becomes Game, game started
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Game);
         assert!(state.multiplayer);
@@ -1397,7 +1404,7 @@ mod tests {
         let mut shared = ExtensionMap::new();
 
         // Should not panic, just skip catch-up
-        assert!(!TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(!TetrominoBridge.tick(&mut client, &mut shared, &services()));
     }
 
     #[test]
@@ -1420,7 +1427,7 @@ mod tests {
         lobby.start_match(room_id);
 
         // Countdown screen + lobby InProgress -> game starts
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Game);
         assert!(state.multiplayer);
@@ -1450,7 +1457,7 @@ mod tests {
         lobby.finish_match(room_id, ClientId(2));
 
         // Surviving player's tick detects match finished → Result screen
-        assert!(TetrominoBridge.tick(&mut client, &mut shared));
+        assert!(TetrominoBridge.tick(&mut client, &mut shared, &services()));
         let state = client.get::<TetrominoState>().unwrap();
         assert_eq!(state.screen, TetrominoScreen::Result);
     }

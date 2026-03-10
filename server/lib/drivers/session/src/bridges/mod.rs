@@ -35,7 +35,7 @@
 
 use std::{collections::HashMap, sync::Mutex};
 
-use reovim_kernel::api::v1::Service;
+use reovim_kernel::api::v1::{Service, ServiceRegistry};
 
 use crate::{ClientId, ExtensionMap};
 
@@ -161,11 +161,17 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
     /// Called by the tick scheduler at regular intervals, independent of key input.
     /// Returns `true` if state was modified and clients should be notified.
     ///
+    /// The `services` parameter provides access to the **live session**
+    /// `ServiceRegistry`, allowing bridges to look up services (e.g.,
+    /// `LspProviderRegistry`) at tick time rather than capturing `Arc`
+    /// references at init time (#555).
+    ///
     /// Default implementation returns `false` (no tick behavior).
     fn tick(
         &self,
         _client_extensions: &mut ExtensionMap,
         _shared_extensions: &mut ExtensionMap,
+        _services: &ServiceRegistry,
     ) -> bool {
         false
     }
@@ -453,7 +459,8 @@ mod tests {
         let bridge = DummyBridge::new("test");
         let mut client = ExtensionMap::new();
         let mut shared = ExtensionMap::new();
-        assert!(!bridge.tick(&mut client, &mut shared));
+        let services = ServiceRegistry::new();
+        assert!(!bridge.tick(&mut client, &mut shared, &services));
     }
 
     #[test]
