@@ -112,7 +112,7 @@ impl CommandHandler for EnhancedFindCharCommand {
         let forward = args.string("find_direction") != Some("backward");
 
         let inclusive = match args.get("find_inclusive") {
-            Some(ArgValue::Bang(b)) => *b,
+            Some(ArgValue::Bool(b)) => *b,
             _ => true,
         };
 
@@ -401,7 +401,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("find_char", ArgValue::Char('w'));
-        args.set("find_inclusive", ArgValue::Bang(false));
+        args.set("find_inclusive", ArgValue::Bool(false));
 
         let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
         assert_eq!(result, CommandResult::Success);

@@ -64,7 +64,7 @@ impl CommandHandler for ExecuteFindChar {
 
         // Get inclusive flag (default: true for find, false for till).
         let inclusive = match args.get("find_inclusive") {
-            Some(ArgValue::Bang(b)) => *b,
+            Some(ArgValue::Bool(b)) => *b,
             _ => true,
         };
 
@@ -417,7 +417,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("find_char", ArgValue::Char('o'));
-        args.set("find_inclusive", ArgValue::Bang(false)); // till mode
+        args.set("find_inclusive", ArgValue::Bool(false)); // till mode
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -532,7 +532,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("find_char", ArgValue::Char('h'));
         args.set("find_direction", ArgValue::String("backward".to_string()));
-        args.set("find_inclusive", ArgValue::Bang(false)); // till mode
+        args.set("find_inclusive", ArgValue::Bool(false)); // till mode
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         if let Some(w) = state.windows.active_mut() {

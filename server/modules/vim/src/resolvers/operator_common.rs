@@ -251,7 +251,7 @@ pub fn build_operator_execute(
     let mut args = HashMap::new();
 
     // Set linewise flag
-    args.insert("linewise".to_string(), ArgValue::Bang(linewise));
+    args.insert("linewise".to_string(), ArgValue::Bool(linewise));
 
     // Set range positions
     args.insert("range_start".to_string(), ArgValue::Position(start.line, start.column));
@@ -790,10 +790,10 @@ mod tests {
             PopResult::ExecuteCommand { command, args } => {
                 assert_eq!(command.name(), "yank");
                 // Check linewise is true
-                if let Some(ArgValue::Bang(linewise)) = args.get("linewise") {
+                if let Some(ArgValue::Bool(linewise)) = args.get("linewise") {
                     assert!(linewise);
                 } else {
-                    panic!("Expected linewise Bang");
+                    panic!("Expected linewise Bool");
                 }
                 // Check count
                 if let Some(ArgValue::Count(count)) = args.get("count") {

@@ -711,7 +711,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl SyntaxDriver for MixedAnnotationDriver {
-        fn language(&self) -> &'static str {
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn language(&self) -> &str {
             "markdown"
         }
 

@@ -690,7 +690,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -712,7 +712,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -739,7 +739,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -1133,7 +1133,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(1, 0));
         args.set("range_end", ArgValue::Position(1, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);

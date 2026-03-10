@@ -62,6 +62,8 @@ pub enum ArgKind {
     String,
     /// Bang modifier (e.g., `!` in `:q!`).
     Bang,
+    /// Boolean flag (e.g., `linewise`, `find_inclusive`).
+    Bool,
     /// Buffer identifier (set by runner before command execution).
     BufferId,
     /// Single character (e.g., for find-char operations).
@@ -85,6 +87,8 @@ pub enum ArgValue {
     String(String),
     /// A bang modifier.
     Bang(bool),
+    /// A boolean flag (e.g., `linewise`, `find_inclusive`).
+    Bool(bool),
     /// A buffer identifier (raw usize, converted to `BufferId` by helper).
     BufferId(usize),
     /// A single character (e.g., for find-char targets).
@@ -127,6 +131,7 @@ mod tests {
             ArgKind::FilePath,
             ArgKind::String,
             ArgKind::Bang,
+            ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
         ];
@@ -147,6 +152,7 @@ mod tests {
             ArgKind::FilePath,
             ArgKind::String,
             ArgKind::Bang,
+            ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
         ];
@@ -185,6 +191,7 @@ mod tests {
         assert_ne!(ArgKind::Count, ArgKind::Register);
         assert_ne!(ArgKind::Motion, ArgKind::Range);
         assert_ne!(ArgKind::FilePath, ArgKind::String);
+        assert_ne!(ArgKind::Bang, ArgKind::Bool);
         assert_ne!(ArgKind::Bang, ArgKind::BufferId);
         assert_ne!(ArgKind::Char, ArgKind::Count);
     }
@@ -208,6 +215,7 @@ mod tests {
         assert_eq!(format!("{:?}", ArgKind::FilePath), "FilePath");
         assert_eq!(format!("{:?}", ArgKind::String), "String");
         assert_eq!(format!("{:?}", ArgKind::Bang), "Bang");
+        assert_eq!(format!("{:?}", ArgKind::Bool), "Bool");
         assert_eq!(format!("{:?}", ArgKind::BufferId), "BufferId");
         assert_eq!(format!("{:?}", ArgKind::Char), "Char");
     }
@@ -264,6 +272,16 @@ mod tests {
     }
 
     #[test]
+    fn test_arg_value_bool() {
+        let val_true = ArgValue::Bool(true);
+        let val_false = ArgValue::Bool(false);
+        assert_eq!(val_true, ArgValue::Bool(true));
+        assert_eq!(val_false, ArgValue::Bool(false));
+        assert_ne!(val_true, val_false);
+        assert_ne!(val_true, ArgValue::Bang(true));
+    }
+
+    #[test]
     fn test_arg_value_buffer_id() {
         let val = ArgValue::BufferId(7);
         assert_eq!(val, ArgValue::BufferId(7));
@@ -315,11 +333,13 @@ mod tests {
         let register = ArgValue::Register('a');
         let string = ArgValue::String("1".to_string());
         let bang = ArgValue::Bang(true);
+        let bool_val = ArgValue::Bool(true);
         let char_val = ArgValue::Char('a');
 
         assert_ne!(count, register);
         assert_ne!(count, string);
         assert_ne!(count, bang);
+        assert_ne!(bang, bool_val);
         assert_ne!(register, char_val);
     }
 }

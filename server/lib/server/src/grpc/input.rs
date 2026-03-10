@@ -497,7 +497,7 @@ impl InputServiceImpl {
         for (key, value) in &ctx.metadata {
             use reovim_driver_input::ArgValue as InputArgValue;
             let converted = match value {
-                InputArgValue::Bool(b) => Some(ArgValue::Bang(*b)),
+                InputArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
                 InputArgValue::String(s) => Some(ArgValue::String(s.clone())),
                 InputArgValue::Char(c) => Some(ArgValue::Char(*c)),
                 InputArgValue::Int(n) => usize::try_from(*n).ok().map(ArgValue::Count),

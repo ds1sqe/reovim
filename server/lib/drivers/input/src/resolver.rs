@@ -1393,7 +1393,7 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_mode_transition_pop() {
         let mut args = HashMap::new();
-        args.insert("linewise".to_string(), CmdArgValue::Bang(false));
+        args.insert("linewise".to_string(), CmdArgValue::Bool(false));
         args.insert("count".to_string(), CmdArgValue::Count(2));
         args.insert("register".to_string(), CmdArgValue::Register('a'));
 
@@ -1407,7 +1407,7 @@ mod tests {
         if let ModeTransition::Pop { result: Some(r) } = trans {
             if let PopResult::ExecuteCommand { command, args } = r {
                 assert_eq!(command, test_command());
-                assert_eq!(args.get("linewise"), Some(&CmdArgValue::Bang(false)));
+                assert_eq!(args.get("linewise"), Some(&CmdArgValue::Bool(false)));
                 assert_eq!(args.get("count"), Some(&CmdArgValue::Count(2)));
                 assert_eq!(args.get("register"), Some(&CmdArgValue::Register('a')));
             } else {

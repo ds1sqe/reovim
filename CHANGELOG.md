@@ -243,6 +243,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **ArgValue::Bool semantic cleanup (#557)**: Add `Bool(bool)` variant to
+  `ArgValue` and `ArgKind::Bool` to `ArgKind`, separating boolean flags
+  (`linewise`, `find_inclusive`) from bang modifiers (`:q!`). Fix bridge
+  mapping `InputArgValue::Bool` to `ArgValue::Bool` instead of `ArgValue::Bang`.
+  Add `bool_flag()` accessor to `CommandContext`.
+
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
   `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature

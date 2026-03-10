@@ -251,7 +251,16 @@ impl CommandContext {
     /// When true, operators should expand the range to full lines.
     #[must_use]
     pub fn is_linewise(&self) -> bool {
-        matches!(self.args.get("linewise"), Some(ArgValue::Bang(true)))
+        matches!(self.args.get("linewise"), Some(ArgValue::Bool(true)))
+    }
+
+    /// Get a boolean flag by name.
+    ///
+    /// Returns `true` only if the named argument is `ArgValue::Bool(true)`.
+    /// Returns `false` for missing values, `Bool(false)`, or wrong types.
+    #[must_use]
+    pub fn bool_flag(&self, name: &str) -> bool {
+        matches!(self.args.get(name), Some(ArgValue::Bool(true)))
     }
 
     // === Per-Window State (Issue #471) ===
@@ -713,14 +722,14 @@ mod tests {
     #[test]
     fn test_command_context_is_linewise_true() {
         let mut ctx = CommandContext::new();
-        ctx.set("linewise", ArgValue::Bang(true));
+        ctx.set("linewise", ArgValue::Bool(true));
         assert!(ctx.is_linewise());
     }
 
     #[test]
     fn test_command_context_is_linewise_false() {
         let mut ctx = CommandContext::new();
-        ctx.set("linewise", ArgValue::Bang(false));
+        ctx.set("linewise", ArgValue::Bool(false));
         assert!(!ctx.is_linewise());
     }
 
@@ -735,6 +744,35 @@ mod tests {
         let mut ctx = CommandContext::new();
         ctx.set("linewise", ArgValue::Count(1));
         assert!(!ctx.is_linewise());
+    }
+
+    // === bool_flag() tests ===
+
+    #[test]
+    fn test_command_context_bool_flag_true() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bool(true));
+        assert!(ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_false() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bool(false));
+        assert!(!ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_missing() {
+        let ctx = CommandContext::new();
+        assert!(!ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_wrong_type() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bang(true));
+        assert!(!ctx.bool_flag("inclusive"));
     }
 
     // === get() tests ===
