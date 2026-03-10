@@ -290,4 +290,53 @@ mod tests {
             assert!(!cmd.id().name().is_empty());
         }
     }
+
+    // ========================================================================
+    // Execute tests
+    // ========================================================================
+
+    #[test]
+    fn test_detach_execute_signals_quit() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = DetachCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert!(matches!(signals[0], RuntimeSignal::Quit));
+        });
+    }
+
+    #[test]
+    fn test_servers_execute_returns_success() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = ServersCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+        });
+    }
+
+    #[test]
+    fn test_kill_server_execute_signals_quit() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = KillServerCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert!(matches!(signals[0], RuntimeSignal::Quit));
+        });
+    }
 }

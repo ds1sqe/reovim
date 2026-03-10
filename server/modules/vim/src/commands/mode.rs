@@ -2536,6 +2536,122 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
+    fn test_exit_commandline_ex_command_whitespace_only() {
+        // Whitespace-only cmdline: passes !is_empty() but parse_cmdline returns None
+        let name_index = CommandNameIndex::new();
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char(' ');
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_with_bang() {
+        let cmd = Arc::new(ExTestCmd::success("test-bang"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test!".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_with_args() {
+        let cmd = Arc::new(ExTestCmd::success("test-args"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test filename.txt".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
+        let cmd = Arc::new(ExTestCmd::success("test-ctx"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mock_vfs = Arc::new(reovim_driver_vfs::MockVfs::new());
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
     fn test_exit_commandline_search_no_search_registry() {
         // No SearchProviderRegistry registered in services
         let ctx = create_test_context();

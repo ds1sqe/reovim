@@ -746,4 +746,69 @@ mod tests {
         let debug = format!("{p:?}");
         assert!(debug.contains("999"));
     }
+
+    // ========================================================================
+    // MC/DC edge case tests for JSON parsing
+    // ========================================================================
+
+    #[test]
+    fn parse_board_json_non_array() {
+        let val = serde_json::json!("not an array");
+        let board = parse_board_json(&val);
+        assert!(board.is_empty());
+    }
+
+    #[test]
+    fn parse_board_json_row_not_array() {
+        let val = serde_json::json!([42, "not_array"]);
+        let board = parse_board_json(&val);
+        assert_eq!(board.len(), 2);
+        assert!(board[0].is_empty()); // 42 is not an array
+        assert!(board[1].is_empty()); // "not_array" is not an array
+    }
+
+    #[test]
+    fn parse_piece_data_non_object() {
+        let val = serde_json::json!("not an object");
+        assert!(parse_piece_data(&val).is_none());
+    }
+
+    #[test]
+    fn parse_piece_data_cell_not_array() {
+        let val = serde_json::json!({"color": "red", "cells": ["not_array", 42]});
+        let piece = parse_piece_data(&val).unwrap();
+        assert!(piece.cells.is_empty()); // filter_map skips non-arrays
+    }
+
+    #[test]
+    fn parse_piece_data_cell_missing_coords() {
+        let val = serde_json::json!({"color": "red", "cells": [[], [1]]});
+        let piece = parse_piece_data(&val).unwrap();
+        // [] → first() returns None, [1] → get(1) returns None
+        assert!(piece.cells.is_empty());
+    }
+
+    #[test]
+    fn parse_piece_data_cell_coords_not_numbers() {
+        let val = serde_json::json!({"color": "red", "cells": [["a", "b"]]});
+        let piece = parse_piece_data(&val).unwrap();
+        // as_i64() returns None for strings
+        assert!(piece.cells.is_empty());
+    }
+
+    #[test]
+    fn parse_lobby_room_missing_id() {
+        let mut data = TetrominoData::default();
+        let json = serde_json::json!({"rooms": [{"playerCount": 2, "status": "waiting"}]});
+        parse_lobby(&mut data, &json);
+        assert!(data.rooms.is_empty()); // id is required (uses ?)
+    }
+
+    #[test]
+    fn parse_result_player_missing_id() {
+        let mut data = TetrominoData::default();
+        let json = serde_json::json!({"players": [{"score": 100}]});
+        parse_result(&mut data, &json);
+        assert!(data.result_players.is_empty()); // id is required (uses ?)
+    }
 }

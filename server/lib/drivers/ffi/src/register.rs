@@ -287,4 +287,79 @@ mod tests {
         };
         assert_eq!(result, REOVIM_ERR_INVALID_UTF8);
     }
+
+    // ========================================================================
+    // With-runtime tests (RuntimeGuard + TestSessionRuntime)
+    // ========================================================================
+
+    #[test]
+    fn test_get_register_empty_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let mut result = ReovimStringResult::ok(0);
+        let ret = unsafe {
+            reovim_get_register(
+                b'a',
+                std::ptr::null_mut(),
+                0,
+                &raw mut result,
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_set_register_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let text = c"register content";
+        let ret =
+            unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Characterwise) };
+        assert_eq!(ret, REOVIM_OK);
+    }
+
+    #[test]
+    fn test_get_register_after_set_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        // Set register 'a'
+        let text = c"hello reg";
+        assert_eq!(
+            unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Linewise) },
+            REOVIM_OK
+        );
+
+        // Get register 'a'
+        let mut buf = [0u8; 64];
+        let mut result = ReovimStringResult::err(0);
+        let mut yank_type = ReovimYankType::Characterwise;
+        let ret = unsafe {
+            reovim_get_register(
+                b'a',
+                buf.as_mut_ptr(),
+                64,
+                &raw mut result,
+                &raw mut yank_type,
+            )
+        };
+        assert_eq!(ret, REOVIM_OK);
+        assert_eq!(&buf[..result.length as usize], b"hello reg");
+        assert_eq!(yank_type, ReovimYankType::Linewise);
+    }
 }

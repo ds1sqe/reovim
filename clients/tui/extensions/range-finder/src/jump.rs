@@ -399,6 +399,23 @@ mod tests {
     }
 
     #[test]
+    fn test_render_empty_label_no_op() {
+        let mut ext = RangeFinderJumpExtension::new();
+        ext.apply_notification(r#"{"active":true,"matches":[{"line":0,"col":0,"label":""}]}"#);
+
+        let viewport = ViewportContext {
+            scroll_top: 0,
+            content_x: 0,
+            content_height: 10,
+        };
+        let mut fb = FrameBuffer::new(20, 10);
+        ext.render_with_viewport(&mut fb, &viewport);
+
+        // Empty label renders nothing
+        assert_eq!(fb.get(0, 0).unwrap().char, ' ');
+    }
+
+    #[test]
     fn test_render_inactive_no_op() {
         let ext = RangeFinderJumpExtension::new();
         let viewport = ViewportContext {

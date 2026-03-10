@@ -452,6 +452,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_injection_manager_default() {
+        let manager = InjectionManager::default();
+        assert_eq!(manager.layer_count(), 0);
+    }
+
+    #[test]
     fn test_injection_manager_new() {
         let manager = InjectionManager::new();
         assert_eq!(manager.layer_count(), 0);

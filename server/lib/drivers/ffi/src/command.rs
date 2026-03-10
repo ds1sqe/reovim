@@ -653,4 +653,23 @@ mod tests {
         let result = unsafe { reovim_register_command(&raw const reg) };
         assert_eq!(result, REOVIM_ERR_INVALID_UTF8);
     }
+
+    // ========================================================================
+    // With-runtime tests (RuntimeGuard + TestSessionRuntime)
+    // ========================================================================
+
+    #[test]
+    fn test_execute_command_not_found_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let cmd = std::ffi::CString::new("nonexistent:command").unwrap();
+        let result = unsafe { reovim_execute_command(cmd.as_ptr(), -1, 0) };
+        // Command not found → CommandResult::Error
+        assert_eq!(result, REOVIM_CMD_ERROR);
+    }
 }

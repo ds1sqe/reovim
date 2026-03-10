@@ -282,4 +282,68 @@ mod tests {
             unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, std::ptr::null_mut()) };
         assert_eq!(ret, REOVIM_ERR_NULL_PTR);
     }
+
+    // ========================================================================
+    // With-runtime tests (RuntimeGuard + TestSessionRuntime)
+    // ========================================================================
+
+    #[test]
+    fn test_paste_from_clipboard_empty_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let mut result = ReovimStringResult::ok(0);
+        let ret =
+            unsafe { reovim_paste_from_clipboard(std::ptr::null_mut(), 0, &raw mut result) };
+        // Clipboard is empty in test harness → Ok(None)
+        assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_paste_from_selection_empty_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let mut result = ReovimStringResult::ok(0);
+        let ret =
+            unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, &raw mut result) };
+        assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
+    }
+
+    #[test]
+    fn test_copy_to_clipboard_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let text = c"test copy";
+        let ret = unsafe { reovim_copy_to_clipboard(text.as_ptr()) };
+        // Clipboard may not be available in headless test → Ok(true) or Ok(false)
+        assert!(ret == REOVIM_OK || ret == REOVIM_ERR_FAILED);
+    }
+
+    #[test]
+    fn test_copy_to_selection_with_runtime() {
+        use crate::runtime::RuntimeGuard;
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut rt = harness.runtime();
+        let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+
+        let text = c"test copy";
+        let ret = unsafe { reovim_copy_to_selection(text.as_ptr()) };
+        assert!(ret == REOVIM_OK || ret == REOVIM_ERR_FAILED);
+    }
 }

@@ -431,6 +431,41 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_no_active_window() {
+        let cmd = EnhancedFindCharCommand;
+        let mut harness = TestSessionRuntime::new();
+        let mut args = CommandContext::new();
+        args.set_buffer_id(reovim_kernel::api::v1::BufferId::new());
+        args.set("find_char", ArgValue::Char('x'));
+        let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_execute_buffer_not_found() {
+        let cmd = EnhancedFindCharCommand;
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut args = CommandContext::new();
+        // Use a fresh BufferId that doesn't exist in the kernel
+        args.set_buffer_id(reovim_kernel::api::v1::BufferId::new());
+        args.set("find_char", ArgValue::Char('h'));
+        let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[test]
+    fn test_execute_buffer_not_found_counted() {
+        let cmd = EnhancedFindCharCommand;
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let mut args = CommandContext::new();
+        args.set_buffer_id(reovim_kernel::api::v1::BufferId::new());
+        args.set("find_char", ArgValue::Char('h'));
+        args.set("count", ArgValue::Count(2));
+        let result = harness.with_runtime(|rt| cmd.execute(rt, &args));
+        assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    #[test]
     fn test_execute_multi_match_label_selection_moves_cursor() {
         let cmd = EnhancedFindCharCommand;
         let mut harness = TestSessionRuntime::with_buffer("ababa");

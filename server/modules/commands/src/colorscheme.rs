@@ -239,8 +239,84 @@ mod tests {
         assert!(names.contains("dark"));
     }
 
-    // Execute tests are omitted: they require SessionRuntime which needs
-    // the full server harness. ColorschemeCommand behavior is verified via
-    // integration tests. The metadata, complete(), and available_theme_names
-    // tests above cover the unit-testable parts.
+    // ========================================================================
+    // Execute tests
+    // ========================================================================
+
+    #[test]
+    fn test_colorscheme_execute_no_theme_manager() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = ColorschemeCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
+
+    #[test]
+    fn test_colorscheme_execute_show_current() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        // Register SharedThemeManager
+        harness
+            .kernel()
+            .services
+            .register(Arc::new(SharedThemeManager::new(BuiltinTheme::Dark.load())));
+
+        harness.with_runtime(|runtime| {
+            let cmd = ColorschemeCommand;
+            // No "file" argument → show current theme
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+        });
+    }
+
+    #[test]
+    fn test_colorscheme_execute_switch_builtin_dark() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness
+            .kernel()
+            .services
+            .register(Arc::new(SharedThemeManager::new(BuiltinTheme::Dark.load())));
+
+        harness.with_runtime(|runtime| {
+            let cmd = ColorschemeCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("dark".to_string()),
+            );
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+        });
+    }
+
+    #[test]
+    fn test_colorscheme_execute_unknown_theme() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness
+            .kernel()
+            .services
+            .register(Arc::new(SharedThemeManager::new(BuiltinTheme::Dark.load())));
+
+        harness.with_runtime(|runtime| {
+            let cmd = ColorschemeCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("nonexistent-theme".to_string()),
+            );
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
 }

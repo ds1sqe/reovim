@@ -133,10 +133,7 @@ fn file_type_from_extension(filename: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use {
-        super::*,
-        reovim_kernel::api::v1::{BufferId, KernelContext},
-    };
+    use super::*;
 
     #[test]
     fn test_edit_command_id() {
@@ -270,17 +267,135 @@ mod tests {
     }
 
     // ========================================================================
-    // Execute tests are removed: they require a SessionRuntime which can't
-    // be constructed in unit tests without the full server harness. The
-    // command behavior will be verified via integration tests. The metadata
-    // and file_type_from_extension tests above cover the unit-testable parts.
+    // Execute tests (using TestSessionRuntime + MockVfs)
     // ========================================================================
 
-    // Keep a sentinel test confirming BufferId/KernelContext are available
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_kernel_types_available() {
-        let _bid = BufferId::from_raw(1);
-        let _kernel = KernelContext::default();
+    fn test_edit_execute_no_filename() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
+
+    #[test]
+    fn test_edit_execute_no_buffer_id() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("test.rs".to_string()),
+            );
+            // No buffer_id set
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
+
+    #[test]
+    fn test_edit_execute_no_vfs() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buffer_id = harness.active_buffer().unwrap();
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("test.rs".to_string()),
+            );
+            ctx.set_buffer_id(buffer_id);
+            // No VFS set
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
+
+    #[test]
+    fn test_edit_execute_file_not_found() {
+        use {
+            reovim_driver_session::testing::TestSessionRuntime, reovim_driver_vfs::MockVfs,
+            std::sync::Arc,
+        };
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        let buffer_id = harness.active_buffer().unwrap();
+        let mock_vfs = Arc::new(MockVfs::new());
+        // No files added → read will fail
+
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("nonexistent.rs".to_string()),
+            );
+            ctx.set_buffer_id(buffer_id);
+            ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
+    }
+
+    #[test]
+    fn test_edit_execute_success() {
+        use {
+            reovim_driver_session::testing::TestSessionRuntime, reovim_driver_vfs::MockVfs,
+            std::sync::Arc,
+        };
+
+        let mut harness = TestSessionRuntime::with_buffer("original");
+        let buffer_id = harness.active_buffer().unwrap();
+        let mock_vfs = Arc::new(MockVfs::new());
+        mock_vfs.add_file_str("/tmp/test.rs", "fn main() {}");
+
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("/tmp/test.rs".to_string()),
+            );
+            ctx.set_buffer_id(buffer_id);
+            ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+        });
+    }
+
+    #[test]
+    fn test_edit_execute_invalid_utf8() {
+        use {
+            reovim_driver_session::testing::TestSessionRuntime, reovim_driver_vfs::MockVfs,
+            std::sync::Arc,
+        };
+
+        let mut harness = TestSessionRuntime::with_buffer("original");
+        let buffer_id = harness.active_buffer().unwrap();
+        let mock_vfs = Arc::new(MockVfs::new());
+        mock_vfs.add_file("/tmp/binary.bin", &[0xFF, 0xFE, 0x80, 0x90]);
+
+        harness.with_runtime(|runtime| {
+            let cmd = EditCommand;
+            let mut ctx = CommandContext::new();
+            ctx.set(
+                "file",
+                reovim_driver_command::ArgValue::String("/tmp/binary.bin".to_string()),
+            );
+            ctx.set_buffer_id(buffer_id);
+            ctx.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_error());
+        });
     }
 }

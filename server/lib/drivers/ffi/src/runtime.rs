@@ -453,4 +453,29 @@ mod tests {
         assert!(handle.is_null());
         assert_eq!(handle.id, 0);
     }
+
+    // ========================================================================
+    // RuntimeGuard with real SessionRuntime
+    // ========================================================================
+
+    #[test]
+    fn test_runtime_guard_with_real_session_runtime() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("test");
+        let mut rt = harness.runtime();
+
+        {
+            let _guard = unsafe { RuntimeGuard::new(&mut rt) };
+            let result = with_runtime(|runtime| {
+                use reovim_driver_session::api::BufferApi;
+                runtime.active_buffer()
+            });
+            assert!(result.is_ok());
+            assert!(result.unwrap().is_some());
+        }
+
+        // After guard dropped, should fail again
+        assert!(with_runtime(|_| ()).is_err());
+    }
 }
