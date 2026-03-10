@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Range-finder TUI extension — jump labels and fold indicators.
 //!
 //! Provides two `TuiExtension` implementations:
