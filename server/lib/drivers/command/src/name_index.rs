@@ -47,6 +47,15 @@ impl CommandNameIndex {
         self.by_name.get(name).map(|(id, _)| id)
     }
 
+    /// Resolve a command name to its `CommandId` and `Command` trait object.
+    ///
+    /// Unlike [`resolve()`](Self::resolve), this returns the full entry so
+    /// callers can access `Command::args()` for spec-driven argument binding.
+    #[must_use]
+    pub fn resolve_entry(&self, name: &str) -> Option<(&CommandId, &dyn Command)> {
+        self.by_name.get(name).map(|(id, cmd)| (id, cmd.as_ref()))
+    }
+
     /// Get argument completions for a named command.
     ///
     /// Delegates to the command's `complete()` method.
@@ -298,6 +307,28 @@ mod tests {
         let debug_str = format!("{idx:?}");
         assert!(debug_str.contains("CommandNameIndex"));
         assert!(debug_str.contains("unique_commands"));
+    }
+
+    #[test]
+    fn test_resolve_entry_found() {
+        let idx = make_index();
+        let (id, cmd) = idx.resolve_entry("w").unwrap();
+        assert_eq!(id.name(), "write");
+        assert_eq!(cmd.description(), "test command");
+    }
+
+    #[test]
+    fn test_resolve_entry_alias() {
+        let idx = make_index();
+        let (id, cmd) = idx.resolve_entry("quit").unwrap();
+        assert_eq!(id.name(), "quit");
+        assert_eq!(cmd.names(), &["q", "quit"]);
+    }
+
+    #[test]
+    fn test_resolve_entry_not_found() {
+        let idx = make_index();
+        assert!(idx.resolve_entry("nonexistent").is_none());
     }
 
     #[test]

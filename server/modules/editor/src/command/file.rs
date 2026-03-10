@@ -51,9 +51,8 @@ impl Command for WriteBufferCommand {
         )]
     }
 
-    fn names(&self) -> &[&'static str] {
-        &["w", "write"]
-    }
+    // No names() — WriteCommand in commands module owns ["w", "write"].
+    // This command is only accessible via CommandId for programmatic use.
 }
 
 impl CommandHandler for WriteBufferCommand {
@@ -279,11 +278,10 @@ mod tests {
     }
 
     #[test]
-    fn test_write_command_names() {
+    fn test_write_command_names_empty() {
         let cmd = WriteBufferCommand;
-        let names = cmd.names();
-        assert!(names.contains(&"w"));
-        assert!(names.contains(&"write"));
+        // WriteBufferCommand has no user-facing names — WriteCommand owns ["w", "write"]
+        assert!(cmd.names().is_empty());
     }
 
     #[test]

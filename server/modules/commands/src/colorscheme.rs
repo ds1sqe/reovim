@@ -1,7 +1,9 @@
 //! Colorscheme command - switch themes at runtime.
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_command::{
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
+    },
     reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader},
     reovim_driver_session::SessionRuntime,
     reovim_kernel::api::v1::{CommandId, ModuleId},
@@ -49,6 +51,10 @@ impl Command for ColorschemeCommand {
         "Set or show the current color theme. Usage: :colorscheme [dark|light|tokyo-night-orange]"
     }
 
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional("theme", ArgKind::Rest, "Theme name")]
+    }
+
     fn names(&self) -> &[&'static str] {
         &["colorscheme", "colors", "colo"]
     }
@@ -72,7 +78,7 @@ impl CommandHandler for ColorschemeCommand {
         };
 
         // Check if we got an argument
-        let theme_name = ctx.string("file");
+        let theme_name = ctx.string("theme");
 
         if theme_name.is_none() {
             // Show current theme
@@ -130,6 +136,16 @@ mod tests {
         assert!(names.contains(&"colorscheme"));
         assert!(names.contains(&"colors"));
         assert!(names.contains(&"colo"));
+    }
+
+    #[test]
+    fn test_colorscheme_command_args() {
+        let cmd = ColorschemeCommand;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "theme");
+        assert_eq!(args[0].kind, ArgKind::Rest);
+        assert!(!args[0].required);
     }
 
     #[test]
@@ -289,7 +305,7 @@ mod tests {
         harness.with_runtime(|runtime| {
             let cmd = ColorschemeCommand;
             let mut ctx = CommandContext::new();
-            ctx.set("file", reovim_driver_command::ArgValue::String("dark".to_string()));
+            ctx.set("theme", reovim_driver_command::ArgValue::String("dark".to_string()));
             let result = cmd.execute(runtime, &ctx);
             assert!(result.is_success());
         });
@@ -309,7 +325,7 @@ mod tests {
             let cmd = ColorschemeCommand;
             let mut ctx = CommandContext::new();
             ctx.set(
-                "file",
+                "theme",
                 reovim_driver_command::ArgValue::String("nonexistent-theme".to_string()),
             );
             let result = cmd.execute(runtime, &ctx);

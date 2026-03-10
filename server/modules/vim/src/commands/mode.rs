@@ -332,11 +332,11 @@ impl CommandHandler for ExitCommandLineMode {
 /// Execute an ex-command via `CommandNameIndex` and `runtime.execute_command()`.
 ///
 /// Parses the command line, resolves the command name via `CommandNameIndex`,
-/// builds a `CommandContext`, and dispatches through the unified command system.
+/// binds arguments to the command's `ArgSpec` declarations via `bind_args()`,
+/// and dispatches through the unified command system.
 fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
     use {
-        reovim_driver_command::{CommandNameIndex, parse_cmdline},
-        reovim_driver_command_types::ArgValue,
+        reovim_driver_command::{CommandNameIndex, bind_args, parse_cmdline},
         reovim_driver_session::CommandApi,
     };
 
@@ -349,7 +349,7 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
         return;
     };
 
-    let Some(cmd_id) = name_index.resolve(&parsed.name).cloned() else {
+    let Some((cmd_id, cmd)) = name_index.resolve_entry(&parsed.name) else {
         let msg = format!("E492: Not an editor command: {}", parsed.name);
         runtime
             .ext_mut::<CmdlineState>()
@@ -357,16 +357,26 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
         return;
     };
 
+    // Bind arguments to the command's ArgSpec declarations
+    let specs = cmd.args();
+    let cmd_id = cmd_id.clone();
     // Drop the borrow on name_index before calling execute_command
     drop(name_index);
 
-    // Build command context
+    let bound = match bind_args(&specs, &parsed.raw_args, parsed.bang) {
+        Ok(map) => map,
+        Err(e) => {
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(e.to_string()));
+            return;
+        }
+    };
+
+    // Build command context from bound arguments
     let mut ctx = CommandContext::new();
-    if parsed.bang {
-        ctx.set("bang", ArgValue::Bang(true));
-    }
-    if !parsed.args.is_empty() {
-        ctx.set("file", ArgValue::String(parsed.args.join(" ")));
+    for (name, value) in bound {
+        ctx.set(&name, value);
     }
     // Propagate buffer_id and VFS from outer args
     if let Some(bid) = args.buffer_id() {

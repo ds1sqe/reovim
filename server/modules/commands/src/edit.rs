@@ -5,7 +5,9 @@
 use std::path::Path;
 
 use {
-    reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_command::{
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
+    },
     reovim_driver_session::SessionRuntime,
     reovim_kernel::api::v1::{
         CommandId, ModuleId,
@@ -26,6 +28,10 @@ impl Command for EditCommand {
 
     fn description(&self) -> &'static str {
         "Edit (open) a file in the current buffer"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional("file", ArgKind::Rest, "File to edit")]
     }
 
     fn names(&self) -> &[&'static str] {
@@ -157,6 +163,16 @@ mod tests {
         let desc = cmd.description();
         assert!(!desc.is_empty());
         assert!(desc.contains("Edit"));
+    }
+
+    #[test]
+    fn test_edit_command_args() {
+        let cmd = EditCommand;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "file");
+        assert_eq!(args[0].kind, ArgKind::Rest);
+        assert!(!args[0].required);
     }
 
     #[test]

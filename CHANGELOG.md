@@ -262,6 +262,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   and `ArgKind::Rest` variant for consuming all remaining text. Pure mechanism in the
   command driver layer.
 
+- **Wire ArgSpec dispatch + update handlers (#560)**: Replace hardcoded argument
+  population in `execute_ex_command()` with spec-driven `bind_args()` dispatch.
+  Add `resolve_entry()` to `CommandNameIndex` for accessing command `ArgSpec`
+  declarations at dispatch time. Add `args()` overrides to `EditCommand` (Rest),
+  `WriteCommand` (Rest), `ColorschemeCommand` (Rest). Fix `ColorschemeCommand`
+  handler to read `"theme"` instead of `"file"`. Resolve `WriteBufferCommand` /
+  `WriteCommand` name collision by removing user-facing names from
+  `WriteBufferCommand` (editor module) — `WriteCommand` (commands module) is now
+  the canonical `:w`.
+
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
   `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature

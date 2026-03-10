@@ -188,10 +188,7 @@ impl fmt::Display for ArgError {
                 write!(f, "E488: Too many arguments (expected {expected}, got {got})")
             }
             Self::InvalidValue { name, kind, value } => {
-                write!(
-                    f,
-                    "E474: Invalid value for {name} ({kind:?}): \"{value}\""
-                )
+                write!(f, "E474: Invalid value for {name} ({kind:?}): \"{value}\"")
             }
         }
     }
@@ -278,13 +275,16 @@ fn parse_token(name: &'static str, kind: ArgKind, token: &str) -> Result<ArgValu
     match kind {
         ArgKind::FilePath => Ok(ArgValue::FilePath(token.to_string())),
         ArgKind::String => Ok(ArgValue::String(token.to_string())),
-        ArgKind::Count => token.parse::<usize>().map(ArgValue::Count).map_err(|_| {
-            ArgError::InvalidValue {
-                name,
-                kind,
-                value: token.to_string(),
-            }
-        }),
+        ArgKind::Count => {
+            token
+                .parse::<usize>()
+                .map(ArgValue::Count)
+                .map_err(|_| ArgError::InvalidValue {
+                    name,
+                    kind,
+                    value: token.to_string(),
+                })
+        }
         ArgKind::Bool => match token {
             "true" => Ok(ArgValue::Bool(true)),
             "false" => Ok(ArgValue::Bool(false)),
@@ -551,10 +551,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_mixed_quotes_and_words() {
-        assert_eq!(
-            tokenize_args(r#"foo "bar baz" qux"#),
-            vec!["foo", "bar baz", "qux"]
-        );
+        assert_eq!(tokenize_args(r#"foo "bar baz" qux"#), vec!["foo", "bar baz", "qux"]);
     }
 
     #[test]
@@ -613,10 +610,7 @@ mod tests {
             name: "file",
             kind: ArgKind::FilePath,
         };
-        assert_eq!(
-            err.to_string(),
-            "E471: Missing required argument: file (FilePath)"
-        );
+        assert_eq!(err.to_string(), "E471: Missing required argument: file (FilePath)");
     }
 
     #[test]
@@ -625,10 +619,7 @@ mod tests {
             expected: 1,
             got: 3,
         };
-        assert_eq!(
-            err.to_string(),
-            "E488: Too many arguments (expected 1, got 3)"
-        );
+        assert_eq!(err.to_string(), "E488: Too many arguments (expected 1, got 3)");
     }
 
     #[test]
@@ -638,10 +629,7 @@ mod tests {
             kind: ArgKind::Count,
             value: "abc".to_string(),
         };
-        assert_eq!(
-            err.to_string(),
-            r#"E474: Invalid value for count (Count): "abc""#
-        );
+        assert_eq!(err.to_string(), r#"E474: Invalid value for count (Count): "abc""#);
     }
 
     #[test]
@@ -677,10 +665,7 @@ mod tests {
     fn test_bind_single_filepath() {
         let specs = [ArgSpec::required("file", ArgKind::FilePath, "File")];
         let result = bind_args(&specs, "test.txt", false).unwrap();
-        assert_eq!(
-            result.get("file"),
-            Some(&ArgValue::FilePath("test.txt".to_string()))
-        );
+        assert_eq!(result.get("file"), Some(&ArgValue::FilePath("test.txt".to_string())));
     }
 
     #[test]
@@ -707,10 +692,7 @@ mod tests {
     fn test_bind_string_arg() {
         let specs = [ArgSpec::required("name", ArgKind::String, "Name")];
         let result = bind_args(&specs, "hello", false).unwrap();
-        assert_eq!(
-            result.get("name"),
-            Some(&ArgValue::String("hello".to_string()))
-        );
+        assert_eq!(result.get("name"), Some(&ArgValue::String("hello".to_string())));
     }
 
     #[test]
@@ -822,10 +804,7 @@ mod tests {
     fn test_bind_rest_consumes_all() {
         let specs = [ArgSpec::optional("text", ArgKind::Rest, "Text")];
         let result = bind_args(&specs, "hello world foo", false).unwrap();
-        assert_eq!(
-            result.get("text"),
-            Some(&ArgValue::String("hello world foo".to_string()))
-        );
+        assert_eq!(result.get("text"), Some(&ArgValue::String("hello world foo".to_string())));
     }
 
     #[test]
@@ -855,14 +834,8 @@ mod tests {
             ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
         ];
         let result = bind_args(&specs, "insert hello world", false).unwrap();
-        assert_eq!(
-            result.get("mode"),
-            Some(&ArgValue::String("insert".to_string()))
-        );
-        assert_eq!(
-            result.get("text"),
-            Some(&ArgValue::String("hello world".to_string()))
-        );
+        assert_eq!(result.get("mode"), Some(&ArgValue::String("insert".to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("hello world".to_string())));
     }
 
     #[test]
@@ -887,10 +860,7 @@ mod tests {
         ];
         let result = bind_args(&specs, "test.txt", true).unwrap();
         assert_eq!(result.get("bang"), Some(&ArgValue::Bang(true)));
-        assert_eq!(
-            result.get("file"),
-            Some(&ArgValue::FilePath("test.txt".to_string()))
-        );
+        assert_eq!(result.get("file"), Some(&ArgValue::FilePath("test.txt".to_string())));
     }
 
     #[test]
@@ -900,24 +870,15 @@ mod tests {
             ArgSpec::required("dst", ArgKind::FilePath, "Dest"),
         ];
         let result = bind_args(&specs, "a.txt b.txt", false).unwrap();
-        assert_eq!(
-            result.get("src"),
-            Some(&ArgValue::FilePath("a.txt".to_string()))
-        );
-        assert_eq!(
-            result.get("dst"),
-            Some(&ArgValue::FilePath("b.txt".to_string()))
-        );
+        assert_eq!(result.get("src"), Some(&ArgValue::FilePath("a.txt".to_string())));
+        assert_eq!(result.get("dst"), Some(&ArgValue::FilePath("b.txt".to_string())));
     }
 
     #[test]
     fn test_bind_quoted_filepath() {
         let specs = [ArgSpec::required("file", ArgKind::FilePath, "File")];
         let result = bind_args(&specs, r#""my file.txt""#, false).unwrap();
-        assert_eq!(
-            result.get("file"),
-            Some(&ArgValue::FilePath("my file.txt".to_string()))
-        );
+        assert_eq!(result.get("file"), Some(&ArgValue::FilePath("my file.txt".to_string())));
     }
 
     #[test]

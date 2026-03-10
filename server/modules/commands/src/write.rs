@@ -4,7 +4,7 @@ use std::path::Path;
 
 use {
     reovim_driver_command::{
-        Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
+        ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
     reovim_driver_session::{BufferApi, CommandApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::BufferSaved},
@@ -30,6 +30,10 @@ impl Command for WriteCommand {
 
     fn description(&self) -> &'static str {
         "Write the current buffer to disk. Use :w filename to save to a specific file."
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![ArgSpec::optional("file", ArgKind::Rest, "File to write")]
     }
 
     fn names(&self) -> &[&'static str] {
@@ -150,6 +154,16 @@ mod tests {
         let desc = cmd.description();
         assert!(!desc.is_empty());
         assert!(desc.contains("Write"));
+    }
+
+    #[test]
+    fn test_write_command_args() {
+        let cmd = WriteCommand;
+        let args = cmd.args();
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0].name, "file");
+        assert_eq!(args[0].kind, reovim_driver_command::ArgKind::Rest);
+        assert!(!args[0].required);
     }
 
     #[test]
