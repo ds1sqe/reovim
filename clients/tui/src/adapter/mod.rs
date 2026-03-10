@@ -21,35 +21,24 @@
 //! // Create adapters
 //! let layout = factory.create_layout();
 //! let focus = factory.create_focus_manager(initial_viewport);
-//! let overlay = TuiOverlayManager::new();
 //! ```
 //!
 //! # Modules
 //!
-//! - [`anchor`] - Convert wire anchors to TUI anchors
 //! - [`layout`] - Layout trait implementation wrapping TUI compositor
 //! - [`panel`] - Panel trait implementation wrapping TUI View
-//! - [`overlay`] - Overlay manager wrapping TUI `OverlayLayer`
 //! - [`focus`] - Focus manager for panel/overlay focus tracking
 
 use std::sync::{Arc, Mutex};
 
 use reovim_driver_display::layout::{LayerId, RootCompositor};
 
-pub mod anchor;
 pub mod focus;
 pub mod layout;
-pub mod overlay;
 pub mod panel;
 
 // Re-export key types for convenience
-pub use {
-    anchor::{AnchorContext, convert_anchor},
-    focus::TuiFocusManager,
-    layout::TuiLayoutAdapter,
-    overlay::TuiOverlayManager,
-    panel::TuiPanel,
-};
+pub use {focus::TuiFocusManager, layout::TuiLayoutAdapter, panel::TuiPanel};
 
 /// Factory for creating TUI adapters from a compositor.
 ///
@@ -108,23 +97,13 @@ impl<C: RootCompositor + 'static> TuiAdapterFactory<C> {
     pub fn create_focus_manager(&self, initial_viewport: u64) -> TuiFocusManager<C> {
         TuiFocusManager::new(Arc::clone(&self.compositor), initial_viewport)
     }
-
-    /// Create an overlay manager.
-    ///
-    /// Note: The overlay manager is created without an underlying layer.
-    /// Call `TuiOverlayManager::with_layer()` directly if you need to
-    /// connect it to a TUI overlay layer.
-    #[must_use]
-    pub fn create_overlay_manager(&self) -> TuiOverlayManager {
-        TuiOverlayManager::new()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
-        reovim_client_model::traits::{FocusManager, Layout, OverlayManager},
+        reovim_client_model::traits::{FocusManager, Layout},
         reovim_driver_display::{
             Rect, WindowId,
             layout::{CompositeResult, Layer, LayerConfig, WindowLayerCompositor},
@@ -240,14 +219,6 @@ mod tests {
     }
 
     #[test]
-    fn test_factory_create_overlay_manager() {
-        let compositor = Arc::new(Mutex::new(MockCompositor::new()));
-        let factory = TuiAdapterFactory::new(compositor, LayerId::new(0));
-        let overlay = factory.create_overlay_manager();
-        assert!(overlay.active().is_empty());
-    }
-
-    #[test]
     fn test_factory_shared_compositor() {
         let compositor = Arc::new(Mutex::new(MockCompositor::new()));
         let factory = TuiAdapterFactory::new(compositor, LayerId::new(0));
@@ -309,13 +280,11 @@ mod tests {
         let layout2 = factory.create_layout();
         let focus1 = factory.create_focus_manager(1);
         let focus2 = factory.create_focus_manager(2);
-        let overlay = factory.create_overlay_manager();
 
         // All adapters should be independently usable
         assert_eq!(layout1.focused_viewport(), 1);
         assert_eq!(layout2.focused_viewport(), 1);
         assert!(focus1.is_panel_focused(1));
         assert!(focus2.is_panel_focused(2));
-        assert!(overlay.active().is_empty());
     }
 }

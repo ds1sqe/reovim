@@ -5,17 +5,19 @@
 //! than physical (screen coordinates). Clients interpret these types
 //! into rendered state appropriate for their platform.
 
-pub mod anchor;
+pub mod category;
 pub mod client;
 pub mod layout;
+pub mod origin;
 pub mod overlay;
 pub mod presence;
 pub mod viewport;
 
 pub use {
-    anchor::Anchor,
+    category::ExtensionCategory,
     client::{ClientInfo, ClientMetadata, ClientRelation, ClientViewState},
     layout::LogicalLayout,
+    origin::SemanticOrigin,
     overlay::{LogicalOverlay, OverlayState},
     // DEPRECATED: Use client module types instead
     presence::{ClientPresence, SyncMode},

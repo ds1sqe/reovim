@@ -9,9 +9,9 @@ use crate::{Rect, ScreenPosition, Size, wire::LogicalOverlay};
 
 /// A rendered overlay with computed screen position.
 ///
-/// Created by the client after resolving the overlay's anchor
-/// to a screen position based on viewport state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Created by the client after interpreting the overlay's semantic origin
+/// to determine screen position based on viewport state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RenderedOverlay {
@@ -187,10 +187,10 @@ impl OverlayStack {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::wire::Anchor};
+    use super::*;
 
     fn test_overlay(id: &str, kind: &str) -> LogicalOverlay {
-        LogicalOverlay::new(id, kind, Anchor::Cursor)
+        LogicalOverlay::new(id, kind)
     }
 
     fn rendered(id: &str, x: u16, y: u16, w: u16, h: u16) -> RenderedOverlay {

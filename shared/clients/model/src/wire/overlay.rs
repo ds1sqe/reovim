@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::Anchor;
+use super::origin::SemanticOrigin;
 
 /// State of an interactive overlay (e.g., completion menu).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -50,15 +50,16 @@ impl OverlayState {
 ///
 /// Contains all information needed to render an overlay, but no
 /// platform-specific details. The client interprets this into
-/// rendered state using its `OverlayRenderer` implementation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// rendered state appropriate for its platform.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify_next::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct LogicalOverlay {
     /// Unique identifier for this overlay instance.
     pub id: String,
-    /// Anchor point for positioning.
-    pub anchor: Anchor,
+    /// Semantic origin — WHAT this data relates to (informational, not directive).
+    /// Clients decide positioning independently based on this metadata.
+    pub origin: Option<SemanticOrigin>,
     /// Overlay type (e.g., "completion", "hover", "signature").
     pub kind: String,
     /// Payload data (contents depend on kind).
@@ -72,15 +73,22 @@ pub struct LogicalOverlay {
 impl LogicalOverlay {
     /// Create a new logical overlay.
     #[must_use]
-    pub fn new(id: impl Into<String>, kind: impl Into<String>, anchor: Anchor) -> Self {
+    pub fn new(id: impl Into<String>, kind: impl Into<String>) -> Self {
         Self {
             id: id.into(),
-            anchor,
+            origin: None,
             kind: kind.into(),
             data: serde_json::Value::Null,
             state: OverlayState::new(),
             priority: 0,
         }
+    }
+
+    /// Set the semantic origin.
+    #[must_use]
+    pub const fn with_origin(mut self, origin: SemanticOrigin) -> Self {
+        self.origin = Some(origin);
+        self
     }
 
     /// Set the data payload.
@@ -102,18 +110,6 @@ impl LogicalOverlay {
     pub fn with_state(mut self, state: OverlayState) -> Self {
         self.state = state;
         self
-    }
-
-    /// Check if this is a completion overlay.
-    #[must_use]
-    pub fn is_completion(&self) -> bool {
-        self.kind == "completion"
-    }
-
-    /// Check if this is a hover overlay.
-    #[must_use]
-    pub fn is_hover(&self) -> bool {
-        self.kind == "hover"
     }
 }
 
@@ -138,23 +134,31 @@ mod tests {
 
     #[test]
     fn test_logical_overlay_new() {
-        let overlay = LogicalOverlay::new("comp-1", "completion", Anchor::Cursor);
+        let overlay = LogicalOverlay::new("comp-1", "completion");
         assert_eq!(overlay.id, "comp-1");
         assert_eq!(overlay.kind, "completion");
-        assert!(overlay.is_completion());
-        assert!(!overlay.is_hover());
+        assert_eq!(overlay.origin, None);
+        assert_eq!(overlay.priority, 0);
+    }
+
+    #[test]
+    fn test_logical_overlay_with_origin() {
+        let origin = SemanticOrigin::buffer_position(1, 5, 12);
+        let overlay = LogicalOverlay::new("hover-1", "hover").with_origin(origin.clone());
+        assert_eq!(overlay.origin, Some(origin));
     }
 
     #[test]
     fn test_logical_overlay_builder() {
-        let overlay = LogicalOverlay::new("hover-1", "hover", Anchor::Center)
+        let overlay = LogicalOverlay::new("hover-1", "hover")
+            .with_origin(SemanticOrigin::session())
             .with_data(serde_json::json!({"text": "Hello"}))
             .with_priority(10);
 
         assert_eq!(overlay.id, "hover-1");
-        assert!(overlay.is_hover());
         assert_eq!(overlay.priority, 10);
         assert_eq!(overlay.data["text"], "Hello");
+        assert_eq!(overlay.origin, Some(SemanticOrigin::Session));
     }
 
     #[test]
@@ -163,12 +167,27 @@ mod tests {
             "items": ["foo", "bar", "baz"],
             "count": 3
         });
-        let overlay =
-            LogicalOverlay::new("test", "completion", Anchor::Cursor).with_data(data.clone());
+        let overlay = LogicalOverlay::new("test", "completion")
+            .with_origin(SemanticOrigin::buffer_position(1, 10, 3))
+            .with_data(data.clone());
 
         // Verify data is preserved
         assert_eq!(overlay.data, data);
         assert_eq!(overlay.data["items"][0], "foo");
         assert_eq!(overlay.data["count"], 3);
+
+        // Verify serde roundtrip
+        let json = serde_json::to_string(&overlay).unwrap();
+        let deserialized: LogicalOverlay = serde_json::from_str(&json).unwrap();
+        assert_eq!(overlay, deserialized);
+    }
+
+    #[test]
+    fn test_overlay_serde_no_origin() {
+        let overlay = LogicalOverlay::new("test", "notification");
+        let json = serde_json::to_string(&overlay).unwrap();
+        let deserialized: LogicalOverlay = serde_json::from_str(&json).unwrap();
+        assert_eq!(overlay, deserialized);
+        assert_eq!(deserialized.origin, None);
     }
 }

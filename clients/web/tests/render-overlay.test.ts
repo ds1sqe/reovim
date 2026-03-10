@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { OverlayRenderer } from "../src/render/overlay.js";
-import type { LogicalOverlay, Anchor, OverlayState } from "../src/wasm/index.js";
+import type { LogicalOverlay, SemanticOrigin } from "../src/wasm/index.js";
 
 // ============ Test Fixtures ============
 
@@ -23,9 +23,9 @@ function createOverlay(
   return {
     id,
     kind,
-    anchor: "Cursor" as Anchor,
+    origin: undefined,
     data: {},
-    state: null,
+    state: { selected_index: undefined, filter: "", scroll_offset: 0, loading: false },
     priority: 0,
     ...overrides,
   };
@@ -41,7 +41,7 @@ function createCompletionOverlay(
 ): LogicalOverlay {
   return createOverlay(id, "completion", {
     data: { items },
-    state: { selected_index: selectedIndex },
+    state: { selected_index: selectedIndex, filter: "", scroll_offset: 0, loading: false },
   });
 }
 
@@ -328,8 +328,8 @@ describe("OverlayRenderer", () => {
       renderer.updateState("comp", { selected_index: 2 });
 
       const items = container.querySelectorAll(".completion-item");
-      expect(items[0].classList.contains("selected")).toBe(false);
-      expect(items[2].classList.contains("selected")).toBe(true);
+      expect(items[0]!.classList.contains("selected")).toBe(false);
+      expect(items[2]!.classList.contains("selected")).toBe(true);
     });
 
     it("adds selected class to correct item", () => {
@@ -340,7 +340,7 @@ describe("OverlayRenderer", () => {
       renderer.updateState("comp", { selected_index: 1 });
 
       const items = container.querySelectorAll(".completion-item");
-      expect(items[1].classList.contains("selected")).toBe(true);
+      expect(items[1]!.classList.contains("selected")).toBe(true);
     });
 
     it("removes selected from other items", () => {
@@ -350,14 +350,14 @@ describe("OverlayRenderer", () => {
 
       // Initially first item is selected
       let items = container.querySelectorAll(".completion-item");
-      expect(items[0].classList.contains("selected")).toBe(true);
+      expect(items[0]!.classList.contains("selected")).toBe(true);
 
       // Update to select second item
       renderer.updateState("comp", { selected_index: 1 });
 
       items = container.querySelectorAll(".completion-item");
-      expect(items[0].classList.contains("selected")).toBe(false);
-      expect(items[1].classList.contains("selected")).toBe(true);
+      expect(items[0]!.classList.contains("selected")).toBe(false);
+      expect(items[1]!.classList.contains("selected")).toBe(true);
     });
 
     it("sets aria-selected correctly", () => {
@@ -368,51 +368,48 @@ describe("OverlayRenderer", () => {
       renderer.updateState("comp", { selected_index: 1 });
 
       const items = container.querySelectorAll(".completion-item");
-      expect(items[0].getAttribute("aria-selected")).toBe("false");
-      expect(items[1].getAttribute("aria-selected")).toBe("true");
+      expect(items[0]!.getAttribute("aria-selected")).toBe("false");
+      expect(items[1]!.getAttribute("aria-selected")).toBe("true");
     });
   });
 
   describe("updateCursorPosition", () => {
-    it("updates cursor position for anchor calculations", () => {
+    it("updates cursor position for positioning calculations", () => {
       renderer.updateCursorPosition(5, 10);
-      renderer.show(createOverlay("test", "hover", { anchor: "Cursor" }));
+      renderer.show(createOverlay("test", "hover"));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
-      // Position should be based on cursor: col * charWidth + padding
-      // Default charWidth = 8.4, lineHeight = 21, padding = 8
+      // Position should be based on cursor (null origin defaults to cursor)
       expect(overlay?.style.left).toBeDefined();
       expect(overlay?.style.top).toBeDefined();
     });
   });
 
-  describe("positioning - Cursor anchor", () => {
-    it("positions below cursor position", () => {
+  describe("positioning - null origin (cursor default)", () => {
+    it("positions below cursor position when origin is null", () => {
       renderer.updateCursorPosition(5, 10);
-      renderer.show(createOverlay("test", "hover", { anchor: "Cursor" }));
+      renderer.show(createOverlay("test", "hover"));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
-      // Should have left/top set based on cursor position
       expect(overlay?.style.left).toBeDefined();
       expect(overlay?.style.top).toBeDefined();
     });
   });
 
-  describe("positioning - Center anchor", () => {
+  describe("positioning - Session origin", () => {
     it("centers overlay in container", () => {
-      renderer.show(createOverlay("test", "hover", { anchor: "Center" }));
+      renderer.show(createOverlay("test", "hover", { origin: "Session" as SemanticOrigin }));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
-      // Element should be positioned (exact values depend on offsetWidth/Height)
       expect(overlay?.style.left).toBeDefined();
       expect(overlay?.style.top).toBeDefined();
     });
   });
 
-  describe("positioning - Buffer anchor", () => {
+  describe("positioning - BufferPosition origin", () => {
     it("positions at buffer line/col", () => {
-      const anchor = { Buffer: { buffer_id: 1, line: 10, col: 20 } } as Anchor;
-      renderer.show(createOverlay("test", "hover", { anchor }));
+      const origin = { BufferPosition: { buffer_id: 1, line: 10, col: 20 } } as SemanticOrigin;
+      renderer.show(createOverlay("test", "hover", { origin }));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
       expect(overlay?.style.left).toBeDefined();
@@ -420,10 +417,12 @@ describe("OverlayRenderer", () => {
     });
   });
 
-  describe("positioning - Screen anchor", () => {
-    it("positions at normalized screen coordinates", () => {
-      const anchor = { Screen: { x: 0.5, y: 0.5 } } as Anchor;
-      renderer.show(createOverlay("test", "hover", { anchor }));
+  describe("positioning - BufferRange origin", () => {
+    it("positions at start of range", () => {
+      const origin = {
+        BufferRange: { buffer_id: 1, start_line: 5, start_col: 0, end_line: 7, end_col: 15 },
+      } as SemanticOrigin;
+      renderer.show(createOverlay("test", "hover", { origin }));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
       expect(overlay?.style.left).toBeDefined();
@@ -431,27 +430,12 @@ describe("OverlayRenderer", () => {
     });
   });
 
-  describe("positioning - Below anchor", () => {
-    it("positions below referenced overlay", () => {
-      // First show a reference overlay
-      renderer.show(createOverlay("reference", "hover"));
-
-      // Then show overlay anchored below it
-      const anchor = { Below: "reference" } as Anchor;
-      renderer.show(createOverlay("test", "hover", { anchor }));
-
-      const overlay = container.querySelector('[data-overlay-id="test"]') as HTMLElement;
-      expect(overlay?.style.left).toBeDefined();
-      expect(overlay?.style.top).toBeDefined();
-    });
-
-    it("falls back to cursor when overlay not found", () => {
-      renderer.updateCursorPosition(5, 10);
-      const anchor = { Below: "nonexistent" } as Anchor;
-      renderer.show(createOverlay("test", "hover", { anchor }));
+  describe("positioning - Buffer origin", () => {
+    it("centers on screen for buffer-level origin", () => {
+      const origin = { Buffer: { buffer_id: 1 } } as SemanticOrigin;
+      renderer.show(createOverlay("test", "hover", { origin }));
 
       const overlay = container.querySelector(".overlay") as HTMLElement;
-      // Should still be positioned (fallback to cursor)
       expect(overlay?.style.left).toBeDefined();
       expect(overlay?.style.top).toBeDefined();
     });
@@ -526,8 +510,8 @@ describe("OverlayRenderer", () => {
       );
 
       const items = container.querySelectorAll(".completion-item");
-      expect(items[0].classList.contains("selected")).toBe(false);
-      expect(items[1].classList.contains("selected")).toBe(true);
+      expect(items[0]!.classList.contains("selected")).toBe(false);
+      expect(items[1]!.classList.contains("selected")).toBe(true);
     });
 
     it("shows empty message when no items", () => {

@@ -267,9 +267,29 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `<--` for responses, `<-n` for notifications, `err` for stderr.
 
 
+- **Client model: SemanticOrigin replaces Anchor (#549)**: Replace policy-violating
+  `Anchor` positioning directive with informational `SemanticOrigin` metadata in
+  `reovim-client-model`. `SemanticOrigin` (4 variants: `BufferPosition`, `BufferRange`,
+  `Buffer`, `Session`) tells clients WHAT data relates to — each client independently
+  decides WHERE to render. New `ExtensionCategory` enum (`Overlay`, `Inline`) classifies
+  extensions informatively. `LogicalOverlay` field changed from `anchor: Anchor` to
+  `origin: Option<SemanticOrigin>`. Web client's `positionOverlay()` recontracted to
+  interpret origin informationally. WASM package regenerated with updated TypeScript types.
+  Dead code removed: `Anchor` enum, `OverlayRenderer`/`OverlayManager` traits, TUI
+  anchor/overlay adapter modules.
+
+
 ### Security
 
 ### Removed
+
+- **`Anchor` enum removed (#549)**: `wire::Anchor` (5 variants: Cursor, Center, Buffer,
+  Screen, Below) removed from client model. Was a policy-violating positioning directive.
+  Replaced by informational `SemanticOrigin`.
+- **`OverlayRenderer` and `OverlayManager` traits removed (#549)**: Policy traits
+  removed from `traits::overlay`. Clients use the `ExtensionStateBridge` pattern instead.
+- **TUI anchor/overlay adapter modules removed (#549)**: `adapter::anchor` and
+  `adapter::overlay` were dead code (no extension used them).
 
 ---
 
