@@ -26,6 +26,8 @@ mod state;
 mod syntax_state;
 pub mod token_registry;
 
+pub use syntax_state::annotation_kind_to_proto;
+
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
     client::{

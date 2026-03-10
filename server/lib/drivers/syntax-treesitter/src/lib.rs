@@ -57,7 +57,7 @@ mod driver;
 mod injection;
 
 pub use {
-    driver::TreeSitterDriver,
+    driver::{TreeSitterDriver, TreeSitterDriverBuilder},
     injection::{InjectionLayer, InjectionLayerFactory, InjectionLayerStore, InjectionManager},
 };
 

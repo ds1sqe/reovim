@@ -92,6 +92,20 @@ pub trait SyntaxDriver: Send + Sync {
         Vec::new()
     }
 
+    /// Get decoration annotations for a byte range.
+    ///
+    /// Returns annotations with non-Highlight kinds (`Conceal`, `Background`,
+    /// `VirtualText`) that language modules define via decoration queries.
+    /// Use-sites call this separately from [`highlights()`](Self::highlights)
+    /// to opt in to decoration rendering.
+    ///
+    /// # Default
+    ///
+    /// Returns an empty vector. Override for languages with decoration support.
+    fn decorations(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
+        Vec::new()
+    }
+
     /// Get foldable ranges.
     ///
     /// Returns all foldable regions in the document.
@@ -198,6 +212,7 @@ mod tests {
         let driver = TestDriver::new("test");
 
         // Default implementations return empty/None
+        assert!(driver.decorations(0..100).is_empty());
         assert!(driver.injections().is_empty());
         assert!(driver.folds().is_empty());
         assert_eq!(driver.indent_for(0), None);

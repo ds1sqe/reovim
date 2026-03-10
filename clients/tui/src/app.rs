@@ -31,7 +31,7 @@ use {
     },
     reovim_protocol::v2::{
         GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
-        option_changed_payload::Value as OptionValue,
+        annotation_kind, option_changed_payload::Value as OptionValue,
     },
     tokio::{select, sync::mpsc, time::interval},
     tonic::Streaming,
@@ -47,6 +47,27 @@ use crate::{
     render_engine::render_frame,
     tui_output::{CursorStyleHint, TuiOutput},
 };
+
+/// Convert a proto `AnnotationKind` to a `CachedAnnotationKind`.
+///
+/// Returns `Highlight` when the proto kind is absent (the proto default).
+fn proto_kind_to_cached(
+    kind: Option<&reovim_protocol::v2::AnnotationKind>,
+) -> CachedAnnotationKind {
+    let Some(ak) = kind.and_then(|k| k.kind.as_ref()) else {
+        return CachedAnnotationKind::Highlight;
+    };
+    match ak {
+        annotation_kind::Kind::Highlight(_) => CachedAnnotationKind::Highlight,
+        annotation_kind::Kind::Conceal(c) => CachedAnnotationKind::Conceal {
+            replacement: c.replacement.clone(),
+        },
+        annotation_kind::Kind::Background(_) => CachedAnnotationKind::Background,
+        annotation_kind::Kind::VirtualText(vt) => CachedAnnotationKind::VirtualText {
+            text: vt.text.clone(),
+        },
+    }
+}
 
 /// TUI application error.
 #[derive(Debug)]
@@ -441,7 +462,7 @@ impl<O: TuiOutput> TuiApp<O> {
                         start_byte: t.start_byte,
                         end_byte: t.end_byte,
                         category: t.category,
-                        kind: CachedAnnotationKind::Highlight,
+                        kind: proto_kind_to_cached(t.kind.as_ref()),
                     })
                     .collect();
 

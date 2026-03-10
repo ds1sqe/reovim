@@ -27,7 +27,8 @@ use std::{
 use {
     parking_lot::{Mutex, RwLock},
     reovim_driver_syntax::{
-        Annotation, FoldKind, FoldRange, HighlightCategory, Injection, SyntaxDriver, SyntaxEdit,
+        Annotation, DecorationCapture, DecorationRule, FoldKind, FoldRange, HighlightCategory,
+        Injection, SyntaxDriver, SyntaxEdit, decoration::apply_rules,
     },
     streaming_iterator::StreamingIterator,
     tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
@@ -83,6 +84,24 @@ pub struct TreeSitterDriver {
     /// of embedded languages (e.g., Rust code in Markdown fenced blocks).
     injection_manager: Option<Mutex<InjectionManager>>,
 
+    /// Optional decoration query for conceal/background/virtual text
+    decoration_query: Option<Arc<Query>>,
+
+    /// Declarative rules mapping capture names to annotation kinds
+    decoration_rules: Vec<DecorationRule>,
+
+    /// Optional inline/secondary parser (for dual-grammar languages like markdown)
+    inline_parser: Option<Mutex<Parser>>,
+
+    /// Cached inline parse tree
+    inline_tree: RwLock<Option<Tree>>,
+
+    /// Optional inline decoration query
+    inline_decoration_query: Option<Arc<Query>>,
+
+    /// Inline decoration rules
+    inline_decoration_rules: Vec<DecorationRule>,
+
     /// Reusable query cursor (Mutex for thread safety)
     query_cursor: Mutex<QueryCursor>,
 
@@ -123,6 +142,12 @@ impl TreeSitterDriver {
             injections_query: None,
             indents_query: None,
             injection_manager: None,
+            decoration_query: None,
+            decoration_rules: Vec::new(),
+            inline_parser: None,
+            inline_tree: RwLock::new(None),
+            inline_decoration_query: None,
+            inline_decoration_rules: Vec::new(),
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
@@ -165,10 +190,44 @@ impl TreeSitterDriver {
             injections_query,
             indents_query,
             injection_manager,
+            decoration_query: None,
+            decoration_rules: Vec::new(),
+            inline_parser: None,
+            inline_tree: RwLock::new(None),
+            inline_decoration_query: None,
+            inline_decoration_rules: Vec::new(),
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
         })
+    }
+
+    /// Create a builder for configuring a tree-sitter driver.
+    ///
+    /// The builder pattern is the recommended way to create drivers with
+    /// decoration queries and other optional features.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let driver = TreeSitterDriver::builder("markdown", &language, highlight_query)
+    ///     .injections_query(injections_query)
+    ///     .decoration_query(deco_query)
+    ///     .decoration_rules(rules)
+    ///     .build()?;
+    /// ```
+    pub fn builder(
+        language_id: impl Into<String>,
+        language: &tree_sitter::Language,
+        highlight_query: Arc<Query>,
+    ) -> TreeSitterDriverBuilder {
+        TreeSitterDriverBuilder::new(language_id, language, highlight_query)
+    }
+
+    /// Check if this driver supports decorations.
+    #[must_use]
+    pub const fn supports_decorations(&self) -> bool {
+        self.decoration_query.is_some()
     }
 
     /// Get the current parse version.
@@ -279,6 +338,31 @@ impl TreeSitterDriver {
             .take(80) // Limit preview length
             .collect()
     }
+
+    /// Run a closure with read access to the parsed tree and buffer content.
+    ///
+    /// Returns `None` if no tree has been parsed yet (i.e., `parse()` was never
+    /// called or parsing failed). Lock management is internal to the driver —
+    /// the closure receives borrowed references, not lock guards.
+    ///
+    /// # Usage
+    ///
+    /// ```ignore
+    /// let result = driver.with_tree(|tree, content| {
+    ///     let mut cursor = QueryCursor::new();
+    ///     let matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
+    ///     // process matches...
+    ///     annotations
+    /// });
+    /// ```
+    pub fn with_tree<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&Tree, &str) -> R,
+    {
+        let tree_guard = self.tree.read();
+        let content_guard = self.content.read();
+        tree_guard.as_ref().map(|tree| f(tree, &content_guard))
+    }
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
@@ -304,6 +388,16 @@ impl SyntaxDriver for TreeSitterDriver {
         {
             let mut tree_guard = self.tree.write();
             *tree_guard = tree;
+        }
+
+        // Parse with inline parser if configured (dual-grammar support)
+        if let Some(ref inline_parser) = self.inline_parser {
+            let inline_tree = {
+                let mut parser = inline_parser.lock();
+                parser.parse(content, None)
+            };
+            let mut inline_tree_guard = self.inline_tree.write();
+            *inline_tree_guard = inline_tree;
         }
 
         // Clear any previous error
@@ -677,8 +771,212 @@ impl SyntaxDriver for TreeSitterDriver {
         Some(indent_level * 4)
     }
 
+    fn decorations(&self, byte_range: Range<usize>) -> Vec<Annotation> {
+        let mut result = Vec::new();
+
+        // Block-level decorations (primary grammar)
+        if let Some(deco_query) = &self.decoration_query
+            && let Some(block_decos) = self.with_tree(|tree, content| {
+                let mut cursor = QueryCursor::new();
+                cursor.set_byte_range(byte_range.clone());
+
+                let capture_names = deco_query.capture_names();
+                let mut captures = Vec::new();
+
+                let mut matches =
+                    cursor.matches(deco_query, tree.root_node(), content.as_bytes());
+                while let Some(match_) = matches.next() {
+                    for capture in match_.captures {
+                        let name = &capture_names[capture.index as usize];
+                        let node = capture.node;
+                        captures.push(DecorationCapture {
+                            name: Arc::from(*name),
+                            start_byte: node.start_byte(),
+                            end_byte: node.end_byte(),
+                        });
+                    }
+                }
+
+                apply_rules(&captures, &self.decoration_rules)
+            })
+        {
+            result.extend(block_decos);
+        }
+
+        // Inline decorations (secondary grammar, e.g., markdown inline)
+        if let Some(inline_query) = &self.inline_decoration_query {
+            let inline_tree_guard = self.inline_tree.read();
+            if let Some(inline_tree) = inline_tree_guard.as_ref() {
+                let content = self.content.read();
+                let mut cursor = QueryCursor::new();
+                cursor.set_byte_range(byte_range);
+
+                let capture_names = inline_query.capture_names();
+                let mut captures = Vec::new();
+
+                let mut matches = cursor.matches(
+                    inline_query,
+                    inline_tree.root_node(),
+                    content.as_bytes(),
+                );
+                while let Some(match_) = matches.next() {
+                    for capture in match_.captures {
+                        let name = &capture_names[capture.index as usize];
+                        let node = capture.node;
+                        captures.push(DecorationCapture {
+                            name: Arc::from(*name),
+                            start_byte: node.start_byte(),
+                            end_byte: node.end_byte(),
+                        });
+                    }
+                }
+
+                result.extend(apply_rules(&captures, &self.inline_decoration_rules));
+            }
+        }
+
+        result
+    }
+
     fn is_parsed(&self) -> bool {
         self.tree.read().is_some()
+    }
+}
+
+// ============================================================================
+// Builder
+// ============================================================================
+
+/// Builder for creating `TreeSitterDriver` with optional capabilities.
+///
+/// Avoids growing positional parameter lists. Use via
+/// [`TreeSitterDriver::builder()`].
+pub struct TreeSitterDriverBuilder {
+    language_id: String,
+    language: tree_sitter::Language,
+    highlight_query: Arc<Query>,
+    folds_query: Option<Arc<Query>>,
+    injections_query: Option<Arc<Query>>,
+    indents_query: Option<Arc<Query>>,
+    decoration_query: Option<Arc<Query>>,
+    decoration_rules: Vec<DecorationRule>,
+    inline_parser: Option<Mutex<Parser>>,
+    inline_decoration_query: Option<Arc<Query>>,
+    inline_decoration_rules: Vec<DecorationRule>,
+}
+
+impl TreeSitterDriverBuilder {
+    /// Create a new builder with the required parameters.
+    fn new(
+        language_id: impl Into<String>,
+        language: &tree_sitter::Language,
+        highlight_query: Arc<Query>,
+    ) -> Self {
+        Self {
+            language_id: language_id.into(),
+            language: language.clone(),
+            highlight_query,
+            folds_query: None,
+            injections_query: None,
+            indents_query: None,
+            decoration_query: None,
+            decoration_rules: Vec::new(),
+            inline_parser: None,
+            inline_decoration_query: None,
+            inline_decoration_rules: Vec::new(),
+        }
+    }
+
+    /// Set the folds query.
+    #[must_use]
+    pub fn folds_query(mut self, query: Arc<Query>) -> Self {
+        self.folds_query = Some(query);
+        self
+    }
+
+    /// Set the injections query.
+    #[must_use]
+    pub fn injections_query(mut self, query: Arc<Query>) -> Self {
+        self.injections_query = Some(query);
+        self
+    }
+
+    /// Set the indents query.
+    #[must_use]
+    pub fn indents_query(mut self, query: Arc<Query>) -> Self {
+        self.indents_query = Some(query);
+        self
+    }
+
+    /// Set the decoration query and rules.
+    ///
+    /// The query defines what to capture; the rules define how captures
+    /// map to annotation kinds (conceal, background, virtual text).
+    #[must_use]
+    pub fn decoration(mut self, query: Arc<Query>, rules: Vec<DecorationRule>) -> Self {
+        self.decoration_query = Some(query);
+        self.decoration_rules = rules;
+        self
+    }
+
+    /// Set an inline/secondary grammar for decoration queries.
+    ///
+    /// Some languages have dual grammars (e.g., Markdown's block + inline).
+    /// The inline parser runs on the same content as the primary parser, and
+    /// its decoration query produces additional annotations (e.g., concealing
+    /// emphasis markers `*`, bold markers `**`, link brackets, etc.).
+    ///
+    /// The inline parser's content is the full document — it parses the entire
+    /// buffer (not just regions extracted from the primary tree).
+    #[must_use]
+    pub fn inline_decoration(
+        mut self,
+        language: &tree_sitter::Language,
+        query: Arc<Query>,
+        rules: Vec<DecorationRule>,
+    ) -> Self {
+        let mut parser = Parser::new();
+        if parser.set_language(language).is_ok() {
+            self.inline_parser = Some(Mutex::new(parser));
+            self.inline_decoration_query = Some(query);
+            self.inline_decoration_rules = rules;
+        }
+        self
+    }
+
+    /// Build the `TreeSitterDriver`.
+    ///
+    /// Returns `None` if the parser cannot be configured for the language.
+    #[must_use]
+    pub fn build(self) -> Option<TreeSitterDriver> {
+        let mut parser = Parser::new();
+        parser.set_language(&self.language).ok()?;
+
+        let injection_manager = self
+            .injections_query
+            .as_ref()
+            .map(|_| Mutex::new(InjectionManager::new()));
+
+        Some(TreeSitterDriver {
+            language_id: self.language_id,
+            parser: Mutex::new(parser),
+            tree: RwLock::new(None),
+            content: RwLock::new(String::new()),
+            highlight_query: self.highlight_query,
+            folds_query: self.folds_query,
+            injections_query: self.injections_query,
+            indents_query: self.indents_query,
+            injection_manager,
+            decoration_query: self.decoration_query,
+            decoration_rules: self.decoration_rules,
+            inline_parser: self.inline_parser,
+            inline_tree: RwLock::new(None),
+            inline_decoration_query: self.inline_decoration_query,
+            inline_decoration_rules: self.inline_decoration_rules,
+            query_cursor: Mutex::new(QueryCursor::new()),
+            version: AtomicU64::new(0),
+            parse_error: RwLock::new(None),
+        })
     }
 }
 
@@ -1178,5 +1476,362 @@ mod tests {
 
         // Not parsed yet, should return empty
         assert!(driver.injections().is_empty());
+    }
+
+    #[test]
+    fn test_with_tree_returns_none_before_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+
+        let result = driver.with_tree(|_tree, _content| 42);
+        assert!(result.is_none(), "with_tree should return None before parse");
+    }
+
+    #[test]
+    fn test_with_tree_returns_some_after_parse() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+
+        driver.parse("fn main() {}");
+
+        let result = driver.with_tree(|tree, content| {
+            assert!(!content.is_empty());
+            assert_eq!(content, "fn main() {}");
+            tree.root_node().kind().to_string()
+        });
+        assert_eq!(result, Some("source_file".to_string()));
+    }
+
+    #[test]
+    fn test_with_tree_can_run_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+
+        driver.parse("let x = 1;");
+
+        let query = Query::new(&language, "(identifier) @name").unwrap();
+        let count = driver.with_tree(|tree, content| {
+            let mut cursor = QueryCursor::new();
+            let mut matches = cursor.matches(&query, tree.root_node(), content.as_bytes());
+            let mut count = 0;
+            while let Some(_m) = matches.next() {
+                count += 1;
+            }
+            count
+        });
+        assert_eq!(count, Some(1), "Should find one identifier 'x'");
+    }
+
+    // ========================================================================
+    // Builder Tests
+    // ========================================================================
+
+    #[test]
+    fn test_builder_basic() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .build()
+            .unwrap();
+
+        assert_eq!(driver.language(), "rust");
+        assert!(!driver.supports_decorations());
+        assert!(!driver.supports_folds());
+        assert!(!driver.supports_injections());
+        assert!(!driver.supports_indents());
+    }
+
+    #[test]
+    fn test_builder_with_folds() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(function_item) @fold").unwrap());
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .folds_query(folds_query)
+            .build()
+            .unwrap();
+
+        assert!(driver.supports_folds());
+    }
+
+    #[test]
+    fn test_builder_with_injections() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .injections_query(injections_query)
+            .build()
+            .unwrap();
+
+        assert!(driver.supports_injections());
+    }
+
+    #[test]
+    fn test_builder_with_decoration() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "fn_block".into(),
+            kind: AnnotationKind::Background,
+            category: HighlightCategory::new("test.background"),
+        }];
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        assert!(driver.supports_decorations());
+    }
+
+    #[test]
+    fn test_builder_all_options() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let folds_query = Arc::new(Query::new(&language, "(function_item) @fold").unwrap());
+        let injections_query =
+            Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+        let indents_query = Arc::new(Query::new(&language, "(block) @indent").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .folds_query(folds_query)
+            .injections_query(injections_query)
+            .indents_query(indents_query)
+            .decoration(deco_query, Vec::new())
+            .build()
+            .unwrap();
+
+        assert!(driver.supports_folds());
+        assert!(driver.supports_injections());
+        assert!(driver.supports_indents());
+        assert!(driver.supports_decorations());
+    }
+
+    // ========================================================================
+    // Decorations Tests
+    // ========================================================================
+
+    #[test]
+    fn test_decorations_empty_without_query() {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let mut driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+
+        driver.parse("fn main() {}");
+        let decorations = driver.decorations(0..100);
+        assert!(
+            decorations.is_empty(),
+            "Driver without decoration query should return empty"
+        );
+    }
+
+    #[test]
+    fn test_decorations_empty_before_parse() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "fn_block".into(),
+            kind: AnnotationKind::Background,
+            category: HighlightCategory::new("test"),
+        }];
+
+        let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        // Not parsed yet
+        let decorations = driver.decorations(0..100);
+        assert!(
+            decorations.is_empty(),
+            "Should return empty before parse"
+        );
+    }
+
+    #[test]
+    fn test_decorations_returns_annotations_after_parse() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        // Capture function_item nodes as background decorations
+        let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "fn_block".into(),
+            kind: AnnotationKind::Background,
+            category: HighlightCategory::new("test.fn_bg"),
+        }];
+
+        let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        driver.parse("fn main() {}");
+        let decorations = driver.decorations(0..100);
+
+        assert_eq!(decorations.len(), 1, "Should have one decoration for fn main");
+        assert_eq!(decorations[0].kind, AnnotationKind::Background);
+        assert_eq!(decorations[0].category.as_str(), "test.fn_bg");
+        assert_eq!(decorations[0].start_byte, 0);
+    }
+
+    #[test]
+    fn test_decorations_skips_unmatched_captures() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        // Query captures identifiers, but rule only matches "fn_block"
+        let deco_query = Arc::new(Query::new(&language, "(identifier) @ident").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "fn_block".into(), // won't match "ident"
+            kind: AnnotationKind::Background,
+            category: HighlightCategory::new("test"),
+        }];
+
+        let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        driver.parse("let x = 1;");
+        let decorations = driver.decorations(0..100);
+
+        assert!(
+            decorations.is_empty(),
+            "No rules match 'ident' captures, should be empty"
+        );
+    }
+
+    #[test]
+    fn test_decorations_respects_byte_range() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(identifier) @ident").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "ident".into(),
+            kind: AnnotationKind::Conceal {
+                replacement: Some("*".into()),
+            },
+            category: HighlightCategory::new("test"),
+        }];
+
+        let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        // "fn main() {}\nfn other() {}" — two functions, identifiers at different positions
+        driver.parse("fn main() {}\nfn other() {}");
+
+        // Query only the first line (bytes 0..13)
+        let decorations = driver.decorations(0..13);
+        // "main" is at bytes 3..7
+        assert!(
+            !decorations.is_empty(),
+            "Should find identifier in first line"
+        );
+        for d in &decorations {
+            assert!(
+                d.start_byte < 13,
+                "Decoration at byte {} should be in first line",
+                d.start_byte
+            );
+        }
+    }
+
+    #[test]
+    fn test_decorations_alongside_highlights() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "fn_block".into(),
+            kind: AnnotationKind::Background,
+            category: HighlightCategory::new("test.bg"),
+        }];
+
+        let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        driver.parse("fn main() {}");
+
+        // Both should work independently
+        let highlights = driver.highlights(0..100);
+        let decorations = driver.decorations(0..100);
+
+        assert!(!highlights.is_empty(), "Should have highlights");
+        assert!(!decorations.is_empty(), "Should have decorations");
+
+        // Highlights should all be Highlight kind
+        for h in &highlights {
+            assert_eq!(h.kind, AnnotationKind::Highlight);
+        }
+        // Decorations should all be Background kind (as configured)
+        for d in &decorations {
+            assert_eq!(d.kind, AnnotationKind::Background);
+        }
+    }
+
+    #[test]
+    fn test_decorations_conceal_with_replacement() {
+        use reovim_driver_syntax::AnnotationKind;
+
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let deco_query =
+            Arc::new(Query::new(&language, "(let_declaration \"let\" @kw)").unwrap());
+
+        let rules = vec![DecorationRule {
+            capture_name: "kw".into(),
+            kind: AnnotationKind::Conceal {
+                replacement: Some("LET".into()),
+            },
+            category: HighlightCategory::new("keyword.conceal"),
+        }];
+
+        let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+            .decoration(deco_query, rules)
+            .build()
+            .unwrap();
+
+        driver.parse("let x = 1;");
+        let decorations = driver.decorations(0..100);
+
+        assert_eq!(decorations.len(), 1);
+        assert!(matches!(
+            &decorations[0].kind,
+            AnnotationKind::Conceal { replacement: Some(r) } if r == "LET"
+        ));
+        assert_eq!(decorations[0].start_byte, 0);
+        assert_eq!(decorations[0].end_byte, 3); // "let" is 3 bytes
     }
 }

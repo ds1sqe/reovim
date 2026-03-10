@@ -6,6 +6,24 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Decoration system (#551)**: General-purpose decoration engine for markdown
+  rendering with block and inline decorations. Language modules provide tree-sitter
+  queries and declarative `DecorationRule` mappings; the `SyntaxDriver` trait
+  exposes `decorations()` alongside `highlights()`.
+  - Block decorations: heading icons, bullet concealment, checkbox replacement,
+    blockquote bars, horizontal rules, code fence markers
+  - Inline decorations: code span backtick concealment, link URL concealment,
+    emphasis/bold/strikethrough highlighting
+  - Dual-grammar support: `TreeSitterDriverBuilder::inline_decoration()` for
+    secondary parsers (e.g., Markdown block + inline)
+  - Session wiring: `decorations()` merged into `build_token_update()`,
+    `notify_edit()`, and `send_full_refresh()`
+  - Fixed `get_tokens()` and `stream_tokens()` gRPC handlers to transmit
+    `AnnotationKind` (was hardcoding `kind: None`)
+  - Insert mode cursor-line reveal: conceals bypassed on cursor line in insert
+    mode (raw text visible while typing)
+  - Cursor column remapping: visual cursor position accounts for conceal offsets
+    via `source_to_display_col`
 - **TUI syntax highlighting (#548)**: Wire `AnnotationCacheManager` and `ThemeManager`
   into the TUI render engine for per-character syntax coloring. `render_line_content()`
   queries cached tokens for each line and resolves categories to styled colors via

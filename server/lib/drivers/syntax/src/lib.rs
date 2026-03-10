@@ -68,6 +68,7 @@
 
 mod cache;
 mod composite;
+pub mod decoration;
 mod driver;
 mod edit;
 mod error;
@@ -92,6 +93,7 @@ pub use {
 
 // Types
 pub use {
+    decoration::{apply_rules, DecorationCapture, DecorationRule},
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
     highlight::{Annotation, AnnotationKind, HighlightCategory},

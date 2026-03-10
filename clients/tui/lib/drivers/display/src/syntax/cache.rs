@@ -160,7 +160,7 @@ impl LayeredTokenCache {
         // Convert tokens first (borrows self immutably via byte_span_to_cached)
         let cached_tokens: Vec<CachedToken> = tokens
             .iter()
-            .filter_map(|span| self.byte_span_to_cached(span, content))
+            .flat_map(|span| self.byte_span_to_cached(span, content))
             .collect();
 
         // Then modify the layer (borrows self mutably)
@@ -200,32 +200,70 @@ impl LayeredTokenCache {
         self.apply_layer_update("syntax", 0, tokens, start_line, end_line, full_refresh, content);
     }
 
-    /// Convert a byte-based token span to a position-based cached token.
-    fn byte_span_to_cached(&self, span: &TokenSpan, content: &str) -> Option<CachedToken> {
-        let (start_line, start_col) = self.byte_to_position(span.start_byte as usize, content)?;
-        let (end_line, end_col) = self.byte_to_position(span.end_byte as usize, content)?;
+    /// Convert a byte-based token span to position-based cached tokens.
+    ///
+    /// Multi-line tokens are split into per-line tokens so that each line
+    /// gets its own `CachedToken`. This is essential for Background annotations
+    /// on multi-line ranges (e.g., code block backgrounds).
+    fn byte_span_to_cached(&self, span: &TokenSpan, content: &str) -> Vec<CachedToken> {
+        let Some((start_line, start_col)) =
+            self.byte_to_position(span.start_byte as usize, content)
+        else {
+            return Vec::new();
+        };
+        let Some((end_line, end_col)) = self.byte_to_position(span.end_byte as usize, content)
+        else {
+            return Vec::new();
+        };
 
-        // For now, only handle single-line tokens
-        // Multi-line tokens will be split at line boundaries in a future enhancement
-        if start_line != end_line {
-            // Return token that ends at end of first line
-            let line_end = self.line_end_col(start_line, content);
-            return Some(CachedToken {
+        // Single-line token: most common case
+        if start_line == end_line {
+            return vec![CachedToken {
                 line: start_line,
                 start_col,
+                end_col,
+                category: span.category.clone(),
+                kind: span.kind.clone(),
+            }];
+        }
+
+        // Multi-line token: split into per-line tokens
+        let mut tokens = Vec::with_capacity((end_line - start_line + 1) as usize);
+
+        // First line: from start_col to end of line
+        let first_line_end = self.line_end_col(start_line, content);
+        tokens.push(CachedToken {
+            line: start_line,
+            start_col,
+            end_col: first_line_end,
+            category: span.category.clone(),
+            kind: span.kind.clone(),
+        });
+
+        // Middle lines: full line
+        for line in (start_line + 1)..end_line {
+            let line_end = self.line_end_col(line, content);
+            tokens.push(CachedToken {
+                line,
+                start_col: 0,
                 end_col: line_end,
                 category: span.category.clone(),
                 kind: span.kind.clone(),
             });
         }
 
-        Some(CachedToken {
-            line: start_line,
-            start_col,
-            end_col,
-            category: span.category.clone(),
-            kind: span.kind.clone(),
-        })
+        // Last line: from start of line to end_col
+        if end_col > 0 {
+            tokens.push(CachedToken {
+                line: end_line,
+                start_col: 0,
+                end_col,
+                category: span.category.clone(),
+                kind: span.kind.clone(),
+            });
+        }
+
+        tokens
     }
 
     /// Convert byte offset to (line, col) position.
@@ -999,6 +1037,49 @@ mod tests {
         assert_eq!(tokens.len(), 1);
         assert_eq!(tokens[0].kind, CachedAnnotationKind::Background);
         assert_eq!(tokens[0].category, "search.match");
+    }
+
+    #[test]
+    fn test_multi_line_background_splits_to_all_lines() {
+        let mut cache = LayeredTokenCache::new();
+        let content = "line1\nline2\nline3\nline4";
+
+        // Background spanning lines 0-3 (bytes 0..22)
+        let bg_span = TokenSpan {
+            start_byte: 0,
+            end_byte: 22,
+            category: "markup.raw.block".to_string(),
+            kind: CachedAnnotationKind::Background,
+        };
+
+        cache.apply_layer_update("decoration", 5, &[bg_span], 0, 3, true, content);
+
+        // All 4 lines should have a Background token
+        for line in 0..4 {
+            let tokens = cache.tokens_for_line(line);
+            assert!(
+                !tokens.is_empty(),
+                "Line {line} should have a Background token"
+            );
+            assert_eq!(
+                tokens[0].kind,
+                CachedAnnotationKind::Background,
+                "Line {line} token should be Background"
+            );
+            assert_eq!(tokens[0].category, "markup.raw.block");
+        }
+
+        // Line 0: start_col=0, end_col=5
+        let t0 = &cache.tokens_for_line(0)[0];
+        assert_eq!((t0.start_col, t0.end_col), (0, 5));
+
+        // Line 1: start_col=0, end_col=5
+        let t1 = &cache.tokens_for_line(1)[0];
+        assert_eq!((t1.start_col, t1.end_col), (0, 5));
+
+        // Line 3 (last): start_col=0, end_col=4 ("line4" is 4 chars, no trailing newline)
+        let t3 = &cache.tokens_for_line(3)[0];
+        assert_eq!((t3.start_col, t3.end_col), (0, 4));
     }
 
     #[test]

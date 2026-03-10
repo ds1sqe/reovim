@@ -31,7 +31,10 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState};
+use crate::session::{
+    Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState,
+    annotation_kind_to_proto,
+};
 
 /// Forward syntax token updates from session to gRPC stream.
 ///
@@ -294,18 +297,18 @@ impl SyntaxService for SyntaxServiceImpl {
                     syntax_state.ensure_driver(buffer_id, language_id, &content);
                 }
 
-                // Get tokens from driver
+                // Get tokens from driver (highlights + decorations)
                 let tokens = if syntax_state.has_driver(buffer_id) {
                     syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
-                        // Get highlights from driver and convert to TokenSpan
-                        driver
-                            .highlights(byte_range)
+                        let mut annotations = driver.highlights(byte_range.clone());
+                        annotations.extend(driver.decorations(byte_range));
+                        annotations
                             .into_iter()
                             .map(|span| TokenSpan {
                                 start_byte: span.start_byte as u32,
                                 end_byte: span.end_byte as u32,
                                 category: span.category.to_string(),
-                                kind: None,
+                                kind: annotation_kind_to_proto(&span.kind),
                             })
                             .collect()
                     })
@@ -372,14 +375,16 @@ impl SyntaxService for SyntaxServiceImpl {
 
                 // Get initial tokens (must finish borrow before accessing stream state)
                 let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
-                    driver
-                        .highlights(0..content.len())
+                    let len = content.len();
+                    let mut annotations = driver.highlights(0..len);
+                    annotations.extend(driver.decorations(0..len));
+                    annotations
                         .into_iter()
                         .map(|span| TokenSpan {
                             start_byte: span.start_byte as u32,
                             end_byte: span.end_byte as u32,
                             category: span.category.to_string(),
-                            kind: None,
+                            kind: annotation_kind_to_proto(&span.kind),
                         })
                         .collect()
                 });
