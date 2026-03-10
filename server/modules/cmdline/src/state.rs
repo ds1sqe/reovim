@@ -44,6 +44,37 @@ impl CmdlinePrompt {
     }
 }
 
+/// A message to display in the command-line area.
+///
+/// Used for ex-command errors ("E492: Not an editor command") and
+/// informational messages. Cleared on next keypress in normal mode.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CmdlineMessage {
+    /// Error message (displayed with error highlighting).
+    Error(String),
+    /// Informational message (displayed normally).
+    Info(String),
+}
+
+impl CmdlineMessage {
+    /// Get the message text.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Error(s) | Self::Info(s) => s,
+        }
+    }
+
+    /// Get the message kind as a string for serialization.
+    #[must_use]
+    pub const fn kind(&self) -> &str {
+        match self {
+            Self::Error(_) => "error",
+            Self::Info(_) => "info",
+        }
+    }
+}
+
 /// Maximum number of history entries per type.
 const MAX_HISTORY: usize = 100;
 
@@ -77,6 +108,8 @@ pub struct CmdlineState {
     completion_index: Option<usize>,
     /// The prefix that generated the current completions.
     completion_prefix: String,
+    /// Message to display in the command-line area (cleared on next keypress).
+    message: Option<CmdlineMessage>,
 }
 
 impl SessionExtension for CmdlineState {
@@ -113,6 +146,7 @@ impl CmdlineState {
         self.cursor = 0;
         self.history_index = None;
         self.saved_input.clear();
+        self.message = None;
     }
 
     /// Exit cmdline mode (execute action).
@@ -411,6 +445,28 @@ impl CmdlineState {
     #[must_use]
     pub const fn completion_index(&self) -> Option<usize> {
         self.completion_index
+    }
+
+    // =========================================================================
+    // Message methods (#558)
+    // =========================================================================
+
+    /// Set a message to display in the command-line area.
+    ///
+    /// The message persists until cleared (by next keypress or entering cmdline).
+    pub fn set_message(&mut self, message: CmdlineMessage) {
+        self.message = Some(message);
+    }
+
+    /// Clear the current message.
+    pub fn clear_message(&mut self) {
+        self.message = None;
+    }
+
+    /// Get the current message, if any.
+    #[must_use]
+    pub const fn message(&self) -> Option<&CmdlineMessage> {
+        self.message.as_ref()
     }
 }
 
@@ -1163,5 +1219,87 @@ mod tests {
         state.enter(CmdlinePrompt::Command);
         assert!(state.history_index.is_none());
         assert!(state.saved_input.is_empty());
+    }
+
+    // -- Message tests (#558) --
+
+    #[test]
+    fn test_message_error() {
+        let msg = CmdlineMessage::Error("E492: Not an editor command".to_string());
+        assert_eq!(msg.text(), "E492: Not an editor command");
+        assert_eq!(msg.kind(), "error");
+    }
+
+    #[test]
+    fn test_message_info() {
+        let msg = CmdlineMessage::Info("Press ENTER to continue".to_string());
+        assert_eq!(msg.text(), "Press ENTER to continue");
+        assert_eq!(msg.kind(), "info");
+    }
+
+    #[test]
+    fn test_message_clone_eq() {
+        let msg1 = CmdlineMessage::Error("E42".to_string());
+        let msg2 = msg1.clone();
+        assert_eq!(msg1, msg2);
+    }
+
+    #[test]
+    fn test_message_debug() {
+        let msg = CmdlineMessage::Error("test".to_string());
+        let debug = format!("{msg:?}");
+        assert!(debug.contains("Error"));
+    }
+
+    #[test]
+    fn test_message_inequality() {
+        let err = CmdlineMessage::Error("msg".to_string());
+        let info = CmdlineMessage::Info("msg".to_string());
+        assert_ne!(err, info);
+    }
+
+    #[test]
+    fn test_set_and_get_message() {
+        let mut state = CmdlineState::default();
+        assert!(state.message().is_none());
+
+        state.set_message(CmdlineMessage::Error("E492: foo".to_string()));
+        assert!(state.message().is_some());
+        assert_eq!(state.message().unwrap().text(), "E492: foo");
+        assert_eq!(state.message().unwrap().kind(), "error");
+    }
+
+    #[test]
+    fn test_clear_message() {
+        let mut state = CmdlineState::default();
+        state.set_message(CmdlineMessage::Info("done".to_string()));
+        assert!(state.message().is_some());
+
+        state.clear_message();
+        assert!(state.message().is_none());
+    }
+
+    #[test]
+    fn test_enter_clears_message() {
+        let mut state = CmdlineState::default();
+        state.set_message(CmdlineMessage::Error("old error".to_string()));
+
+        state.enter(CmdlinePrompt::Command);
+        assert!(state.message().is_none());
+    }
+
+    #[test]
+    fn test_message_default_is_none() {
+        let state = CmdlineState::default();
+        assert!(state.message().is_none());
+    }
+
+    #[test]
+    fn test_set_message_overwrites() {
+        let mut state = CmdlineState::default();
+        state.set_message(CmdlineMessage::Error("first".to_string()));
+        state.set_message(CmdlineMessage::Info("second".to_string()));
+        assert_eq!(state.message().unwrap().text(), "second");
+        assert_eq!(state.message().unwrap().kind(), "info");
     }
 }

@@ -20,7 +20,7 @@ mod state;
 
 pub use {
     bridge::CmdlineBridge,
-    state::{CmdlinePrompt, CmdlineState},
+    state::{CmdlineMessage, CmdlinePrompt, CmdlineState},
 };
 
 use {

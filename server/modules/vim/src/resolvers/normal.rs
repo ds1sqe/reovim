@@ -27,6 +27,8 @@ use crate::{
     session_state::{PendingCharOp, VimSessionState},
 };
 
+            use reovim_module_cmdline::CmdlineState;
+
 /// Coordinator command dispatched for find-char motions (#563).
 /// Defined locally to reference the motions module's command without
 /// compile-time dependency.
@@ -676,6 +678,11 @@ impl ModeKeyResolver for VimNormalResolver {
         _shared_extensions: &mut ExtensionMap,
         client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
+        // Clear any pending cmdline message on next keypress (#558)
+        if let Some(cmdline) = client_extensions.get_mut::<CmdlineState>() {
+            cmdline.clear_message();
+        }
+
         // Get vim session state from client extensions (per-client state)
         let vim = client_extensions.get_or_insert::<VimSessionState>();
 

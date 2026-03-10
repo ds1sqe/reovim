@@ -249,6 +249,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   mapping `InputArgValue::Bool` to `ArgValue::Bool` instead of `ArgValue::Bang`.
   Add `bool_flag()` accessor to `CommandContext`.
 
+- **Error display pipeline (#558)**: Add `CmdlineMessage` enum (Error/Info) to
+  `CmdlineState` for displaying ex-command errors and informational messages in
+  the command-line area. Errors from `execute_ex_command()` (E492, command failures)
+  now route through `CmdlineState.set_message()` instead of `tracing::warn!`.
+  Messages are cleared on next normal-mode keypress. Bridge updated to serialize
+  `message`/`message_kind` fields and report `is_active` when a message is present.
+
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
   `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature

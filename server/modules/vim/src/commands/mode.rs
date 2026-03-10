@@ -26,7 +26,7 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
-    reovim_module_cmdline::{CmdlinePrompt, CmdlineState},
+    reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
     std::sync::Arc,
 };
 
@@ -350,7 +350,10 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
     };
 
     let Some(cmd_id) = name_index.resolve(&parsed.name).cloned() else {
-        tracing::warn!(name = parsed.name, "E492: Not an editor command");
+        let msg = format!("E492: Not an editor command: {}", parsed.name);
+        runtime
+            .ext_mut::<CmdlineState>()
+            .set_message(CmdlineMessage::Error(msg));
         return;
     };
 
@@ -375,7 +378,9 @@ fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, c
 
     let result = runtime.execute_command(cmd_id, ctx);
     if let CommandResult::Error(msg) = result {
-        tracing::warn!(cmdline, msg = %msg, "Ex-command failed");
+        runtime
+            .ext_mut::<CmdlineState>()
+            .set_message(CmdlineMessage::Error(msg));
     }
 }
 
@@ -2014,7 +2019,6 @@ mod tests {
 
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
-        // execute_ex_command logs warning but doesn't fail
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2498,7 +2502,7 @@ mod tests {
             runtime.ext_mut::<CmdlineState>().insert_char(ch);
         }
 
-        // Should succeed (logs warning but doesn't fail)
+        // Should succeed but set error message on CmdlineState (#558)
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
     }
@@ -2529,7 +2533,7 @@ mod tests {
             runtime.ext_mut::<CmdlineState>().insert_char(ch);
         }
 
-        // Should succeed (logs error but doesn't fail)
+        // Should succeed but set error message on CmdlineState (#558)
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
     }

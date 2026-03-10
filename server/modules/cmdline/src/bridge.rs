@@ -26,26 +26,34 @@ impl ExtensionStateBridge for CmdlineBridge {
 
     fn snapshot(&self, extensions: &ExtensionMap) -> Option<serde_json::Value> {
         let state = extensions.get::<CmdlineState>()?;
-        Some(serde_json::json!({
+        let mut json = serde_json::json!({
             "active": state.is_active(),
             "prompt": state.prompt().char().to_string(),
             "input": state.input(),
             "cursor": state.cursor(),
             "completions": state.completions(),
             "completion_index": state.completion_index(),
-        }))
+        });
+        if let Some(msg) = state.message() {
+            json["message"] = serde_json::Value::String(msg.text().to_owned());
+            json["message_kind"] = serde_json::Value::String(msg.kind().to_owned());
+        }
+        Some(json)
     }
 
     fn is_active(&self, extensions: &ExtensionMap) -> bool {
         extensions
             .get::<CmdlineState>()
-            .is_some_and(CmdlineState::is_active)
+            .is_some_and(|state| state.is_active() || state.message().is_some())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::CmdlinePrompt};
+    use {
+        super::*,
+        crate::{CmdlineMessage, CmdlinePrompt},
+    };
 
     #[test]
     fn test_cmdline_bridge_kind() {
@@ -153,5 +161,63 @@ mod tests {
         state.enter(CmdlinePrompt::Command);
         state.exit();
         assert!(!CmdlineBridge.is_active(&map));
+    }
+
+    // -- Message bridge tests (#558) --
+
+    #[test]
+    fn test_cmdline_bridge_snapshot_with_error_message() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        state.set_message(CmdlineMessage::Error("E492: Not an editor command".to_string()));
+
+        let snap = CmdlineBridge.snapshot(&map).unwrap();
+        assert_eq!(snap["message"], "E492: Not an editor command");
+        assert_eq!(snap["message_kind"], "error");
+    }
+
+    #[test]
+    fn test_cmdline_bridge_snapshot_with_info_message() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        state.set_message(CmdlineMessage::Info("3 lines yanked".to_string()));
+
+        let snap = CmdlineBridge.snapshot(&map).unwrap();
+        assert_eq!(snap["message"], "3 lines yanked");
+        assert_eq!(snap["message_kind"], "info");
+    }
+
+    #[test]
+    fn test_cmdline_bridge_snapshot_no_message() {
+        let mut map = ExtensionMap::new();
+        map.get_or_insert::<CmdlineState>();
+
+        let snap = CmdlineBridge.snapshot(&map).unwrap();
+        assert!(snap.get("message").is_none());
+        assert!(snap.get("message_kind").is_none());
+    }
+
+    #[test]
+    fn test_cmdline_bridge_is_active_with_message_only() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        // Not active, but has a message
+        assert!(!state.is_active());
+        state.set_message(CmdlineMessage::Error("test".to_string()));
+        assert!(CmdlineBridge.is_active(&map));
+    }
+
+    #[test]
+    fn test_cmdline_bridge_is_active_after_exit_with_message() {
+        let mut map = ExtensionMap::new();
+        let state = map.get_or_insert::<CmdlineState>();
+        state.enter(CmdlinePrompt::Command);
+        state.exit();
+        // After exit, not active...
+        assert!(!CmdlineBridge.is_active(&map));
+        // ...but with a message, it should be active
+        let state = map.get_or_insert::<CmdlineState>();
+        state.set_message(CmdlineMessage::Error("E492: foo".to_string()));
+        assert!(CmdlineBridge.is_active(&map));
     }
 }
