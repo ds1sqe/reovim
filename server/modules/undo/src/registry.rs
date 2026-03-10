@@ -161,6 +161,121 @@ impl UndoRegistry {
     }
 }
 
+/// Collapse a batch of accumulated edits into a minimal set (#554).
+///
+/// Insert mode records individual character edits with absolute positions.
+/// When `UndoTree::undo()` reverses and inverts these, the positions become
+/// invalid because each delete changes the buffer length. Collapsing into a
+/// single bulk edit makes undo inversion trivially correct.
+///
+/// Strategy: simulate the edits against a local string buffer starting at the
+/// batch anchor position. The result is a single `Edit::Insert` with the net
+/// inserted text, or an empty vec if all edits cancel out.
+fn collapse_batch_edits(edits: &[Edit], anchor: Position) -> Vec<Edit> {
+    if edits.len() <= 1 {
+        return edits.to_vec();
+    }
+
+    // Simulate the batch edits against a virtual buffer.
+    // We track a string that represents the net change starting at `anchor`.
+    // Each edit's position is relative to the real buffer, so we translate
+    // to an offset within our virtual string.
+    let mut net_text = String::new();
+    let anchor_line = anchor.line;
+    let anchor_col = anchor.column;
+
+    for edit in edits {
+        match edit {
+            Edit::Insert { position, text } => {
+                // Compute offset within net_text.
+                // For single-line inserts within the same line as anchor,
+                // offset = position.column - anchor_col (adjusted for prior edits).
+                // For multiline support, we count characters.
+                let offset = char_offset_in_net(
+                    &net_text,
+                    anchor_line,
+                    anchor_col,
+                    position.line,
+                    position.column,
+                );
+                // Clamp offset to valid range
+                let char_len = net_text.chars().count();
+                let offset = offset.min(char_len);
+                // Convert char offset to byte offset for string insertion
+                let byte_offset = net_text
+                    .char_indices()
+                    .nth(offset)
+                    .map_or(net_text.len(), |(i, _)| i);
+                net_text.insert_str(byte_offset, text);
+            }
+            Edit::Delete { position, text } => {
+                let offset = char_offset_in_net(
+                    &net_text,
+                    anchor_line,
+                    anchor_col,
+                    position.line,
+                    position.column,
+                );
+                let char_len = net_text.chars().count();
+                let offset = offset.min(char_len);
+                let del_chars = text.chars().count();
+                let end_offset = (offset + del_chars).min(char_len);
+
+                // Convert char offsets to byte offsets
+                let byte_start = net_text
+                    .char_indices()
+                    .nth(offset)
+                    .map_or(net_text.len(), |(i, _)| i);
+                let byte_end = net_text
+                    .char_indices()
+                    .nth(end_offset)
+                    .map_or(net_text.len(), |(i, _)| i);
+
+                net_text.replace_range(byte_start..byte_end, "");
+            }
+        }
+    }
+
+    if net_text.is_empty() {
+        return Vec::new();
+    }
+
+    vec![Edit::insert(anchor, net_text)]
+}
+
+/// Compute the character offset within the net string for a given buffer position.
+///
+/// The net string starts at `(anchor_line, anchor_col)`. Given a target position
+/// `(line, col)`, compute how many characters into the net string that maps to.
+fn char_offset_in_net(
+    net_text: &str,
+    anchor_line: usize,
+    anchor_col: usize,
+    target_line: usize,
+    target_col: usize,
+) -> usize {
+    if target_line == anchor_line {
+        // Same line: offset is just column difference
+        target_col.saturating_sub(anchor_col)
+    } else {
+        // Different line: count characters through newlines in net_text
+        let line_diff = target_line - anchor_line;
+        let mut lines_seen = 0;
+        let mut char_count = 0;
+        for ch in net_text.chars() {
+            if lines_seen == line_diff {
+                return char_count + target_col;
+            }
+            char_count += 1;
+            if ch == '\n' {
+                lines_seen += 1;
+            }
+        }
+        // If we didn't find enough newlines, append at end
+        char_count + target_col
+    }
+}
+
 impl UndoProvider for UndoRegistry {
     fn undo(&self, buffer_id: BufferId) -> Option<UndoResult> {
         self.trees.write().get_mut(&buffer_id)?.undo()
@@ -230,7 +345,6 @@ impl UndoProvider for UndoRegistry {
         );
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn end_batch(&self, buffer_id: BufferId, cursor_after: Position) {
         let batch = {
             let mut batches = self.batches.write();
@@ -241,12 +355,20 @@ impl UndoProvider for UndoRegistry {
         if let Some(batch) = batch
             && !batch.edits.is_empty()
         {
+            // #554: Collapse accumulated edits into a single edit.
+            //
+            // Insert mode records character-by-character edits with advancing
+            // absolute positions. When UndoTree::undo() reverses and inverts
+            // these, the Delete positions become invalid as the buffer shrinks.
+            // Collapsing into a single Insert makes inversion trivially correct.
+            let edits = collapse_batch_edits(&batch.edits, batch.cursor_before);
+
             let mut trees = self.trees.write();
             let tree = trees.entry(buffer_id).or_default();
 
             // #471: Use origin if set (for per-client undo)
             if let Some(origin) = batch.origin {
-                tree.push_with_origin(batch.edits, batch.cursor_before, cursor_after, origin);
+                tree.push_with_origin(edits, batch.cursor_before, cursor_after, origin);
 
                 // Update client's cursor to new position
                 if let EditOrigin::Client(client_id) = origin {
@@ -256,7 +378,7 @@ impl UndoProvider for UndoRegistry {
                     self.client_cursors.write().insert(key, new_idx);
                 }
             } else {
-                tree.push(batch.edits, batch.cursor_before, cursor_after);
+                tree.push(edits, batch.cursor_before, cursor_after);
             }
         }
     }
@@ -1277,27 +1399,25 @@ mod tests {
         registry.end_batch(buffer_id, Position::new(0, 4));
 
         // Client 0 undoes — OT-lite should transform the inverse edits
-        // from col 0-3 to col 4-7 (shifted by Client 1's 4 char inserts)
+        // #554: Batch collapse means Client 0's 4 char inserts are collapsed
+        // into a single Insert(0,0,"AAAA"). Undo produces one Delete(0,0,"AAAA"),
+        // which OT transforms through Client 1's 4 char inserts at (0,0)-(0,3).
         let result = registry.undo_for_client(buffer_id, 0);
         assert!(result.is_some(), "undo_for_client should return Some");
 
         let result = result.unwrap();
 
-        // All inverse edits should be Delete operations targeting the shifted positions
-        assert_eq!(result.edits.len(), 4, "Should have 4 inverse edits");
-        for edit in &result.edits {
-            assert!(edit.is_delete(), "Each inverse edit should be Delete: {edit:?}");
-            assert_eq!(edit.text(), "A", "Each delete should remove 'A': {edit:?}");
-        }
+        // Collapsed batch produces 1 inverse edit
+        assert_eq!(result.edits.len(), 1, "Should have 1 collapsed inverse edit");
+        assert!(result.edits[0].is_delete(), "Inverse should be Delete");
+        assert_eq!(result.edits[0].text(), "AAAA", "Should delete all of AAAA");
 
-        // After OT transformation, the positions should be shifted right by 4
-        // Original inverse: Delete at (0,3), (0,2), (0,1), (0,0)
-        // After transforming through 4 inserts at (0,0)-(0,3):
-        // Should be Delete at (0,7), (0,6), (0,5), (0,4)
-        let positions: Vec<usize> = result.edits.iter().map(|e| e.position().column).collect();
+        // After OT transformation, position should be shifted right by 4
+        // (past Client 1's BBBB inserts)
         assert!(
-            positions.iter().all(|&col| col >= 4),
-            "All delete positions should be >= 4 (shifted past BBBB), got: {positions:?}"
+            result.edits[0].position().column >= 4,
+            "Delete position should be >= 4 (shifted past BBBB), got: {}",
+            result.edits[0].position().column
         );
     }
 
@@ -2042,5 +2162,220 @@ mod tests {
         // via recursive search through node 1 (ClientB)
         let redo = registry.redo_for_client(buffer_id, client_a);
         assert!(redo.is_some(), "redo should find client A's edit via recursive search");
+    }
+
+    // ========================================================================
+    // collapse_batch_edits tests (#554)
+    // ========================================================================
+
+    #[test]
+    fn test_collapse_single_edit_unchanged() {
+        let edits = vec![Edit::insert(Position::new(0, 0), "a")];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "a");
+    }
+
+    #[test]
+    fn test_collapse_empty_edits() {
+        let result = collapse_batch_edits(&[], Position::new(0, 0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_collapse_pure_inserts() {
+        // Simulates typing "hello" character by character
+        let edits = vec![
+            Edit::insert(Position::new(0, 0), "h"),
+            Edit::insert(Position::new(0, 1), "e"),
+            Edit::insert(Position::new(0, 2), "l"),
+            Edit::insert(Position::new(0, 3), "l"),
+            Edit::insert(Position::new(0, 4), "o"),
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "hello");
+        assert_eq!(result[0].position(), Position::new(0, 0));
+    }
+
+    #[test]
+    fn test_collapse_inserts_at_offset() {
+        // Insert starts at column 5 (appending to existing text)
+        let edits = vec![
+            Edit::insert(Position::new(0, 5), "a"),
+            Edit::insert(Position::new(0, 6), "b"),
+            Edit::insert(Position::new(0, 7), "c"),
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 5));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "abc");
+        assert_eq!(result[0].position(), Position::new(0, 5));
+    }
+
+    #[test]
+    fn test_collapse_with_backspace() {
+        // Type "helo" then backspace, then "lo" -> net result "hello"
+        let edits = vec![
+            Edit::insert(Position::new(0, 0), "h"),
+            Edit::insert(Position::new(0, 1), "e"),
+            Edit::insert(Position::new(0, 2), "l"),
+            Edit::insert(Position::new(0, 3), "o"),
+            // Backspace: delete 'o' at position 3
+            Edit::delete(Position::new(0, 3), "o"),
+            Edit::insert(Position::new(0, 3), "l"),
+            Edit::insert(Position::new(0, 4), "o"),
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "hello");
+    }
+
+    #[test]
+    fn test_collapse_multiline_insert() {
+        // Type "hi\nbye" (with newline)
+        let edits = vec![
+            Edit::insert(Position::new(0, 0), "h"),
+            Edit::insert(Position::new(0, 1), "i"),
+            Edit::insert(Position::new(0, 2), "\n"),
+            Edit::insert(Position::new(1, 0), "b"),
+            Edit::insert(Position::new(1, 1), "y"),
+            Edit::insert(Position::new(1, 2), "e"),
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "hi\nbye");
+    }
+
+    #[test]
+    fn test_collapse_unicode() {
+        // Type unicode characters
+        let edits = vec![
+            Edit::insert(Position::new(0, 0), "a"),
+            Edit::insert(Position::new(0, 1), "\u{00e9}"), // e-acute
+            Edit::insert(Position::new(0, 2), "\u{1f600}"), // emoji
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].text(), "a\u{00e9}\u{1f600}");
+    }
+
+    #[test]
+    fn test_collapse_all_deleted() {
+        // Insert then delete everything -> empty
+        let edits = vec![
+            Edit::insert(Position::new(0, 0), "a"),
+            Edit::insert(Position::new(0, 1), "b"),
+            Edit::delete(Position::new(0, 1), "b"),
+            Edit::delete(Position::new(0, 0), "a"),
+        ];
+        let result = collapse_batch_edits(&edits, Position::new(0, 0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_end_batch_collapses_inserts() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+
+        // Simulate typing "abc" char by char
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 0), "a")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 1), "b")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+        registry.record(
+            buffer_id,
+            vec![Edit::insert(Position::new(0, 2), "c")],
+            Position::new(0, 2),
+            Position::new(0, 3),
+        );
+
+        registry.end_batch(buffer_id, Position::new(0, 3));
+
+        // Undo should produce a single Delete for "abc"
+        let undo = registry.undo(buffer_id).expect("undo should succeed");
+        assert_eq!(undo.edits.len(), 1, "collapsed batch should produce 1 undo edit");
+        assert!(undo.edits[0].is_delete());
+        assert_eq!(undo.edits[0].text(), "abc");
+        assert_eq!(undo.edits[0].position(), Position::new(0, 0));
+    }
+
+    #[test]
+    fn test_end_batch_with_origin() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+        let client_id = 1_usize;
+
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+        registry.init_client(buffer_id, client_id);
+
+        // Record via client API to set origin
+        registry.record_for_client(
+            buffer_id,
+            client_id,
+            vec![Edit::insert(Position::new(0, 0), "x")],
+            Position::new(0, 0),
+            Position::new(0, 1),
+        );
+        registry.record_for_client(
+            buffer_id,
+            client_id,
+            vec![Edit::insert(Position::new(0, 1), "y")],
+            Position::new(0, 1),
+            Position::new(0, 2),
+        );
+
+        registry.end_batch(buffer_id, Position::new(0, 2));
+
+        // Undo via client API should work with collapsed edits
+        let undo = registry.undo_for_client(buffer_id, client_id);
+        assert!(undo.is_some(), "client undo should succeed after batch");
+        let undo = undo.unwrap();
+        assert_eq!(undo.edits.len(), 1);
+        assert_eq!(undo.edits[0].text(), "xy");
+    }
+
+    #[test]
+    fn test_undo_redo_cycle_no_corruption() {
+        let registry = UndoRegistry::new();
+        let buffer_id = BufferId::from_raw(1);
+
+        // Insert "hello"
+        registry.begin_batch(buffer_id, Position::new(0, 0));
+        for (i, ch) in "hello".chars().enumerate() {
+            registry.record(
+                buffer_id,
+                vec![Edit::insert(Position::new(0, i), ch.to_string())],
+                Position::new(0, i),
+                Position::new(0, i + 1),
+            );
+        }
+        registry.end_batch(buffer_id, Position::new(0, 5));
+
+        // Undo
+        let undo1 = registry.undo(buffer_id).expect("undo should work");
+        assert_eq!(undo1.edits.len(), 1);
+        assert_eq!(undo1.edits[0].text(), "hello");
+        assert!(undo1.edits[0].is_delete());
+
+        // Redo
+        let redo1 = registry.redo(buffer_id).expect("redo should work");
+        assert_eq!(redo1.edits.len(), 1);
+        assert_eq!(redo1.edits[0].text(), "hello");
+        assert!(redo1.edits[0].is_insert());
+
+        // Undo again - should be identical
+        let undo2 = registry.undo(buffer_id).expect("second undo should work");
+        assert_eq!(undo2.edits[0].text(), "hello");
+        assert!(undo2.edits[0].is_delete());
     }
 }

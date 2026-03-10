@@ -62,7 +62,7 @@ impl CommandHandler for ExecuteFindChar {
         // Get direction (default: forward)
         let forward = args.string("find_direction") != Some("backward");
 
-        // Get inclusive flag (default: true for find, false for till)
+        // Get inclusive flag (default: true for find, false for till).
         let inclusive = match args.get("find_inclusive") {
             Some(ArgValue::Bang(b)) => *b,
             _ => true,

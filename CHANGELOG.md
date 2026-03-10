@@ -240,6 +240,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Fixed
 
+- **Undo corruption, missing f/F/t/T, broken r (#554)**: Three bugs fixed:
+  (1) Undo after insert mode produced garbage content due to character-by-character
+  position invalidation — fixed by collapsing batched edits into a single bulk edit
+  at `end_batch()` time. (2) f/F/t/T find-char motions were non-functional because
+  keybindings were never registered — added to normal and all operator modes, plus
+  implemented resolver metadata transfer (`ResolveContext::ArgValue` to
+  `CommandContext::ArgValue` bridge). (3) `r` (replace char) was a no-op due to wrong
+  command ID binding and missing resolver interception — fixed binding, added
+  `PendingCharOp::Replace` dispatch, implemented `ReplaceChar` handler.
+  Also changed `CommandContext` args from `HashMap<&'static str, ArgValue>` to
+  `HashMap<String, ArgValue>` to support dynamic metadata keys.
+
 - **Cursor at invalid position after linewise delete (#552)**: Fix `dj`, `dk`, and
   `dd` on boundary lines leaving the cursor pointing to a deleted line. Added
   `cursor_after` field to `OperatorContext` so operators communicate their desired

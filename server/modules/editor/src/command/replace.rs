@@ -1,7 +1,8 @@
 //! Replace commands.
 //!
 //! Provides replace and repeat commands:
-//! - `ReplaceCharStart` (r)
+//! - `ReplaceCharStart` (r) - signals waiting for char
+//! - `ReplaceChar` - performs the actual replacement
 //! - `RepeatDot` (.)
 //! - `JoinLines` (J)
 
@@ -51,6 +52,77 @@ impl CommandHandler for ReplaceCharStart {
         // TODO(#394): Implement via SessionRuntime (escape hatch until API supports this)
         // Will signal waiting for replace character with count
         let _count = args.count().unwrap_or(1);
+        CommandResult::Success
+    }
+}
+
+/// Replace character under cursor (r{char}).
+///
+/// The resolver intercepts `r`, waits for the next character, then
+/// dispatches this command with `replace_char` in the context metadata.
+///
+/// Behavior:
+/// - `rx` replaces the char under cursor with 'x'
+/// - `3rx` replaces the next 3 chars with 'x'
+/// - At end of line: replaces only available chars up to line end
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReplaceChar;
+
+impl Command for ReplaceChar {
+    fn id(&self) -> CommandId {
+        ids::REPLACE_CHAR
+    }
+
+    fn description(&self) -> &'static str {
+        "Replace character(s) under cursor"
+    }
+
+    fn args(&self) -> Vec<ArgSpec> {
+        vec![
+            ArgSpec::required("replace_char", ArgKind::Char, "Replacement character"),
+            ArgSpec::optional("count", ArgKind::Count, "Number of characters to replace"),
+        ]
+    }
+}
+
+impl CommandHandler for ReplaceChar {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let Some(replacement) = args.char("replace_char") else {
+            return CommandResult::error("No replacement character");
+        };
+
+        let Some(buffer_id) = args.buffer_id() else {
+            return CommandResult::error("No active buffer");
+        };
+
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let cursor = Position::new(window.cursor.line, window.cursor.column);
+
+        let count = args.count().unwrap_or(1);
+
+        let line_len = runtime.buffer_line_len(buffer_id, cursor.line).unwrap_or(0);
+        if line_len == 0 {
+            return CommandResult::Success;
+        }
+
+        // Clamp count to remaining chars on the line
+        let available = line_len.saturating_sub(cursor.column);
+        let actual_count = count.min(available);
+        if actual_count == 0 {
+            return CommandResult::Success;
+        }
+
+        // Delete `actual_count` chars at cursor
+        let delete_end = Position::new(cursor.line, cursor.column + actual_count);
+        runtime.delete_range(buffer_id, cursor, delete_end);
+
+        // Insert `actual_count` copies of replacement char
+        let replacement_text: String = std::iter::repeat_n(replacement, actual_count).collect();
+        runtime.insert_text(buffer_id, cursor, &replacement_text);
+
+        // Cursor stays at original position (Vim behavior: cursor doesn't move on `r`)
         CommandResult::Success
     }
 }
@@ -908,6 +980,267 @@ mod tests {
         let buf_read = buf.read();
         assert_eq!(buf_read.line_count(), 1);
         assert_eq!(buf_read.line(0), Some("hello world"));
+        drop(buf_read);
+    }
+
+    // =========================================================================
+    // ReplaceChar tests
+    // =========================================================================
+
+    #[test]
+    fn test_replace_char_id() {
+        let cmd = ReplaceChar;
+        assert_eq!(cmd.id().name(), "replace-char");
+    }
+
+    #[test]
+    fn test_replace_char_description() {
+        let cmd = ReplaceChar;
+        assert_eq!(cmd.description(), "Replace character(s) under cursor");
+    }
+
+    #[test]
+    fn test_replace_char_args() {
+        let cmd = ReplaceChar;
+        let args = cmd.args();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0].name, "replace_char");
+        assert_eq!(args[0].kind, ArgKind::Char);
+        assert_eq!(args[1].name, "count");
+        assert_eq!(args[1].kind, ArgKind::Count);
+    }
+
+    #[test]
+    fn test_replace_char_no_char_arg_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_replace_char_no_buffer_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set("replace_char", ArgValue::Char('x'));
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_replace_char_no_window_error() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mode = test_mode();
+        let mut session = Session::new(ClientId::new(1), mode.clone());
+        let executor = StubExecutor;
+        let mut mode_stack = ModeStack::new(mode);
+        let mut windows = WindowLayout::empty();
+        let mut extensions = ExtensionMap::new();
+        let mut compositor = None;
+        let mut tabs = reovim_driver_session::TabPageSet::new();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            reovim_driver_session::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                tabs: &mut tabs,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
+            },
+            &kernel,
+            &executor,
+        );
+        let mut args = CommandContext::new();
+        args.set("replace_char", ArgValue::Char('x'));
+        args.set_buffer_id(buffer_id);
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_replace_char_single() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('x'));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("xello"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_replace_char_with_count() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('z'));
+        args.set("count", ArgValue::Count(3));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("zzzlo"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_replace_char_count_clamps_to_line_end() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hi");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('x'));
+        args.set("count", ArgValue::Count(10));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        // Count clamped to 2 (line length)
+        assert_eq!(buf_read.line(0), Some("xx"));
+        drop(buf_read);
+    }
+
+    #[test]
+    fn test_replace_char_on_empty_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('x'));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // No change on empty buffer (line_len == 0 early return)
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line_count(), 0);
+        drop(buf_read);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_replace_char_at_column_offset() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 3).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('X'));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("helXo"));
+        drop(buf_read);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_replace_char_at_end_of_line() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 4).into();
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('!'));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("hell!"));
+        drop(buf_read);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_replace_char_cursor_past_end() {
+        let kernel = create_test_context();
+        let buffer = Buffer::from_string("hi");
+        let buffer_id = kernel.buffers.register(buffer);
+        let mut state = TestState::with_window(buffer_id);
+        if let Some(window) = state.windows.active_mut() {
+            window.cursor = Position::new(0, 5).into(); // Past end
+        }
+        let executor = StubExecutor;
+        let mut runtime = state.runtime(&kernel, &executor);
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set("replace_char", ArgValue::Char('x'));
+
+        let result = ReplaceChar.execute(&mut runtime, &args);
+        assert!(result.is_success());
+
+        // No change since cursor is past end
+        let buf = kernel.buffers.get(buffer_id).unwrap();
+        let buf_read = buf.read();
+        assert_eq!(buf_read.line(0), Some("hi"));
         drop(buf_read);
     }
 }

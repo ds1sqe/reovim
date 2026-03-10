@@ -28,7 +28,7 @@ use {
 /// ```
 #[derive(Clone, Default)]
 pub struct CommandContext {
-    args: HashMap<&'static str, ArgValue>,
+    args: HashMap<String, ArgValue>,
     /// Optional VFS access for file operations.
     ///
     /// Set by the runner before dispatching commands that may need
@@ -59,8 +59,8 @@ impl CommandContext {
     }
 
     /// Set an argument value.
-    pub fn set(&mut self, name: &'static str, value: ArgValue) {
-        self.args.insert(name, value);
+    pub fn set(&mut self, name: &str, value: ArgValue) {
+        self.args.insert(name.to_owned(), value);
     }
 
     /// Get an argument value by name.
@@ -127,8 +127,7 @@ impl CommandContext {
     ///
     /// Called by the runner before dispatching a command.
     pub fn set_buffer_id(&mut self, id: BufferId) {
-        self.args
-            .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
+        self.set("buffer_id", ArgValue::BufferId(id.as_usize()));
     }
 
     /// Get the active window ID, if present.
@@ -147,8 +146,7 @@ impl CommandContext {
     ///
     /// Called by the runner before dispatching a command.
     pub fn set_window_id(&mut self, id: WindowId) {
-        self.args
-            .insert("window_id", ArgValue::WindowId(id.as_usize()));
+        self.set("window_id", ArgValue::WindowId(id.as_usize()));
     }
 
     /// Create a command context with VFS access.
@@ -303,8 +301,7 @@ impl CommandContext {
     /// buffer, which may not be the ACTIVE window. Explicit passing ensures
     /// we always use the correct cursor position.
     pub fn set_cursor_position(&mut self, pos: Position) {
-        self.args
-            .insert("cursor", ArgValue::Position(pos.line, pos.column));
+        self.set("cursor", ArgValue::Position(pos.line, pos.column));
     }
 }
 

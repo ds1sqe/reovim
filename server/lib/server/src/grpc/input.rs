@@ -495,10 +495,22 @@ impl InputServiceImpl {
         }
         // Transfer metadata (ResolveContext::ArgValue -> CommandContext::ArgValue)
         for (key, value) in &ctx.metadata {
-            // Note: ResolveContext uses a different ArgValue enum than CommandContext
-            // For now, we skip metadata transfer - full conversion would be complex
-            tracing::trace!(key, "Metadata key in resolve context (not yet transferred)");
-            let _ = value;
+            use reovim_driver_input::ArgValue as InputArgValue;
+            let converted = match value {
+                InputArgValue::Bool(b) => Some(ArgValue::Bang(*b)),
+                InputArgValue::String(s) => Some(ArgValue::String(s.clone())),
+                InputArgValue::Char(c) => Some(ArgValue::Char(*c)),
+                InputArgValue::Int(n) => usize::try_from(*n).ok().map(ArgValue::Count),
+                InputArgValue::Uint(n) => usize::try_from(*n).ok().map(ArgValue::Count),
+                InputArgValue::Position(p) => Some(ArgValue::Position(p.line, p.column)),
+                InputArgValue::Float(_) | InputArgValue::Range { .. } => {
+                    tracing::trace!(key, "Skipping unconvertible metadata");
+                    None
+                }
+            };
+            if let Some(arg_value) = converted {
+                cmd_ctx.set(key, arg_value);
+            }
         }
         cmd_ctx
     }
@@ -1047,16 +1059,14 @@ mod tests {
     #[test]
     fn test_resolve_to_command_context_with_metadata() {
         let mut ctx = ResolveContext::default();
-        // Add metadata (should be traced but not transferred currently)
         ctx.metadata.insert(
             "test_key".to_string(),
             reovim_driver_input::ArgValue::String("test_value".to_string()),
         );
         let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 
-        // Metadata is currently not transferred (only traced), so command context
-        // should still be empty except for any explicit count/register
-        assert!(cmd_ctx.count().is_none());
+        // Metadata is transferred with type conversion
+        assert_eq!(cmd_ctx.string("test_key"), Some("test_value"),);
     }
 
     #[tokio::test]

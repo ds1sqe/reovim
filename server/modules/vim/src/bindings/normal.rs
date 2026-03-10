@@ -212,7 +212,7 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("edit")
             .with_description("Delete character before cursor"),
-        KeybindingRegistration::new("r", editor::REPLACE_CHAR)
+        KeybindingRegistration::new("r", editor::REPLACE_CHAR_START)
             .with_modes(&["vim:normal"])
             .with_category("edit")
             .with_description("Replace character"),
@@ -304,6 +304,33 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:normal"])
             .with_category("search")
             .with_description("Search word under cursor backward"),
+        // ====================================================================
+        // Find/till character motions (#554)
+        // ====================================================================
+        KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Find character forward"),
+        KeybindingRegistration::new("F", motions::FIND_CHAR_BACKWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Find character backward"),
+        KeybindingRegistration::new("t", motions::TILL_CHAR_FORWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Till character forward"),
+        KeybindingRegistration::new("T", motions::TILL_CHAR_BACKWARD)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Till character backward"),
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&["vim:normal"])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
         // ====================================================================
         // Window
         // ====================================================================
@@ -510,6 +537,18 @@ mod tests {
         assert!(keys.contains(&"N"), "Missing 'N' binding");
         assert!(keys.contains(&"*"), "Missing '*' binding");
         assert!(keys.contains(&"#"), "Missing '#' binding");
+    }
+
+    #[test]
+    fn test_find_char_keys_exist() {
+        let b = bindings();
+        let keys: Vec<_> = b.iter().map(|kb| kb.keys).collect();
+        assert!(keys.contains(&"f"), "Missing 'f' binding");
+        assert!(keys.contains(&"F"), "Missing 'F' binding");
+        assert!(keys.contains(&"t"), "Missing 't' binding");
+        assert!(keys.contains(&"T"), "Missing 'T' binding");
+        assert!(keys.contains(&";"), "Missing ';' binding");
+        assert!(keys.contains(&","), "Missing ',' binding");
     }
 
     #[test]
