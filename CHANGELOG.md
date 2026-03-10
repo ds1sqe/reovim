@@ -4,6 +4,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Fixed
+
+- **Markdown scroll crash (#565)**: Fix character/byte column mismatch in conceal
+  rendering pipeline that caused panics when scrolling through markdown files.
+  `apply_conceals()` was using character columns (from `byte_to_position()`) as
+  byte indices for string slicing. Also fixes `ConcealedLine::identity()` sizing,
+  `line_end_col()` return value, and background overlay column bounds — all were
+  using byte lengths where character counts were expected.
+
 ### Added
 
 - **Find-char repeat with extensible coordinator pattern (#563)**: Implement `;`
