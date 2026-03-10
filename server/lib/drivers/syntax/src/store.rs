@@ -96,7 +96,7 @@ impl std::fmt::Debug for SyntaxFactoryStore {
 mod tests {
     use {
         super::*,
-        crate::{HighlightSpan, SyntaxDriver, SyntaxEdit},
+        crate::{Annotation, SyntaxDriver, SyntaxEdit},
         std::ops::Range,
     };
 
@@ -113,7 +113,7 @@ mod tests {
 
         fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
 
-        fn highlights(&self, _byte_range: Range<usize>) -> Vec<HighlightSpan> {
+        fn highlights(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
             Vec::new()
         }
 

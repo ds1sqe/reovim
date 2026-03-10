@@ -31,9 +31,24 @@ use std::{
 };
 
 use super::{
-    ThemeProvider,
+    BuiltinTheme, ThemeProvider,
     file::{FileTheme, ThemeError},
 };
+
+// =============================================================================
+// ThemeInfo
+// =============================================================================
+
+/// Information about a discovered theme.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeInfo {
+    /// Theme filename (without .toml extension).
+    pub name: String,
+    /// Full path to the theme file. `None` for built-in themes.
+    pub path: Option<PathBuf>,
+    /// Whether this is a built-in theme.
+    pub builtin: bool,
+}
 
 // =============================================================================
 // ThemeLoader
@@ -56,9 +71,19 @@ impl ThemeLoader {
     pub fn new() -> Self {
         let mut search_paths = Vec::new();
 
-        // User config directory (highest priority)
+        // Environment override (highest priority)
+        if let Ok(env_dir) = std::env::var("REOVIM_THEME_DIR") {
+            search_paths.push(PathBuf::from(env_dir));
+        }
+
+        // User config directory
         if let Some(config_dir) = dirs::config_dir() {
             search_paths.push(config_dir.join("reovim").join("themes"));
+        }
+
+        // XDG data directory
+        if let Some(data_dir) = dirs::data_dir() {
+            search_paths.push(data_dir.join("reovim").join("themes"));
         }
 
         // System themes directory (platform-specific)
@@ -70,8 +95,11 @@ impl ThemeLoader {
 
         #[cfg(windows)]
         {
-            if let Some(data_dir) = dirs::data_dir() {
-                search_paths.push(data_dir.join("reovim").join("themes"));
+            if let Some(app_data) = dirs::data_dir() {
+                let system_path = app_data.join("reovim").join("themes");
+                if !search_paths.contains(&system_path) {
+                    search_paths.push(system_path);
+                }
             }
         }
 
@@ -116,10 +144,27 @@ impl ThemeLoader {
     /// - Theme file cannot be read
     /// - Theme file has invalid format
     pub fn load(&self, name: &str) -> Result<Arc<dyn ThemeProvider>, ThemeError> {
-        let path = self.resolve_path(name)?;
-        let content = std::fs::read_to_string(&path)?;
-        let theme = FileTheme::parse(&content)?;
-        Ok(theme.into_arc())
+        // Try file-based theme first
+        match self.resolve_path(name) {
+            Ok(path) => {
+                let content = std::fs::read_to_string(&path)?;
+                let theme = FileTheme::parse(&content)?;
+                return Ok(theme.into_arc());
+            }
+            Err(_) => {
+                // Fall back to built-in themes
+                for variant in BuiltinTheme::all() {
+                    if variant.name() == name {
+                        return Ok(variant.load());
+                    }
+                }
+            }
+        }
+        // Neither file nor built-in matched
+        Err(ThemeError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Theme '{name}' not found"),
+        )))
     }
 
     /// Load a theme file directly from a path.
@@ -163,6 +208,59 @@ impl ThemeLoader {
 
         let mut result: Vec<_> = themes.into_iter().collect();
         result.sort();
+        result
+    }
+
+    /// Discover all available themes (file-based and built-in).
+    ///
+    /// Returns structured `ThemeInfo` for each theme found across all search
+    /// paths plus built-in themes. File themes shadow built-in themes with
+    /// the same name. Results are sorted alphabetically by name.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a `.toml` directory entry has no file stem (structurally
+    /// impossible for valid filesystem entries).
+    #[must_use]
+    pub fn discover(&self) -> Vec<ThemeInfo> {
+        let mut seen = HashSet::new();
+        let mut result = Vec::new();
+
+        // File themes from search paths (higher priority)
+        for path in &self.search_paths {
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let file_path = entry.path();
+                    if let Some(ext) = file_path.extension()
+                        && ext.eq_ignore_ascii_case("toml")
+                    {
+                        let stem = file_path.file_stem().expect("entry has filename");
+                        let name = stem.to_string_lossy().into_owned();
+                        if seen.insert(name.clone()) {
+                            result.push(ThemeInfo {
+                                name,
+                                path: Some(file_path),
+                                builtin: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Built-in themes (if not shadowed by file themes)
+        for variant in BuiltinTheme::all() {
+            let name = variant.name().to_string();
+            if seen.insert(name.clone()) {
+                result.push(ThemeInfo {
+                    name,
+                    path: None,
+                    builtin: true,
+                });
+            }
+        }
+
+        result.sort_by(|a, b| a.name.cmp(&b.name));
         result
     }
 
@@ -569,5 +667,181 @@ mod tests {
         let loader = ThemeLoader::with_paths(vec![]);
         let found = loader.find_theme_path("/nonexistent/absolute/path/theme.toml");
         assert!(found.is_none());
+    }
+
+    // =========================================================================
+    // discover() tests
+    // =========================================================================
+
+    #[test]
+    fn test_discover_returns_file_themes() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_theme(temp_dir.path(), "alpha", "[meta]\nname = \"Alpha\"");
+        create_test_theme(temp_dir.path(), "beta", "[meta]\nname = \"Beta\"");
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.discover();
+
+        // Should have alpha, beta, plus 3 built-ins
+        let file_themes: Vec<_> = themes.iter().filter(|t| !t.builtin).collect();
+        assert_eq!(file_themes.len(), 2);
+        assert!(file_themes.iter().any(|t| t.name == "alpha"));
+        assert!(file_themes.iter().any(|t| t.name == "beta"));
+        // File themes should have paths
+        assert!(file_themes.iter().all(|t| t.path.is_some()));
+    }
+
+    #[test]
+    fn test_discover_includes_builtins() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let themes = loader.discover();
+
+        let builtin_themes: Vec<_> = themes.iter().filter(|t| t.builtin).collect();
+        assert_eq!(builtin_themes.len(), 3);
+        assert!(builtin_themes.iter().any(|t| t.name == "dark"));
+        assert!(builtin_themes.iter().any(|t| t.name == "light"));
+        assert!(
+            builtin_themes
+                .iter()
+                .any(|t| t.name == "tokyo-night-orange")
+        );
+        // Built-in themes should have no path
+        assert!(builtin_themes.iter().all(|t| t.path.is_none()));
+    }
+
+    #[test]
+    fn test_discover_file_shadows_builtin() {
+        let temp_dir = TempDir::new().unwrap();
+        // Create a file theme with the same name as a built-in
+        create_test_theme(temp_dir.path(), "dark", "[meta]\nname = \"Custom Dark\"");
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.discover();
+
+        // "dark" should appear once, as a file theme (not built-in)
+        let dark_themes: Vec<_> = themes.iter().filter(|t| t.name == "dark").collect();
+        assert_eq!(dark_themes.len(), 1);
+        assert!(!dark_themes[0].builtin);
+        assert!(dark_themes[0].path.is_some());
+    }
+
+    #[test]
+    fn test_discover_sorted_by_name() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_theme(temp_dir.path(), "zebra", "[meta]\nname = \"Zebra\"");
+        create_test_theme(temp_dir.path(), "alpha", "[meta]\nname = \"Alpha\"");
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let themes = loader.discover();
+        let names: Vec<_> = themes.iter().map(|t| &t.name).collect();
+
+        // Verify sorted
+        let mut sorted_names = names.clone();
+        sorted_names.sort();
+        assert_eq!(names, sorted_names);
+    }
+
+    #[test]
+    fn test_discover_deduplicates_across_paths() {
+        let dir1 = TempDir::new().unwrap();
+        let dir2 = TempDir::new().unwrap();
+
+        create_test_theme(dir1.path(), "common", "[meta]\nname = \"Common 1\"");
+        create_test_theme(dir2.path(), "common", "[meta]\nname = \"Common 2\"");
+
+        let loader =
+            ThemeLoader::with_paths(vec![dir1.path().to_path_buf(), dir2.path().to_path_buf()]);
+        let themes = loader.discover();
+
+        assert_eq!(themes.iter().filter(|t| t.name == "common").count(), 1);
+    }
+
+    #[test]
+    fn test_discover_empty_paths_returns_only_builtins() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let themes = loader.discover();
+
+        assert_eq!(themes.len(), 3);
+        assert!(themes.iter().all(|t| t.builtin));
+    }
+
+    // =========================================================================
+    // Built-in fallback in load() tests
+    // =========================================================================
+
+    #[test]
+    fn test_load_falls_back_to_builtin() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        // No file themes, but "dark" should be loadable as built-in
+        let theme = loader.load("dark").unwrap();
+        assert_eq!(theme.name(), "dark");
+    }
+
+    #[test]
+    fn test_load_builtin_light() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let theme = loader.load("light").unwrap();
+        assert_eq!(theme.name(), "light");
+    }
+
+    #[test]
+    fn test_load_builtin_tokyo_night() {
+        let loader = ThemeLoader::with_paths(vec![]);
+        let theme = loader.load("tokyo-night-orange").unwrap();
+        assert_eq!(theme.name(), "tokyo-night-orange");
+    }
+
+    #[test]
+    fn test_load_prefers_file_over_builtin() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_theme(
+            temp_dir.path(),
+            "dark",
+            "[meta]\nname = \"Custom Dark File\"\n[syntax]\nkeyword = { fg = \"#aabbcc\" }",
+        );
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let theme = loader.load("dark").unwrap();
+        // Should get the file theme, not the built-in
+        assert_eq!(theme.name(), "Custom Dark File");
+    }
+
+    #[test]
+    fn test_discover_skips_non_toml_files() {
+        let temp_dir = TempDir::new().unwrap();
+        create_test_theme(temp_dir.path(), "valid", "[meta]\nname = \"Valid\"");
+        std::fs::write(temp_dir.path().join("readme.md"), "# Readme").unwrap();
+        std::fs::write(temp_dir.path().join("noext"), "data").unwrap();
+
+        let loader = ThemeLoader::with_paths(vec![temp_dir.path().to_path_buf()]);
+        let file_themes: Vec<_> = loader
+            .discover()
+            .into_iter()
+            .filter(|t| !t.builtin)
+            .collect();
+        assert_eq!(file_themes.len(), 1);
+        assert_eq!(file_themes[0].name, "valid");
+    }
+
+    #[test]
+    fn test_discover_nonexistent_search_path() {
+        let loader = ThemeLoader::with_paths(vec![PathBuf::from("/nonexistent/path")]);
+        let themes = loader.discover();
+        // Should gracefully skip missing dir, still return built-ins
+        assert_eq!(themes.len(), 3);
+        assert!(themes.iter().all(|t| t.builtin));
+    }
+
+    #[test]
+    fn test_theme_info_debug_and_eq() {
+        let info1 = ThemeInfo {
+            name: "test".to_string(),
+            path: None,
+            builtin: true,
+        };
+        let info2 = info1.clone();
+        assert_eq!(info1, info2);
+        let debug = format!("{info1:?}");
+        assert!(debug.contains("test"));
     }
 }

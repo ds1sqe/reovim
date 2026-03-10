@@ -35,15 +35,19 @@
 //! ```
 
 mod cache;
+mod capability_store;
 pub mod client;
 mod config;
 mod error;
 pub mod jsonrpc;
 mod key;
+mod lifecycle;
+mod logger;
 mod provider;
 mod registry;
 mod request;
 mod response;
+mod sync;
 pub mod transport;
 mod types;
 
@@ -51,7 +55,9 @@ mod types;
 pub use error::{LspError, ModuleError};
 
 // Configuration
-pub use config::{LspServerConfig, uri_from_path};
+pub use config::{
+    LspServerConfig, config_for_language, find_project_root, language_id_from_path, uri_from_path,
+};
 
 // Request/Response types
 pub use {
@@ -62,8 +68,20 @@ pub use {
 // Diagnostic cache
 pub use cache::{BufferDiagnostics, DiagnosticCache};
 
+// Capability store (#533 - dynamic registration)
+pub use capability_store::CapabilityStore;
+
 // Provider trait and registry (Epic #520)
 pub use {key::LspKey, provider::LspProvider, registry::LspProviderRegistry};
+
+// Lifecycle traits (#542 - cross-module decoupling)
+pub use lifecycle::{LspLifecycle, LspLifecycleRegistry};
+
+// Sync helpers (blocking recv for command handlers)
+pub use sync::recv_response;
+
+// LSP traffic logger
+pub use logger::LspLogger;
 
 // Re-export essential LSP types
 pub mod lsp_types {

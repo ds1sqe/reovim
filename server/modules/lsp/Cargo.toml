@@ -26,12 +26,18 @@ reovim-driver-lsp = { workspace = true }
 # Module FFI macros
 reovim-module-macros = { workspace = true }
 
+# Session driver (PendingNotificationQueue, BridgeProvider, ExtensionMap)
+reovim-driver-session = { workspace = true }
+
 # Async runtime
 tokio = { workspace = true }
 
 # Serialization
 lsp-types = "0.97"
 serde_json = "1.0"
+
+# Synchronization
+parking_lot = { workspace = true }
 
 # Logging
 tracing.workspace = true

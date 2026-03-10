@@ -26,6 +26,8 @@ mod state;
 mod syntax_state;
 pub mod token_registry;
 
+pub use syntax_state::annotation_kind_to_proto;
+
 pub use {
     capture::{CaptureError, CaptureResult, CaptureTracker, wait_for_capture},
     client::{
@@ -39,6 +41,6 @@ pub use {
     ring_buffer::{ClientEventType, ClientRingBuffer},
     session::Session,
     state::SessionState,
-    syntax_state::{SyntaxSessionState, SyntaxStreamState},
+    syntax_state::{SyntaxSessionState, SyntaxStreamState, build_token_update},
     token_registry::{SessionToken, TokenRegistry},
 };

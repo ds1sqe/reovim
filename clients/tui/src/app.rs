@@ -26,10 +26,11 @@ use crate::render_backend::{RenderBackend as _, TuiExtension};
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_driver_display::{
-        BuiltinTheme, FrameBuffer, ThemeLoader, ThemeManager, TokenCacheManager, TokenSpan,
+        AnnotationCacheManager, BuiltinTheme, CachedAnnotationKind, FrameBuffer, ThemeLoader,
+        ThemeManager, TokenSpan,
     },
     reovim_protocol::v2::{
-        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
+        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect, annotation_kind,
         option_changed_payload::Value as OptionValue,
     },
     tokio::{select, sync::mpsc, time::interval},
@@ -46,6 +47,27 @@ use crate::{
     render_engine::render_frame,
     tui_output::{CursorStyleHint, TuiOutput},
 };
+
+/// Convert a proto `AnnotationKind` to a `CachedAnnotationKind`.
+///
+/// Returns `Highlight` when the proto kind is absent (the proto default).
+fn proto_kind_to_cached(
+    kind: Option<&reovim_protocol::v2::AnnotationKind>,
+) -> CachedAnnotationKind {
+    let Some(ak) = kind.and_then(|k| k.kind.as_ref()) else {
+        return CachedAnnotationKind::Highlight;
+    };
+    match ak {
+        annotation_kind::Kind::Highlight(_) => CachedAnnotationKind::Highlight,
+        annotation_kind::Kind::Conceal(c) => CachedAnnotationKind::Conceal {
+            replacement: c.replacement.clone(),
+        },
+        annotation_kind::Kind::Background(_) => CachedAnnotationKind::Background,
+        annotation_kind::Kind::VirtualText(vt) => CachedAnnotationKind::VirtualText {
+            text: vt.text.clone(),
+        },
+    }
+}
 
 /// TUI application error.
 #[derive(Debug)]
@@ -122,7 +144,7 @@ pub struct TuiApp<O: TuiOutput> {
     /// Server layout mirror.
     layout_mirror: ServerLayoutMirror,
     /// Syntax token cache manager.
-    token_cache_manager: TokenCacheManager,
+    token_cache_manager: AnnotationCacheManager,
     /// Theme manager for syntax highlighting.
     theme_manager: ThemeManager,
     /// Theme loader for finding and loading theme files.
@@ -160,7 +182,7 @@ impl<O: TuiOutput> TuiApp<O> {
         let layout_mirror = ServerLayoutMirror::new(width, height);
 
         // Create token cache and theme managers
-        let token_cache_manager = TokenCacheManager::new();
+        let token_cache_manager = AnnotationCacheManager::new();
         let theme_loader = ThemeLoader::new();
         let mut theme_manager = ThemeManager::new(BuiltinTheme::Dark.load());
 
@@ -440,6 +462,7 @@ impl<O: TuiOutput> TuiApp<O> {
                         start_byte: t.start_byte,
                         end_byte: t.end_byte,
                         category: t.category,
+                        kind: proto_kind_to_cached(t.kind.as_ref()),
                     })
                     .collect();
 
@@ -450,6 +473,8 @@ impl<O: TuiOutput> TuiApp<O> {
                     u64::MAX,
                     true,
                     &content,
+                    "syntax",
+                    0,
                 );
 
                 tracing::debug!(buffer_id, token_count = token_spans.len(), "Cached syntax tokens");
@@ -553,9 +578,15 @@ impl<O: TuiOutput> TuiApp<O> {
 
                 // Send vim notation to server (identity from token, #483)
                 if !key_event.vim_notation.is_empty() {
-                    let result = self.client.send_keys(&key_event.vim_notation).await;
-                    if let Err(e) = result {
-                        self.state.last_error = Some(format!("Send keys failed: {e}"));
+                    match self.client.send_keys(&key_event.vim_notation).await {
+                        Ok(resp) if resp.should_quit => {
+                            tracing::info!("Server signaled quit via SendKeysResponse");
+                            self.running = false;
+                        }
+                        Err(e) => {
+                            self.state.last_error = Some(format!("Send keys failed: {e}"));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -677,7 +708,14 @@ impl<O: TuiOutput> TuiApp<O> {
             .compute_scroll_top(self.state.focused_window_id, content_height);
 
         // Always render to FrameBuffer (common output)
-        render_frame(&mut self.frame_buffer, &self.state, &config, &self.extensions);
+        render_frame(
+            &mut self.frame_buffer,
+            &self.state,
+            &config,
+            &self.extensions,
+            &self.token_cache_manager,
+            &self.theme_manager,
+        );
 
         // Flush to display (terminal for interactive, no-op for headless)
         self.output.flush(&self.frame_buffer)?;

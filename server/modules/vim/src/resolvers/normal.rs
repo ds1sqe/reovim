@@ -22,11 +22,21 @@ use {
 };
 
 use crate::{
-    ids::EXECUTE_FIND_CHAR,
     macros::notation_to_keys,
     modes::VimMode,
     session_state::{PendingCharOp, VimSessionState},
 };
+
+use reovim_module_cmdline::CmdlineState;
+
+/// Coordinator command dispatched for find-char motions (#563).
+/// Defined locally to reference the motions module's command without
+/// compile-time dependency.
+const DISPATCH_FIND_CHAR: reovim_kernel::api::v1::CommandId =
+    reovim_kernel::api::v1::CommandId::new(
+        reovim_kernel::api::v1::ModuleId::new("motions"),
+        "dispatch-find-char",
+    );
 
 /// Pending macro operation.
 ///
@@ -658,6 +668,7 @@ impl ModeKeyResolver for VimNormalResolver {
     ///
     /// Note: For backward compatibility, we still use internal `pending_keys`.
     /// Once all resolvers are migrated, these can move to `VimSessionState` too.
+    #[allow(clippy::too_many_lines)]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn resolve_with_extensions(
         &self,
@@ -667,6 +678,11 @@ impl ModeKeyResolver for VimNormalResolver {
         _shared_extensions: &mut ExtensionMap,
         client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
+        // Clear any pending cmdline message on next keypress (#558)
+        if let Some(cmdline) = client_extensions.get_mut::<CmdlineState>() {
+            cmdline.clear_message();
+        }
+
         // Get vim session state from client extensions (per-client state)
         let vim = client_extensions.get_or_insert::<VimSessionState>();
 
@@ -687,29 +703,30 @@ impl ModeKeyResolver for VimNormalResolver {
         if let Some(pending_op) = vim.pending_char.take()
             && let KeyCode::Char(c) = key.code
         {
-            // Build context with find-char metadata
             let mut ctx = self.build_context_ext(KeySequence::new(), vim);
-
-            // Set the target character
-            ctx.metadata
-                .insert("find_char".to_string(), ArgValue::Char(c));
-
-            // Set direction based on operation type
-            let direction = if pending_op.is_forward() {
-                "forward"
-            } else {
-                "backward"
-            };
-            ctx.metadata
-                .insert("find_direction".to_string(), ArgValue::String(direction.to_string()));
-
-            // Set inclusive flag: f/F are inclusive (on char), t/T are not (before char)
-            let inclusive = pending_op.is_find();
-            ctx.metadata
-                .insert("find_inclusive".to_string(), ArgValue::Bool(inclusive));
-
             self.clear_pending_keys();
-            return ResolveResult::Execute(EXECUTE_FIND_CHAR, ctx);
+
+            if pending_op.is_motion() {
+                // Find-char motion (f/F/t/T)
+                ctx.metadata
+                    .insert("find_char".to_string(), ArgValue::Char(c));
+                let direction = if pending_op.is_forward() {
+                    "forward"
+                } else {
+                    "backward"
+                };
+                ctx.metadata
+                    .insert("find_direction".to_string(), ArgValue::String(direction.to_string()));
+                let inclusive = pending_op.is_find();
+                ctx.metadata
+                    .insert("find_inclusive".to_string(), ArgValue::Bool(inclusive));
+                return ResolveResult::Execute(DISPATCH_FIND_CHAR, ctx);
+            }
+
+            // Replace operation (r) — dispatch to editor::REPLACE_CHAR
+            ctx.metadata
+                .insert("replace_char".to_string(), ArgValue::Char(c));
+            return ResolveResult::Execute(editor::ids::REPLACE_CHAR, ctx);
         }
 
         // =====================================================================
@@ -797,6 +814,14 @@ impl ModeKeyResolver for VimNormalResolver {
                 // set pending_char in VimSessionState and return Pending.
                 if let Some(pending_op) = Self::classify_find_char_command(&cmd) {
                     vim.pending_char = Some(pending_op);
+                    self.clear_pending_keys();
+                    return ResolveResult::Pending;
+                }
+
+                // #554 - Intercept replace-char-start (r)
+                // Like find-char, this sets pending_char and waits for the next char.
+                if cmd == editor::ids::REPLACE_CHAR_START {
+                    vim.pending_char = Some(PendingCharOp::Replace);
                     self.clear_pending_keys();
                     return ResolveResult::Pending;
                 }
@@ -2058,7 +2083,7 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('a'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(ctx.metadata.get("find_char"), Some(&ArgValue::Char('a')));
             assert_eq!(
                 ctx.metadata.get("find_direction"),
@@ -2112,7 +2137,7 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('x'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(ctx.metadata.get("find_char"), Some(&ArgValue::Char('x')));
             assert_eq!(
                 ctx.metadata.get("find_direction"),
@@ -2145,11 +2170,66 @@ mod tests {
         let result = resolve_with_ext(&resolver, &key('z'), &mut state, &input, &mut extensions);
 
         if let ResolveResult::Execute(cmd, ctx) = result {
-            assert_eq!(cmd.name(), "execute-find-char");
+            assert_eq!(cmd.name(), "dispatch-find-char");
             assert_eq!(
                 ctx.metadata.get("find_direction"),
                 Some(&ArgValue::String("backward".to_string()))
             );
+        } else {
+            panic!("Expected Execute, got {result:?}");
+        }
+    }
+
+    // ========================================================================
+    // Replace char interception tests (#554)
+    // ========================================================================
+
+    #[test]
+    fn test_ext_replace_char_sets_pending() {
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let editor_module = reovim_kernel::api::v1::ModuleId::new("editor");
+        let keymap = MockKeymap {
+            response: KeyLookupState::ExactOnly(CommandId::new(
+                editor_module,
+                "replace-char-start",
+            )),
+        };
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        let result = resolve_with_ext(&resolver, &key('r'), &mut state, &input, &mut extensions);
+        assert!(matches!(result, ResolveResult::Pending));
+
+        let vim = extensions.get::<VimSessionState>().unwrap();
+        assert_eq!(vim.pending_char, Some(PendingCharOp::Replace));
+    }
+
+    #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn test_ext_replace_char_dispatches() {
+        let resolver = VimNormalResolver::new();
+        let mut state = test_state();
+        let editor_module = reovim_kernel::api::v1::ModuleId::new("editor");
+        let keymap = MockKeymap {
+            response: KeyLookupState::ExactOnly(CommandId::new(
+                editor_module,
+                "replace-char-start",
+            )),
+        };
+        let input = resolve_input(&keymap);
+        let mut extensions = ExtensionMap::new();
+
+        // Press 'r' to set pending_char=Replace
+        let _ = resolve_with_ext(&resolver, &key('r'), &mut state, &input, &mut extensions);
+
+        // Now press 'x' - should dispatch replace-char with char='x'
+        let result = resolve_with_ext(&resolver, &key('x'), &mut state, &input, &mut extensions);
+
+        if let ResolveResult::Execute(cmd, ctx) = result {
+            assert_eq!(cmd.name(), "replace-char");
+            assert_eq!(cmd.module().as_str(), "editor");
+            assert_eq!(ctx.metadata.get("replace_char"), Some(&ArgValue::Char('x')));
         } else {
             panic!("Expected Execute, got {result:?}");
         }

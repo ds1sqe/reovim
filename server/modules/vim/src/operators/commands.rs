@@ -13,7 +13,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -225,22 +225,44 @@ fn execute_operator(
         register,
         count,
         cursor_position,
+        cursor_after: None,
     };
 
     // Execute operator
     match operator.execute(&mut op_ctx, range) {
         Ok(()) => {
-            // Update cursor for text-modifying operators (#471)
-            // After delete/change, cursor should be at the start of the range
-            if operator.is_text_modifying()
-                && let Some(window) = runtime.windows_mut().active_mut()
-            {
-                window.cursor = start.into();
-                tracing::debug!(
-                    ?start,
-                    operator = operator.id(),
-                    "Updated cursor after text-modifying operator"
-                );
+            // Copy cursor_after before releasing op_ctx borrows (#552).
+            // op_ctx holds split-borrows from runtime.kernel_and_registers();
+            // copying the Copy field lets NLL release those borrows so we can
+            // call runtime.buffer_line_count() and runtime.windows_mut() below.
+            let cursor_after = op_ctx.cursor_after;
+
+            // Update cursor for text-modifying operators (#471, #552)
+            if operator.is_text_modifying() {
+                // Use operator's computed cursor if available,
+                // otherwise clamp range start to valid bounds (#552)
+                let new_cursor = cursor_after.unwrap_or_else(|| {
+                    let line_count = runtime.buffer_line_count(buffer_id).unwrap_or(1);
+                    let clamped_line = start.line.min(line_count.saturating_sub(1));
+                    let line_len = runtime
+                        .buffer_line_len(buffer_id, clamped_line)
+                        .unwrap_or(0);
+                    let clamped_col = if line_len == 0 {
+                        0
+                    } else {
+                        start.column.min(line_len.saturating_sub(1))
+                    };
+                    Position::new(clamped_line, clamped_col)
+                });
+
+                if let Some(window) = runtime.windows_mut().active_mut() {
+                    window.cursor = new_cursor.into();
+                    tracing::debug!(
+                        ?new_cursor,
+                        operator = operator.id(),
+                        "Updated cursor after text-modifying operator"
+                    );
+                }
             }
 
             // Record buffer modification for notification pipeline.
@@ -282,7 +304,8 @@ mod tests {
     use {
         super::*,
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -356,13 +379,11 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
+        fn get_handle(
             &self,
-            _: &reovim_kernel::api::v1::CommandId,
-            _: &CommandContext,
-            _: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+            _id: &reovim_kernel::api::v1::CommandId,
+        ) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -669,7 +690,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -691,7 +712,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -718,7 +739,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(0, 0));
         args.set("range_end", ArgValue::Position(0, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -1112,7 +1133,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("range_start", ArgValue::Position(1, 0));
         args.set("range_end", ArgValue::Position(1, 0));
-        args.set("linewise", ArgValue::Bang(true));
+        args.set("linewise", ArgValue::Bool(true));
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);

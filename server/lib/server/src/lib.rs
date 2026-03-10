@@ -36,6 +36,8 @@ pub mod session;
 pub mod grpc;
 
 mod server;
+#[cfg(feature = "grpc")]
+pub(crate) mod tick;
 
 // Public API
 pub use {

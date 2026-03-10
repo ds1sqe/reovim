@@ -71,6 +71,107 @@ pub const PROPERTY: &str = "property";
 pub const TAG: &str = "tag";
 
 // ============================================================================
+// Syntax Sub-Category Groups
+// ============================================================================
+//
+// These sub-categories inherit from their parent via ThemeManager's
+// hierarchical fallback. For example, "keyword.function" falls back
+// to "keyword" if no explicit theme entry exists.
+
+/// Control flow keywords (if, else, while, for, return, break)
+pub const KEYWORD_CONTROL: &str = "keyword.control";
+
+/// Function definition keywords (fn, def, func)
+pub const KEYWORD_FUNCTION: &str = "keyword.function";
+
+/// Type definition keywords (struct, enum, trait, class)
+pub const KEYWORD_TYPE: &str = "keyword.type";
+
+/// Keyword operators (and, or, not, in, as)
+pub const KEYWORD_OPERATOR: &str = "keyword.operator";
+
+/// Built-in types (i32, str, bool, Vec, String)
+pub const TYPE_BUILTIN: &str = "type.builtin";
+
+/// Built-in functions (println, format, len)
+pub const FUNCTION_BUILTIN: &str = "function.builtin";
+
+/// Macro invocations (println!, vec!, derive)
+pub const FUNCTION_MACRO: &str = "function.macro";
+
+/// Method calls
+pub const FUNCTION_METHOD: &str = "function.method";
+
+/// Built-in variables (self, this, super)
+pub const VARIABLE_BUILTIN: &str = "variable.builtin";
+
+/// Function parameters
+pub const VARIABLE_PARAMETER: &str = "variable.parameter";
+
+/// Struct/object field access
+pub const VARIABLE_FIELD: &str = "variable.field";
+
+/// String escape sequences (\\n, \\t, etc.)
+pub const STRING_ESCAPE: &str = "string.escape";
+
+/// Doc comments (/// or /** */)
+pub const COMMENT_DOC: &str = "comment.doc";
+
+/// Brackets: (), {}, []
+pub const PUNCTUATION_BRACKET: &str = "punctuation.bracket";
+
+/// Delimiters: , ; :
+pub const PUNCTUATION_DELIMITER: &str = "punctuation.delimiter";
+
+/// Module/package namespaces
+pub const NAMESPACE: &str = "namespace";
+
+/// Constructors
+pub const CONSTRUCTOR: &str = "constructor";
+
+/// Labels (loop labels, goto targets)
+pub const LABEL: &str = "label";
+
+/// Boolean literals (true, false)
+pub const BOOLEAN: &str = "boolean";
+
+/// Character literals ('a')
+pub const CHARACTER: &str = "character";
+
+/// Markup headings
+pub const MARKUP_HEADING: &str = "markup.heading";
+
+/// Bold text
+pub const MARKUP_BOLD: &str = "markup.bold";
+
+/// Italic text
+pub const MARKUP_ITALIC: &str = "markup.italic";
+
+/// Strikethrough text
+pub const MARKUP_STRIKETHROUGH: &str = "markup.strikethrough";
+
+/// Link text
+pub const MARKUP_LINK: &str = "markup.link";
+
+/// Link URLs
+pub const MARKUP_LINK_URL: &str = "markup.link.url";
+
+/// List markers
+pub const MARKUP_LIST: &str = "markup.list";
+
+/// Raw/code blocks
+pub const MARKUP_RAW: &str = "markup.raw";
+
+/// Inline code
+pub const MARKUP_RAW_INLINE: &str = "markup.raw.inline";
+
+/// Embedded content (e.g., SQL in strings)
+pub const EMBEDDED: &str = "embedded";
+
+/// Special tokens
+pub const SPECIAL: &str = "special";
+
+// ============================================================================
 // UI Groups (17 groups)
 // ============================================================================
 
@@ -132,8 +233,11 @@ pub const SEARCH_MATCH: &str = "search_match";
 /// Error diagnostic
 pub const DIAGNOSTIC_ERROR: &str = "diagnostic.error";
 
-/// Warning diagnostic
-pub const DIAGNOSTIC_WARN: &str = "diagnostic.warn";
+/// Warning diagnostic.
+///
+/// Uses `"diagnostic.warning"` to match the server-side
+/// `HighlightCategory::DIAGNOSTIC_WARNING` and tree-sitter convention.
+pub const DIAGNOSTIC_WARN: &str = "diagnostic.warning";
 
 /// Info diagnostic
 pub const DIAGNOSTIC_INFO: &str = "diagnostic.info";

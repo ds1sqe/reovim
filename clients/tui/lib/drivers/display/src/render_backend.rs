@@ -114,6 +114,37 @@ impl RenderBackend for FrameBuffer {
 }
 
 // ============================================================================
+// ViewportContext
+// ============================================================================
+
+/// Viewport context for extensions that render at buffer positions.
+///
+/// Provides the mapping between buffer coordinates (line, col) and screen
+/// coordinates (x, y). Passed to [`TuiExtension::render_with_viewport`]
+/// by the render engine.
+///
+/// Extensions that render at absolute screen positions (popups, sidebars)
+/// can ignore this — the default `render_with_viewport` delegates to `render()`.
+#[derive(Debug, Clone)]
+pub struct ViewportContext {
+    /// First visible buffer line (0-indexed).
+    ///
+    /// A buffer match at `line` maps to screen row `line - scroll_top`.
+    pub scroll_top: usize,
+    /// X coordinate where buffer content starts (gutter + sidebar inset).
+    ///
+    /// A buffer match at `col` maps to screen x `content_x + col`.
+    pub content_x: u16,
+    /// Number of visible buffer rows (terminal height minus statusline).
+    pub content_height: u16,
+    /// Buffer ID of the focused window (`None` if unknown).
+    ///
+    /// Used by inline extensions (e.g., diagnostics) that filter entries
+    /// by the current buffer.
+    pub buffer_id: Option<u64>,
+}
+
+// ============================================================================
 // TuiExtension trait
 // ============================================================================
 
@@ -134,7 +165,8 @@ impl RenderBackend for FrameBuffer {
 /// 1. Engine calls `create_extensions()` at startup
 /// 2. On `ExtensionUpdated` notification: engine calls `apply_notification()`
 ///    for extensions matching the notification's `kind`
-/// 3. On render: engine iterates extensions, calls `render()` on active ones
+/// 3. On render: engine iterates extensions, calls `render_with_viewport()`
+///    on active ones (with viewport context for buffer-position mapping)
 pub trait TuiExtension: Send + Sync {
     /// Extension kind identifier.
     ///
@@ -190,6 +222,29 @@ pub trait TuiExtension: Send + Sync {
     /// Default: `0` (no inset).
     fn content_offset_left(&self) -> u16 {
         0
+    }
+
+    /// Ranges of buffer lines hidden by this extension.
+    ///
+    /// Returns `(start_line, hidden_count)` pairs indicating which buffer
+    /// lines should be skipped during rendering. The render engine collects
+    /// these from all extensions to build a fold-aware line mapping.
+    ///
+    /// Default: empty (no lines hidden).
+    fn fold_hidden_lines(&self) -> &[(u32, u32)] {
+        &[]
+    }
+
+    /// Render with viewport context for buffer-position mapping.
+    ///
+    /// Called by the render engine instead of [`render`] when viewport
+    /// context is available. Extensions that render at buffer positions
+    /// (e.g., jump labels, fold markers) override this to use the viewport
+    /// for coordinate mapping.
+    ///
+    /// Default: ignores viewport, delegates to [`render`].
+    fn render_with_viewport(&self, backend: &mut dyn RenderBackend, _viewport: &ViewportContext) {
+        self.render(backend);
     }
 }
 
@@ -369,5 +424,161 @@ mod tests {
         let mut fb = FrameBuffer::new(10, 5);
         ext.render(&mut fb);
         assert_eq!(fb.get(0, 0).unwrap().char, 'M');
+    }
+
+    // =========================================================================
+    // ViewportContext tests
+    // =========================================================================
+
+    #[test]
+    fn test_viewport_context_construction() {
+        let ctx = ViewportContext {
+            scroll_top: 10,
+            content_x: 4,
+            content_height: 20,
+            buffer_id: None,
+        };
+        assert_eq!(ctx.scroll_top, 10);
+        assert_eq!(ctx.content_x, 4);
+        assert_eq!(ctx.content_height, 20);
+    }
+
+    #[test]
+    fn test_viewport_context_clone() {
+        let ctx = ViewportContext {
+            scroll_top: 5,
+            content_x: 3,
+            content_height: 15,
+            buffer_id: None,
+        };
+        let cloned = ctx.clone();
+        assert_eq!(cloned.scroll_top, ctx.scroll_top);
+        assert_eq!(cloned.content_x, ctx.content_x);
+        assert_eq!(cloned.content_height, ctx.content_height);
+    }
+
+    #[test]
+    fn test_viewport_context_debug() {
+        let ctx = ViewportContext {
+            scroll_top: 0,
+            content_x: 4,
+            content_height: 24,
+            buffer_id: None,
+        };
+        let debug = format!("{ctx:?}");
+        assert!(debug.contains("scroll_top"));
+        assert!(debug.contains("content_x"));
+        assert!(debug.contains("content_height"));
+    }
+
+    // =========================================================================
+    // render_with_viewport default tests
+    // =========================================================================
+
+    #[test]
+    fn test_render_with_viewport_default_delegates_to_render() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        let viewport = ViewportContext {
+            scroll_top: 0,
+            content_x: 4,
+            content_height: 20,
+            buffer_id: None,
+        };
+        let mut fb = FrameBuffer::new(10, 5);
+        ext.render_with_viewport(&mut fb, &viewport);
+        // Default impl delegates to render(), which sets cell (0,0) to 'M'
+        assert!(ext.rendered.load(Ordering::Relaxed));
+        assert_eq!(fb.get(0, 0).unwrap().char, 'M');
+    }
+
+    #[test]
+    fn test_render_with_viewport_trait_object() {
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        });
+        let viewport = ViewportContext {
+            scroll_top: 100,
+            content_x: 6,
+            content_height: 30,
+            buffer_id: None,
+        };
+        let mut fb = FrameBuffer::new(10, 5);
+        ext.render_with_viewport(&mut fb, &viewport);
+        assert_eq!(fb.get(0, 0).unwrap().char, 'M');
+    }
+
+    /// Extension that uses viewport context for buffer-position rendering.
+    struct ViewportAwareExtension;
+
+    impl TuiExtension for ViewportAwareExtension {
+        fn kind(&self) -> &'static str {
+            "viewport-aware"
+        }
+
+        fn is_active(&self) -> bool {
+            true
+        }
+
+        fn apply_notification(&mut self, _data: &str) {}
+
+        fn render(&self, _backend: &mut dyn RenderBackend) {
+            // Intentionally empty — this extension uses render_with_viewport
+        }
+
+        fn render_with_viewport(
+            &self,
+            backend: &mut dyn RenderBackend,
+            viewport: &ViewportContext,
+        ) {
+            // Render a marker at buffer position (0, 0) mapped to screen
+            let screen_x = viewport.content_x;
+            let screen_y = 0u16;
+            if viewport.scroll_top == 0 {
+                backend.set_cell(screen_x, screen_y, 'V', &Style::default());
+            }
+        }
+    }
+
+    #[test]
+    fn test_viewport_aware_extension_uses_viewport() {
+        let ext = ViewportAwareExtension;
+        let viewport = ViewportContext {
+            scroll_top: 0,
+            content_x: 5,
+            content_height: 20,
+            buffer_id: None,
+        };
+        let mut fb = FrameBuffer::new(20, 10);
+        ext.render_with_viewport(&mut fb, &viewport);
+        // Should render 'V' at (content_x, 0) = (5, 0)
+        assert_eq!(fb.get(5, 0).unwrap().char, 'V');
+    }
+
+    #[test]
+    fn test_extension_default_fold_hidden_lines() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        assert!(ext.fold_hidden_lines().is_empty());
+    }
+
+    #[test]
+    fn test_viewport_aware_extension_scrolled() {
+        let ext = ViewportAwareExtension;
+        let viewport = ViewportContext {
+            scroll_top: 10, // scrolled past line 0
+            content_x: 5,
+            content_height: 20,
+            buffer_id: None,
+        };
+        let mut fb = FrameBuffer::new(20, 10);
+        ext.render_with_viewport(&mut fb, &viewport);
+        // Line 0 is above viewport, nothing rendered
+        assert_eq!(fb.get(5, 0).unwrap().char, ' ');
     }
 }

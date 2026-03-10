@@ -15,6 +15,7 @@
 //! The bridge is registered via [`BridgeProvider`] during `init()`.
 
 mod bridge;
+mod drain;
 mod state;
 
 pub use {
@@ -23,8 +24,9 @@ pub use {
 };
 
 use {
-    reovim_driver_session::bridges::BridgeProvider,
+    reovim_driver_session::{NotificationDrainRegistry, bridges::BridgeProvider},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    std::sync::Arc,
 };
 
 const MODULE_ID: ModuleId = ModuleId::new("notification");
@@ -64,6 +66,11 @@ impl Module for NotificationModule {
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let provider = ctx.services.get_or_create::<BridgeProvider>();
         provider.register(NotificationBridge);
+
+        // Register NotificationDrain implementation (#542: decouple completion from this module).
+        let drain_registry = ctx.services.get_or_create::<NotificationDrainRegistry>();
+        drain_registry.register(Arc::new(drain::NotificationDrainImpl));
+
         ProbeResult::Success
     }
 

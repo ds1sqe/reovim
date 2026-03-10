@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use crate::{edit::SyntaxEdit, fold::FoldRange, highlight::HighlightSpan, injection::Injection};
+use crate::{edit::SyntaxEdit, fold::FoldRange, highlight::Annotation, injection::Injection};
 
 /// Main parsing interface for syntax highlighting.
 ///
@@ -66,19 +66,19 @@ pub trait SyntaxDriver: Send + Sync {
     /// * `edit` - Description of what changed
     fn update(&mut self, content: &str, edit: &SyntaxEdit);
 
-    /// Get highlights for a byte range.
+    /// Get annotations for a byte range.
     ///
-    /// Returns all highlights that overlap with the given range.
+    /// Returns all annotations that overlap with the given range.
     /// Results should be sorted by start position.
     ///
     /// # Arguments
     ///
-    /// * `byte_range` - The byte range to get highlights for
+    /// * `byte_range` - The byte range to get annotations for
     ///
     /// # Returns
     ///
-    /// A vector of highlights overlapping the requested range.
-    fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan>;
+    /// A vector of annotations overlapping the requested range.
+    fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation>;
 
     /// Get language injection points.
     ///
@@ -89,6 +89,20 @@ pub trait SyntaxDriver: Send + Sync {
     ///
     /// Returns an empty vector. Override for languages that support injections.
     fn injections(&self) -> Vec<Injection> {
+        Vec::new()
+    }
+
+    /// Get decoration annotations for a byte range.
+    ///
+    /// Returns annotations with non-Highlight kinds (`Conceal`, `Background`,
+    /// `VirtualText`) that language modules define via decoration queries.
+    /// Use-sites call this separately from [`highlights()`](Self::highlights)
+    /// to opt in to decoration rendering.
+    ///
+    /// # Default
+    ///
+    /// Returns an empty vector. Override for languages with decoration support.
+    fn decorations(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
         Vec::new()
     }
 
@@ -129,7 +143,7 @@ pub trait SyntaxDriver: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::highlight::HighlightGroup};
+    use {super::*, crate::HighlightCategory};
 
     /// A minimal test implementation of `SyntaxDriver`.
     struct TestDriver {
@@ -159,13 +173,12 @@ mod tests {
             // No-op for test
         }
 
-        fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+        fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                // Return a single highlight spanning the range
-                vec![HighlightSpan::new(
+                vec![Annotation::highlight(
                     byte_range.start,
                     byte_range.end,
-                    HighlightGroup::Comment,
+                    HighlightCategory::new("comment"),
                 )]
             } else {
                 Vec::new()
@@ -191,6 +204,7 @@ mod tests {
         assert_eq!(highlights.len(), 1);
         assert_eq!(highlights[0].start_byte, 0);
         assert_eq!(highlights[0].end_byte, 10);
+        assert_eq!(highlights[0].category.as_str(), "comment");
     }
 
     #[test]
@@ -198,6 +212,7 @@ mod tests {
         let driver = TestDriver::new("test");
 
         // Default implementations return empty/None
+        assert!(driver.decorations(0..100).is_empty());
         assert!(driver.injections().is_empty());
         assert!(driver.folds().is_empty());
         assert_eq!(driver.indent_for(0), None);

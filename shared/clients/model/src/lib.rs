@@ -21,7 +21,7 @@
 //! │  Common Client Model                                        │
 //! │  • LogicalLayout, LogicalOverlay (from server)              │
 //! │  • WindowTree, RenderedOverlay (client interpretation)      │
-//! │  • Panel, Layout, OverlayRenderer traits                    │
+//! │  • Panel, Layout traits                                     │
 //! └─────────────────────────────────────────────────────────────┘
 //!                               │
 //!                               ▼ Platform implements traits
@@ -64,8 +64,8 @@ pub use {
 
 // Re-export wire format types
 pub use wire::{
-    Anchor, ClientPresence, LogicalLayout, LogicalOverlay, OverlayState, SyncMode, ViewportState,
-    ViewportUpdate,
+    ClientPresence, ExtensionCategory, LogicalLayout, LogicalOverlay, OverlayState, SemanticOrigin,
+    SyncMode, ViewportState, ViewportUpdate,
 };
 
 // Re-export rendered state types
@@ -75,10 +75,7 @@ pub use rendered::{OverlayStack, PanelState, RenderedOverlay, Window, WindowTree
 pub use interaction::{Interaction, InteractionResult};
 
 // Re-export core traits
-pub use traits::{
-    DefaultLayoutInterpreter, Focus, FocusManager, Layout, LayoutInterpreter, OverlayManager,
-    OverlayRenderer, Panel,
-};
+pub use traits::{DefaultLayoutInterpreter, Focus, FocusManager, Layout, LayoutInterpreter, Panel};
 
 // Re-export sync types
 pub use sync::{LayoutSyncMode, OverlaySyncMode, PresenceTracker};

@@ -26,7 +26,8 @@ use {
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{CommandId, Position},
-    reovim_module_cmdline::{CmdlinePrompt, CmdlineState},
+    reovim_module_cmdline::{CmdlineMessage, CmdlinePrompt, CmdlineState},
+    std::sync::Arc,
 };
 
 /// Helper to get cursor position from the active window.
@@ -290,6 +291,12 @@ impl CommandHandler for ExitCommandLineMode {
         // Get the cmdline input
         let cmdline = runtime.ext_mut::<CmdlineState>().take_cmdline_input();
 
+        // Exit cmdline and return to normal BEFORE dispatching the action.
+        // This ensures any mode transition made by the action (e.g., push_mode)
+        // stacks on top of NORMAL rather than being clobbered by set_mode below.
+        runtime.ext_mut::<CmdlineState>().exit();
+        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
+
         match prompt {
             CmdlinePrompt::SearchForward | CmdlinePrompt::SearchBackward => {
                 // Handle search
@@ -318,44 +325,77 @@ impl CommandHandler for ExitCommandLineMode {
             }
         }
 
-        // Deactivate cmdline and clear input
-        runtime.ext_mut::<CmdlineState>().exit();
-        runtime.set_mode(VimMode::NORMAL_ID, TransitionContext::new());
         CommandResult::Success
     }
 }
 
-/// Execute an ex-command via the `ExCommandRegistry` service.
+/// Execute an ex-command via `CommandNameIndex` and `runtime.execute_command()`.
 ///
-/// Looks up the registry in `ServiceRegistry` and dispatches the command.
-/// If the registry is not registered (no ex-commands loaded), logs a warning.
-fn execute_ex_command(runtime: &SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
-    use reovim_driver_command::{
-        ExCommandDispatcher, ExCommandRegistry, ExCommandResult, ExDispatchContext,
+/// Parses the command line, resolves the command name via `CommandNameIndex`,
+/// binds arguments to the command's `ArgSpec` declarations via `bind_args()`,
+/// and dispatches through the unified command system.
+fn execute_ex_command(runtime: &mut SessionRuntime<'_>, args: &CommandContext, cmdline: &str) {
+    use {
+        reovim_driver_command::{CommandNameIndex, bind_args, parse_cmdline},
+        reovim_driver_session::CommandApi,
     };
 
-    // Get registry from ServiceRegistry
-    let Some(registry) = runtime.kernel().services.get::<ExCommandRegistry>() else {
-        tracing::warn!("ExCommandRegistry not registered - ex-commands not available");
+    let Some(parsed) = parse_cmdline(cmdline) else {
         return;
     };
 
-    // Build dispatch context
-    let ctx = ExDispatchContext::new(args.buffer_id(), None);
+    let Some(name_index) = runtime.kernel().services.get::<CommandNameIndex>() else {
+        tracing::warn!("CommandNameIndex not registered - ex-commands not available");
+        return;
+    };
 
-    // Dispatch the command
-    match registry.dispatch(cmdline, runtime.kernel(), &ctx) {
-        ExCommandResult::Success => {
-            tracing::debug!(cmdline, "Ex-command executed successfully");
+    let (cmd_id, specs) = match name_index.resolve_prefix(&parsed.name) {
+        Ok(Some((id, cmd))) => (id.clone(), cmd.args()),
+        Ok(None) => {
+            let msg = format!("E492: Not an editor command: {}", parsed.name);
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(msg));
+            return;
         }
-        ExCommandResult::NotFound(name) => {
-            tracing::warn!(name, "Unknown ex-command");
-            // TODO: Show error message to user via status line
+        Err(ambiguous) => {
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(ambiguous.to_string()));
+            return;
         }
-        ExCommandResult::Error(msg) => {
-            tracing::warn!(cmdline, msg, "Ex-command failed");
-            // TODO: Show error message to user via status line
+    };
+    // Drop the borrow on name_index before calling execute_command
+    drop(name_index);
+
+    let bound = match bind_args(&specs, &parsed.raw_args, parsed.bang) {
+        Ok(map) => map,
+        Err(e) => {
+            runtime
+                .ext_mut::<CmdlineState>()
+                .set_message(CmdlineMessage::Error(e.to_string()));
+            return;
         }
+    };
+
+    // Build command context from bound arguments
+    let mut ctx = CommandContext::new();
+    for (name, value) in bound {
+        ctx.set(&name, value);
+    }
+    // Propagate buffer_id and VFS from outer args
+    if let Some(bid) = args.buffer_id() {
+        ctx.set_buffer_id(bid);
+    }
+    if let Some(vfs) = args.vfs() {
+        ctx.set_vfs(Arc::clone(vfs));
+    }
+
+    let result = runtime.execute_command(cmd_id, ctx);
+    if let CommandResult::Error(msg) = result {
+        runtime
+            .ext_mut::<CmdlineState>()
+            .set_message(CmdlineMessage::Error(msg));
     }
 }
 
@@ -658,7 +698,7 @@ impl CommandHandler for CmdlineHistoryDown {
 
 /// Cycle to next completion (Tab).
 ///
-/// On first press, queries `ExCommandQueryService` for candidates matching
+/// On first press, queries `CommandNameIndex` for candidates matching
 /// the current input prefix. On subsequent presses, cycles forward.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CmdlineCompleteNext;
@@ -701,7 +741,7 @@ impl CommandHandler for CmdlineCompletePrev {
     }
 }
 
-/// Populate completions from `ExCommandQueryService` if not already populated.
+/// Populate completions from `CommandNameIndex` if not already populated.
 fn populate_completions_if_needed(runtime: &mut SessionRuntime<'_>) {
     // Only populate when completions list is empty
     if !runtime.ext_mut::<CmdlineState>().completions().is_empty() {
@@ -713,18 +753,18 @@ fn populate_completions_if_needed(runtime: &mut SessionRuntime<'_>) {
         return;
     }
 
-    // Query ex-command registry for matching commands
+    // Query CommandNameIndex for matching commands (#547)
     let candidates = {
-        use reovim_driver_command::{ExCommandQueryService, ExCommandRegistry};
+        use reovim_driver_command::CommandNameIndex;
         runtime
             .kernel()
             .services
-            .get::<ExCommandRegistry>()
-            .map_or_else(Vec::new, |registry| {
-                registry
+            .get::<CommandNameIndex>()
+            .map_or_else(Vec::new, |index| {
+                index
                     .search_by_prefix(&prefix)
                     .into_iter()
-                    .flat_map(|info| info.names)
+                    .flat_map(|(_, cmd)| cmd.names().iter().copied().map(String::from))
                     .filter(|name| name.starts_with(&prefix))
                     .collect()
             })
@@ -812,7 +852,8 @@ mod tests {
         super::*,
         reovim_driver_command::Command,
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -887,13 +928,48 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
+        fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
+        }
+    }
+
+    /// Test executor that wraps `CommandHandler` instances for name-based dispatch tests.
+    struct TestExecutor {
+        handlers: HashMap<CommandId, Arc<dyn CommandHandler>>,
+    }
+
+    impl TestExecutor {
+        fn new() -> Self {
+            Self {
+                handlers: HashMap::new(),
+            }
+        }
+
+        fn register(&mut self, handler: Arc<dyn CommandHandler>) {
+            self.handlers.insert(handler.id(), handler);
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandExecutor for TestExecutor {
+        fn get_handle(&self, id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            self.handlers.get(id).map(|h| {
+                let handler = Arc::clone(h);
+                Arc::new(TestHandleBridge(handler)) as Arc<dyn CommandHandle>
+            })
+        }
+    }
+
+    struct TestHandleBridge(Arc<dyn CommandHandler>);
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandHandle for TestHandleBridge {
         fn execute(
             &self,
-            _: &CommandId,
-            _: &CommandContext,
-            _: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+            runtime: &mut SessionRuntime<'_>,
+            ctx: &reovim_driver_command::CommandContext,
+        ) -> CommandResult {
+            self.0.execute(runtime, ctx)
         }
     }
 
@@ -941,6 +1017,14 @@ mod tests {
         }
 
         fn runtime<'a>(&'a mut self, kernel: &'a KernelContext) -> SessionRuntime<'a> {
+            self.runtime_with_executor(kernel, &StubExecutor)
+        }
+
+        fn runtime_with_executor<'a>(
+            &'a mut self,
+            kernel: &'a KernelContext,
+            executor: &'a dyn CommandExecutor,
+        ) -> SessionRuntime<'a> {
             SessionRuntime::new(
                 &mut self.session,
                 reovim_driver_session::ClientContext {
@@ -956,7 +1040,7 @@ mod tests {
                     terminal_size: &mut self.terminal_size,
                 },
                 kernel,
-                &StubExecutor,
+                executor,
             )
         }
     }
@@ -1940,7 +2024,7 @@ mod tests {
         let mut state = TestState::with_buffer(None);
         let mut runtime = state.runtime(&ctx);
 
-        // Enter command mode with some input (no ExCommandRegistry registered)
+        // Enter command mode with some input (no CommandNameIndex registered)
         runtime
             .ext_mut::<CmdlineState>()
             .enter(CmdlinePrompt::Command);
@@ -1950,7 +2034,6 @@ mod tests {
 
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
-        // execute_ex_command logs warning but doesn't fail
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2315,14 +2398,62 @@ mod tests {
     }
 
     // ========================================================================
-    // execute_ex_command with ExCommandRegistry tests
+    // execute_ex_command with CommandNameIndex tests (#547)
     // ========================================================================
 
-    use reovim_driver_command::ExCommandRegistry;
+    use reovim_driver_command::CommandNameIndex;
 
-    fn create_test_context_with_ex_registry(registry: ExCommandRegistry) -> KernelContext {
+    /// Simple test command for ex-command dispatch tests.
+    struct ExTestCmd {
+        cmd_id: CommandId,
+        result: CommandResult,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl ExTestCmd {
+        fn success(name: &'static str) -> Self {
+            Self {
+                cmd_id: CommandId::new(reovim_kernel::api::v1::ModuleId::new("test"), name),
+                result: CommandResult::Success,
+            }
+        }
+
+        fn failing(name: &'static str) -> Self {
+            Self {
+                cmd_id: CommandId::new(reovim_kernel::api::v1::ModuleId::new("test"), name),
+                result: CommandResult::error("test failure"),
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for ExTestCmd {
+        fn id(&self) -> CommandId {
+            self.cmd_id.clone()
+        }
+        fn description(&self) -> &'static str {
+            "test"
+        }
+        fn names(&self) -> &[&'static str] {
+            // Determined by the actual test setup (name_index controls resolution)
+            &[]
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandHandler for ExTestCmd {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            self.result.clone()
+        }
+    }
+
+    fn create_test_context_with_name_index(name_index: CommandNameIndex) -> KernelContext {
         let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(registry));
+        services.register(Arc::new(name_index));
 
         KernelContext::new(
             Arc::new(EventBus::new()),
@@ -2338,31 +2469,24 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_success() {
-        use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
+        let cmd = Arc::new(ExTestCmd::success("test-cmd"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
 
-        struct TestCmd;
-        impl ExCommandHandler for TestCmd {
-            fn id(&self) -> &'static str {
-                "test"
-            }
-            fn names(&self) -> &[&'static str] {
-                &["test", "t"]
-            }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
-        }
+        // Build name index
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), Arc::clone(&cmd_as_command));
+        name_index.insert("t".to_string(), cmd.id(), cmd_as_command);
 
-        let registry = ExCommandRegistry::from_handlers(vec![Arc::new(TestCmd)]);
-        let ctx = create_test_context_with_ex_registry(registry);
+        // Build executor
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
         let args = CommandContext::new();
 
         let mut state = TestState::with_buffer(None);
-        let mut runtime = state.runtime(&ctx);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
 
         runtime
             .ext_mut::<CmdlineState>()
@@ -2378,8 +2502,9 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_not_found() {
-        let registry = ExCommandRegistry::new(); // empty
-        let ctx = create_test_context_with_ex_registry(registry);
+        // Empty name index — no commands registered
+        let name_index = CommandNameIndex::new();
+        let ctx = create_test_context_with_name_index(name_index);
         let args = CommandContext::new();
 
         let mut state = TestState::with_buffer(None);
@@ -2392,7 +2517,7 @@ mod tests {
             runtime.ext_mut::<CmdlineState>().insert_char(ch);
         }
 
-        // Should succeed (logs warning but doesn't fail)
+        // Should succeed but set error message on CmdlineState (#558)
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
     }
@@ -2400,31 +2525,21 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_exit_commandline_ex_command_error() {
-        use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
+        let cmd = Arc::new(ExTestCmd::failing("fail-cmd"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
 
-        struct FailCmd;
-        impl ExCommandHandler for FailCmd {
-            fn id(&self) -> &'static str {
-                "fail"
-            }
-            fn names(&self) -> &[&'static str] {
-                &["fail"]
-            }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Err(ExCommandError::ExecutionFailed("test failure".to_string()))
-            }
-        }
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("fail".to_string(), cmd.id(), cmd_as_command);
 
-        let registry = ExCommandRegistry::from_handlers(vec![Arc::new(FailCmd)]);
-        let ctx = create_test_context_with_ex_registry(registry);
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
         let args = CommandContext::new();
 
         let mut state = TestState::with_buffer(None);
-        let mut runtime = state.runtime(&ctx);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
 
         runtime
             .ext_mut::<CmdlineState>()
@@ -2433,7 +2548,123 @@ mod tests {
             runtime.ext_mut::<CmdlineState>().insert_char(ch);
         }
 
-        // Should succeed (logs error but doesn't fail)
+        // Should succeed but set error message on CmdlineState (#558)
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_whitespace_only() {
+        // Whitespace-only cmdline: passes !is_empty() but parse_cmdline returns None
+        let name_index = CommandNameIndex::new();
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime(&ctx);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        runtime.ext_mut::<CmdlineState>().insert_char(' ');
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_with_bang() {
+        let cmd = Arc::new(ExTestCmd::success("test-bang"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test!".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_with_args() {
+        let cmd = Arc::new(ExTestCmd::success("test-args"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let args = CommandContext::new();
+
+        let mut state = TestState::with_buffer(None);
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test filename.txt".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
+        let result = ExitCommandLineMode.execute(&mut runtime, &args);
+        assert_eq!(result, CommandResult::Success);
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_exit_commandline_ex_command_propagates_buffer_id_and_vfs() {
+        let cmd = Arc::new(ExTestCmd::success("test-ctx"));
+        let cmd_handler: Arc<dyn CommandHandler> = Arc::clone(&cmd) as Arc<dyn CommandHandler>;
+
+        let mut name_index = CommandNameIndex::new();
+        let cmd_as_command: Arc<dyn Command> = Arc::clone(&cmd) as Arc<dyn Command>;
+        name_index.insert("test".to_string(), cmd.id(), cmd_as_command);
+
+        let mut executor = TestExecutor::new();
+        executor.register(cmd_handler);
+
+        let ctx = create_test_context_with_name_index(name_index);
+        let buffer = Buffer::from_string("hello");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let mock_vfs = Arc::new(reovim_driver_vfs::MockVfs::new());
+        let mut args = CommandContext::new();
+        args.set_buffer_id(buffer_id);
+        args.set_vfs(Arc::clone(&mock_vfs) as Arc<dyn reovim_driver_vfs::VfsDriver>);
+
+        let mut state = TestState::with_buffer(Some(buffer_id));
+        let mut runtime = state.runtime_with_executor(&ctx, &executor);
+
+        runtime
+            .ext_mut::<CmdlineState>()
+            .enter(CmdlinePrompt::Command);
+        for ch in "test".chars() {
+            runtime.ext_mut::<CmdlineState>().insert_char(ch);
+        }
+
         let result = ExitCommandLineMode.execute(&mut runtime, &args);
         assert_eq!(result, CommandResult::Success);
     }
@@ -2893,46 +3124,43 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
-    fn test_cmdline_complete_next_with_registry() {
-        use reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler};
-
-        struct WriteHandler;
-        impl ExCommandHandler for WriteHandler {
-            fn id(&self) -> &'static str {
-                "write"
+    fn test_cmdline_complete_next_with_name_index() {
+        struct WriteCmd;
+        impl Command for WriteCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(reovim_kernel::api::v1::ModuleId::new("test"), "write")
+            }
+            fn description(&self) -> &'static str {
+                "Write"
             }
             fn names(&self) -> &[&'static str] {
                 &["w", "write"]
             }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
         }
 
-        struct WqHandler;
-        impl ExCommandHandler for WqHandler {
-            fn id(&self) -> &'static str {
-                "wq"
+        struct WqCmd;
+        impl Command for WqCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(reovim_kernel::api::v1::ModuleId::new("test"), "wq")
+            }
+            fn description(&self) -> &'static str {
+                "Write and quit"
             }
             fn names(&self) -> &[&'static str] {
                 &["wq"]
             }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
         }
 
-        let registry =
-            ExCommandRegistry::from_handlers(vec![Arc::new(WriteHandler), Arc::new(WqHandler)]);
-        let ctx = create_test_context_with_ex_registry(registry);
+        // Build a CommandNameIndex with "w", "write", "wq" names
+        let mut name_index = CommandNameIndex::new();
+        let write_cmd: Arc<dyn Command> = Arc::new(WriteCmd);
+        let wq_cmd: Arc<dyn Command> = Arc::new(WqCmd);
+
+        name_index.insert("w".to_string(), write_cmd.id(), Arc::clone(&write_cmd));
+        name_index.insert("write".to_string(), write_cmd.id(), write_cmd);
+        name_index.insert("wq".to_string(), wq_cmd.id(), wq_cmd);
+
+        let ctx = create_test_context_with_name_index(name_index);
         let args = CommandContext::new();
 
         let mut state = TestState::with_buffer(None);
@@ -2993,7 +3221,7 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_cmdline_complete_no_registry() {
-        let ctx = create_test_context(); // no ExCommandRegistry
+        let ctx = create_test_context(); // no CommandNameIndex
         let args = CommandContext::new();
 
         let mut state = TestState::with_buffer(None);

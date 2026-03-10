@@ -12,6 +12,8 @@
 
 use std::collections::HashMap;
 
+use reovim_kernel::api::v1::ServiceRegistry;
+
 use parking_lot::RwLock;
 #[cfg(feature = "grpc")]
 use {reovim_protocol::v2::Notification, tokio::sync::broadcast};
@@ -522,6 +524,31 @@ impl Session {
         Some(result)
     }
 
+    /// Execute a tick closure with mutable access to client + shared extensions (#546).
+    ///
+    /// Lock order: clients (write) → state (write). Same order as
+    /// [`resolve_key_for_client`](Self::resolve_key_for_client).
+    /// Returns `None` if client not connected or input is ignored (Following).
+    ///
+    /// Used by `TokioTickScheduler` for periodic state advancement.
+    #[cfg(feature = "grpc")]
+    pub fn with_tick_mut<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut ExtensionMap, &mut ExtensionMap, &ServiceRegistry) -> R,
+    {
+        let mut clients = self.clients.write();
+        let target_id = Self::find_input_target(&clients, client_id)?;
+        let target_client = clients.get_mut(&target_id)?;
+
+        let mut state = self.state.write();
+        // Clone the Arc before taking mutable borrows on extensions (#555).
+        let services = std::sync::Arc::clone(&state.app.services);
+        let result = f(&mut target_client.state.extensions, &mut state.app.extensions, &services);
+        drop(state);
+        drop(clients);
+        Some(result)
+    }
+
     /// Get count of connected clients.
     #[must_use]
     pub fn client_count(&self) -> usize {
@@ -584,6 +611,46 @@ impl Session {
     {
         let mut state = self.state.write();
         f(&mut state)
+    }
+
+    /// Execute a closure with combined read access to a client's extensions,
+    /// shared extensions, and pre-collected opponent extension maps (#543).
+    ///
+    /// Acquires locks in established order: `clients` (read) first, then `state`
+    /// (read). Resolves `effective_state()` for all clients to collect opponent
+    /// data as driver-layer `ClientId` + `&ExtensionMap` pairs.
+    ///
+    /// Returns `None` if `client_id` is not connected or has no effective state.
+    pub fn with_bridge_context<F, R>(&self, client_id: ClientId, f: F) -> Option<R>
+    where
+        F: FnOnce(
+            &ExtensionMap,
+            &ExtensionMap,
+            &[(reovim_driver_session::ClientId, &ExtensionMap)],
+        ) -> R,
+    {
+        let clients = self.clients.read();
+        let client = clients.get(&client_id)?;
+        let own_ext = &client.effective_state(&clients)?.extensions;
+
+        // Pre-collect opponent extension maps with driver-layer ClientId.
+        // The driver crate cannot see `Client`, so we resolve here.
+        let opponents: Vec<(reovim_driver_session::ClientId, &ExtensionMap)> = clients
+            .iter()
+            .filter(|&(&id, _)| id != client_id)
+            .filter_map(|(&id, c)| {
+                c.effective_state(&clients).map(|state| {
+                    (reovim_driver_session::ClientId::new(id.as_usize()), &state.extensions)
+                })
+            })
+            .collect();
+
+        let state = self.state.read();
+        let shared_ext = &state.app.extensions;
+        let result = f(own_ext, shared_ext, &opponents);
+        drop(state);
+        drop(clients);
+        Some(result)
     }
 
     // =========================================================================
@@ -732,8 +799,11 @@ impl Session {
         client_id: ClientId,
         cmd_id: &reovim_kernel::api::v1::CommandId,
         args: &reovim_driver_command_types::CommandContext,
-    ) -> Option<(reovim_driver_command::CommandResult, reovim_driver_session::api::StateChanges)>
-    {
+    ) -> Option<(
+        reovim_driver_command::CommandResult,
+        reovim_driver_session::api::StateChanges,
+        Vec<reovim_driver_command_types::RuntimeSignal>,
+    )> {
         // Acquire both locks in consistent order to avoid deadlocks
         let mut clients = self.clients.write();
         let mut state = self.state.write();
@@ -2828,6 +2898,15 @@ mod tests {
         assert!(result.is_none());
     }
 
+    /// Test extension replacing module-cmdline dev-dependency.
+    struct TestSessionExtension;
+
+    impl reovim_driver_session::SessionExtension for TestSessionExtension {
+        fn create() -> Self {
+            Self
+        }
+    }
+
     #[test]
     fn test_with_client_extensions_reads_extensions() {
         let session = Session::new(SessionId::new("test"));
@@ -2835,27 +2914,21 @@ mod tests {
         session.add_client(client_id);
 
         // Initially empty
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
-            })
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
-        assert!(!has_cmdline);
+        assert!(!has_ext);
 
-        // Insert CmdlineState
+        // Insert extension
         session.update_client_state(client_id, |state| {
-            state
-                .extensions
-                .get_or_insert::<reovim_module_cmdline::CmdlineState>();
+            state.extensions.get_or_insert::<TestSessionExtension>();
         });
 
         // Now it exists
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
-            })
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
             .unwrap();
-        assert!(has_cmdline);
+        assert!(has_ext);
     }
 
     // ========================================================================
@@ -2875,18 +2948,100 @@ mod tests {
         let client_id = ClientId::new(1);
         session.add_client(client_id);
 
-        // Insert CmdlineState via mutable access
+        // Insert extension via mutable access
         session.with_client_extensions_mut(client_id, |ext| {
-            ext.get_or_insert::<reovim_module_cmdline::CmdlineState>();
+            ext.get_or_insert::<TestSessionExtension>();
         });
 
         // Verify via read access
-        let has_cmdline = session
-            .with_client_extensions(client_id, |ext| {
-                ext.get::<reovim_module_cmdline::CmdlineState>().is_some()
+        let has_ext = session
+            .with_client_extensions(client_id, |ext| ext.get::<TestSessionExtension>().is_some())
+            .unwrap();
+        assert!(has_ext);
+    }
+
+    // ========================================================================
+    // with_bridge_context tests (#543)
+    // ========================================================================
+
+    #[test]
+    fn test_with_bridge_context_unknown_client_returns_none() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let result = session.with_bridge_context(ClientId::new(99), |_, _, _| ());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_own_extensions() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert extension into client 1
+        session.with_client_extensions_mut(client_id, |ext| {
+            ext.get_or_insert::<TestSessionExtension>();
+        });
+
+        let has_ext = session
+            .with_bridge_context(client_id, |own_ext, _, _| {
+                own_ext.get::<TestSessionExtension>().is_some()
             })
             .unwrap();
-        assert!(has_cmdline);
+        assert!(has_ext);
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_shared_extensions() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        // Insert extension into shared state
+        session.with_state_mut_sync(|state| {
+            state.app.extensions.get_or_insert::<TestSessionExtension>();
+        });
+
+        let has_ext = session
+            .with_bridge_context(client_id, |_, shared_ext, _| {
+                shared_ext.get::<TestSessionExtension>().is_some()
+            })
+            .unwrap();
+        assert!(has_ext);
+    }
+
+    #[test]
+    fn test_with_bridge_context_provides_opponents() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client1 = ClientId::new(1);
+        let client2 = ClientId::new(2);
+        session.add_client(client1);
+        session.add_client(client2);
+
+        // Client 1 should see client 2 as opponent
+        let opponent_count = session
+            .with_bridge_context(client1, |_, _, opponents| opponents.len())
+            .unwrap();
+        assert_eq!(opponent_count, 1);
+
+        // Client 2 should see client 1 as opponent
+        let opponent_ids: Vec<usize> = session
+            .with_bridge_context(client2, |_, _, opponents| {
+                opponents.iter().map(|(id, _)| id.as_usize()).collect()
+            })
+            .unwrap();
+        assert_eq!(opponent_ids, vec![1]);
+    }
+
+    #[test]
+    fn test_with_bridge_context_single_client_no_opponents() {
+        let session = Session::new(SessionId::new("bridge-ctx"));
+        let client_id = ClientId::new(1);
+        session.add_client(client_id);
+
+        let opponent_count = session
+            .with_bridge_context(client_id, |_, _, opponents| opponents.len())
+            .unwrap();
+        assert_eq!(opponent_count, 0);
     }
 
     // ========================================================================
@@ -3024,5 +3179,102 @@ mod tests {
         let ids = session.connected_client_ids();
         assert_eq!(ids.len(), 1);
         assert_eq!(ids[0].as_usize(), 2);
+    }
+
+    // =========================================================================
+    // with_tick_mut (#546)
+    // =========================================================================
+
+    #[test]
+    fn with_tick_mut_returns_none_for_unknown_client() {
+        let session = Session::new(SessionId::new("tick-test"));
+        let result = session.with_tick_mut(ClientId::new(99), |_, _, _| true);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn with_tick_mut_calls_closure() {
+        use reovim_driver_session::SessionExtension;
+
+        #[derive(Default)]
+        struct Counter {
+            count: usize,
+        }
+        impl SessionExtension for Counter {
+            fn create() -> Self {
+                Self::default()
+            }
+        }
+
+        let session = Session::new(SessionId::new("tick-test"));
+        session.add_client(ClientId::new(1));
+
+        let result =
+            session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+                let counter = client_ext.get_or_insert::<Counter>();
+                counter.count += 1;
+                counter.count
+            });
+        assert_eq!(result, Some(1));
+
+        // Second call accumulates
+        let result =
+            session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+                let counter = client_ext.get_or_insert::<Counter>();
+                counter.count += 1;
+                counter.count
+            });
+        assert_eq!(result, Some(2));
+    }
+
+    #[test]
+    fn with_tick_mut_accesses_shared_extensions() {
+        use reovim_driver_session::SessionExtension;
+
+        #[derive(Default)]
+        struct SharedData {
+            value: u32,
+        }
+        impl SessionExtension for SharedData {
+            fn create() -> Self {
+                Self::default()
+            }
+        }
+
+        let session = Session::new(SessionId::new("tick-shared"));
+        session.add_client(ClientId::new(1));
+
+        // Set shared state
+        session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
+            let data = shared_ext.get_or_insert::<SharedData>();
+            data.value = 42;
+        });
+
+        // Read it back
+        let result =
+            session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
+                let data = shared_ext.get_or_insert::<SharedData>();
+                data.value
+            });
+        assert_eq!(result, Some(42));
+    }
+
+    #[test]
+    fn with_tick_mut_returns_none_for_following_client() {
+        use crate::session::ClientRelation;
+
+        let session = Session::new(SessionId::new("tick-follow"));
+        session.add_client(ClientId::new(1));
+        session.add_client(ClientId::new(2));
+        let _ = session.set_client_relation(
+            ClientId::new(2),
+            Some(ClientRelation::Following {
+                target: ClientId::new(1),
+            }),
+        );
+
+        // Following clients have input ignored
+        let result = session.with_tick_mut(ClientId::new(2), |_, _, _| true);
+        assert!(result.is_none());
     }
 }

@@ -196,6 +196,32 @@ fn delete_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[DELETE_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Find/till character motions (#554)
+        KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Find character forward"),
+        KeybindingRegistration::new("F", motions::FIND_CHAR_BACKWARD)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Find character backward"),
+        KeybindingRegistration::new("t", motions::TILL_CHAR_FORWARD)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Till character forward"),
+        KeybindingRegistration::new("T", motions::TILL_CHAR_BACKWARD)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[DELETE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 
@@ -425,6 +451,32 @@ fn yank_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[YANK_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Find/till character motions (#554)
+        KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Find character forward"),
+        KeybindingRegistration::new("F", motions::FIND_CHAR_BACKWARD)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Find character backward"),
+        KeybindingRegistration::new("t", motions::TILL_CHAR_FORWARD)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Till character forward"),
+        KeybindingRegistration::new("T", motions::TILL_CHAR_BACKWARD)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[YANK_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 
@@ -652,6 +704,32 @@ fn change_motion_bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&[CHANGE_MODE])
             .with_category("motion")
             .with_description("Document end motion"),
+        // Find/till character motions (#554)
+        KeybindingRegistration::new("f", motions::FIND_CHAR_FORWARD)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Find character forward"),
+        KeybindingRegistration::new("F", motions::FIND_CHAR_BACKWARD)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Find character backward"),
+        KeybindingRegistration::new("t", motions::TILL_CHAR_FORWARD)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Till character forward"),
+        KeybindingRegistration::new("T", motions::TILL_CHAR_BACKWARD)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Till character backward"),
+        // Repeat find-char motions (#563)
+        KeybindingRegistration::new(";", motions::REPEAT_FIND_SAME)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find same direction"),
+        KeybindingRegistration::new(",", motions::REPEAT_FIND_REVERSE)
+            .with_modes(&[CHANGE_MODE])
+            .with_category("motion")
+            .with_description("Repeat find reverse direction"),
     ]
 }
 
@@ -1275,6 +1353,22 @@ mod tests {
             assert!(keys.contains(&"a("), "{mode_name} mode missing 'a(' textobj");
             assert!(keys.contains(&"a)"), "{mode_name} mode missing 'a)' textobj");
             assert!(keys.contains(&"ab"), "{mode_name} mode missing 'ab' textobj");
+        }
+    }
+
+    #[test]
+    fn test_find_char_keys_in_all_operator_modes() {
+        let modes: Vec<(&str, Vec<KeybindingRegistration>)> = vec![
+            ("delete", delete_bindings()),
+            ("yank", yank_bindings()),
+            ("change", change_bindings()),
+        ];
+        for (mode_name, bindings) in &modes {
+            let keys: Vec<_> = bindings.iter().map(|kb| kb.keys).collect();
+            assert!(keys.contains(&"f"), "{mode_name} mode missing 'f' binding");
+            assert!(keys.contains(&"F"), "{mode_name} mode missing 'F' binding");
+            assert!(keys.contains(&"t"), "{mode_name} mode missing 't' binding");
+            assert!(keys.contains(&"T"), "{mode_name} mode missing 'T' binding");
         }
     }
 }

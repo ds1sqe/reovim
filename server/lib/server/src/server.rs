@@ -292,6 +292,26 @@ impl Server {
         // Bridges are now collected from BridgeProvider by bootstrap, not hardcoded here.
         let bridges = Arc::clone(&self.bridge_registry);
 
+        // Tick scheduler for server-driven state advancement (#546).
+        // Modules call TickSchedulerHandle.start() to begin periodic ticking.
+        {
+            use reovim_driver_session::TickSchedulerHandle;
+
+            let tick_scheduler = Arc::new(crate::tick::TokioTickScheduler::new(
+                Arc::clone(&self.sessions),
+                default_session_id.clone(),
+                Arc::clone(&bridges),
+            ));
+
+            if let Some(session) = self.sessions.get(&default_session_id) {
+                session.with_state_mut_sync(|state| {
+                    let handle = state.app.services.get_or_create::<TickSchedulerHandle>();
+                    handle
+                        .set(tick_scheduler as Arc<dyn reovim_driver_session::tick::TickScheduler>);
+                });
+            }
+        }
+
         // Create all gRPC services
         let buffer_service =
             BufferServiceImpl::new(Arc::clone(&self.sessions), default_session_id.clone());
@@ -537,8 +557,34 @@ mod tests {
     #[cfg(feature = "grpc")]
     #[test]
     fn server_with_bridges() {
+        struct TestBridge;
+        impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+            fn kind(&self) -> &'static str {
+                "test-bridge"
+            }
+            fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
+                reovim_driver_session::bridges::ExtensionScope::Client
+            }
+            fn snapshot(
+                &self,
+                _: &reovim_driver_session::ExtensionMap,
+            ) -> Option<serde_json::Value> {
+                None
+            }
+            fn is_active(&self, _: &reovim_driver_session::ExtensionMap) -> bool {
+                false
+            }
+            fn on_mode_changed(
+                &self,
+                _from: &str,
+                _to: &str,
+                _: &mut reovim_driver_session::ExtensionMap,
+            ) {
+            }
+        }
+
         let mut registry = BridgeRegistry::new();
-        registry.register(reovim_module_cmdline::CmdlineBridge);
+        registry.register(TestBridge);
         let server = Server::new(ServerConfig::default()).with_bridges(registry);
         // Verify the bridge registry was set (it's inside an Arc)
         let _ = server;

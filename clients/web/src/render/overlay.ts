@@ -3,7 +3,7 @@
 // This module renders overlays (command-line, completion menus, hover info)
 // as floating DOM elements positioned relative to the editor.
 
-import type { LogicalOverlay, Anchor, OverlayState } from "../wasm/index.js";
+import type { LogicalOverlay, SemanticOrigin, OverlayState } from "../wasm/index.js";
 
 /**
  * Configuration for overlay positioning.
@@ -51,7 +51,7 @@ interface CompletionItem {
  * renderer.show({
  *   id: "completion-1",
  *   kind: "completion",
- *   anchor: "Cursor",
+ *   origin: { BufferPosition: { buffer_id: 1, line: 5, col: 12 } },
  *   data: { items: [{ label: "foo" }, { label: "bar" }] },
  *   state: { selected_index: 0 },
  *   priority: 10,
@@ -120,7 +120,7 @@ export class OverlayRenderer {
     }
 
     this.updateContent(el, overlay);
-    this.positionOverlay(el, overlay.anchor);
+    this.positionOverlay(el, overlay.origin ?? null);
     el.style.display = "block";
     el.setAttribute("aria-hidden", "false");
   }
@@ -460,63 +460,57 @@ export class OverlayRenderer {
   }
 
   /**
-   * Position overlay based on anchor.
+   * Position overlay based on semantic origin.
    *
-   * Anchor types from reovim-client-model:
-   * - "Cursor" - Position below the cursor
-   * - "Center" - Center on screen
-   * - { Buffer: { buffer_id, line, col } } - Position at buffer location
-   * - { Screen: { x, y } } - Normalized screen position (0.0-1.0)
-   * - { Below: "overlay_id" } - Position below another overlay
+   * The server provides informational origin metadata describing WHAT the
+   * data relates to. This client independently decides WHERE to render:
+   *
+   * - `BufferPosition` - Position below the referenced buffer location
+   * - `BufferRange` - Position at the start of the range
+   * - `Buffer` - Center on screen (buffer-level, no position)
+   * - `Session` - Center on screen (session-level)
+   * - `null` / `undefined` - Default to cursor position
    */
-  private positionOverlay(el: HTMLElement, anchor: Anchor): void {
+  private positionOverlay(el: HTMLElement, origin: SemanticOrigin | null | undefined): void {
     if (!this.container) return;
 
     const containerRect = this.container.getBoundingClientRect();
 
-    // Default position based on anchor
     let x: number;
     let y: number;
 
-    // Handle different anchor types
-    if (anchor === "Cursor") {
+    if (origin == null) {
+      // No origin — default to cursor position
       x = this.cursorX;
-      y = this.cursorY + this.config.lineHeight; // Below cursor
-    } else if (anchor === "Center") {
+      y = this.cursorY + this.config.lineHeight;
+    } else if (origin === "Session") {
+      // Session-level: center on screen
       x = (containerRect.width - el.offsetWidth) / 2;
       y = (containerRect.height - el.offsetHeight) / 2;
-    } else if (typeof anchor === "object") {
-      // Handle object anchor types
-      if ("Buffer" in anchor) {
-        // Buffer position anchor
-        const buf = anchor.Buffer as { buffer_id: number; line: number; col: number };
-        x = buf.col * this.config.charWidth + this.config.padding;
-        y = buf.line * this.config.lineHeight + this.config.padding;
-      } else if ("Screen" in anchor) {
-        // Normalized screen position (0.0-1.0)
-        const scr = anchor.Screen as { x: number; y: number };
-        x = scr.x * containerRect.width;
-        y = scr.y * containerRect.height;
-      } else if ("Below" in anchor) {
-        // Position below another overlay
-        const belowId = anchor.Below as string;
-        const belowEl = this.overlayElements.get(belowId);
-        if (belowEl) {
-          const belowRect = belowEl.getBoundingClientRect();
-          x = belowRect.left - containerRect.left;
-          y = belowRect.bottom - containerRect.top;
-        } else {
-          // Fallback to cursor position
-          x = this.cursorX;
-          y = this.cursorY + this.config.lineHeight;
-        }
+    } else if (typeof origin === "object") {
+      if ("BufferPosition" in origin) {
+        const pos = origin.BufferPosition as { buffer_id: number; line: number; col: number };
+        x = pos.col * this.config.charWidth + this.config.padding;
+        y = pos.line * this.config.lineHeight + this.config.padding + this.config.lineHeight;
+      } else if ("BufferRange" in origin) {
+        const range = origin.BufferRange as {
+          buffer_id: number;
+          start_line: number; start_col: number;
+          end_line: number; end_col: number;
+        };
+        x = range.start_col * this.config.charWidth + this.config.padding;
+        y = range.start_line * this.config.lineHeight + this.config.padding + this.config.lineHeight;
+      } else if ("Buffer" in origin) {
+        // Buffer-level, no position: center on screen
+        x = (containerRect.width - el.offsetWidth) / 2;
+        y = (containerRect.height - el.offsetHeight) / 2;
       } else {
-        // Unknown object anchor, default to cursor
+        // Unknown origin shape — default to cursor
         x = this.cursorX;
         y = this.cursorY + this.config.lineHeight;
       }
     } else {
-      // Fallback for any other anchor type
+      // Fallback
       x = this.cursorX;
       y = this.cursorY + this.config.lineHeight;
     }

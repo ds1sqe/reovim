@@ -5,7 +5,7 @@
 use {
     crate::args::ArgValue,
     reovim_driver_vfs::VfsDriver,
-    reovim_kernel::api::v1::{BufferId, Position},
+    reovim_kernel::api::v1::{BufferId, Position, WindowId},
     std::{collections::HashMap, sync::Arc},
 };
 
@@ -28,7 +28,7 @@ use {
 /// ```
 #[derive(Clone, Default)]
 pub struct CommandContext {
-    args: HashMap<&'static str, ArgValue>,
+    args: HashMap<String, ArgValue>,
     /// Optional VFS access for file operations.
     ///
     /// Set by the runner before dispatching commands that may need
@@ -59,8 +59,8 @@ impl CommandContext {
     }
 
     /// Set an argument value.
-    pub fn set(&mut self, name: &'static str, value: ArgValue) {
-        self.args.insert(name, value);
+    pub fn set(&mut self, name: &str, value: ArgValue) {
+        self.args.insert(name.to_owned(), value);
     }
 
     /// Get an argument value by name.
@@ -127,8 +127,26 @@ impl CommandContext {
     ///
     /// Called by the runner before dispatching a command.
     pub fn set_buffer_id(&mut self, id: BufferId) {
-        self.args
-            .insert("buffer_id", ArgValue::BufferId(id.as_usize()));
+        self.set("buffer_id", ArgValue::BufferId(id.as_usize()));
+    }
+
+    /// Get the active window ID, if present.
+    ///
+    /// The window ID is set by the runner before command execution
+    /// to indicate which window the command should operate on.
+    #[must_use]
+    pub fn window_id(&self) -> Option<WindowId> {
+        match self.args.get("window_id") {
+            Some(ArgValue::WindowId(id)) => Some(WindowId::from_raw(*id)),
+            _ => None,
+        }
+    }
+
+    /// Set the active window ID.
+    ///
+    /// Called by the runner before dispatching a command.
+    pub fn set_window_id(&mut self, id: WindowId) {
+        self.set("window_id", ArgValue::WindowId(id.as_usize()));
     }
 
     /// Create a command context with VFS access.
@@ -233,7 +251,16 @@ impl CommandContext {
     /// When true, operators should expand the range to full lines.
     #[must_use]
     pub fn is_linewise(&self) -> bool {
-        matches!(self.args.get("linewise"), Some(ArgValue::Bang(true)))
+        matches!(self.args.get("linewise"), Some(ArgValue::Bool(true)))
+    }
+
+    /// Get a boolean flag by name.
+    ///
+    /// Returns `true` only if the named argument is `ArgValue::Bool(true)`.
+    /// Returns `false` for missing values, `Bool(false)`, or wrong types.
+    #[must_use]
+    pub fn bool_flag(&self, name: &str) -> bool {
+        matches!(self.args.get(name), Some(ArgValue::Bool(true)))
     }
 
     // === Per-Window State (Issue #471) ===
@@ -283,8 +310,7 @@ impl CommandContext {
     /// buffer, which may not be the ACTIVE window. Explicit passing ensures
     /// we always use the correct cursor position.
     pub fn set_cursor_position(&mut self, pos: Position) {
-        self.args
-            .insert("cursor", ArgValue::Position(pos.line, pos.column));
+        self.set("cursor", ArgValue::Position(pos.line, pos.column));
     }
 }
 
@@ -310,6 +336,7 @@ mod tests {
         assert!(ctx.mode_name().is_none());
         assert!(ctx.cursor_position().is_none());
         assert!(ctx.buffer_id().is_none());
+        assert!(ctx.window_id().is_none());
         assert!(ctx.range().is_none());
         assert!(!ctx.is_operator_pending());
         assert!(!ctx.is_linewise());
@@ -455,6 +482,36 @@ mod tests {
         let mut ctx = CommandContext::new();
         ctx.set("buffer_id", ArgValue::Count(42));
         assert!(ctx.buffer_id().is_none());
+    }
+
+    // === window_id() tests ===
+
+    #[test]
+    fn test_command_context_window_id_none_by_default() {
+        let ctx = CommandContext::new();
+        assert!(ctx.window_id().is_none());
+    }
+
+    #[test]
+    fn test_command_context_set_window_id() {
+        let mut ctx = CommandContext::new();
+        let id = WindowId::from_raw(7);
+        ctx.set_window_id(id);
+        assert_eq!(ctx.window_id(), Some(WindowId::from_raw(7)));
+    }
+
+    #[test]
+    fn test_command_context_window_id_zero() {
+        let mut ctx = CommandContext::new();
+        ctx.set_window_id(WindowId::from_raw(0));
+        assert_eq!(ctx.window_id(), Some(WindowId::from_raw(0)));
+    }
+
+    #[test]
+    fn test_command_context_window_id_wrong_type_returns_none() {
+        let mut ctx = CommandContext::new();
+        ctx.set("window_id", ArgValue::Count(7));
+        assert!(ctx.window_id().is_none());
     }
 
     #[test]
@@ -665,14 +722,14 @@ mod tests {
     #[test]
     fn test_command_context_is_linewise_true() {
         let mut ctx = CommandContext::new();
-        ctx.set("linewise", ArgValue::Bang(true));
+        ctx.set("linewise", ArgValue::Bool(true));
         assert!(ctx.is_linewise());
     }
 
     #[test]
     fn test_command_context_is_linewise_false() {
         let mut ctx = CommandContext::new();
-        ctx.set("linewise", ArgValue::Bang(false));
+        ctx.set("linewise", ArgValue::Bool(false));
         assert!(!ctx.is_linewise());
     }
 
@@ -687,6 +744,35 @@ mod tests {
         let mut ctx = CommandContext::new();
         ctx.set("linewise", ArgValue::Count(1));
         assert!(!ctx.is_linewise());
+    }
+
+    // === bool_flag() tests ===
+
+    #[test]
+    fn test_command_context_bool_flag_true() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bool(true));
+        assert!(ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_false() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bool(false));
+        assert!(!ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_missing() {
+        let ctx = CommandContext::new();
+        assert!(!ctx.bool_flag("inclusive"));
+    }
+
+    #[test]
+    fn test_command_context_bool_flag_wrong_type() {
+        let mut ctx = CommandContext::new();
+        ctx.set("inclusive", ArgValue::Bang(true));
+        assert!(!ctx.bool_flag("inclusive"));
     }
 
     // === get() tests ===

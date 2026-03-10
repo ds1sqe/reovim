@@ -181,7 +181,7 @@ mod tests {
         state.open(vec![make_snapshot("foo", CompletionKind::Function)], "f");
         assert!(state.active);
 
-        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+        CompletionBridge.on_mode_changed("test:insert", "test:normal", &mut map);
 
         let state = map.get::<CompletionState>().unwrap();
         assert!(!state.active);
@@ -194,7 +194,7 @@ mod tests {
         map.get_or_insert::<CompletionState>();
 
         // Not active — should not panic.
-        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+        CompletionBridge.on_mode_changed("test:insert", "test:normal", &mut map);
 
         let state = map.get::<CompletionState>().unwrap();
         assert!(!state.active);
@@ -204,7 +204,7 @@ mod tests {
     fn on_mode_changed_noop_no_state() {
         let mut map = ExtensionMap::new();
         // No CompletionState at all — should not panic.
-        CompletionBridge.on_mode_changed("vim:insert", "vim:normal", &mut map);
+        CompletionBridge.on_mode_changed("test:insert", "test:normal", &mut map);
     }
 
     // ========================================================================

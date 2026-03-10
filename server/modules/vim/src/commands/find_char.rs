@@ -62,9 +62,9 @@ impl CommandHandler for ExecuteFindChar {
         // Get direction (default: forward)
         let forward = args.string("find_direction") != Some("backward");
 
-        // Get inclusive flag (default: true for find, false for till)
+        // Get inclusive flag (default: true for find, false for till).
         let inclusive = match args.get("find_inclusive") {
-            Some(ArgValue::Bang(b)) => *b,
+            Some(ArgValue::Bool(b)) => *b,
             _ => true,
         };
 
@@ -76,7 +76,14 @@ impl CommandHandler for ExecuteFindChar {
             return CommandResult::error("No active buffer");
         };
 
-        // Build the find-char motion
+        // Get cursor position from active window
+        let Some(window) = runtime.windows().active() else {
+            return CommandResult::error("No active window");
+        };
+        let cursor_line = window.cursor.line;
+        let cursor_col = window.cursor.column;
+
+        let cursor = Cursor::new(Position::new(cursor_line, cursor_col));
         let motion = Motion::FindChar {
             char: target_char,
             direction: if forward {
@@ -87,13 +94,6 @@ impl CommandHandler for ExecuteFindChar {
             till: !inclusive,
         };
 
-        // Get cursor position from active window
-        let Some(window) = runtime.windows().active() else {
-            return CommandResult::error("No active window");
-        };
-        let cursor = Cursor::new(Position::new(window.cursor.line, window.cursor.column));
-
-        // Calculate motion target using with_buffer_read callback
         let target = runtime.with_buffer_read(buffer_id, |buffer| {
             MotionEngine::calculate(buffer, &cursor, motion, count)
         });
@@ -124,7 +124,8 @@ mod tests {
         super::*,
         reovim_driver_command::CommandHandler,
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -196,13 +197,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _: &CommandId,
-            _: &CommandContext,
-            _: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -421,7 +417,7 @@ mod tests {
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
         args.set("find_char", ArgValue::Char('o'));
-        args.set("find_inclusive", ArgValue::Bang(false)); // till mode
+        args.set("find_inclusive", ArgValue::Bool(false)); // till mode
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         let mut runtime = state.runtime(&ctx);
@@ -536,7 +532,7 @@ mod tests {
         args.set_buffer_id(buffer_id);
         args.set("find_char", ArgValue::Char('h'));
         args.set("find_direction", ArgValue::String("backward".to_string()));
-        args.set("find_inclusive", ArgValue::Bang(false)); // till mode
+        args.set("find_inclusive", ArgValue::Bool(false)); // till mode
 
         let mut state = TestState::with_buffer(Some(buffer_id));
         if let Some(w) = state.windows.active_mut() {

@@ -26,13 +26,14 @@ use std::sync::Arc;
 
 use {
     parking_lot::RwLock,
-    reovim_driver_command::{
-        CommandHandlerStore, CommandQueryService, ExCommandHandlerStore, ExCommandRegistry,
-    },
+    reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
-    reovim_driver_syntax::SyntaxFactoryStore,
+    reovim_driver_syntax::{
+        CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
+        SyntaxFactoryStore,
+    },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
         EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
@@ -122,8 +123,10 @@ pub fn create_session_state() -> SessionState {
     services.register(command_query_snapshot);
     services.register(command_query_provider);
 
-    // Extract ex-command handlers and create registry (#465)
-    extract_ex_command_registry(&services);
+    // Build CommandNameIndex for vim dispatch (#547)
+    let name_index = Arc::new(command_registry.build_name_index());
+    tracing::info!(count = name_index.count(), "Built command name index");
+    services.register(name_index);
 
     // Create session state with populated registries
     let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
@@ -133,6 +136,15 @@ pub fn create_session_state() -> SessionState {
 
     // Register VFS in ServiceRegistry so ex-commands can access it (#465)
     services.register(Arc::new(VfsInstance::new(Arc::clone(&vfs))));
+
+    // Register theme system (#541): SharedThemeManager + ThemeLoader
+    {
+        use reovim_driver_display::style::{BuiltinTheme, SharedThemeManager, ThemeLoader};
+        let theme_manager = SharedThemeManager::new(BuiltinTheme::Dark.load());
+        services.register(Arc::new(theme_manager));
+        let theme_loader = ThemeLoader::new();
+        services.register(Arc::new(theme_loader));
+    }
 
     let mut state = SessionState::with_registries(
         kernel,
@@ -195,6 +207,8 @@ fn extract_registries(
     //    Each KeybindingRegistration declares modes as "module:name" strings
     //    (e.g., "vim:normal"). We resolve these to ModeId via mode_registry.
     let mut keymap_registry = KeymapRegistry::new();
+    // Wire Vim-style lookup policy (#542): wait for longer sequences (dd after d)
+    keymap_registry.set_default_policy(Arc::new(reovim_module_vim::VimLookupPolicy));
     if let Some(store) = services.get::<KeybindingStore>() {
         let mut wired = 0usize;
         for binding in store.take_keybindings() {
@@ -242,30 +256,6 @@ fn extract_registries(
     tracing::info!(count = resolver_registry.len(), "Extracted resolvers");
 
     (mode_registry, command_registry, keymap_registry, resolver_registry)
-}
-
-/// Extract ex-command handlers and create `ExCommandRegistry`.
-///
-/// Follows the same pattern as `extract_registries`:
-/// - `ExCommandHandlerStore` → `ExCommandRegistry`
-///
-/// The registry is stored back in `ServiceRegistry` so the vim module's
-/// `ExitCommandLineMode` can look it up at runtime.
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn extract_ex_command_registry(services: &Arc<ServiceRegistry>) {
-    // 5. Ex-commands: ExCommandHandlerStore → ExCommandRegistry (#465)
-    //    Ex-commands like :w, :q, :e are dispatched through this registry
-    if let Some(store) = services.get::<ExCommandHandlerStore>() {
-        let handlers = store.take_handlers();
-        let registry = ExCommandRegistry::from_handlers(handlers);
-        let count = registry.len();
-        services.register(Arc::new(registry));
-        tracing::info!(count, "Extracted ex-commands");
-    } else {
-        // No ex-commands registered - create empty registry
-        services.register(Arc::new(ExCommandRegistry::new()));
-        tracing::debug!("No ex-commands registered, created empty registry");
-    }
 }
 
 /// Resolve a mode string like `"vim:normal"` to a `ModeId`.
@@ -460,23 +450,33 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
         return;
     };
 
-    // Take all factories and use the first one
-    // Future: aggregate into CompositeFactory for multiple languages
+    // Take all factories and build a CompositeFactory that routes by language ID
     let factories = store.take_factories();
     if factories.is_empty() {
         tracing::debug!("No syntax factories registered");
         return;
     }
 
-    // For now, use first factory (TODO: CompositeFactory for multiple languages)
-    let factory = factories.into_iter().next().unwrap();
+    let composite = CompositeFactory::new(factories);
+    let count = composite.factory_count();
+    let factory = Arc::new(composite);
     let languages = factory.supported_languages();
 
-    tracing::info!(count = 1, ?languages, "Configured syntax highlighting from modules");
+    tracing::info!(count, ?languages, "Configured syntax highlighting from modules");
 
     // Configure SyntaxSessionState with the factory (#491: use app.extensions)
     let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
     syntax_state.set_factory(factory);
+
+    // Build language registry from LanguageInfoStore (populated by treesitter modules)
+    if let Some(lang_store) = services.get::<LanguageInfoStore>() {
+        let lang_infos = lang_store.take_all();
+        if !lang_infos.is_empty() {
+            let registry = DefaultLanguageRegistry::new(lang_infos);
+            tracing::info!(?registry, "Built language registry");
+            syntax_state.set_registry(Arc::new(registry));
+        }
+    }
 }
 
 /// Get the default data directory for modules.
@@ -599,16 +599,6 @@ mod tests {
         let dir_str = dir.to_string_lossy();
         assert!(dir_str.contains("reovim"));
         assert!(dir_str.contains("modules"));
-    }
-
-    #[test]
-    fn test_extract_ex_command_registry_empty() {
-        let services = Arc::new(ServiceRegistry::new());
-        // Should not panic even without store
-        extract_ex_command_registry(&services);
-        // Should have created empty ExCommandRegistry
-        let reg = services.get::<ExCommandRegistry>();
-        assert!(reg.is_some());
     }
 
     #[test]

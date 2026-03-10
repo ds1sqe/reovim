@@ -116,6 +116,27 @@ impl JumpSessionState {
         self.direction = direction;
     }
 
+    /// Start a jump session with pre-computed matches (e.g., from f/t motions).
+    ///
+    /// Skips the two-character search and jumps directly to `ShowingLabels`.
+    /// The matches must already have labels assigned via [`generate_labels`].
+    ///
+    /// # Panics
+    ///
+    /// Does not panic on empty matches — simply stays inactive.
+    pub fn start_with_matches(&mut self, matches: Vec<JumpMatch>) {
+        self.target = None;
+        self.lines.clear();
+
+        if matches.is_empty() {
+            self.phase = JumpPhase::Inactive;
+            return;
+        }
+
+        let label_len = matches[0].label.len();
+        self.phase = JumpPhase::ShowingLabels { matches, label_len };
+    }
+
     /// Cancel the current jump search, returning to inactive.
     pub fn cancel(&mut self) {
         self.phase = JumpPhase::Inactive;
@@ -594,5 +615,110 @@ mod tests {
         let labels = crate::jump::search::generate_labels(5);
         assert_eq!(labels.len(), 5);
         assert_eq!(labels[0], "s");
+    }
+
+    // =========================================================================
+    // start_with_matches
+    // =========================================================================
+
+    #[test]
+    fn test_start_with_matches_empty() {
+        let mut state = JumpSessionState::default();
+        state.start_with_matches(vec![]);
+        assert!(!state.is_active());
+    }
+
+    #[test]
+    fn test_start_with_matches_shows_labels() {
+        let mut state = JumpSessionState::default();
+        let labels = crate::jump::search::generate_labels(3);
+        let matches = vec![
+            JumpMatch::new(0, 5, labels[0].clone(), 5),
+            JumpMatch::new(0, 10, labels[1].clone(), 10),
+            JumpMatch::new(0, 15, labels[2].clone(), 15),
+        ];
+        state.start_with_matches(matches);
+        assert!(state.is_active());
+        let m = state.get_matches().expect("should have matches");
+        assert_eq!(m.len(), 3);
+        assert_eq!(m[0].label, "s");
+    }
+
+    #[test]
+    fn test_start_with_matches_label_selection() {
+        let mut state = JumpSessionState::default();
+        let labels = crate::jump::search::generate_labels(3);
+        let matches = vec![
+            JumpMatch::new(0, 5, labels[0].clone(), 5),
+            JumpMatch::new(0, 10, labels[1].clone(), 10),
+            JumpMatch::new(0, 15, labels[2].clone(), 15),
+        ];
+        state.start_with_matches(matches);
+
+        // Select second label ("f")
+        state.insert_char('f');
+        assert!(!state.is_active());
+        let target = state.take_target().expect("should have target");
+        assert_eq!(target.line, 0);
+        assert_eq!(target.col, 10);
+    }
+
+    #[test]
+    fn test_start_with_matches_cancel() {
+        let mut state = JumpSessionState::default();
+        let labels = crate::jump::search::generate_labels(2);
+        let matches = vec![
+            JumpMatch::new(0, 5, labels[0].clone(), 5),
+            JumpMatch::new(0, 10, labels[1].clone(), 10),
+        ];
+        state.start_with_matches(matches);
+        state.cancel();
+        assert!(!state.is_active());
+        assert!(state.take_target().is_none());
+    }
+
+    #[test]
+    fn test_start_with_matches_clears_previous_target() {
+        let mut state = JumpSessionState::default();
+        // First: auto-jump sets a target
+        state.start(vec!["hello world".into()], 0, 100, Direction::Both);
+        state.insert_char('w');
+        state.insert_char('o');
+        assert!(state.has_target());
+
+        // start_with_matches clears the old target
+        let labels = crate::jump::search::generate_labels(2);
+        let matches = vec![
+            JumpMatch::new(0, 5, labels[0].clone(), 5),
+            JumpMatch::new(0, 10, labels[1].clone(), 10),
+        ];
+        state.start_with_matches(matches);
+        assert!(!state.has_target());
+        assert!(state.is_active());
+    }
+
+    #[test]
+    #[allow(clippy::cast_possible_truncation)]
+    fn test_start_with_matches_two_char_labels() {
+        let mut state = JumpSessionState::default();
+        let labels = crate::jump::search::generate_labels(30);
+        let matches: Vec<JumpMatch> = labels
+            .iter()
+            .enumerate()
+            .map(|(i, l)| JumpMatch::new(0, i as u32, l.clone(), i as u32))
+            .collect();
+        state.start_with_matches(matches);
+        assert!(state.is_active());
+
+        let m = state.get_matches().unwrap();
+        assert_eq!(m[0].label.len(), 2); // Two-char labels
+
+        // Select "ss" (first label)
+        state.insert_char('s');
+        assert!(state.is_active()); // Waiting for second char
+        state.insert_char('s');
+        assert!(!state.is_active());
+        let target = state.take_target().expect("should have target");
+        assert_eq!(target.col, 0);
     }
 }

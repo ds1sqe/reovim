@@ -14,17 +14,19 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     reovim_driver_command::{
-        CommandContext, CommandHandler, CommandInfo, CommandQueryService, CommandResult,
+        CommandContext, CommandHandler, CommandInfo, CommandPriority, CommandQueryService,
+        CommandResult,
     },
-    reovim_driver_session::{Session as DriverSession, SessionRuntime, api::CommandExecutor},
+    reovim_driver_session::{
+        Session as DriverSession, SessionRuntime,
+        api::{CommandExecutor, CommandHandle},
+    },
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::{
         api::v1::{CommandId, KernelContext, ModuleId, Service},
         profile_scope,
     },
 };
-
-use crate::app::AppState;
 
 /// Entry in the command registry with optional ownership tracking.
 #[derive(Clone)]
@@ -33,6 +35,8 @@ struct CommandEntry {
     handler: Arc<dyn CommandHandler>,
     /// The module that owns this command (if any).
     owner: Option<ModuleId>,
+    /// Registration priority (#545). Higher priority wins on conflict.
+    priority: CommandPriority,
 }
 
 /// Registry for command handlers.
@@ -59,14 +63,27 @@ impl CommandRegistry {
     /// Register a command handler (without module ownership).
     ///
     /// The command's ID is obtained from the handler via its `id()` method.
-    /// If a command with the same ID already exists, it is replaced.
+    /// If a command with the same ID already exists, the higher priority
+    /// handler wins. Equal priority uses last-wins semantics (#545).
     pub fn register(&mut self, handler: Arc<dyn CommandHandler>) {
         let id = handler.id();
+        let new_priority = handler.priority();
+
+        // Only replace if new handler has >= priority (#545)
+        if self
+            .entries
+            .get(&id)
+            .is_some_and(|existing| new_priority < existing.priority)
+        {
+            return;
+        }
+
         self.entries.insert(
             id,
             CommandEntry {
                 handler,
                 owner: None,
+                priority: new_priority,
             },
         );
     }
@@ -74,17 +91,29 @@ impl CommandRegistry {
     /// Register a command handler with module ownership.
     ///
     /// The command's ID is obtained from the handler via its `id()` method.
-    /// If a command with the same ID already exists, it is replaced.
+    /// If a command with the same ID already exists, the higher priority
+    /// handler wins. Equal priority uses last-wins semantics (#545).
     ///
     /// When the owning module is unloaded, this command will be automatically
     /// deregistered via [`Self::unregister_for_module`].
     pub fn register_for_module(&mut self, handler: Arc<dyn CommandHandler>, owner: ModuleId) {
         let id = handler.id();
+        let new_priority = handler.priority();
+
+        if self
+            .entries
+            .get(&id)
+            .is_some_and(|existing| new_priority < existing.priority)
+        {
+            return;
+        }
+
         self.entries.insert(
             id,
             CommandEntry {
                 handler,
                 owner: Some(owner),
+                priority: new_priority,
             },
         );
     }
@@ -123,9 +152,10 @@ impl CommandRegistry {
     /// * `id` - The command ID to execute
     /// * `driver_session` - Driver session (for shared state like buffers)
     /// * `client` - Per-client state bundle (mode, windows, extensions, registers, etc.)
-    /// * `app` - Application state (contains `KernelContext`)
+    /// * `kernel` - Kernel context (buffers, event bus, options)
     /// * `vfs` - VFS driver for file operations
     /// * `args` - Command arguments (count, register, etc.)
+    /// * `shared_extensions` - Optional shared extension map for cross-client state (#543)
     #[must_use]
     #[allow(clippy::too_many_arguments)] // bundled via ClientContext, remaining are distinct concerns
     pub fn execute_for_client(
@@ -134,10 +164,15 @@ impl CommandRegistry {
         id: &CommandId,
         driver_session: &mut DriverSession,
         client: reovim_driver_session::ClientContext<'_>,
-        app: &AppState,
+        kernel: &KernelContext,
         vfs: &Arc<dyn VfsDriver>,
         args: &CommandContext,
-    ) -> Option<(CommandResult, reovim_driver_session::api::StateChanges)> {
+        shared_extensions: Option<&mut reovim_driver_session::ExtensionMap>,
+    ) -> Option<(
+        CommandResult,
+        reovim_driver_session::api::StateChanges,
+        Vec<reovim_driver_command_types::RuntimeSignal>,
+    )> {
         use reovim_driver_session::{ClientId as DriverClientId, api::ChangeTracker};
         profile_scope!("command_execute_for_client", "server::command");
 
@@ -150,25 +185,26 @@ impl CommandRegistry {
             }
             ctx.set_vfs(Arc::clone(vfs));
 
-            // Create SessionRuntime with per-client state and owner (#471, #477, #515)
+            // Create SessionRuntime with per-client state and real executor (#471, #477, #515, #547)
             // The owner enables undo_mine()/redo_mine() for per-client undo
-            let stub_executor = StubCommandExecutor;
+            // Passing `self` (CommandRegistry) enables re-entrant command execution
             let driver_client_id = DriverClientId::new(client_id);
-            let mut runtime = SessionRuntime::with_owner(
-                driver_client_id,
-                driver_session,
-                client,
-                &app.kernel,
-                &stub_executor,
-            );
+            let mut runtime =
+                SessionRuntime::with_owner(driver_client_id, driver_session, client, kernel, self);
+
+            // Wire up session-wide shared extensions (#543)
+            if let Some(ext) = shared_extensions {
+                runtime = runtime.with_shared_extensions(ext);
+            }
 
             // Execute command
             let result = entry.handler.execute(&mut runtime, &ctx);
 
-            // Take accumulated changes (selection, buffer mods, mode changes, etc.)
+            // Take accumulated changes and signals (#547)
             let changes = runtime.take_changes();
+            let signals = runtime.take_signals();
 
-            (result, changes)
+            (result, changes, signals)
         })
     }
 
@@ -187,6 +223,25 @@ impl CommandRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// Build a [`CommandNameIndex`] from this registry.
+    ///
+    /// Iterates all registered handlers and maps each name alias to
+    /// the command's ID and `Command` trait object. The resulting index
+    /// is stored in `ServiceRegistry` for vim dispatch (#547).
+    #[must_use]
+    pub fn build_name_index(&self) -> reovim_driver_command::CommandNameIndex {
+        let mut index = reovim_driver_command::CommandNameIndex::new();
+        for entry in self.entries.values() {
+            let id = entry.handler.id();
+            let handler = Arc::clone(&entry.handler);
+            let cmd: Arc<dyn reovim_driver_command::Command> = handler;
+            for &name in cmd.names() {
+                index.insert(name.to_string(), id.clone(), Arc::clone(&cmd));
+            }
+        }
+        index
     }
 
     /// Get all command infos for query service.
@@ -252,7 +307,7 @@ impl CommandQueryService for CommandQuerySnapshot {
             .cloned()
     }
 
-    fn list_ex_commands(&self) -> Vec<CommandInfo> {
+    fn list_user_commands(&self) -> Vec<CommandInfo> {
         self.commands
             .iter()
             .filter(|info| !info.names.is_empty())
@@ -269,42 +324,28 @@ impl CommandQueryService for CommandQuerySnapshot {
     }
 }
 
-// === Stub CommandExecutor for internal use ===
+// === HandlerBridge: CommandHandler -> CommandHandle (#547) ===
 
-/// Stub executor that returns an error for any command execution.
+/// Bridge from `CommandHandler` (command crate) to `CommandHandle` (session crate).
 ///
-/// Used when creating `SessionRuntime` for command execution - commands
-/// should not recursively call other commands via `execute_command()`.
-struct StubCommandExecutor;
+/// Wraps an `Arc<dyn CommandHandler>` so it can be returned from
+/// `CommandExecutor::get_handle()`. This breaks the session -> command
+/// dependency cycle while enabling re-entrant command execution.
+struct HandlerBridge(Arc<dyn CommandHandler>);
 
-impl CommandExecutor for StubCommandExecutor {
-    fn execute(
-        &self,
-        _cmd: &CommandId,
-        _ctx: &CommandContext,
-        _kernel: &KernelContext,
-    ) -> Option<CommandResult> {
-        // Commands cannot recursively execute other commands via SessionRuntime
-        Some(CommandResult::Error("recursive command execution not supported".to_string()))
+impl CommandHandle for HandlerBridge {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
+        self.0.execute(runtime, ctx)
     }
 }
 
 // === CommandExecutor implementation for CommandRegistry ===
 
 impl CommandExecutor for CommandRegistry {
-    fn execute(
-        &self,
-        _cmd: &CommandId,
-        _ctx: &CommandContext,
-        _kernel: &KernelContext,
-    ) -> Option<CommandResult> {
-        profile_scope!("command_execute_via_executor", "server::command");
-
-        // NOTE: This implementation is complex because commands now need SessionRuntime,
-        // but CommandExecutor only provides KernelContext. For now, return an error.
-        Some(CommandResult::Error(
-            "command execution via CommandExecutor not yet implemented".to_string(),
-        ))
+    fn get_handle(&self, id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
+        self.entries.get(id).map(|entry| {
+            Arc::new(HandlerBridge(Arc::clone(&entry.handler))) as Arc<dyn CommandHandle>
+        })
     }
 }
 
@@ -315,7 +356,7 @@ mod tests {
         reovim_driver_command::{ArgSpec, Command},
         reovim_driver_session::ClientId,
         reovim_driver_vfs::MockVfs,
-        reovim_kernel::api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
+        reovim_kernel::api::v1::{HistoryRing, KernelContext, MarkBank, ModuleId, RegisterBank},
     };
 
     fn test_vfs() -> Arc<dyn VfsDriver> {
@@ -411,7 +452,6 @@ mod tests {
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone()); // #491
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
 
@@ -443,12 +483,13 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_some());
-        let (cmd_result, _changes) = result.unwrap();
+        let (cmd_result, _changes, _signals) = result.unwrap();
         assert_eq!(cmd_result, CommandResult::Success);
     }
 
@@ -482,10 +523,133 @@ mod tests {
         registry.register(Arc::new(TestCommand::new("same-cmd")));
         assert_eq!(registry.len(), 1);
 
-        // Register again - should replace
+        // Register again - should replace (same priority, last wins)
         registry.register(Arc::new(TestCommand::new("same-cmd")));
         assert_eq!(registry.len(), 1);
         assert!(registry.contains(&id));
+    }
+
+    // ========================================================================
+    // CommandPriority tests (#545)
+    // ========================================================================
+
+    /// Test command with configurable priority.
+    struct PriorityTestCommand {
+        id: CommandId,
+        name: &'static str,
+        priority: reovim_driver_command::CommandPriority,
+        desc: &'static str,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl PriorityTestCommand {
+        fn normal(name: &'static str) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                name,
+                priority: reovim_driver_command::CommandPriority::Normal,
+                desc: "Normal priority",
+            }
+        }
+
+        fn override_priority(name: &'static str) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                name,
+                priority: reovim_driver_command::CommandPriority::Override,
+                desc: "Override priority",
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for PriorityTestCommand {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+        fn description(&self) -> &'static str {
+            self.desc
+        }
+        fn names(&self) -> &[&'static str] {
+            std::slice::from_ref(&self.name)
+        }
+        fn priority(&self) -> reovim_driver_command::CommandPriority {
+            self.priority
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandHandler for PriorityTestCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
+    #[test]
+    fn test_override_priority_wins_over_normal() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Register normal first
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(registry.get(&id).unwrap().description(), "Normal priority");
+
+        // Register override second - should replace
+        registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
+        assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
+    }
+
+    #[test]
+    fn test_normal_cannot_replace_override() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Register override first
+        registry.register(Arc::new(PriorityTestCommand::override_priority("cmd")));
+        assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
+
+        // Register normal second - should NOT replace
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_equal_priority_last_wins() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+
+        // Two normal-priority commands: last one wins
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+        assert_eq!(registry.len(), 1);
+        assert!(registry.contains(&id));
+    }
+
+    #[test]
+    fn test_priority_with_register_for_module() {
+        let mut registry = CommandRegistry::new();
+        let id = CommandId::new(ModuleId::new("test"), "cmd");
+        let owner = ModuleId::new("adapter");
+
+        // Register normal first (no owner)
+        registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
+
+        // Register override with module ownership - should replace
+        registry
+            .register_for_module(Arc::new(PriorityTestCommand::override_priority("cmd")), owner);
+        assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
+
+        // Try to replace with normal + different owner - should NOT replace
+        registry.register_for_module(
+            Arc::new(PriorityTestCommand::normal("cmd")),
+            ModuleId::new("other"),
+        );
+        assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
     }
 
     #[test]
@@ -555,14 +719,14 @@ mod tests {
     }
 
     #[test]
-    fn test_command_query_snapshot_list_ex_commands() {
+    fn test_command_query_snapshot_list_user_commands() {
         let mut registry = CommandRegistry::new();
         registry.register(Arc::new(TestCommand::new("ex-cmd1")));
         registry.register(Arc::new(TestCommand::new("ex-cmd2")));
 
         let snapshot = CommandQuerySnapshot::from_registry(&registry);
-        let ex_commands = snapshot.list_ex_commands();
-        assert_eq!(ex_commands.len(), 2);
+        let user_commands = snapshot.list_user_commands();
+        assert_eq!(user_commands.len(), 2);
     }
 
     #[test]
@@ -576,40 +740,24 @@ mod tests {
         assert_eq!(all_commands.len(), 2);
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
-    fn test_stub_command_executor() {
-        let executor = StubCommandExecutor;
-        let id = CommandId::new(ModuleId::new("test"), "cmd");
-        let ctx = CommandContext::new();
-        let kernel = KernelContext::default();
+    fn test_command_registry_get_handle_found() {
+        let mut registry = CommandRegistry::new();
+        let cmd = TestCommand::new("handle-cmd");
+        let id = cmd.id.clone();
+        registry.register(Arc::new(cmd));
 
-        let result = executor.execute(&id, &ctx, &kernel);
-        assert!(result.is_some());
-        match result.unwrap() {
-            CommandResult::Error(msg) => {
-                assert!(msg.contains("recursive command execution not supported"));
-            }
-            _ => panic!("Expected error result"),
-        }
+        let handle = registry.get_handle(&id);
+        assert!(handle.is_some());
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
-    fn test_command_registry_executor_trait() {
+    fn test_command_registry_get_handle_not_found() {
         let registry = CommandRegistry::new();
-        let id = CommandId::new(ModuleId::new("test"), "cmd");
-        let ctx = CommandContext::new();
-        let kernel = KernelContext::default();
+        let id = CommandId::new(ModuleId::new("test"), "nonexistent");
 
-        let result = registry.execute(&id, &ctx, &kernel);
-        assert!(result.is_some());
-        match result.unwrap() {
-            CommandResult::Error(msg) => {
-                assert!(msg.contains("not yet implemented"));
-            }
-            _ => panic!("Expected error result"),
-        }
+        let handle = registry.get_handle(&id);
+        assert!(handle.is_none());
     }
 
     #[test]
@@ -618,7 +766,6 @@ mod tests {
         let kernel = KernelContext::default();
         let mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "normal");
         let mut driver_session = DriverSession::new(ClientId::new(0), mode.clone());
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
         let id = CommandId::new(ModuleId::new("test"), "nonexistent");
@@ -650,9 +797,10 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_none());
     }
@@ -717,7 +865,6 @@ mod tests {
 
         let buffer_id = BufferId::from_raw(1);
 
-        let app = AppState::new(kernel);
         let vfs = test_vfs();
         let args = CommandContext::new();
 
@@ -748,9 +895,10 @@ mod tests {
                 active_buffer: &mut active_buffer,
                 terminal_size: &mut terminal_size,
             },
-            &app,
+            &kernel,
             &vfs,
             &args,
+            None,
         );
         assert!(result.is_some());
     }
@@ -796,7 +944,7 @@ mod tests {
     }
 
     #[test]
-    fn test_command_query_snapshot_list_ex_commands_excludes_internal() {
+    fn test_command_query_snapshot_list_user_commands_excludes_internal() {
         // TestCommand always has a name, so create an internal-only command
         struct InternalCommand;
 
@@ -831,10 +979,10 @@ mod tests {
         let snapshot = CommandQuerySnapshot::from_registry(&registry);
         // list_all includes internal
         assert_eq!(snapshot.count(), 2);
-        // list_ex_commands excludes internal (no names)
-        let ex_cmds = snapshot.list_ex_commands();
-        assert_eq!(ex_cmds.len(), 1);
-        assert_eq!(ex_cmds[0].names[0], "visible");
+        // list_user_commands excludes internal (no names)
+        let user_cmds = snapshot.list_user_commands();
+        assert_eq!(user_cmds.len(), 1);
+        assert_eq!(user_cmds[0].names[0], "visible");
     }
 
     #[test]
@@ -846,5 +994,94 @@ mod tests {
         let removed = registry.unregister_for_module(&nonexistent);
         assert_eq!(removed, 0);
         assert_eq!(registry.len(), 1);
+    }
+
+    // ========================================================================
+    // build_name_index() tests (#547 Phase 8)
+    // ========================================================================
+
+    /// Test command with multiple name aliases for name index tests.
+    struct MultiNameCommand {
+        id: CommandId,
+        names: &'static [&'static str],
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl MultiNameCommand {
+        fn new(name: &'static str, names: &'static [&'static str]) -> Self {
+            Self {
+                id: CommandId::new(ModuleId::new("test"), name),
+                names,
+            }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl Command for MultiNameCommand {
+        fn id(&self) -> CommandId {
+            self.id.clone()
+        }
+        fn description(&self) -> &'static str {
+            "Multi-name command"
+        }
+        fn names(&self) -> &[&'static str] {
+            self.names
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl CommandHandler for MultiNameCommand {
+        fn execute(
+            &self,
+            _runtime: &mut SessionRuntime<'_>,
+            _args: &CommandContext,
+        ) -> CommandResult {
+            CommandResult::Success
+        }
+    }
+
+    #[test]
+    fn test_build_name_index_from_registry() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(MultiNameCommand::new("write", &["w", "write"])));
+        registry.register(Arc::new(MultiNameCommand::new("quit", &["q", "quit"])));
+
+        let index = registry.build_name_index();
+        assert_eq!(index.count(), 2); // 2 unique commands
+
+        // All aliases resolve
+        assert!(index.resolve("w").is_some());
+        assert!(index.resolve("write").is_some());
+        assert!(index.resolve("q").is_some());
+        assert!(index.resolve("quit").is_some());
+    }
+
+    #[test]
+    fn test_build_name_index_aliases_same_id() {
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(MultiNameCommand::new("write", &["w", "write"])));
+
+        let index = registry.build_name_index();
+        let id_w = index.resolve("w").unwrap();
+        let id_write = index.resolve("write").unwrap();
+        assert_eq!(id_w, id_write);
+    }
+
+    #[test]
+    fn test_build_name_index_empty_registry() {
+        let registry = CommandRegistry::new();
+        let index = registry.build_name_index();
+        assert_eq!(index.count(), 0);
+    }
+
+    #[test]
+    fn test_build_name_index_commands_without_names() {
+        // Commands without names (internal-only) should not appear in index
+        let mut registry = CommandRegistry::new();
+        registry.register(Arc::new(TestCommand::new("internal-cmd")));
+
+        let index = registry.build_name_index();
+        // TestCommand has one name (its name field), so it appears
+        assert!(index.resolve("internal-cmd").is_some());
     }
 }

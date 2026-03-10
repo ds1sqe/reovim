@@ -1,0 +1,32 @@
+[package]
+name = "reovim-module-vim-range-finder"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Vim keybindings for range-finder commands - adapter bridging vim and range-finder"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-command = { workspace = true }
+reovim-driver-input = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-module-range-finder = { workspace = true }
+reovim-module-macros = { workspace = true }
+
+[dev-dependencies]
+reovim-driver-buffer = { workspace = true }
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

@@ -29,12 +29,11 @@
 use {
     crate::{
         ClientId, Session, WindowLayout,
-        api::{CommandExecutor, StateChanges},
+        api::{CommandExecutor, CommandHandle, StateChanges},
         extension::ExtensionMap,
         runtime::SessionRuntime,
     },
     reovim_arch::sync::RwLock,
-    reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_kernel::api::v1::{
         Buffer, BufferError, BufferId, BufferManager, CommandId, HistoryRing, KernelContext,
         MarkBank, ModeId, ModeStack, ModuleId, Position, RegisterBank,
@@ -498,18 +497,13 @@ impl BufferManager for TestBufferManager {
 
 /// Stub command executor for testing.
 ///
-/// Always returns `Success` for any command execution.
+/// Returns `None` (command not found) for all lookups.
 struct StubExecutor;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandExecutor for StubExecutor {
-    fn execute(
-        &self,
-        _cmd: &CommandId,
-        _ctx: &CommandContext,
-        _kernel: &KernelContext,
-    ) -> Option<CommandResult> {
-        Some(CommandResult::Success)
+    fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
+        None
     }
 }
 

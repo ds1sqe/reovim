@@ -1,8 +1,7 @@
 // Command query service for command completion (#453).
 //
 // Provides command discovery and argument completion for cmdline UI.
-// Covers both keybinding commands (CommandQueryService) and
-// ex-commands (ExCommandQueryService).
+// Covers both user commands (named, :-invocable) and keybinding commands.
 
 syntax = "proto3";
 package reovim.v2;
@@ -10,10 +9,10 @@ package reovim.v2;
 service CommandService {
   // Search commands by name prefix (tab completion).
   //
-  // Searches both keybinding commands and ex-commands.
+  // Searches both user commands and keybinding commands.
   rpc SearchCommands(SearchCommandsRequest) returns (SearchCommandsResponse);
 
-  // Complete arguments for a specific ex-command.
+  // Complete arguments for a specific user command.
   //
   // Delegates to the command's complete() implementation.
   rpc CompleteArgs(CompleteArgsRequest) returns (CompleteArgsResponse);
@@ -29,20 +28,20 @@ message SearchCommandsRequest {
 enum CommandSource {
   // Search all command types.
   COMMAND_SOURCE_ALL = 0;
-  // Search only ex-commands (:-prefixed).
-  COMMAND_SOURCE_EX = 1;
+  // Search only user commands (named, :-invocable).
+  COMMAND_SOURCE_USER = 1;
   // Search only keybinding commands.
   COMMAND_SOURCE_KEYBINDING = 2;
 }
 
 message SearchCommandsResponse {
-  // Matching ex-commands.
-  repeated ExCommandEntry ex_commands = 1;
+  // Matching user commands.
+  repeated UserCommandEntry user_commands = 1;
   // Matching keybinding commands.
   repeated KeybindingCommandEntry keybinding_commands = 2;
 }
 
-message ExCommandEntry {
+message UserCommandEntry {
   // Handler identifier (e.g., "write").
   string id = 1;
   // Command aliases (e.g., ["w", "write"]).
@@ -54,14 +53,14 @@ message ExCommandEntry {
 message KeybindingCommandEntry {
   // Command ID (module:name format, e.g., "motions:cursor-down").
   string id = 1;
-  // Ex-command aliases (may be empty for internal commands).
+  // User command aliases (may be empty for internal commands).
   repeated string names = 2;
   // Description.
   string description = 3;
 }
 
 message CompleteArgsRequest {
-  // Ex-command name (e.g., "colorscheme").
+  // User command name (e.g., "colorscheme").
   string command = 1;
   // Partial argument input (e.g., "dar" for colorscheme completion).
   string partial = 2;

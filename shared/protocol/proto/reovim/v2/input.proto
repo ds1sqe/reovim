@@ -21,6 +21,8 @@ message SendKeysRequest {
 message SendKeysResponse {
   bool ok = 1;
   KeyStatus status = 2;
+  // Server signals client should disconnect (e.g., :q command).
+  bool should_quit = 3;
 }
 
 enum KeyStatus {

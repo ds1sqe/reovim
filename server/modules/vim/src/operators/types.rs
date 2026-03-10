@@ -184,6 +184,13 @@ pub struct OperatorContext<'a> {
     /// This is passed from the caller who has access to window state.
     /// Used to record `cursor_before` for undo.
     pub cursor_position: Position,
+    /// Cursor position the operator requests after execution.
+    ///
+    /// Set by operators during `execute()` to communicate desired post-operation
+    /// cursor position. `None` means the caller applies a default clamped fallback.
+    /// This makes `OperatorContext` a bidirectional channel — consistent with
+    /// `registers` and `clipboard_history` which are also mutated during execute.
+    pub cursor_after: Option<Position>,
 }
 
 /// Operator execution errors.
@@ -439,6 +446,7 @@ mod tests {
             register: Register::Slot('a'),
             count: 3,
             cursor_position: Position::new(5, 10),
+            cursor_after: None,
         };
         assert_eq!(op_ctx.buffer_id, BufferId::from_raw(42));
         assert_eq!(op_ctx.register, Register::Slot('a'));
@@ -460,6 +468,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::origin(),
+            cursor_after: None,
         };
         assert_eq!(op_ctx.register, Register::Default);
         assert_eq!(op_ctx.count, 1);

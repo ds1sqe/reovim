@@ -6,15 +6,420 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Find-char repeat with extensible coordinator pattern (#563)**: Implement `;`
+  (repeat last find-char same direction) and `,` (repeat reversed) using a two-command
+  coordinator/execution split. `DISPATCH_FIND_CHAR` (motions module) records
+  `FindCharState` then delegates to overridable `EXECUTE_FIND_CHAR` (vim module),
+  enabling future providers (range-finder, easymotion) via `Priority::Override`.
+  Policy-free `FindCharRecord` and `FindCharState` types in session driver follow
+  `SearchState` precedent. Keybindings added to normal and all operator modes
+  (delete, yank, change). `LastFind` removed from vim module (replaced by shared state).
+- **Decoration system (#551)**: General-purpose decoration engine for markdown
+  rendering with block and inline decorations. Language modules provide tree-sitter
+  queries and declarative `DecorationRule` mappings; the `SyntaxDriver` trait
+  exposes `decorations()` alongside `highlights()`.
+  - Block decorations: heading icons, bullet concealment, checkbox replacement,
+    blockquote bars, horizontal rules, code fence markers
+  - Inline decorations: code span backtick concealment, link URL concealment,
+    emphasis/bold/strikethrough highlighting
+  - Dual-grammar support: `TreeSitterDriverBuilder::inline_decoration()` for
+    secondary parsers (e.g., Markdown block + inline)
+  - Session wiring: `decorations()` merged into `build_token_update()`,
+    `notify_edit()`, and `send_full_refresh()`
+  - Fixed `get_tokens()` and `stream_tokens()` gRPC handlers to transmit
+    `AnnotationKind` (was hardcoding `kind: None`)
+  - Insert mode cursor-line reveal: conceals bypassed on cursor line in insert
+    mode (raw text visible while typing)
+  - Cursor column remapping: visual cursor position accounts for conceal offsets
+    via `source_to_display_col`
+- **TUI syntax highlighting (#548)**: Wire `AnnotationCacheManager` and `ThemeManager`
+  into the TUI render engine for per-character syntax coloring. `render_line_content()`
+  queries cached tokens for each line and resolves categories to styled colors via
+  the theme system. Completes the last-mile gap: tree-sitter tokens now produce
+  visible colored output in the terminal.
+- Syntax session integration: wire SyntaxDriver into session model for live token streaming (#539)
+- Layered annotation system: open `HighlightCategory(Arc<str>)` replaces closed `HighlightGroup` enum (#540)
+  - `Annotation` type with `AnnotationKind` (Highlight, Conceal, Background, VirtualText)
+  - Remove `CaptureMapper` — tree-sitter capture names map directly to `HighlightCategory` strings
+  - Multi-layer `LayeredTokenCache` with priority-based compositing in display driver
+  - Expanded theme groups: 42 base categories + 30 sub-categories with hierarchical fallback
+  - Protocol updated with `AnnotationKind` and layer support
+  - Dynamic injection layer creation: `InjectionManager` lazily creates layers via `InjectionLayerStore`
+- Theme system enhancements (#541)
+  - Base theme inheritance: `base = "dark"` in TOML overlays custom styles on built-in theme
+  - `[decoration]` section in theme files with `decoration.` prefix
+  - `ThemeInfo` struct and `ThemeLoader::discover()` for structured theme enumeration
+  - `$REOVIM_THEME_DIR` environment variable for custom theme search path
+  - `ThemeLoader::load()` falls back to built-in themes when file not found
+  - `SharedThemeManager` and `ThemeLoader` registered in server `ServiceRegistry` at bootstrap
+  - `:colorscheme` command loads file-based themes through `ThemeLoader`
+- `CompositeFactory` routes `create()` across all registered `SyntaxDriverFactory` instances
+- `LanguageInfoStore` for module self-registration of language metadata during `init()`
+- `DefaultLanguageRegistry` detects language from file path extensions and MIME types
+- `SyntaxSessionState.ensure_driver_from_path()` for automatic language detection and driver creation
+- `emit_syntax_updates` broadcasts token updates to stream subscribers on buffer modification
+- `build_token_update` standalone helper for extracting highlights from drivers
+- **Event-driven LSP lifecycle (#531, Phase 10)**: LSP server startup moved from
+  completion-trigger to kernel event subscriptions. `:e` command now emits
+  `FileOpened` and `FileTypeChanged` kernel events after file load, with
+  case-insensitive `file_type_from_extension()` mapping 17 extensions to LSP
+  language IDs. LSP module (`reovim-module-lsp`) subscribes to `FileOpened`,
+  `BufferClosed`, `BufferModified`, and `BufferSaved` events at
+  `priority::PLUGIN` via RAII subscription pattern. `LspBufferTracker`
+  (ServiceRegistry, RwLock-backed) tracks buffer-to-path/language mappings with
+  monotonically increasing version numbers for LSP spec compliance.
+  `LspStartingGuard` (AtomicBool) prevents concurrent server starts. Double-open
+  guard prevents duplicate `DidOpen` notifications. `send_request` failures are
+  logged as warnings. Four event handlers: `handle_file_opened` (auto-start +
+  DidOpen), `handle_buffer_closed` (DidClose), `handle_buffer_modified`
+  (DidChange with versioning), `handle_buffer_saved` (DidSave placeholder).
+  Completion module decoupled: removed `reovim-module-lsp` and `tokio`
+  dependencies, `fire_lsp_completion()` returns early without active provider.
+  `RecordingLspProvider` mock enables full send-path test coverage. 325 unit
+  tests across affected modules, zero clippy warnings.
+
+- **LSP navigation gd/gr (#532)**: New `reovim-module-lsp-navigation` module
+  providing Go-to-Definition (`gd`) and Find References (`gr`) commands via LSP.
+  `LspLocationPicker` implements `Picker` trait for multi-result navigation with
+  file preview. Pure helper functions: `definition_to_locations` (handles Scalar,
+  Array, Link response variants), `path_from_uri` (fluent_uri `file://` stripping),
+  `location_to_picker_item` (0→1 indexed conversion), `language_from_path`
+  (case-insensitive extension matching), `find_provider` (language key + default
+  fallback), `has_definition_capability` / `has_references_capability` (server
+  capability checks). Single-result jumps directly; multi-result opens picker via
+  MicroscopeState injection. New `reovim-module-vim-lsp` adapter crate bridges
+  vim (editor personality) and lsp-navigation (code intelligence) with explicit,
+  visible coupling: `gd`/`gr` keybindings target `vim:normal` mode with "lsp"
+  category. Neither vim nor lsp-navigation knows about the other — the adapter
+  is the sole coupling point, swappable for alternative editor personalities.
+  Modules wired into defaults bundle (28 modules). 65 unit tests (54 lsp-navigation
+  + 11 vim-lsp adapter) with full coverage.
+
+- **LSP dynamic capability registration (#533)**: Handle `client/registerCapability`
+  and `client/unregisterCapability` server-to-client requests by parsing
+  `RegistrationParams`/`UnregistrationParams` and updating stored
+  `ServerCapabilities`. New `CapabilityStore` in driver layer wraps
+  `ArcSwap<ServerCapabilities>` for lock-free reads and atomic updates,
+  following the `DiagnosticCache` pattern. Supports 8 LSP methods:
+  completion, hover, definition, references, signatureHelp, codeAction,
+  formatting, documentSymbol. `LspProvider::capabilities()` trait signature
+  changed from `Option<&ServerCapabilities>` to `Option<Arc<ServerCapabilities>>`
+  to support dynamic updates (consumers unchanged via Arc deref). Client
+  capabilities now advertise `dynamic_registration: true` for completion,
+  hover, definition, and references. Registration ID tracking enables
+  proper unregistration by ID. 41 new tests across driver and module crates.
+
+- **LSP hover, signature help, write + DidSave**: Three LSP features completing
+  the core LSP integration on `reovim-lsp` branch.
+  - **Hover command (K)**: `HoverCommand` handler in `lsp-navigation` module sends
+    `LspRequest::Hover` with oneshot channel, formats all `HoverContents` variants
+    (Scalar/String, Scalar/LanguageString, Array, Markup) via `format_hover_content()`,
+    displays result through `NotificationState`. `has_hover_capability()` pure helper
+    checks server capabilities. `K` keybinding in `vim:normal` mode via `vim-lsp` adapter.
+  - **Signature help (`<C-k>`)**: `SignatureHelpCommand` handler sends
+    `LspRequest::SignatureHelp`, formats active signature label via
+    `format_signature_help()`. `has_signature_help_capability()` capability check.
+    New `LspRequest::SignatureHelp` variant with oneshot response channel.
+    `Client::signature_help()` async method. SignatureHelp client capability
+    advertised with dynamic registration, documentation format, parameter info,
+    and active parameter support. `<C-k>` keybinding in `vim:insert` mode.
+  - **Write command (`:w`)**: Replace placeholder with actual VFS-backed
+    implementation. Resolves target path (explicit arg or buffer's existing path),
+    reads buffer content, writes via `VfsDriver::write_str()`, renames buffer on
+    save-as, clears modified flag, emits `BufferSaved` kernel event.
+  - **DidSave notification**: `LspRequest::DidSave` variant with URI and optional
+    text. `Client::did_save()` sync notification method. Saturator `DidSave` handler.
+    `LspModule` subscribes to `BufferSaved` kernel events and forwards `DidSave`
+    notifications to all active LSP providers via `LspProviderRegistry`.
+  - 433 tests across 5 affected crates, zero clippy warnings.
+
+- **LSP extension pairs for hover and signature help (#550)**: Upgrade hover
+  and signature help from toast notifications to dedicated TUI popup extensions
+  using the `ExtensionStateBridge` + `TuiExtension` pattern.
+  - **Server-side**: `HoverState` and `SignatureHelpState` session extensions
+    store active content and origin position. `HoverBridge` and
+    `SignatureHelpBridge` implement `ExtensionStateBridge` (client scope) with
+    JSON serialization and auto-dismiss on mode change. Both registered via
+    `BridgeProvider` in `lsp-navigation` module `init()`. `HoverCommand` and
+    `SignatureHelpCommand` now set extension state instead of `notify_info()`.
+    `hover_content_type()` detects PlainText vs Markdown from `HoverContents`.
+  - **TUI hover extension**: `HoverExtension` renders multi-line bordered popup
+    near cursor with content-type-aware border color (cyan=markdown,
+    grey=plaintext). Popup width scales with terminal (max 60%, min 20 cols).
+    Positioned below origin, falls back above or top.
+  - **TUI signature help extension**: `SignatureHelpExtension` renders
+    single-line bordered popup with yellow border above origin. Falls back
+    below or top when no room above.
+  - Both TUI extensions use typed `#[derive(Deserialize)]` for JSON parsing
+    with `Origin::BufferPosition` deserialization.
+  - 179 tests across 4 crates (118 lsp-navigation + 4 defaults + 37 hover
+    + 24 signature-help), zero clippy warnings.
+
+- **LSP diagnostics extension pair (#550)**: Inline diagnostic rendering via
+  `DiagnosticBridge` (shared scope, tick-based) + `DiagnosticsExtension`.
+  - **Server-side**: `DiagnosticSnapshot` and `DiagnosticPathIndex` (URI-to-buffer
+    mapping) services. `DiagnosticBridge` reads `LspProviderRegistry` caches
+    on `tick()`, resolves URIs to buffer IDs, and populates snapshot in shared
+    `ExtensionMap`. `entries_eq` comparison avoids unnecessary notifications.
+    `convert_severity` maps LSP severity enum to internal `DiagnosticSeverity`.
+  - **TUI extension**: `DiagnosticsExtension` renders colored underlines on
+    single-line diagnostics and right-aligned virtual text (severity prefix +
+    message). Uses `ViewportContext::buffer_id` to filter for focused buffer.
+    `ViewportContext` extended with `buffer_id: Option<u64>` field.
+  - 118 tests across 3 crates (89 lsp + 4 defaults + 25 diagnostics), zero
+    clippy warnings.
+
+- **FFI execution API for external modules (#384)**: Full runtime bridge enabling
+  C, Python, and Haskell modules to access the same capabilities as native Rust
+  modules. Thread-local `RuntimeGuard`/`InitGuard` RAII pattern (inspired by
+  Neovim's Lua bridge) provides safe access to `SessionRuntime` during command
+  callbacks. Buffer API (10 functions: active buffer, line read, content read,
+  line count, line length, text range, insert, delete range, create, delete).
+  Window API (7 functions: active window, cursor position, window count, buffer
+  lookup, create, close, focus). Mode API (5 functions: current mode, mode depth,
+  push, pop, set). Command API (2 functions: register callback, execute by ID).
+  Event API (2 functions: subscribe with callback, unsubscribe). All FFI functions
+  use caller-owned buffer pattern for string reads, `#[repr(C)]` types
+  (`ReovimPosition`, `ReovimStringResult`, `ReovimCommandArgs`), and 11 distinct
+  negative `i32` error codes. `FfiCommandHandlerStore` and
+  `FfiEventSubscriptionStore` integrate with `ServiceRegistry` during module init.
+  Python bindings via PyO3 (`PyRuntimeApi` class) wrap the runtime bridge
+  directly. v2 enhancements: panic safety hardening (`ffi_catch_unwind` wraps
+  all 36 `unsafe extern "C"` functions, returning `REOVIM_ERR_PANIC` on unwind).
+  Clipboard API (4 functions: copy/paste for system clipboard and X11 primary
+  selection, graceful degradation when unavailable). Register API (2 functions:
+  get/set with `ReovimYankType` enum for characterwise/linewise distinction).
+  Undo API (4 functions: undo, redo, can_undo, can_redo — edits auto-apply,
+  FFI receives cursor position only; `record_edit` deferred to v3). Python
+  bindings extended with 10 new methods covering clipboard, register, and undo.
+  ABI version bumped to 1.2.0 (backward compatible). C header (`reovim.h`)
+  updated with `ReovimYankType` enum and all new function declarations.
+  333 unit tests (257 FFI + 76 Python), zero clippy warnings.
+- **Range-finder client extensions and enhanced f/t motions (#535)**:
+  - Phase 1: `ViewportContext` API on `TuiExtension` trait — `render_with_viewport()`
+    provides scroll offset and content geometry for buffer-position-aware rendering.
+    Default delegation to `render()` ensures backward compatibility.
+  - Phase 2: TUI jump label extension renders labeled overlay at buffer positions
+    with viewport-aware coordinate math (scroll subtraction, content offset).
+    Two-char label styling with dim second character.
+  - Phase 3: TUI fold extension with per-buffer fold state, hidden line range
+    caching via `fold_hidden_lines()` trait method, and active-buffer context tracking.
+  - Phase 4: Web client jump and fold extensions (`range-finder-jump.ts`,
+    `range-finder-fold.ts`) mirror TUI implementations with DOM rendering.
+  - Phase 5: Fold-aware render engine — `render_buffer_content` uses while-loop
+    that queries `fold_hidden_lines()` to skip hidden lines, preserving screen
+    real estate for visible content.
+  - Phase 6: Enhanced f/t motions with multi-match jump label dispatch.
+    `ExecuteFindChar` (vim module) detects multiple matches on a line and
+    dispatches to `StartFindCharJumpCommand` (range-finder) via `CommandId`
+    string — zero horizontal module coupling. Graceful fallback to first-match
+    when range-finder module is not loaded. `start_with_matches()` on
+    `JumpSessionState` bypasses two-char search, entering ShowingLabels directly.
+    Match positions serialized as JSON to avoid type coupling between modules.
+- **Polyblocks game module** (`reovim-module-tetromino`) - Loadable module architecture proof-of-concept (#537, #544)
+  - Server-side: game engine, bridge, commands, modes (MENU/PLAY/PAUSED/LOBBY/ROOM/RESULT), key resolvers, keybindings
+  - TUI extension (`reovim-tui-ext-tetromino`) - Renders board, active piece, next piece, hold piece, score, opponent view
+  - Start with `<C-t>` in normal mode; hjkl/arrows for movement, Space for hard drop, p to pause, q/Esc to quit
+  - Ghost piece (landing preview), hold piece (`c`), CCW rotation (`z`)
+  - **Multiplayer** (#544): lobby system with room creation, ready-toggle countdown,
+    per-client game state via `ExtensionMap`, shared `TetrominoLobbyState` for room tracking,
+    opponent board snapshot in bridge context, tick-based countdown propagation to all players,
+    forfeit detection on quit (surviving player wins), result screen with return-to-lobby
+  - **Tick scheduler** (#544): `TickSchedulerHandle` in `ServiceRegistry` for gravity ticks,
+    server-side `TickManager` spawns per-client tokio tasks, bridge `tick()` handles
+    countdown, gravity, line clearing, and match-finished detection
+  - Original game mechanics distinct from Tetris:
+    - 8x16 board (not 10x20), 10 piece types including L-shapes and diagonals
+    - Quadratic scoring `lines^2 * 50 * (level+1)`
+    - Nudge rotation system (not SRS wall kicks)
+    - History-4 randomizer with reroll (not 7-bag)
+    - Exponential speed curve `900 * 0.85^level` (min 80ms)
+    - Custom color palette: Amber/Teal/Rose/Sky/Lime/Violet/Coral/Sand/Mint/Slate
+    - Soft drop 2pt/cell, hard drop 3pt/cell, no T-spin detection
+  - **Bug fixes** (#544): countdown now propagates to all players via tick catch-up,
+    quit during multiplayer match triggers forfeit (mark_dead + finish_match),
+    mode stack preserved on quit by converting resolver ModeTransition::Set to
+    ResolveResult::Execute (delegates to command handlers using safe set_mode)
+
 ### Changed
+
+- **ArgValue::Bool semantic cleanup (#557)**: Add `Bool(bool)` variant to
+  `ArgValue` and `ArgKind::Bool` to `ArgKind`, separating boolean flags
+  (`linewise`, `find_inclusive`) from bang modifiers (`:q!`). Fix bridge
+  mapping `InputArgValue::Bool` to `ArgValue::Bool` instead of `ArgValue::Bang`.
+  Add `bool_flag()` accessor to `CommandContext`.
+
+- **Error display pipeline (#558)**: Add `CmdlineMessage` enum (Error/Info) to
+  `CmdlineState` for displaying ex-command errors and informational messages in
+  the command-line area. Errors from `execute_ex_command()` (E492, command failures)
+  now route through `CmdlineState.set_message()` instead of `tracing::warn!`.
+  Messages are cleared on next normal-mode keypress. Bridge updated to serialize
+  `message`/`message_kind` fields and report `is_active` when a message is present.
+
+- **Tokenizer + ArgParser + ArgKind::Rest (#559)**: Add quote-aware `tokenize_args()`
+  (double/single quotes, backslash escapes), `ArgError` enum with Display (E471/E488/E474),
+  `bind_args()` for spec-driven argument binding, `raw_args` field on `ParsedCmdline`,
+  and `ArgKind::Rest` variant for consuming all remaining text. Pure mechanism in the
+  command driver layer.
+
+- **Wire ArgSpec dispatch + update handlers (#560)**: Replace hardcoded argument
+  population in `execute_ex_command()` with spec-driven `bind_args()` dispatch.
+  Add `resolve_entry()` to `CommandNameIndex` for accessing command `ArgSpec`
+  declarations at dispatch time. Add `args()` overrides to `EditCommand` (Rest),
+  `WriteCommand` (Rest), `ColorschemeCommand` (Rest). Fix `ColorschemeCommand`
+  handler to read `"theme"` instead of `"file"`. Resolve `WriteBufferCommand` /
+  `WriteCommand` name collision by removing user-facing names from
+  `WriteBufferCommand` (editor module) — `WriteCommand` (commands module) is now
+  the canonical `:w`.
+
+- **Prefix matching for ex-commands (#561)**: Add `resolve_prefix()` to
+  `CommandNameIndex` for Vim-style prefix resolution (`:colo` resolves to
+  `:colorscheme`, `:wri` to `:write`). Exact matches take priority over
+  prefixes. Alias deduplication prevents false ambiguity (e.g., `w`/`write`
+  are the same command). Returns `AmbiguousPrefix` error (E464) when a
+  prefix matches multiple distinct commands. `execute_ex_command()` updated
+  to use `resolve_prefix()` for all command resolution.
+
+- **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
+  Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,
+  `vim-range-finder`, `vim-snippet`) isolate vim-specific keybindings from feature
+  modules. Feature modules (microscope, explorer, completion, range-finder, snippet)
+  no longer hardcode `"vim:normal"` / `"vim:insert"` mode targets. Follows adapter
+  pattern established by `vim-lsp` in #532. Defaults bundle updated to 33 modules.
+
+- **Architecture**: Remove remaining vim-specific coupling from feature modules (#532)
+  - **Adapter-injected parent modes**: `JumpParentMode` and `SnippetParentMode` config
+    types let adapters inject parent mode IDs via `ServiceRegistry`. Feature modules
+    (range-finder, snippet) read config at init instead of calling
+    `find_by_name("vim", ...)`. Adapters init before their feature modules in defaults.
+  - **Push/pop mode transitions**: Microscope, explorer, and tetromino use
+    `push_mode`/`pop_mode` instead of hardcoding `set_mode(vim:normal)` for return
+    transitions. Enables any editor personality to open/close these modules without
+    vim dependency.
+  - **Test-only cleanup**: Replace `ModuleId::new("vim")` with `ModuleId::new("test")`
+    in test code across textobjects, completion, snippet, and range-finder.
+
+- **Architecture**: Shared extension access and cross-client bridge context (#543)
+  - Add `shared_ext()` / `shared_ext_mut()` to `ExtensionApi` trait (defaults return `None`)
+  - Add `BridgeContext` struct for cross-client reads during bridge snapshot
+  - Add `snapshot_with_context()` default method to `ExtensionStateBridge` (delegates to `snapshot()`)
+  - Add `Session::with_bridge_context()` combined-lock helper (clients + state read locks)
+  - Fix `ExtensionScope::Shared` snapshot TODO in notification builder
+
+- **Architecture**: Unify command systems with Unix-style result and runtime signals (#547)
+  - `CommandResult` simplified to `Success`/`Error` only (Unix exit code model)
+  - Lifecycle side effects use `RuntimeSignal::Quit` through `SessionRuntime`
+  - Ex-commands unified into `CommandHandler` (single command system)
+  - `CommandNameIndex` provides name-based resolution with `complete()` delegation
+  - `parse_cmdline()` pure function extracts parsing from mode dispatch
+  - Re-entrant `CommandExecutor` with `get_handler()` + `Arc` pattern (max depth 16)
+  - Signal queue on `SessionRuntime`: `signal()` to enqueue, `take_signals()` to drain
+  - `should_quit` on `StateChanges` propagates quit signals through merge; `SendKeysResponse`
+    protocol field signals client to disconnect; TUI stops event loop on quit response
+  - `:q` checks `Buffer::is_modified()` on active buffer — returns E37 error for unsaved
+    changes; `:q!` (bang) bypasses the check
+  - Rename "ex-command" → "user command" in general system: `UserCommandEntry`,
+    `COMMAND_SOURCE_USER`, `has_user_names()`, `list_user_commands()`; vim module
+    retains "ex-command" as vim-specific concept
+  - gRPC `CommandService` migrated from `ExCommandRegistry` to `CommandNameIndex`
+  - FFI layers check signal queue after execution for backward-compatible quit codes
+  - Deleted: `ExCommandHandler`, `ExCommandRegistry`, `ExCommandDispatcher`,
+    `ExCommandHandlerStore`, `ExCommandQueryService`, `ExCommandInfo`
+
+- **Architecture**: Fix mechanism-vs-policy violations and cross-module coupling (#542)
+  - Move `VimLookupPolicy` from driver-input to module-vim (policy belongs in modules)
+  - Make `KeymapRegistry` lookup policy configurable via `Arc<dyn KeyLookupPolicy>`
+  - Promote `PendingNotificationQueue` from module-completion to driver-session (shared mechanism)
+  - Add `LspLifecycle` trait in driver-lsp to decouple completion from module-lsp
+  - Add `SnippetExpander` trait in driver-session to decouple completion from module-snippet
+  - Add `NotificationDrain` trait in driver-session to decouple completion from module-notification
+  - Remove all `reovim-module-*` dependencies from completion module's Cargo.toml
 
 ### Performance
 
 ### Fixed
 
+- **Undo corruption, missing f/F/t/T, broken r (#554)**: Three bugs fixed:
+  (1) Undo after insert mode produced garbage content due to character-by-character
+  position invalidation — fixed by collapsing batched edits into a single bulk edit
+  at `end_batch()` time. (2) f/F/t/T find-char motions were non-functional because
+  keybindings were never registered — added to normal and all operator modes, plus
+  implemented resolver metadata transfer (`ResolveContext::ArgValue` to
+  `CommandContext::ArgValue` bridge). (3) `r` (replace char) was a no-op due to wrong
+  command ID binding and missing resolver interception — fixed binding, added
+  `PendingCharOp::Replace` dispatch, implemented `ReplaceChar` handler.
+  Also changed `CommandContext` args from `HashMap<&'static str, ArgValue>` to
+  `HashMap<String, ArgValue>` to support dynamic metadata keys.
+
+- **Cursor at invalid position after linewise delete (#552)**: Fix `dj`, `dk`, and
+  `dd` on boundary lines leaving the cursor pointing to a deleted line. Added
+  `cursor_after` field to `OperatorContext` so operators communicate their desired
+  post-execution cursor position back to `execute_operator()`, with a clamped
+  fallback for safety. Also fixed column off-by-one in `CursorUp`/`CursorDown`
+  that allowed cursor one past the end of a line (now matches kernel `MotionEngine`).
+
+- **DiagnosticBridge dead registry fix (#555)**: Fix `DiagnosticBridge` capturing
+  `Arc<LspProviderRegistry>` and `Arc<DiagnosticPathIndex>` from a temporary
+  `ServiceRegistry` created during `collect_bridges()` bootstrap, disconnected
+  from the real session registries where LSP servers register. Made
+  `DiagnosticBridge` a stateless unit struct that looks up services at tick time
+  via a new `&ServiceRegistry` parameter on `ExtensionStateBridge::tick()`.
+  `Session::with_tick_mut()` now passes the live session `ServiceRegistry` to
+  tick callbacks. TetrominoBridge updated with the new signature (unused param).
+
+- **LSP auto-start on file open and diagnostic tick (#564)**: Fix LSP servers
+  only starting on `<C-Space>` completion trigger instead of when files are
+  opened. `LspModule` now subscribes to `FileOpened` events: if an LSP provider
+  is already active for the language, it sends `DidOpen`; otherwise it auto-starts
+  the server via `LspLifecycle`. Diagnostic tick (`TickSchedulerHandle.start()`)
+  is now called after successful LSP server registration in `LspAutoStarter`,
+  enabling `DiagnosticBridge` to poll diagnostics on a 500ms interval. Shared
+  helpers `find_project_root`, `language_id_from_path`, and `config_for_language`
+  moved from completion module to `reovim-driver-lsp` for cross-module reuse.
+
+- **Ex-command VFS propagation (#547)**: Fix `:e` command failing with "VFS not
+  available" when invoked via keyboard (ex-command path). `execute_ex_command`
+  in vim mode.rs was building a fresh `CommandContext` without propagating the
+  VFS driver from the outer context. Now propagates both `buffer_id` and `vfs`.
+
+- **LSP gd/gr deadlock (#532)**: Fix thread starvation that caused `gd` and `gr`
+  commands to always fail with "LSP request failed". `recv_timeout` blocked the
+  tokio worker thread, preventing the saturator's `tokio::select!` loop from
+  processing the request. New `recv_response()` helper in `driver-lsp` wraps
+  blocking waits in `tokio::task::block_in_place`, yielding the worker thread
+  to other async tasks. Requests now complete in ~2ms instead of timing out.
+
+- **Dedicated LSP traffic logger (#532)**: New `LspLogger` in `driver-lsp`
+  writes LSP JSON-RPC traffic, server stderr, and lifecycle events to a
+  dedicated log file. Activated via `REOVIM_LSP_LOG=1` (writes to
+  `~/.local/share/reovim/lsp-{language}.log`) or `REOVIM_LSP_LOG=/path/to/dir`.
+  Log format: `[HH:MM:SS.mmm] [lang] --> method params` for outgoing,
+  `<--` for responses, `<-n` for notifications, `err` for stderr.
+
+
+- **Client model: SemanticOrigin replaces Anchor (#549)**: Replace policy-violating
+  `Anchor` positioning directive with informational `SemanticOrigin` metadata in
+  `reovim-client-model`. `SemanticOrigin` (4 variants: `BufferPosition`, `BufferRange`,
+  `Buffer`, `Session`) tells clients WHAT data relates to — each client independently
+  decides WHERE to render. New `ExtensionCategory` enum (`Overlay`, `Inline`) classifies
+  extensions informatively. `LogicalOverlay` field changed from `anchor: Anchor` to
+  `origin: Option<SemanticOrigin>`. Web client's `positionOverlay()` recontracted to
+  interpret origin informationally. WASM package regenerated with updated TypeScript types.
+  Dead code removed: `Anchor` enum, `OverlayRenderer`/`OverlayManager` traits, TUI
+  anchor/overlay adapter modules.
+
+
 ### Security
 
 ### Removed
+
+- **`Anchor` enum removed (#549)**: `wire::Anchor` (5 variants: Cursor, Center, Buffer,
+  Screen, Below) removed from client model. Was a policy-violating positioning directive.
+  Replaced by informational `SemanticOrigin`.
+- **`OverlayRenderer` and `OverlayManager` traits removed (#549)**: Policy traits
+  removed from `traits::overlay`. Clients use the `ExtensionStateBridge` pattern instead.
+- **TUI anchor/overlay adapter modules removed (#549)**: `adapter::anchor` and
+  `adapter::overlay` were dead code (no extension used them).
 
 ---
 

@@ -1,357 +1,225 @@
 //! Syntax highlight categories and spans.
 //!
 //! This module defines the highlight types used by syntax drivers.
-//! The [`HighlightGroup`] enum implements [`SyntaxHighlight`] trait
-//! to provide category names for theme mapping.
+//!
+//! # Annotation Model (#540)
+//!
+//! The [`HighlightCategory`] type is an open string-based category.
+//! Any provider can emit any category. Well-known categories exist
+//! as constants for convenience, not constraint.
+//!
+//! [`Annotation`] extends byte-range spans with an [`AnnotationKind`] that
+//! describes the visual effect (highlight, conceal, background, virtual text).
 
-use std::{fmt::Debug, hash::Hash, ops::Range};
+use std::{ops::Range, sync::Arc};
 
 // ============================================================================
-// SyntaxHighlight Trait
+// Annotation Model (#540)
 // ============================================================================
 
-/// Trait for syntax highlight categories.
+/// Interned string-based highlight category.
 ///
-/// This trait defines the interface for highlight types. Types implementing
-/// this trait can be used by the syntax highlighting system.
+/// Any provider can emit any category. Well-known categories exist
+/// as constants for convenience, not constraint.
 ///
-/// # Example
-///
-/// ```
-/// use reovim_driver_syntax::{SyntaxHighlight, HighlightGroup};
-///
-/// let group = HighlightGroup::Keyword;
-/// assert_eq!(group.category(), "keyword");
-/// ```
-pub trait SyntaxHighlight: Debug + Copy + Eq + Hash + Send + Sync + 'static {
-    /// Returns the category name for this highlight.
-    ///
-    /// Category names should be lowercase, dot-separated identifiers
-    /// (e.g., "keyword", "function.builtin", "string.escape").
-    fn category(&self) -> &'static str;
-}
-
-/// Syntax highlight categories.
-///
-/// This enum defines all supported highlight groups for syntax highlighting.
-/// It implements [`SyntaxHighlight`] trait to provide category names that
-/// themes can use for color mapping.
-///
-/// Uses `#[repr(u8)]` for compact storage.
+/// Uses `Arc<str>` for cheap cloning (O(1) vs `String`'s O(n)).
+/// Different `Arc<str>` instances with the same content compare
+/// equal via the [`PartialEq`] impl on the underlying `str`.
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_driver_syntax::{HighlightGroup, SyntaxHighlight};
+/// use reovim_driver_syntax::HighlightCategory;
 ///
-/// let group = HighlightGroup::Keyword;
-/// assert_eq!(group.category(), "keyword");
-/// assert!(group.is_keyword());
+/// let cat = HighlightCategory::new("keyword.function");
+/// assert_eq!(cat.as_str(), "keyword.function");
+///
+/// // Well-known constants
+/// let kw = HighlightCategory::new(HighlightCategory::KEYWORD);
+/// assert_eq!(kw.as_str(), "keyword");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum HighlightGroup {
-    // === Keywords (0-4) ===
-    /// Generic keyword (if, else, for, while, return, etc.)
-    Keyword = 0,
-    /// Control flow keywords (if, else, match, loop)
-    KeywordControl = 1,
-    /// Operator keywords (and, or, not, in)
-    KeywordOperator = 2,
-    /// Function-related keywords (fn, def, function)
-    KeywordFunction = 3,
-    /// Type-related keywords (struct, class, enum, type)
-    KeywordType = 4,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HighlightCategory(Arc<str>);
 
-    // === Types (5-6) ===
-    /// User-defined types
-    Type = 5,
-    /// Built-in types (int, str, bool)
-    TypeBuiltin = 6,
+impl HighlightCategory {
+    /// Create a new highlight category from a string.
+    #[must_use]
+    pub fn new(s: impl Into<Arc<str>>) -> Self {
+        Self(s.into())
+    }
 
-    // === Functions (7-10) ===
-    /// Function names
-    Function = 7,
-    /// Built-in functions (print, len)
-    FunctionBuiltin = 8,
-    /// Macro invocations
-    FunctionMacro = 9,
-    /// Method calls
-    Method = 10,
-
-    // === Variables (11-15) ===
-    /// Generic variable
-    Variable = 11,
-    /// Built-in variables (self, super, this)
-    VariableBuiltin = 12,
-    /// Function parameters
-    Parameter = 13,
-    /// Struct/class fields
-    Field = 14,
-    /// Constants
-    Constant = 15,
-
-    // === Literals (16-20) ===
-    /// String literals
-    String = 16,
-    /// Escape sequences in strings
-    StringEscape = 17,
-    /// Character literals
-    Character = 18,
-    /// Numeric literals
-    Number = 19,
-    /// Boolean literals (true, false)
-    Boolean = 20,
-
-    // === Comments (21-22) ===
-    /// Regular comments
-    Comment = 21,
-    /// Documentation comments
-    CommentDoc = 22,
-
-    // === Punctuation (23-25) ===
-    /// Generic punctuation
-    Punctuation = 23,
-    /// Brackets, braces, parentheses
-    PunctuationBracket = 24,
-    /// Commas, semicolons, colons
-    PunctuationDelimiter = 25,
-
-    // === Operators (26) ===
-    /// Operators (+, -, *, /, =, etc.)
-    Operator = 26,
-
-    // === Diagnostics (27-30) ===
-    /// Error highlights
-    Error = 27,
-    /// Warning highlights
-    Warning = 28,
-    /// Info highlights
-    Info = 29,
-    /// Hint highlights
-    Hint = 30,
-
-    // === Namespace/Module (31) ===
-    /// Namespace or module names
-    Namespace = 31,
-
-    // === Constructor (32) ===
-    /// Constructor calls/definitions
-    Constructor = 32,
-
-    // === Label (33) ===
-    /// Labels (lifetimes in Rust, goto labels)
-    Label = 33,
-
-    // === Attribute (34) ===
-    /// Attributes, decorators, annotations
-    Attribute = 34,
-
-    // === Tag (35) ===
-    /// HTML/XML tags
-    Tag = 35,
-
-    // === Markup (36-44) ===
-    /// Markup headings (# in markdown)
-    MarkupHeading = 36,
-    /// Bold text
-    MarkupBold = 37,
-    /// Italic text
-    MarkupItalic = 38,
-    /// Strikethrough text
-    MarkupStrikethrough = 39,
-    /// Links
-    MarkupLink = 40,
-    /// Link URLs
-    MarkupLinkUrl = 41,
-    /// List markers
-    MarkupList = 42,
-    /// Raw/code blocks
-    MarkupRaw = 43,
-    /// Inline code
-    MarkupRawInline = 44,
-
-    // === Embedded/Injection (45-46) ===
-    /// Embedded language regions (injections)
-    Embedded = 45,
-    /// Special tokens
-    Special = 46,
-
-    // === Custom (255) ===
-    /// Custom highlight (for extensions)
-    Custom = 255,
-}
-
-impl SyntaxHighlight for HighlightGroup {
-    fn category(&self) -> &'static str {
-        match self {
-            Self::Keyword => "keyword",
-            Self::KeywordControl => "keyword.control",
-            Self::KeywordOperator => "keyword.operator",
-            Self::KeywordFunction => "keyword.function",
-            Self::KeywordType => "keyword.type",
-            Self::Type => "type",
-            Self::TypeBuiltin => "type.builtin",
-            Self::Function => "function",
-            Self::FunctionBuiltin => "function.builtin",
-            Self::FunctionMacro => "function.macro",
-            Self::Method => "function.method",
-            Self::Variable => "variable",
-            Self::VariableBuiltin => "variable.builtin",
-            Self::Parameter => "variable.parameter",
-            Self::Field => "variable.field",
-            Self::Constant => "constant",
-            Self::String => "string",
-            Self::StringEscape => "string.escape",
-            Self::Character => "character",
-            Self::Number => "number",
-            Self::Boolean => "boolean",
-            Self::Comment => "comment",
-            Self::CommentDoc => "comment.doc",
-            Self::Punctuation => "punctuation",
-            Self::PunctuationBracket => "punctuation.bracket",
-            Self::PunctuationDelimiter => "punctuation.delimiter",
-            Self::Operator => "operator",
-            Self::Error => "diagnostic.error",
-            Self::Warning => "diagnostic.warning",
-            Self::Info => "diagnostic.info",
-            Self::Hint => "diagnostic.hint",
-            Self::Namespace => "namespace",
-            Self::Constructor => "constructor",
-            Self::Label => "label",
-            Self::Attribute => "attribute",
-            Self::Tag => "tag",
-            Self::MarkupHeading => "markup.heading",
-            Self::MarkupBold => "markup.bold",
-            Self::MarkupItalic => "markup.italic",
-            Self::MarkupStrikethrough => "markup.strikethrough",
-            Self::MarkupLink => "markup.link",
-            Self::MarkupLinkUrl => "markup.link.url",
-            Self::MarkupList => "markup.list",
-            Self::MarkupRaw => "markup.raw",
-            Self::MarkupRawInline => "markup.raw.inline",
-            Self::Embedded => "embedded",
-            Self::Special => "special",
-            Self::Custom => "custom",
-        }
+    /// Get the category string.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
     }
 }
 
-impl HighlightGroup {
-    /// Check if this is a keyword category.
-    #[must_use]
-    pub const fn is_keyword(self) -> bool {
-        matches!(
-            self,
-            Self::Keyword
-                | Self::KeywordControl
-                | Self::KeywordOperator
-                | Self::KeywordFunction
-                | Self::KeywordType
-        )
-    }
-
-    /// Check if this is a type category.
-    #[must_use]
-    pub const fn is_type(self) -> bool {
-        matches!(self, Self::Type | Self::TypeBuiltin)
-    }
-
-    /// Check if this is a function category.
-    #[must_use]
-    pub const fn is_function(self) -> bool {
-        matches!(
-            self,
-            Self::Function | Self::FunctionBuiltin | Self::FunctionMacro | Self::Method
-        )
-    }
-
-    /// Check if this is a variable category.
-    #[must_use]
-    pub const fn is_variable(self) -> bool {
-        matches!(
-            self,
-            Self::Variable | Self::VariableBuiltin | Self::Parameter | Self::Field | Self::Constant
-        )
-    }
-
-    /// Check if this is a literal category.
-    #[must_use]
-    pub const fn is_literal(self) -> bool {
-        matches!(
-            self,
-            Self::String | Self::StringEscape | Self::Character | Self::Number | Self::Boolean
-        )
-    }
-
-    /// Check if this is a comment category.
-    #[must_use]
-    pub const fn is_comment(self) -> bool {
-        matches!(self, Self::Comment | Self::CommentDoc)
-    }
-
-    /// Check if this is a punctuation category.
-    #[must_use]
-    pub const fn is_punctuation(self) -> bool {
-        matches!(self, Self::Punctuation | Self::PunctuationBracket | Self::PunctuationDelimiter)
-    }
-
-    /// Check if this is a diagnostic category.
-    #[must_use]
-    pub const fn is_diagnostic(self) -> bool {
-        matches!(self, Self::Error | Self::Warning | Self::Info | Self::Hint)
-    }
-
-    /// Check if this is a markup category.
-    #[must_use]
-    pub const fn is_markup(self) -> bool {
-        matches!(
-            self,
-            Self::MarkupHeading
-                | Self::MarkupBold
-                | Self::MarkupItalic
-                | Self::MarkupStrikethrough
-                | Self::MarkupLink
-                | Self::MarkupLinkUrl
-                | Self::MarkupList
-                | Self::MarkupRaw
-                | Self::MarkupRawInline
-        )
+impl std::fmt::Display for HighlightCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
     }
 }
 
-/// A highlighted byte range in source code.
+/// Well-known category constants.
 ///
-/// Uses byte offsets for efficient incremental updates.
-/// Byte offsets align with tree-sitter's native representation.
+/// Use these for interop and readability — they are not a closed set.
+impl HighlightCategory {
+    // Keywords
+    pub const KEYWORD: &str = "keyword";
+    pub const KEYWORD_CONTROL: &str = "keyword.control";
+    pub const KEYWORD_OPERATOR: &str = "keyword.operator";
+    pub const KEYWORD_FUNCTION: &str = "keyword.function";
+    pub const KEYWORD_TYPE: &str = "keyword.type";
+
+    // Types
+    pub const TYPE: &str = "type";
+    pub const TYPE_BUILTIN: &str = "type.builtin";
+
+    // Functions
+    pub const FUNCTION: &str = "function";
+    pub const FUNCTION_BUILTIN: &str = "function.builtin";
+    pub const FUNCTION_MACRO: &str = "function.macro";
+    pub const FUNCTION_METHOD: &str = "function.method";
+
+    // Variables
+    pub const VARIABLE: &str = "variable";
+    pub const VARIABLE_BUILTIN: &str = "variable.builtin";
+    pub const VARIABLE_PARAMETER: &str = "variable.parameter";
+    pub const VARIABLE_FIELD: &str = "variable.field";
+    pub const CONSTANT: &str = "constant";
+
+    // Literals
+    pub const STRING: &str = "string";
+    pub const STRING_ESCAPE: &str = "string.escape";
+    pub const CHARACTER: &str = "character";
+    pub const NUMBER: &str = "number";
+    pub const BOOLEAN: &str = "boolean";
+
+    // Comments
+    pub const COMMENT: &str = "comment";
+    pub const COMMENT_DOC: &str = "comment.doc";
+
+    // Punctuation
+    pub const PUNCTUATION: &str = "punctuation";
+    pub const PUNCTUATION_BRACKET: &str = "punctuation.bracket";
+    pub const PUNCTUATION_DELIMITER: &str = "punctuation.delimiter";
+
+    // Operators
+    pub const OPERATOR: &str = "operator";
+
+    // Diagnostics
+    pub const DIAGNOSTIC_ERROR: &str = "diagnostic.error";
+    pub const DIAGNOSTIC_WARNING: &str = "diagnostic.warning";
+    pub const DIAGNOSTIC_INFO: &str = "diagnostic.info";
+    pub const DIAGNOSTIC_HINT: &str = "diagnostic.hint";
+
+    // Namespace / Constructor / Label / Attribute / Tag
+    pub const NAMESPACE: &str = "namespace";
+    pub const CONSTRUCTOR: &str = "constructor";
+    pub const LABEL: &str = "label";
+    pub const ATTRIBUTE: &str = "attribute";
+    pub const TAG: &str = "tag";
+
+    // Markup
+    pub const MARKUP_HEADING: &str = "markup.heading";
+    pub const MARKUP_BOLD: &str = "markup.bold";
+    pub const MARKUP_ITALIC: &str = "markup.italic";
+    pub const MARKUP_STRIKETHROUGH: &str = "markup.strikethrough";
+    pub const MARKUP_LINK: &str = "markup.link";
+    pub const MARKUP_LINK_URL: &str = "markup.link.url";
+    pub const MARKUP_LIST: &str = "markup.list";
+    pub const MARKUP_RAW: &str = "markup.raw";
+    pub const MARKUP_RAW_INLINE: &str = "markup.raw.inline";
+
+    // Embedded / Special
+    pub const EMBEDDED: &str = "embedded";
+    pub const SPECIAL: &str = "special";
+}
+
+/// What an annotation does visually.
+///
+/// Most syntax highlighting uses [`Highlight`](AnnotationKind::Highlight).
+/// The other variants support decorations (conceal, background, virtual text)
+/// that will be emitted by future providers (DAP, LSP, decoration queries).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnnotationKind {
+    /// Style overlay — the common case for syntax highlighting.
+    /// Client resolves category -> Style via `ThemeManager`.
+    Highlight,
+
+    /// Conceal the text range, optionally replacing with different text.
+    /// `col_mapping` is computed client-side (rendering concern).
+    Conceal {
+        /// Replacement text, if any.
+        replacement: Option<String>,
+    },
+
+    /// Background highlight (independent of text style).
+    Background,
+
+    /// Virtual text inserted at this position (not in buffer).
+    VirtualText {
+        /// The virtual text content.
+        text: String,
+    },
+}
+
+/// A single annotation on a buffer range.
+///
+/// Annotations are the unified representation for all visual markup:
+/// syntax highlights, decorations, diagnostics, search matches, etc.
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_driver_syntax::{HighlightSpan, HighlightGroup};
+/// use reovim_driver_syntax::{Annotation, HighlightCategory};
 ///
-/// let span = HighlightSpan::new(0, 5, HighlightGroup::Keyword);
-/// assert_eq!(span.len(), 5);
-/// assert!(!span.is_empty());
+/// let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword.function"));
+/// assert_eq!(ann.category.as_str(), "keyword.function");
+/// assert_eq!(ann.len(), 5);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HighlightSpan {
+pub struct Annotation {
     /// Start byte offset (inclusive).
     pub start_byte: usize,
     /// End byte offset (exclusive).
     pub end_byte: usize,
-    /// Highlight category.
-    pub group: HighlightGroup,
+    /// Category string (e.g., "keyword.function", "dap.breakpoint").
+    pub category: HighlightCategory,
+    /// What this annotation does visually.
+    pub kind: AnnotationKind,
 }
 
-impl HighlightSpan {
-    /// Create a new highlight span.
+impl Annotation {
+    /// Create a highlight annotation (the common case).
     #[must_use]
-    pub const fn new(start_byte: usize, end_byte: usize, group: HighlightGroup) -> Self {
+    pub const fn highlight(
+        start_byte: usize,
+        end_byte: usize,
+        category: HighlightCategory,
+    ) -> Self {
         Self {
             start_byte,
             end_byte,
-            group,
+            category,
+            kind: AnnotationKind::Highlight,
+        }
+    }
+
+    /// Create an annotation with explicit kind.
+    #[must_use]
+    pub const fn new(
+        start_byte: usize,
+        end_byte: usize,
+        category: HighlightCategory,
+        kind: AnnotationKind,
+    ) -> Self {
+        Self {
+            start_byte,
+            end_byte,
+            category,
+            kind,
         }
     }
 
@@ -361,25 +229,25 @@ impl HighlightSpan {
         self.end_byte - self.start_byte
     }
 
-    /// Check if the span is empty.
+    /// Check if the annotation is empty.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.start_byte == self.end_byte
     }
 
-    /// Check if this span overlaps with a byte range.
+    /// Check if this annotation overlaps with a byte range.
     #[must_use]
     pub const fn overlaps(&self, range: &Range<usize>) -> bool {
         self.start_byte < range.end && self.end_byte > range.start
     }
 
-    /// Check if this span contains a byte offset.
+    /// Check if this annotation contains a byte offset.
     #[must_use]
     pub const fn contains(&self, byte: usize) -> bool {
         self.start_byte <= byte && byte < self.end_byte
     }
 
-    /// Get this span as a byte range.
+    /// Get this annotation as a byte range.
     #[must_use]
     pub const fn byte_range(&self) -> Range<usize> {
         self.start_byte..self.end_byte
@@ -390,290 +258,225 @@ impl HighlightSpan {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_highlight_group_implements_syntax_highlight() {
-        assert_eq!(HighlightGroup::Keyword.category(), "keyword");
-        assert_eq!(HighlightGroup::KeywordControl.category(), "keyword.control");
-        assert_eq!(HighlightGroup::Function.category(), "function");
-        assert_eq!(HighlightGroup::String.category(), "string");
-        assert_eq!(HighlightGroup::Comment.category(), "comment");
-        assert_eq!(HighlightGroup::Error.category(), "diagnostic.error");
-        assert_eq!(HighlightGroup::Custom.category(), "custom");
+    // ========================================================================
+    // HighlightCategory Tests
+    // ========================================================================
 
-        // New categories (Issue #206)
-        assert_eq!(HighlightGroup::Namespace.category(), "namespace");
-        assert_eq!(HighlightGroup::Constructor.category(), "constructor");
-        assert_eq!(HighlightGroup::Label.category(), "label");
-        assert_eq!(HighlightGroup::Attribute.category(), "attribute");
-        assert_eq!(HighlightGroup::Tag.category(), "tag");
-        assert_eq!(HighlightGroup::MarkupHeading.category(), "markup.heading");
-        assert_eq!(HighlightGroup::MarkupBold.category(), "markup.bold");
-        assert_eq!(HighlightGroup::MarkupItalic.category(), "markup.italic");
-        assert_eq!(HighlightGroup::MarkupStrikethrough.category(), "markup.strikethrough");
-        assert_eq!(HighlightGroup::MarkupLink.category(), "markup.link");
-        assert_eq!(HighlightGroup::MarkupLinkUrl.category(), "markup.link.url");
-        assert_eq!(HighlightGroup::MarkupList.category(), "markup.list");
-        assert_eq!(HighlightGroup::MarkupRaw.category(), "markup.raw");
-        assert_eq!(HighlightGroup::MarkupRawInline.category(), "markup.raw.inline");
-        assert_eq!(HighlightGroup::Embedded.category(), "embedded");
-        assert_eq!(HighlightGroup::Special.category(), "special");
+    #[test]
+    fn test_highlight_category_new_from_str() {
+        let cat = HighlightCategory::new("keyword.function");
+        assert_eq!(cat.as_str(), "keyword.function");
     }
 
     #[test]
-    fn test_highlight_group_is_keyword() {
-        assert!(HighlightGroup::Keyword.is_keyword());
-        assert!(HighlightGroup::KeywordControl.is_keyword());
-        assert!(HighlightGroup::KeywordOperator.is_keyword());
-        assert!(HighlightGroup::KeywordFunction.is_keyword());
-        assert!(HighlightGroup::KeywordType.is_keyword());
-        assert!(!HighlightGroup::Function.is_keyword());
-        assert!(!HighlightGroup::String.is_keyword());
+    fn test_highlight_category_new_from_string() {
+        let s = String::from("variable.builtin");
+        let cat = HighlightCategory::new(s);
+        assert_eq!(cat.as_str(), "variable.builtin");
     }
 
     #[test]
-    fn test_highlight_group_is_type() {
-        assert!(HighlightGroup::Type.is_type());
-        assert!(HighlightGroup::TypeBuiltin.is_type());
-        assert!(!HighlightGroup::Keyword.is_type());
+    fn test_highlight_category_new_from_arc_str() {
+        let arc: Arc<str> = Arc::from("type.builtin");
+        let cat = HighlightCategory::new(arc);
+        assert_eq!(cat.as_str(), "type.builtin");
     }
 
     #[test]
-    fn test_highlight_group_is_function() {
-        assert!(HighlightGroup::Function.is_function());
-        assert!(HighlightGroup::FunctionBuiltin.is_function());
-        assert!(HighlightGroup::FunctionMacro.is_function());
-        assert!(HighlightGroup::Method.is_function());
-        assert!(!HighlightGroup::Variable.is_function());
+    fn test_highlight_category_equality_same_arc() {
+        let cat1 = HighlightCategory::new("keyword");
+        let cat2 = cat1.clone();
+        assert_eq!(cat1, cat2);
     }
 
     #[test]
-    fn test_highlight_group_is_variable() {
-        assert!(HighlightGroup::Variable.is_variable());
-        assert!(HighlightGroup::VariableBuiltin.is_variable());
-        assert!(HighlightGroup::Parameter.is_variable());
-        assert!(HighlightGroup::Field.is_variable());
-        assert!(HighlightGroup::Constant.is_variable());
-        assert!(!HighlightGroup::Function.is_variable());
+    fn test_highlight_category_equality_different_arcs() {
+        let cat1 = HighlightCategory::new(String::from("keyword"));
+        let cat2 = HighlightCategory::new(String::from("keyword"));
+        assert_eq!(cat1, cat2);
     }
 
     #[test]
-    fn test_highlight_group_is_literal() {
-        assert!(HighlightGroup::String.is_literal());
-        assert!(HighlightGroup::StringEscape.is_literal());
-        assert!(HighlightGroup::Character.is_literal());
-        assert!(HighlightGroup::Number.is_literal());
-        assert!(HighlightGroup::Boolean.is_literal());
-        assert!(!HighlightGroup::Comment.is_literal());
+    fn test_highlight_category_inequality() {
+        let cat1 = HighlightCategory::new("keyword");
+        let cat2 = HighlightCategory::new("function");
+        assert_ne!(cat1, cat2);
     }
 
     #[test]
-    fn test_highlight_group_is_comment() {
-        assert!(HighlightGroup::Comment.is_comment());
-        assert!(HighlightGroup::CommentDoc.is_comment());
-        assert!(!HighlightGroup::String.is_comment());
+    fn test_highlight_category_hash_consistency() {
+        use std::collections::HashSet;
+        let cat1 = HighlightCategory::new(String::from("keyword"));
+        let cat2 = HighlightCategory::new(String::from("keyword"));
+        let mut set = HashSet::new();
+        set.insert(cat1);
+        assert!(set.contains(&cat2));
     }
 
     #[test]
-    fn test_highlight_group_is_punctuation() {
-        assert!(HighlightGroup::Punctuation.is_punctuation());
-        assert!(HighlightGroup::PunctuationBracket.is_punctuation());
-        assert!(HighlightGroup::PunctuationDelimiter.is_punctuation());
-        assert!(!HighlightGroup::Operator.is_punctuation());
+    fn test_highlight_category_display() {
+        let cat = HighlightCategory::new("keyword.function");
+        assert_eq!(format!("{cat}"), "keyword.function");
     }
 
     #[test]
-    fn test_highlight_group_is_diagnostic() {
-        assert!(HighlightGroup::Error.is_diagnostic());
-        assert!(HighlightGroup::Warning.is_diagnostic());
-        assert!(HighlightGroup::Info.is_diagnostic());
-        assert!(HighlightGroup::Hint.is_diagnostic());
-        assert!(!HighlightGroup::Keyword.is_diagnostic());
+    fn test_highlight_category_debug() {
+        let cat = HighlightCategory::new("keyword");
+        let debug = format!("{cat:?}");
+        assert!(debug.contains("keyword"));
+    }
+
+    // ========================================================================
+    // AnnotationKind Tests
+    // ========================================================================
+
+    #[test]
+    fn test_annotation_kind_highlight() {
+        let kind = AnnotationKind::Highlight;
+        assert_eq!(kind, AnnotationKind::Highlight);
     }
 
     #[test]
-    fn test_highlight_group_is_markup() {
-        assert!(HighlightGroup::MarkupHeading.is_markup());
-        assert!(HighlightGroup::MarkupBold.is_markup());
-        assert!(HighlightGroup::MarkupItalic.is_markup());
-        assert!(HighlightGroup::MarkupStrikethrough.is_markup());
-        assert!(HighlightGroup::MarkupLink.is_markup());
-        assert!(HighlightGroup::MarkupLinkUrl.is_markup());
-        assert!(HighlightGroup::MarkupList.is_markup());
-        assert!(HighlightGroup::MarkupRaw.is_markup());
-        assert!(HighlightGroup::MarkupRawInline.is_markup());
-        assert!(!HighlightGroup::Keyword.is_markup());
-        assert!(!HighlightGroup::String.is_markup());
+    fn test_annotation_kind_conceal_none() {
+        let kind = AnnotationKind::Conceal { replacement: None };
+        assert!(matches!(kind, AnnotationKind::Conceal { replacement: None }));
     }
 
     #[test]
-    fn test_highlight_span_new() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        assert_eq!(span.start_byte, 10);
-        assert_eq!(span.end_byte, 20);
-        assert_eq!(span.group, HighlightGroup::Keyword);
+    fn test_annotation_kind_conceal_with_replacement() {
+        let kind = AnnotationKind::Conceal {
+            replacement: Some("*".into()),
+        };
+        assert!(matches!(
+            kind,
+            AnnotationKind::Conceal { replacement: Some(ref r) } if r == "*"
+        ));
     }
 
     #[test]
-    fn test_highlight_span_len() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        assert_eq!(span.len(), 10);
-
-        let empty = HighlightSpan::new(5, 5, HighlightGroup::Comment);
-        assert_eq!(empty.len(), 0);
+    fn test_annotation_kind_background() {
+        let kind = AnnotationKind::Background;
+        assert_eq!(kind, AnnotationKind::Background);
     }
 
     #[test]
-    fn test_highlight_span_is_empty() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        assert!(!span.is_empty());
-
-        let empty = HighlightSpan::new(5, 5, HighlightGroup::Comment);
-        assert!(empty.is_empty());
+    fn test_annotation_kind_virtual_text() {
+        let kind = AnnotationKind::VirtualText {
+            text: "ghost".into(),
+        };
+        assert!(matches!(
+            kind,
+            AnnotationKind::VirtualText { ref text } if text == "ghost"
+        ));
     }
 
     #[test]
-    fn test_highlight_span_overlaps() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-
-        // Overlapping ranges
-        assert!(span.overlaps(&(5..15)));
-        assert!(span.overlaps(&(15..25)));
-        assert!(span.overlaps(&(12..18)));
-        assert!(span.overlaps(&(5..25)));
-        assert!(span.overlaps(&(10..20)));
-
-        // Non-overlapping ranges
-        assert!(!span.overlaps(&(0..10)));
-        assert!(!span.overlaps(&(20..30)));
-        assert!(!span.overlaps(&(0..5)));
+    fn test_annotation_kind_clone() {
+        let kind = AnnotationKind::Conceal {
+            replacement: Some("x".into()),
+        };
+        let cloned = kind.clone();
+        assert_eq!(kind, cloned);
     }
 
     #[test]
-    fn test_highlight_span_contains() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
+    fn test_annotation_kind_debug() {
+        let kind = AnnotationKind::Highlight;
+        let debug = format!("{kind:?}");
+        assert!(debug.contains("Highlight"));
+    }
 
-        assert!(span.contains(10));
-        assert!(span.contains(15));
-        assert!(span.contains(19));
-        assert!(!span.contains(9));
-        assert!(!span.contains(20));
-        assert!(!span.contains(25));
+    // ========================================================================
+    // Annotation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_annotation_highlight_constructor() {
+        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        assert_eq!(ann.start_byte, 10);
+        assert_eq!(ann.end_byte, 20);
+        assert_eq!(ann.category.as_str(), "keyword");
+        assert_eq!(ann.kind, AnnotationKind::Highlight);
     }
 
     #[test]
-    fn test_highlight_span_byte_range() {
-        let span = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        assert_eq!(span.byte_range(), 10..20);
+    fn test_annotation_new_with_kind() {
+        let ann = Annotation::new(
+            0,
+            5,
+            HighlightCategory::new("decoration.heading"),
+            AnnotationKind::Conceal {
+                replacement: Some("*".into()),
+            },
+        );
+        assert_eq!(ann.start_byte, 0);
+        assert_eq!(ann.end_byte, 5);
+        assert_eq!(ann.category.as_str(), "decoration.heading");
+        assert!(matches!(ann.kind, AnnotationKind::Conceal { .. }));
     }
 
     #[test]
-    fn test_highlight_group_all_categories_covered() {
-        // Ensure every variant has a non-empty category string
-        let all_groups = [
-            HighlightGroup::Keyword,
-            HighlightGroup::KeywordControl,
-            HighlightGroup::KeywordOperator,
-            HighlightGroup::KeywordFunction,
-            HighlightGroup::KeywordType,
-            HighlightGroup::Type,
-            HighlightGroup::TypeBuiltin,
-            HighlightGroup::Function,
-            HighlightGroup::FunctionBuiltin,
-            HighlightGroup::FunctionMacro,
-            HighlightGroup::Method,
-            HighlightGroup::Variable,
-            HighlightGroup::VariableBuiltin,
-            HighlightGroup::Parameter,
-            HighlightGroup::Field,
-            HighlightGroup::Constant,
-            HighlightGroup::String,
-            HighlightGroup::StringEscape,
-            HighlightGroup::Character,
-            HighlightGroup::Number,
-            HighlightGroup::Boolean,
-            HighlightGroup::Comment,
-            HighlightGroup::CommentDoc,
-            HighlightGroup::Punctuation,
-            HighlightGroup::PunctuationBracket,
-            HighlightGroup::PunctuationDelimiter,
-            HighlightGroup::Operator,
-            HighlightGroup::Error,
-            HighlightGroup::Warning,
-            HighlightGroup::Info,
-            HighlightGroup::Hint,
-            HighlightGroup::Namespace,
-            HighlightGroup::Constructor,
-            HighlightGroup::Label,
-            HighlightGroup::Attribute,
-            HighlightGroup::Tag,
-            HighlightGroup::MarkupHeading,
-            HighlightGroup::MarkupBold,
-            HighlightGroup::MarkupItalic,
-            HighlightGroup::MarkupStrikethrough,
-            HighlightGroup::MarkupLink,
-            HighlightGroup::MarkupLinkUrl,
-            HighlightGroup::MarkupList,
-            HighlightGroup::MarkupRaw,
-            HighlightGroup::MarkupRawInline,
-            HighlightGroup::Embedded,
-            HighlightGroup::Special,
-            HighlightGroup::Custom,
-        ];
-
-        for group in all_groups {
-            let category = group.category();
-            assert!(!category.is_empty(), "Category for {group:?} should not be empty");
-        }
+    fn test_annotation_len() {
+        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        assert_eq!(ann.len(), 10);
     }
 
     #[test]
-    fn test_highlight_group_classification_non_overlapping() {
-        // Keyword groups should NOT match other classification methods
-        assert!(!HighlightGroup::Keyword.is_type());
-        assert!(!HighlightGroup::Keyword.is_function());
-        assert!(!HighlightGroup::Keyword.is_variable());
-        assert!(!HighlightGroup::Keyword.is_literal());
-        assert!(!HighlightGroup::Keyword.is_comment());
-        assert!(!HighlightGroup::Keyword.is_punctuation());
-        assert!(!HighlightGroup::Keyword.is_diagnostic());
-        assert!(!HighlightGroup::Keyword.is_markup());
+    fn test_annotation_is_empty() {
+        let ann = Annotation::highlight(5, 5, HighlightCategory::new("keyword"));
+        assert!(ann.is_empty());
 
-        // Operator should not match any classification
-        assert!(!HighlightGroup::Operator.is_keyword());
-        assert!(!HighlightGroup::Operator.is_type());
-        assert!(!HighlightGroup::Operator.is_function());
-        assert!(!HighlightGroup::Operator.is_variable());
-        assert!(!HighlightGroup::Operator.is_literal());
-        assert!(!HighlightGroup::Operator.is_comment());
-        assert!(!HighlightGroup::Operator.is_punctuation());
-        assert!(!HighlightGroup::Operator.is_diagnostic());
-        assert!(!HighlightGroup::Operator.is_markup());
+        let ann = Annotation::highlight(5, 10, HighlightCategory::new("keyword"));
+        assert!(!ann.is_empty());
     }
 
     #[test]
-    fn test_highlight_span_equality() {
-        let span1 = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        let span2 = HighlightSpan::new(10, 20, HighlightGroup::Keyword);
-        let span3 = HighlightSpan::new(10, 20, HighlightGroup::Function);
-        let span4 = HighlightSpan::new(10, 25, HighlightGroup::Keyword);
-
-        assert_eq!(span1, span2);
-        assert_ne!(span1, span3);
-        assert_ne!(span1, span4);
+    fn test_annotation_overlaps() {
+        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        assert!(ann.overlaps(&(5..15)));
+        assert!(ann.overlaps(&(15..25)));
+        assert!(ann.overlaps(&(12..18)));
+        assert!(!ann.overlaps(&(0..10)));
+        assert!(!ann.overlaps(&(20..30)));
     }
 
     #[test]
-    fn test_highlight_span_clone() {
-        let span = HighlightSpan::new(5, 15, HighlightGroup::String);
-        let cloned = span.clone();
-        assert_eq!(span, cloned);
+    fn test_annotation_contains() {
+        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        assert!(ann.contains(10));
+        assert!(ann.contains(15));
+        assert!(ann.contains(19));
+        assert!(!ann.contains(9));
+        assert!(!ann.contains(20));
     }
 
     #[test]
-    fn test_highlight_span_debug() {
-        let span = HighlightSpan::new(0, 5, HighlightGroup::Comment);
-        let debug = format!("{span:?}");
-        assert!(debug.contains("HighlightSpan"));
-        assert!(debug.contains("Comment"));
+    fn test_annotation_byte_range() {
+        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        assert_eq!(ann.byte_range(), 10..20);
+    }
+
+    #[test]
+    fn test_annotation_clone() {
+        let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let cloned = ann.clone();
+        assert_eq!(ann, cloned);
+    }
+
+    #[test]
+    fn test_annotation_debug() {
+        let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let debug = format!("{ann:?}");
+        assert!(debug.contains("Annotation"));
+        assert!(debug.contains("keyword"));
+    }
+
+    #[test]
+    fn test_annotation_equality() {
+        let a1 = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let a2 = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let a3 = Annotation::highlight(0, 5, HighlightCategory::new("function"));
+        assert_eq!(a1, a2);
+        assert_ne!(a1, a3);
     }
 }

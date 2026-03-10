@@ -16,10 +16,12 @@ mod args;
 mod context;
 mod motion;
 mod result;
+mod signal;
 
 pub use {
     args::{ArgKind, ArgSpec, ArgValue},
     context::CommandContext,
     motion::MotionType,
     result::CommandResult,
+    signal::RuntimeSignal,
 };

@@ -338,26 +338,26 @@ impl Client {
                 publish_diagnostics: Some(
                     lsp_types::PublishDiagnosticsClientCapabilities::default(),
                 ),
-                // Enable hover support
+                // Enable hover support (dynamic registration: #533)
                 hover: Some(lsp_types::HoverClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     content_format: Some(vec![
                         lsp_types::MarkupKind::Markdown,
                         lsp_types::MarkupKind::PlainText,
                     ]),
                 }),
-                // Enable references support
+                // Enable references support (dynamic registration: #533)
                 references: Some(lsp_types::ReferenceClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                 }),
-                // Enable definition support
+                // Enable definition support (dynamic registration: #533)
                 definition: Some(lsp_types::GotoCapability {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     link_support: Some(true),
                 }),
-                // Enable completion support
+                // Enable completion support (dynamic registration: #533)
                 completion: Some(lsp_types::CompletionClientCapabilities {
-                    dynamic_registration: Some(false),
+                    dynamic_registration: Some(true),
                     completion_item: Some(lsp_types::CompletionItemCapability {
                         snippet_support: Some(true),
                         documentation_format: Some(vec![
@@ -367,6 +367,21 @@ impl Client {
                         ..Default::default()
                     }),
                     ..Default::default()
+                }),
+                // Enable signature help support
+                signature_help: Some(lsp_types::SignatureHelpClientCapabilities {
+                    dynamic_registration: Some(true),
+                    signature_information: Some(lsp_types::SignatureInformationSettings {
+                        documentation_format: Some(vec![
+                            lsp_types::MarkupKind::Markdown,
+                            lsp_types::MarkupKind::PlainText,
+                        ]),
+                        parameter_information: Some(lsp_types::ParameterInformationSettings {
+                            label_offset_support: Some(true),
+                        }),
+                        active_parameter_support: Some(true),
+                    }),
+                    context_support: Some(true),
                 }),
                 ..Default::default()
             }),
@@ -468,6 +483,39 @@ impl Client {
         };
 
         self.request("textDocument/completion", params).await
+    }
+
+    /// Notify the server that a document was saved.
+    pub fn did_save(&self, uri: Uri, text: Option<String>) {
+        let params = lsp_types::DidSaveTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri },
+            text,
+        };
+        if let Err(e) = self.notify("textDocument/didSave", params) {
+            warn!("Failed to send didSave notification: {e}");
+        }
+    }
+
+    /// Get signature help at the given position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request fails.
+    pub async fn signature_help(
+        &self,
+        uri: Uri,
+        position: Position,
+    ) -> Result<Option<lsp_types::SignatureHelp>, LspError> {
+        let params = lsp_types::SignatureHelpParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri },
+                position,
+            },
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            context: None,
+        };
+
+        self.request("textDocument/signatureHelp", params).await
     }
 
     /// Shutdown the language server gracefully.
@@ -959,11 +1007,43 @@ mod tests {
         let caps = Client::client_capabilities();
         let text_doc = caps.text_document.unwrap();
         let completion = text_doc.completion.unwrap();
-        assert_eq!(completion.dynamic_registration, Some(false));
+        assert_eq!(completion.dynamic_registration, Some(true));
         let item = completion.completion_item.unwrap();
         assert_eq!(item.snippet_support, Some(true));
         let formats = item.documentation_format.unwrap();
         assert!(formats.contains(&lsp_types::MarkupKind::Markdown));
         assert!(formats.contains(&lsp_types::MarkupKind::PlainText));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_hover() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let hover = text_doc.hover.unwrap();
+        assert_eq!(hover.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_definition() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let definition = text_doc.definition.unwrap();
+        assert_eq!(definition.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_dynamic_registration_references() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let references = text_doc.references.unwrap();
+        assert_eq!(references.dynamic_registration, Some(true));
+    }
+
+    #[test]
+    fn test_client_capabilities_synchronization_not_dynamic() {
+        let caps = Client::client_capabilities();
+        let text_doc = caps.text_document.unwrap();
+        let sync = text_doc.synchronization.unwrap();
+        assert_eq!(sync.dynamic_registration, Some(false));
     }
 }

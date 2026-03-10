@@ -7,9 +7,10 @@ use std::path::PathBuf;
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{ExtensionApi, SessionRuntime},
+    reovim_driver_session::{
+        NotificationDrainRegistry, PendingLevel, PendingNotificationQueue, SessionRuntime,
+    },
     reovim_kernel::api::v1::CommandId,
-    reovim_module_notification::{NotificationLevel, NotificationState},
 };
 
 use crate::{ids, provider::SnippetRegistryHandle};
@@ -49,8 +50,19 @@ impl CommandHandler for ReloadSnippets {
         let count = new_registry.provider_count();
         self.handle.replace(new_registry);
 
-        let state = runtime.ext_mut::<NotificationState>();
-        state.push(NotificationLevel::Info, format!("Snippets reloaded ({count} sources)"));
+        if let Some(queue) = runtime.kernel().services.get::<PendingNotificationQueue>() {
+            queue.push(PendingLevel::Info, format!("Snippets reloaded ({count} sources)"));
+        }
+
+        // Drain immediately so notification appears in this command cycle.
+        let drain = runtime
+            .kernel()
+            .services
+            .get::<NotificationDrainRegistry>()
+            .and_then(|reg| reg.get());
+        if let Some(d) = drain {
+            d.drain_pending(runtime);
+        }
 
         CommandResult::Success
     }

@@ -119,6 +119,7 @@ impl InputService for InputServiceImpl {
             return Ok(Response::new(SendKeysResponse {
                 ok: false,
                 status: KeyStatus::NotFound.into(),
+                should_quit: false,
             }));
         }
         // Independent/Sharing: proceed with normal input processing
@@ -267,6 +268,11 @@ impl InputService for InputServiceImpl {
             &mut accumulated_changes,
         );
 
+        // Update syntax drivers for modified buffers (#539)
+        if accumulated_changes.buffer_modified {
+            Self::emit_syntax_updates(&session, &accumulated_changes);
+        }
+
         // Emit notifications for accumulated state changes
         // Phase 14 (#471): Pass client_id for cursor/selection filtering
         // Phase #486: emit_notifications is now sync (uses sync per-client state access)
@@ -283,6 +289,7 @@ impl InputService for InputServiceImpl {
         Ok(Response::new(SendKeysResponse {
             ok: any_handled,
             status: final_status.into(),
+            should_quit: accumulated_changes.should_quit,
         }))
     }
 }
@@ -423,6 +430,60 @@ impl InputServiceImpl {
         }
     }
 
+    /// Update syntax drivers and broadcast token updates for modified buffers.
+    ///
+    /// Called after key processing when `buffer_modified` is true. Does a
+    /// full re-parse for each modified buffer (incremental update deferred).
+    ///
+    /// The function splits mutable borrows to avoid `ExtensionMap` aliasing:
+    /// 1. Access `SyntaxSessionState`, update driver, build `TokenUpdate`
+    /// 2. Access `SyntaxStreamState`, broadcast the update
+    fn emit_syntax_updates(session: &Session, changes: &StateChanges) {
+        use crate::session::{SyntaxSessionState, SyntaxStreamState, build_token_update};
+
+        if changes.modified_buffers.is_empty() {
+            return;
+        }
+
+        session.with_state_mut_sync(|state| {
+            for &buffer_id in &changes.modified_buffers {
+                // Get buffer content and file path
+                let Some(buffer_arc) = state.buffer(buffer_id) else {
+                    continue;
+                };
+                let buffer = buffer_arc.read();
+                let content = buffer.content().clone();
+                let file_path = buffer.file_path().map(String::from);
+                let total_lines = buffer.line_count() as u64;
+                drop(buffer);
+                drop(buffer_arc);
+
+                // Step 1: Update driver (mutable borrow of SyntaxSessionState)
+                let syntax = state.app.extensions.get_or_insert::<SyntaxSessionState>();
+                if let Some(ref path) = file_path {
+                    syntax.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                if let Some(driver) = syntax.get_mut(buffer_id) {
+                    driver.parse(&content);
+                }
+
+                // Build token update from the driver (immutable borrow)
+                let update = build_token_update(
+                    state.app.extensions.get_or_insert::<SyntaxSessionState>(),
+                    buffer_id,
+                    total_lines,
+                    true,
+                );
+
+                // Step 2: Broadcast to subscribers (mutable borrow of SyntaxStreamState)
+                if let Some(update) = update {
+                    let stream = state.app.extensions.get_or_insert::<SyntaxStreamState>();
+                    stream.broadcast(&update);
+                }
+            }
+        });
+    }
+
     /// Convert `ResolveContext` to `CommandContext`.
     fn resolve_to_command_context(ctx: &ResolveContext) -> CommandContext {
         let mut cmd_ctx = CommandContext::new();
@@ -434,10 +495,22 @@ impl InputServiceImpl {
         }
         // Transfer metadata (ResolveContext::ArgValue -> CommandContext::ArgValue)
         for (key, value) in &ctx.metadata {
-            // Note: ResolveContext uses a different ArgValue enum than CommandContext
-            // For now, we skip metadata transfer - full conversion would be complex
-            tracing::trace!(key, "Metadata key in resolve context (not yet transferred)");
-            let _ = value;
+            use reovim_driver_input::ArgValue as InputArgValue;
+            let converted = match value {
+                InputArgValue::Bool(b) => Some(ArgValue::Bool(*b)),
+                InputArgValue::String(s) => Some(ArgValue::String(s.clone())),
+                InputArgValue::Char(c) => Some(ArgValue::Char(*c)),
+                InputArgValue::Int(n) => usize::try_from(*n).ok().map(ArgValue::Count),
+                InputArgValue::Uint(n) => usize::try_from(*n).ok().map(ArgValue::Count),
+                InputArgValue::Position(p) => Some(ArgValue::Position(p.line, p.column)),
+                InputArgValue::Float(_) | InputArgValue::Range { .. } => {
+                    tracing::trace!(key, "Skipping unconvertible metadata");
+                    None
+                }
+            };
+            if let Some(arg_value) = converted {
+                cmd_ctx.set(key, arg_value);
+            }
         }
         cmd_ctx
     }
@@ -495,9 +568,20 @@ impl InputServiceImpl {
                         changes.merge(pop_changes);
                     }
 
-                    // Merge command changes into accumulated changes
-                    if let Some(cmd_changes) = cmd_changes {
-                        changes.merge(cmd_changes.1);
+                    // Merge command changes and process signals (#547)
+                    if let Some((_, cmd_state_changes, signals)) = cmd_changes {
+                        changes.merge(cmd_state_changes);
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(
+                                        %client_id,
+                                        "Client requested quit via RuntimeSignal"
+                                    );
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
 
                     // Check if per-client mode changed
@@ -703,9 +787,9 @@ impl InputServiceImpl {
                     cmd_ctx.set_buffer_id(buffer_id);
                 }
 
-                // Phase #471/#479: Execute with per-client state, log errors to ring buffer
+                // Phase #471/#479/#547: Execute with per-client state, log errors, process signals
                 match session.execute_command_for_client(client_id, &command, &cmd_ctx) {
-                    Some((CommandResult::Error(ref e), cmd_changes)) => {
+                    Some((CommandResult::Error(ref e), cmd_changes, signals)) => {
                         changes.merge(cmd_changes);
                         // Phase #479: Log command failure to ring buffer (visible, not silent)
                         session.with_client_ring_buffer(client_id, |rb| {
@@ -715,13 +799,28 @@ impl InputServiceImpl {
                             );
                         });
                         tracing::warn!(?command, %client_id, error = %e, "Command execution failed");
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
-                    Some((_, cmd_changes)) => {
+                    Some((_, cmd_changes, signals)) => {
                         changes.merge(cmd_changes);
+                        for signal in signals {
+                            match signal {
+                                reovim_driver_command_types::RuntimeSignal::Quit => {
+                                    tracing::info!(%client_id, "Client requested quit via RuntimeSignal");
+                                    changes.record_quit_requested();
+                                }
+                            }
+                        }
                     }
                     None => {}
                 }
-                // Success/Quit/ForceQuit/Detach: handled elsewhere
                 // None (client not found or following): already logged in execute_command_for_client
             }
 
@@ -960,16 +1059,14 @@ mod tests {
     #[test]
     fn test_resolve_to_command_context_with_metadata() {
         let mut ctx = ResolveContext::default();
-        // Add metadata (should be traced but not transferred currently)
         ctx.metadata.insert(
             "test_key".to_string(),
             reovim_driver_input::ArgValue::String("test_value".to_string()),
         );
         let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 
-        // Metadata is currently not transferred (only traced), so command context
-        // should still be empty except for any explicit count/register
-        assert!(cmd_ctx.count().is_none());
+        // Metadata is transferred with type conversion
+        assert_eq!(cmd_ctx.string("test_key"), Some("test_value"),);
     }
 
     #[tokio::test]

@@ -318,6 +318,12 @@ impl<K: ServiceKey, T: ?Sized + Send + Sync + 'static> MultiServiceRegistry<K, T
         self.providers.read().keys().cloned().collect()
     }
 
+    /// List all registered providers.
+    #[must_use]
+    pub fn values(&self) -> Vec<Arc<T>> {
+        self.providers.read().values().cloned().collect()
+    }
+
     /// Check if a provider is registered for the given key.
     #[must_use]
     pub fn contains(&self, key: &K) -> bool {
@@ -476,6 +482,23 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert!(keys.contains(&TestKey::Primary));
         assert!(keys.contains(&TestKey::Secondary));
+    }
+
+    #[test]
+    fn test_multi_registry_values() {
+        let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
+
+        registry.register(TestKey::Primary, Arc::new(PrimaryProvider));
+        registry.register(TestKey::Secondary, Arc::new(SecondaryProvider));
+
+        let values = registry.values();
+        assert_eq!(values.len(), 2);
+    }
+
+    #[test]
+    fn test_multi_registry_values_empty() {
+        let registry = MultiServiceRegistry::<TestKey, dyn TestProvider>::new();
+        assert!(registry.values().is_empty());
     }
 
     #[test]

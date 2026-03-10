@@ -33,11 +33,17 @@ reovim-driver-session = { workspace = true }
 # Module bundle (provides DefaultsModule::create_modules)
 reovim-module-defaults = { workspace = true }
 
+# Vim module (for VimLookupPolicy - #542 mechanism/policy separation)
+reovim-module-vim = { workspace = true }
+
 # Extra modules available via REOVIM_EXTRA_MODULES env var
 reovim-module-textobjects = { workspace = true }
 
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
+
+# Display driver (for SharedThemeManager + ThemeLoader bootstrap)
+reovim-driver-display = { workspace = true }
 
 # Client crates (optional, for CLI and TUI commands)
 reovim-client-cli = { workspace = true, optional = true }

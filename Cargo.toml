@@ -59,6 +59,14 @@ members = [
     "server/modules/snippet",
     "server/modules/range-finder",
     "server/modules/completion",
+    "server/modules/lsp-navigation",
+    "server/modules/vim-lsp",
+    "server/modules/vim-microscope",
+    "server/modules/vim-explorer",
+    "server/modules/vim-completion",
+    "server/modules/vim-range-finder",
+    "server/modules/vim-snippet",
+    "server/modules/tetromino",
 
     # Client layer - TUI
     "clients/tui",
@@ -72,6 +80,11 @@ members = [
     "clients/tui/extensions/microscope",
     "clients/tui/extensions/completion",
     "clients/tui/extensions/explorer",
+    "clients/tui/extensions/tetromino",
+    "clients/tui/extensions/range-finder",
+    "clients/tui/extensions/hover",
+    "clients/tui/extensions/signature-help",
+    "clients/tui/extensions/diagnostics",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -232,6 +245,14 @@ reovim-module-lsp = { path = "./server/modules/lsp", version = "0.10.0-dev" }
 reovim-module-snippet = { path = "./server/modules/snippet", version = "0.10.0-dev" }
 reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.10.0-dev" }
 reovim-module-completion = { path = "./server/modules/completion", version = "0.10.0-dev" }
+reovim-module-lsp-navigation = { path = "./server/modules/lsp-navigation", version = "0.10.0-dev" }
+reovim-module-vim-lsp = { path = "./server/modules/vim-lsp", version = "0.10.0-dev" }
+reovim-module-vim-microscope = { path = "./server/modules/vim-microscope", version = "0.10.0-dev" }
+reovim-module-vim-explorer = { path = "./server/modules/vim-explorer", version = "0.10.0-dev" }
+reovim-module-vim-completion = { path = "./server/modules/vim-completion", version = "0.10.0-dev" }
+reovim-module-vim-range-finder = { path = "./server/modules/vim-range-finder", version = "0.10.0-dev" }
+reovim-module-vim-snippet = { path = "./server/modules/vim-snippet", version = "0.10.0-dev" }
+reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

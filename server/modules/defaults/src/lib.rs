@@ -38,7 +38,7 @@ use reovim_kernel::api::v1::{
 // defaults is now ONLY a module list. Runner imports directly from module crates.
 
 // Import traits from their respective modules (mechanism vs policy)
-use {reovim_module_commands::ExCommandHandler, reovim_module_vim::Operator};
+use {reovim_driver_command::CommandHandler, reovim_module_vim::Operator};
 
 // Internal-only imports for create_modules() and helper functions
 // Note: Client-side modules removed (Epic #465 Phase 11)
@@ -47,12 +47,16 @@ use {
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
     reovim_module_explorer as explorer, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
-    reovim_module_microscope as microscope, reovim_module_motions as motions,
-    reovim_module_notification as notification, reovim_module_range_finder as range_finder,
-    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
-    reovim_module_snippet as snippet, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
+    reovim_module_motions as motions, reovim_module_notification as notification,
+    reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
+    reovim_module_vim_completion as vim_completion, reovim_module_vim_explorer as vim_explorer,
+    reovim_module_vim_lsp as vim_lsp, reovim_module_vim_microscope as vim_microscope,
+    reovim_module_vim_range_finder as vim_range_finder, reovim_module_vim_snippet as vim_snippet,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
     reovim_picker_grep as picker_grep,
@@ -117,19 +121,34 @@ impl DefaultsModule {
             Box::new(picker_grep::PickerGrepModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
+            // Vim-microscope adapter - bridges vim keybindings to picker commands
+            Box::new(vim_microscope::VimMicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
-            // Code intelligence modules (#520)
+            // Code intelligence modules (#520, #532)
             Box::new(lsp::LspModule::new()),
-            // Snippet expansion (#136)
+            Box::new(lsp_navigation::LspNavigationModule::new()),
+            // Vim-LSP adapter (#532) - bridges vim keybindings to LSP commands
+            Box::new(vim_lsp::VimLspModule::new()),
+            // Vim-snippet adapter (#532) - registers SnippetParentMode before snippet
+            Box::new(vim_snippet::VimSnippetModule::new()),
+            // Snippet expansion (#136) - reads SnippetParentMode from adapter
             Box::new(snippet::SnippetModule::new()),
-            // Jump navigation and code folding (#524)
+            // Vim-range-finder adapter (#532) - registers JumpParentMode before range-finder
+            Box::new(vim_range_finder::VimRangeFinderModule::new()),
+            // Jump navigation and code folding (#524) - reads JumpParentMode from adapter
             Box::new(range_finder::RangeFinderModule::new()),
             // Completion engine (#521)
             Box::new(completion::CompletionModule::new()),
+            // Vim-completion adapter - bridges vim keybindings to completion commands
+            Box::new(vim_completion::VimCompletionModule::new()),
             // File explorer (#523)
             Box::new(explorer::ExplorerModule::new()),
+            // Vim-explorer adapter - bridges vim keybindings to explorer commands
+            Box::new(vim_explorer::VimExplorerModule::new()),
+            // Tetromino game (#537)
+            Box::new(tetromino::TetrominoModule::new()),
         ]
     }
 }
@@ -186,16 +205,26 @@ impl Module for DefaultsModule {
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             ModuleId::new("treesitter-rust"),
             ModuleId::new("treesitter-markdown"),
-            // Code intelligence modules (#520)
+            // Code intelligence modules (#520, #532)
             ModuleId::new("lsp"),
+            ModuleId::new("lsp-navigation"),
+            ModuleId::new("vim-lsp"),
             // Snippet expansion (#136)
             ModuleId::new("snippet"),
+            ModuleId::new("vim-snippet"),
             // Jump navigation and code folding (#524)
             ModuleId::new("range-finder"),
+            ModuleId::new("vim-range-finder"),
             // Completion engine (#521)
             ModuleId::new("completion"),
+            ModuleId::new("vim-completion"),
             // File explorer (#523)
             ModuleId::new("explorer"),
+            ModuleId::new("vim-explorer"),
+            // Picker vim adapter
+            ModuleId::new("vim-microscope"),
+            // Tetromino game (#537)
+            ModuleId::new("tetromino"),
         ]
     }
 
@@ -219,10 +248,10 @@ pub fn operators() -> Vec<Box<dyn Operator>> {
     vim::operators::operators()
 }
 
-/// Get all default commands.
+/// Get all default command handlers.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
-    commands::commands()
+pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
+    commands::command_handlers()
 }
 
 /// Get all default keybindings.
@@ -265,13 +294,15 @@ mod tests {
         // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Code intelligence modules (1): lsp
+        // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 26 modules
-        assert_eq!(deps.len(), 26);
+        // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+        // Tetromino (1): tetromino
+        // Total: 34 modules
+        assert_eq!(deps.len(), 34);
     }
 
     #[test]
@@ -284,13 +315,15 @@ mod tests {
         // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
-        // Code intelligence modules (1): lsp
+        // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
         // Snippet (1): snippet
         // Range-finder (1): range-finder
         // Completion (1): completion
         // Explorer (1): explorer
-        // Total: 26 modules
-        assert_eq!(modules.len(), 26);
+        // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+        // Tetromino (1): tetromino
+        // Total: 33 modules
+        assert_eq!(modules.len(), 34);
     }
 
     #[test]
@@ -300,8 +333,8 @@ mod tests {
     }
 
     #[test]
-    fn test_commands_not_empty() {
-        let cmds = commands();
+    fn test_command_handlers_not_empty() {
+        let cmds = command_handlers();
         assert!(!cmds.is_empty());
     }
 
@@ -386,8 +419,24 @@ mod tests {
     fn test_dependencies_contain_lsp_module() {
         let module = DefaultsModule::new();
         let deps = module.dependencies();
+        let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
 
-        assert!(deps.iter().map(ModuleId::as_str).any(|x| x == "lsp"));
+        assert!(dep_strs.contains(&"lsp"));
+        assert!(dep_strs.contains(&"lsp-navigation"));
+        assert!(dep_strs.contains(&"vim-lsp"));
+    }
+
+    #[test]
+    fn test_dependencies_contain_vim_adapter_modules() {
+        let module = DefaultsModule::new();
+        let deps = module.dependencies();
+        let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
+
+        assert!(dep_strs.contains(&"vim-microscope"));
+        assert!(dep_strs.contains(&"vim-explorer"));
+        assert!(dep_strs.contains(&"vim-completion"));
+        assert!(dep_strs.contains(&"vim-range-finder"));
+        assert!(dep_strs.contains(&"vim-snippet"));
     }
 
     #[test]

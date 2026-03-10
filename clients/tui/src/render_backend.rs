@@ -23,8 +23,8 @@
 //! └──────────────────────────┴──────────────────────────────────┘
 //! ```
 
-// Re-export the trait and extension from display crate
-pub use reovim_driver_display::render_backend::{RenderBackend, TuiExtension};
+// Re-export the trait, extension, and viewport context from display crate
+pub use reovim_driver_display::render_backend::{RenderBackend, TuiExtension, ViewportContext};
 
 use reovim_driver_display::{FrameBuffer, Style};
 

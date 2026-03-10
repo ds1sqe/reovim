@@ -44,7 +44,7 @@ use crate::modes::VimMode;
 ///
 /// # Example
 ///
-/// ```ignore
+/// ```text
 /// // Enter window mode (from normal mode via <C-w>)
 /// // Press 'h' - executes focus-left, returns to normal
 /// // Press 's' - executes split-horizontal, returns to normal

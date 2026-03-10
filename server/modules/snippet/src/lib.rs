@@ -27,7 +27,9 @@
 
 pub mod ast;
 pub mod command;
+pub mod config;
 pub mod engine;
+mod expander;
 pub mod ids;
 pub mod inheritance;
 pub mod loader;
@@ -40,11 +42,16 @@ pub mod state;
 pub mod transform;
 pub mod variables;
 
+pub use config::SnippetParentMode;
+
 use std::path::Path;
+
+use std::sync::Arc;
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_session::SnippetExpanderRegistry,
     reovim_kernel::api::v1::{
         CursorStyle, KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId,
         ProbeResult, Version, pr_info,
@@ -147,15 +154,18 @@ impl Module for SnippetModule {
         self.handle = Some(handle.clone());
         self.data_dir = Some(ctx.data_dir.clone());
 
-        // Look up vim:insert for mode inheritance (resolved at init time)
+        // Read parent mode from adapter-injected config (e.g., vim-snippet)
+        let parent_insert = ctx
+            .services
+            .get::<SnippetParentMode>()
+            .expect("SnippetParentMode must be registered (by adapter) before snippet")
+            .mode()
+            .clone();
         let modes = ctx.services.get_or_create::<ModeInfoStore>();
-        let vim_insert = modes
-            .find_by_name("vim", "insert")
-            .expect("vim:insert mode must be registered before snippet");
 
         // 2. Register command handlers with return mode
         let store = ctx.services.get_or_create::<CommandHandlerStore>();
-        let commands = command::all_commands(handle, vim_insert.clone(), ctx.data_dir.clone());
+        let commands = command::all_commands(handle, parent_insert.clone(), ctx.data_dir.clone());
         let command_count = commands.len();
         for cmd_handler in commands {
             store.add(cmd_handler);
@@ -163,7 +173,7 @@ impl Module for SnippetModule {
 
         // 3. Register snippet resolver with looked-up parent
         let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
-        resolvers.register(resolver::SnippetResolver::with_parent(vim_insert.clone()));
+        resolvers.register(resolver::SnippetResolver::with_parent(parent_insert.clone()));
 
         // 4. Register mode info for display
         modes.add(ModeInfo {
@@ -172,13 +182,17 @@ impl Module for SnippetModule {
             cursor_style: CursorStyle::Bar,
             accepts_char_input: true,
             has_selection: true,
-            inherits_from: Some(vim_insert),
+            inherits_from: Some(parent_insert),
             is_entry: false,
         });
 
         // 5. Register keybindings
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
+
+        // 6. Register SnippetExpander implementation (#542: decouple completion from this module).
+        let expander_registry = ctx.services.get_or_create::<SnippetExpanderRegistry>();
+        expander_registry.register(Arc::new(expander::SnippetExpanderImpl));
 
         pr_info!("Snippet module initialized with {command_count} commands");
         ProbeResult::Success
@@ -192,12 +206,7 @@ impl Module for SnippetModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Expand snippet in insert mode
-            KeybindingRegistration::new("<C-s>", ids::EXPAND)
-                .with_modes(&["vim:insert"])
-                .with_description("Expand snippet at cursor")
-                .with_category("snippet"),
-            // Tab navigates to next tab stop in snippet mode
+            // Snippet navigating mode: tab stop navigation
             KeybindingRegistration::new("<Tab>", ids::JUMP_NEXT)
                 .with_modes(&["snippet:navigating"])
                 .with_description("Jump to next tab stop")
@@ -212,16 +221,6 @@ impl Module for SnippetModule {
                 .with_modes(&["snippet:navigating"])
                 .with_description("Cancel snippet navigation")
                 .with_category("snippet"),
-            // Catalog: list available snippets
-            KeybindingRegistration::new("<Space>sc", ids::CATALOG)
-                .with_modes(&["vim:normal"])
-                .with_description("List available snippets")
-                .with_category("snippet"),
-            // Reload: re-read snippet files from disk
-            KeybindingRegistration::new("<Space>sr", ids::RELOAD)
-                .with_modes(&["vim:normal"])
-                .with_description("Reload snippet files")
-                .with_category("snippet"),
         ]
     }
 }
@@ -234,7 +233,7 @@ impl CommandProvider for SnippetModule {
             .unwrap_or_else(|| SnippetRegistryHandle::new(SnippetRegistry::new()));
         // Fallback ModeId for CommandProvider (testing/FFI only).
         // In production, init() resolves the real mode from ModeInfoStore.
-        let fallback_mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("vim"), "insert");
+        let fallback_mode = reovim_kernel::api::v1::ModeId::new(ModuleId::new("editor"), "insert");
         let data_dir = self
             .data_dir
             .clone()
@@ -322,23 +321,15 @@ mod tests {
     #[test]
     fn test_keybindings_count() {
         let module = SnippetModule::new();
-        assert_eq!(module.keybindings().len(), 6);
-    }
-
-    #[test]
-    fn test_keybindings_expand() {
-        let module = SnippetModule::new();
-        let bindings = module.keybindings();
-        let expand = &bindings[0];
-        assert_eq!(expand.keys, "<C-s>");
-        assert_eq!(expand.command_id, ids::EXPAND);
+        // Only snippet:navigating bindings remain (Tab, S-Tab, Esc)
+        assert_eq!(module.keybindings().len(), 3);
     }
 
     #[test]
     fn test_keybindings_jump_next() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let next = &bindings[1];
+        let next = &bindings[0];
         assert_eq!(next.keys, "<Tab>");
         assert_eq!(next.command_id, ids::JUMP_NEXT);
     }
@@ -347,7 +338,7 @@ mod tests {
     fn test_keybindings_jump_prev() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let prev = &bindings[2];
+        let prev = &bindings[1];
         assert_eq!(prev.keys, "<S-Tab>");
         assert_eq!(prev.command_id, ids::JUMP_PREV);
     }
@@ -356,7 +347,7 @@ mod tests {
     fn test_keybindings_cancel() {
         let module = SnippetModule::new();
         let bindings = module.keybindings();
-        let cancel = &bindings[3];
+        let cancel = &bindings[2];
         assert_eq!(cancel.keys, "<Esc>");
         assert_eq!(cancel.command_id, ids::CANCEL);
     }
@@ -376,7 +367,7 @@ mod tests {
     fn test_command_provider_matches_all_commands() {
         use std::path::PathBuf;
         let handle = SnippetRegistryHandle::new(SnippetRegistry::new());
-        let fallback = reovim_kernel::api::v1::ModeId::new(ModuleId::new("vim"), "insert");
+        let fallback = reovim_kernel::api::v1::ModeId::new(ModuleId::new("test"), "insert");
         let module_handlers = SnippetModule::new().command_handlers();
         let all = command::all_commands(handle, fallback, PathBuf::from("/tmp"));
         assert_eq!(module_handlers.len(), all.len());
@@ -396,12 +387,14 @@ mod tests {
     // Init with real context
     // =========================================================================
 
-    /// Register a mock vim:insert mode in `ModeInfoStore` (vim initializes before snippet).
-    fn register_mock_vim_insert(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>) {
+    /// Register a mock parent mode and `SnippetParentMode` config
+    /// (adapter initializes before snippet).
+    fn register_mock_parent(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>) {
         use reovim_kernel::api::v1::ModeId;
+        let parent = ModeId::new(ModuleId::new("test"), "insert");
         let modes = services.get_or_create::<ModeInfoStore>();
         modes.add(ModeInfo {
-            id: ModeId::new(ModuleId::new("vim"), "insert"),
+            id: parent.clone(),
             display_name: "INSERT",
             cursor_style: CursorStyle::Bar,
             accepts_char_input: true,
@@ -409,6 +402,7 @@ mod tests {
             inherits_from: None,
             is_entry: false,
         });
+        services.register(Arc::new(SnippetParentMode::new(parent)));
     }
 
     #[test]
@@ -420,7 +414,7 @@ mod tests {
 
         let event_bus = Arc::new(EventBus::new());
         let services = Arc::new(ServiceRegistry::new());
-        register_mock_vim_insert(&services);
+        register_mock_parent(&services);
 
         let kernel = KernelContext::with_event_bus_services_and_options(
             event_bus,
@@ -461,7 +455,7 @@ mod tests {
 
         let event_bus = Arc::new(EventBus::new());
         let services = Arc::new(ServiceRegistry::new());
-        register_mock_vim_insert(&services);
+        register_mock_parent(&services);
 
         let kernel = KernelContext::with_event_bus_services_and_options(
             event_bus,

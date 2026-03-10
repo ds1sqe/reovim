@@ -21,7 +21,6 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_syntax::{HighlightGroup, SyntaxHighlight},
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
         GetLanguageInfoRequest, GetLanguageInfoResponse, GetTokensRequest, GetTokensResponse,
@@ -32,7 +31,10 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState};
+use crate::session::{
+    Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState,
+    annotation_kind_to_proto,
+};
 
 /// Forward syntax token updates from session to gRPC stream.
 ///
@@ -90,27 +92,6 @@ impl SyntaxServiceImpl {
             .get(&self.default_session_id)
             .ok_or_else(|| Status::not_found("No active session"))
     }
-}
-
-/// Convert a `HighlightGroup` to its category string.
-///
-/// Uses the `SyntaxHighlight::category()` method from the syntax driver crate.
-/// This ensures consistency between server and client token categorization.
-///
-/// # Example Categories
-///
-/// - `keyword`, `keyword.control`, `keyword.function`
-/// - `function`, `function.builtin`, `function.macro`
-/// - `variable`, `variable.builtin`, `variable.parameter`
-/// - `string`, `string.escape`
-/// - `comment`, `comment.doc`
-///
-/// # Note
-///
-/// Used by `GetTokens` and `StreamTokens` to convert highlight groups to client-facing categories.
-#[must_use]
-pub fn highlight_group_to_category(group: HighlightGroup) -> &'static str {
-    group.category()
 }
 
 /// Detect language from file extension.
@@ -276,11 +257,12 @@ impl SyntaxService for SyntaxServiceImpl {
                 let buffer = buffer_arc.read();
                 let total_lines = buffer.line_count();
 
-                // Detect language from file path
-                let (language_id, _language_name) = detect_language_from_path(buffer.file_path());
-
                 // Get buffer content for byte range calculation
                 let content = buffer.content();
+                let file_path = buffer.file_path().map(String::from);
+
+                // Detect language from file path (hardcoded fallback for response)
+                let (language_id, _language_name) = detect_language_from_path(file_path.as_deref());
 
                 // Calculate byte range for requested lines
                 let start_line = req.start_line.unwrap_or(0) as usize;
@@ -306,17 +288,27 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Get syntax session state from session-wide extensions (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
-                // Get or create driver for this buffer
-                let tokens = if syntax_state.ensure_driver(buffer_id, language_id, &content) {
+                // Try registry-based detection first, fall back to hardcoded
+                if let Some(path) = &file_path {
+                    syntax_state.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                // Fall back to hardcoded language detection if registry didn't work
+                if !syntax_state.has_driver(buffer_id) {
+                    syntax_state.ensure_driver(buffer_id, language_id, &content);
+                }
+
+                // Get tokens from driver (highlights + decorations)
+                let tokens = if syntax_state.has_driver(buffer_id) {
                     syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
-                        // Get highlights from driver and convert to TokenSpan
-                        driver
-                            .highlights(byte_range)
+                        let mut annotations = driver.highlights(byte_range.clone());
+                        annotations.extend(driver.decorations(byte_range));
+                        annotations
                             .into_iter()
                             .map(|span| TokenSpan {
                                 start_byte: span.start_byte as u32,
                                 end_byte: span.end_byte as u32,
-                                category: highlight_group_to_category(span.group).to_string(),
+                                category: span.category.to_string(),
+                                kind: annotation_kind_to_proto(&span.kind),
                             })
                             .collect()
                     })
@@ -363,7 +355,8 @@ impl SyntaxService for SyntaxServiceImpl {
                 let buffer = buffer_arc.read();
                 let total_lines = buffer.line_count() as u64;
                 let content = buffer.content();
-                let (language_id, _) = detect_language_from_path(buffer.file_path());
+                let file_path = buffer.file_path().map(String::from);
+                let (language_id, _) = detect_language_from_path(file_path.as_deref());
 
                 // Drop buffer lock before accessing extensions
                 drop(buffer);
@@ -372,18 +365,26 @@ impl SyntaxService for SyntaxServiceImpl {
                 // Get syntax state and ensure driver exists (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
 
-                // Ensure driver is created for this buffer
-                syntax_state.ensure_driver(buffer_id, language_id, &content);
+                // Try registry-based detection first, fall back to hardcoded
+                if let Some(path) = &file_path {
+                    syntax_state.ensure_driver_from_path(buffer_id, path, &content);
+                }
+                if !syntax_state.has_driver(buffer_id) {
+                    syntax_state.ensure_driver(buffer_id, language_id, &content);
+                }
 
                 // Get initial tokens (must finish borrow before accessing stream state)
                 let tokens = syntax_state.get(buffer_id).map_or_else(Vec::new, |driver| {
-                    driver
-                        .highlights(0..content.len())
+                    let len = content.len();
+                    let mut annotations = driver.highlights(0..len);
+                    annotations.extend(driver.decorations(0..len));
+                    annotations
                         .into_iter()
                         .map(|span| TokenSpan {
                             start_byte: span.start_byte as u32,
                             end_byte: span.end_byte as u32,
-                            category: highlight_group_to_category(span.group).to_string(),
+                            category: span.category.to_string(),
+                            kind: annotation_kind_to_proto(&span.kind),
                         })
                         .collect()
                 });
@@ -398,6 +399,8 @@ impl SyntaxService for SyntaxServiceImpl {
                     start_line: 0,
                     end_line: total_lines.saturating_sub(1),
                     full_refresh: true,
+                    layer: "syntax".into(),
+                    priority: 0,
                 };
 
                 Ok::<_, Status>((initial, rx))
@@ -441,15 +444,33 @@ impl SyntaxService for SyntaxServiceImpl {
                 })?;
 
                 let buffer = buffer_arc.read();
-                let (language_id, language_name) = detect_language_from_path(buffer.file_path());
-                let extensions = extensions_for_language(language_id);
+                let file_path = buffer.file_path().map(String::from);
 
                 // Drop buffer lock before accessing extensions
                 drop(buffer);
                 drop(buffer_arc);
 
-                // Check if a parser is available via the factory (#491)
                 let syntax_state = state.app.extensions.get_or_insert::<SyntaxSessionState>();
+
+                // Try registry-based detection first
+                if let Some(ref path) = file_path
+                    && let Some(lang_id) = syntax_state.detect_language(path)
+                    && let Some(registry) = syntax_state.registry()
+                    && let Some(info) = registry.get_info(&lang_id)
+                {
+                    let has_parser = syntax_state.factory().is_some_and(|f| f.supports(&lang_id));
+                    let extensions = info.extensions.iter().map(|e| format!(".{e}")).collect();
+                    return Ok(Response::new(GetLanguageInfoResponse {
+                        language_id: lang_id,
+                        language_name: info.name.clone(),
+                        extensions,
+                        has_parser,
+                    }));
+                }
+
+                // Fall back to hardcoded detection
+                let (language_id, language_name) = detect_language_from_path(file_path.as_deref());
+                let extensions = extensions_for_language(language_id);
                 let has_parser = syntax_state
                     .factory()
                     .is_some_and(|f| f.supports(language_id));
@@ -468,70 +489,6 @@ impl SyntaxService for SyntaxServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_highlight_group_to_category() {
-        // Keywords
-        assert_eq!(highlight_group_to_category(HighlightGroup::Keyword), "keyword");
-        assert_eq!(highlight_group_to_category(HighlightGroup::KeywordControl), "keyword.control");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::KeywordFunction),
-            "keyword.function"
-        );
-
-        // Functions
-        assert_eq!(highlight_group_to_category(HighlightGroup::Function), "function");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::FunctionBuiltin),
-            "function.builtin"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Method), "function.method");
-
-        // Variables
-        assert_eq!(highlight_group_to_category(HighlightGroup::Variable), "variable");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::VariableBuiltin),
-            "variable.builtin"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Parameter), "variable.parameter");
-
-        // Literals
-        assert_eq!(highlight_group_to_category(HighlightGroup::String), "string");
-        assert_eq!(highlight_group_to_category(HighlightGroup::StringEscape), "string.escape");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Number), "number");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Boolean), "boolean");
-
-        // Comments
-        assert_eq!(highlight_group_to_category(HighlightGroup::Comment), "comment");
-        assert_eq!(highlight_group_to_category(HighlightGroup::CommentDoc), "comment.doc");
-
-        // Types
-        assert_eq!(highlight_group_to_category(HighlightGroup::Type), "type");
-        assert_eq!(highlight_group_to_category(HighlightGroup::TypeBuiltin), "type.builtin");
-
-        // Punctuation
-        assert_eq!(highlight_group_to_category(HighlightGroup::Punctuation), "punctuation");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::PunctuationBracket),
-            "punctuation.bracket"
-        );
-
-        // Operators
-        assert_eq!(highlight_group_to_category(HighlightGroup::Operator), "operator");
-
-        // Diagnostics
-        assert_eq!(highlight_group_to_category(HighlightGroup::Error), "diagnostic.error");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Warning), "diagnostic.warning");
-
-        // Markup
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupHeading), "markup.heading");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupBold), "markup.bold");
-
-        // Special
-        assert_eq!(highlight_group_to_category(HighlightGroup::Namespace), "namespace");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Attribute), "attribute");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Embedded), "embedded");
-    }
 
     #[test]
     fn test_detect_language_from_path() {
@@ -774,20 +731,6 @@ mod tests {
         assert!(cmake_exts.contains(&"CMakeLists.txt".to_string()));
     }
 
-    #[test]
-    fn test_highlight_group_additional_groups() {
-        // Test remaining highlight groups for completeness
-        assert_eq!(highlight_group_to_category(HighlightGroup::FunctionMacro), "function.macro");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupItalic), "markup.italic");
-        assert_eq!(highlight_group_to_category(HighlightGroup::MarkupLink), "markup.link");
-        assert_eq!(
-            highlight_group_to_category(HighlightGroup::PunctuationDelimiter),
-            "punctuation.delimiter"
-        );
-        assert_eq!(highlight_group_to_category(HighlightGroup::Character), "character");
-        assert_eq!(highlight_group_to_category(HighlightGroup::Constant), "constant");
-    }
-
     #[tokio::test]
     async fn test_stream_tokens_no_session() {
         let registry = Arc::new(SessionRegistry::new());
@@ -1018,7 +961,7 @@ mod tests {
         use std::{ops::Range, sync::Arc};
 
         use reovim_driver_syntax::{
-            HighlightGroup, HighlightSpan, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
+            Annotation, HighlightCategory, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
         };
 
         /// A minimal test driver for unit tests.
@@ -1051,12 +994,12 @@ mod tests {
                 // No-op for tests
             }
 
-            fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+            fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
                 if self.parsed {
-                    vec![HighlightSpan::new(
+                    vec![Annotation::highlight(
                         byte_range.start,
                         byte_range.end.min(100),
-                        HighlightGroup::Keyword,
+                        HighlightCategory::new("keyword"),
                     )]
                 } else {
                     Vec::new()
@@ -1332,7 +1275,8 @@ mod tests {
                     .map(|span| reovim_protocol::v2::TokenSpan {
                         start_byte: span.start_byte as u32,
                         end_byte: span.end_byte as u32,
-                        category: span.group.category().to_string(),
+                        category: span.category.to_string(),
+                        kind: None,
                     })
                     .collect();
                 let update = reovim_protocol::v2::TokenUpdate {
@@ -1341,6 +1285,8 @@ mod tests {
                     start_line: 0,
                     end_line: 0,
                     full_refresh: false,
+                    layer: "syntax".into(),
+                    priority: 0,
                 };
                 // Broadcast via stream state
                 let stream_state = state

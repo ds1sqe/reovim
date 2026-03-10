@@ -1855,6 +1855,7 @@ dependencies = [
  "reovim-client-tui",
  "reovim-driver-buffer",
  "reovim-driver-command",
+ "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
  "reovim-driver-session",
@@ -1863,6 +1864,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-defaults",
  "reovim-module-textobjects",
+ "reovim-module-vim",
  "reovim-server",
  "tokio",
  "tracing",
@@ -2007,6 +2009,8 @@ name = "reovim-driver-ffi"
 version = "0.10.0-dev"
 dependencies = [
  "libc",
+ "reovim-driver-command-types",
+ "reovim-driver-session",
  "reovim-kernel",
  "tracing",
 ]
@@ -2016,6 +2020,9 @@ name = "reovim-driver-ffi-python"
 version = "0.10.0-dev"
 dependencies = [
  "pyo3",
+ "reovim-driver-command-types",
+ "reovim-driver-ffi",
+ "reovim-driver-session",
  "reovim-kernel",
  "tracing",
 ]
@@ -2029,7 +2036,6 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-session",
  "reovim-kernel",
- "reovim-module-cmdline",
  "tracing",
 ]
 
@@ -2048,9 +2054,11 @@ name = "reovim-driver-lsp"
 version = "0.10.0-dev"
 dependencies = [
  "lsp-types",
+ "parking_lot",
  "reovim-kernel",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -2086,6 +2094,7 @@ dependencies = [
 name = "reovim-driver-session"
 version = "0.10.0-dev"
 dependencies = [
+ "parking_lot",
  "reovim-arch",
  "reovim-driver-clipboard",
  "reovim-driver-command-types",
@@ -2214,10 +2223,13 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-command",
+ "reovim-driver-command-types",
  "reovim-driver-display",
+ "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
+ "tempfile",
  "tracing",
 ]
 
@@ -2230,14 +2242,10 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-completion",
- "reovim-driver-input",
  "reovim-driver-lsp",
  "reovim-driver-session",
  "reovim-kernel",
- "reovim-module-lsp",
  "reovim-module-macros",
- "reovim-module-notification",
- "reovim-module-snippet",
  "serde_json",
  "tokio",
  "tracing",
@@ -2247,6 +2255,7 @@ dependencies = [
 name = "reovim-module-defaults"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-driver-command",
  "reovim-kernel",
  "reovim-module-buffer-simple",
  "reovim-module-clipboard",
@@ -2257,6 +2266,7 @@ dependencies = [
  "reovim-module-explorer",
  "reovim-module-keymap",
  "reovim-module-lsp",
+ "reovim-module-lsp-navigation",
  "reovim-module-macros",
  "reovim-module-microscope",
  "reovim-module-motions",
@@ -2265,11 +2275,18 @@ dependencies = [
  "reovim-module-scratch-buffer",
  "reovim-module-search",
  "reovim-module-snippet",
+ "reovim-module-tetromino",
  "reovim-module-treesitter-markdown",
  "reovim-module-treesitter-rust",
  "reovim-module-undo",
  "reovim-module-vfs-local",
  "reovim-module-vim",
+ "reovim-module-vim-completion",
+ "reovim-module-vim-explorer",
+ "reovim-module-vim-lsp",
+ "reovim-module-vim-microscope",
+ "reovim-module-vim-range-finder",
+ "reovim-module-vim-snippet",
  "reovim-module-whichkey",
  "reovim-picker-buffers",
  "reovim-picker-commands",
@@ -2324,13 +2341,35 @@ name = "reovim-module-lsp"
 version = "0.10.0-dev"
 dependencies = [
  "lsp-types",
+ "parking_lot",
  "reovim-driver-lsp",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-module-lsp-navigation"
+version = "0.10.0-dev"
+dependencies = [
+ "lsp-types",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-lsp",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-microscope",
+ "reovim-module-notification",
+ "serde_json",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]
@@ -2409,6 +2448,7 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -2445,12 +2485,25 @@ dependencies = [
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
- "reovim-module-notification",
  "reovim-testing",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "reovim-module-tetromino"
+version = "0.10.0-dev"
+dependencies = [
+ "rand",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -2471,9 +2524,11 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-driver-syntax-treesitter",
  "reovim-kernel",
+ "reovim-module-treesitter-rust",
  "reovim-testing",
  "tracing",
  "tree-sitter-md",
+ "tree-sitter-rust",
 ]
 
 [[package]]
@@ -2533,6 +2588,70 @@ dependencies = [
  "reovim-testing",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reovim-module-vim-completion"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-completion",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-vim-explorer"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-explorer",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-vim-lsp"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-lsp-navigation",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-vim-microscope"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-microscope",
+]
+
+[[package]]
+name = "reovim-module-vim-range-finder"
+version = "0.10.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-buffer",
+ "reovim-driver-command",
+ "reovim-driver-input",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-range-finder",
+]
+
+[[package]]
+name = "reovim-module-vim-snippet"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-input",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-module-snippet",
 ]
 
 [[package]]
@@ -2640,7 +2759,6 @@ dependencies = [
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
- "reovim-module-cmdline",
  "reovim-protocol",
  "reovim-testing",
  "serde",
@@ -2693,10 +2811,25 @@ dependencies = [
  "reovim-driver-display",
  "reovim-tui-ext-cmdline",
  "reovim-tui-ext-completion",
+ "reovim-tui-ext-diagnostics",
  "reovim-tui-ext-explorer",
+ "reovim-tui-ext-hover",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
+ "reovim-tui-ext-range-finder",
+ "reovim-tui-ext-signature-help",
+ "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
+]
+
+[[package]]
+name = "reovim-tui-ext-diagnostics"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2705,6 +2838,16 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-hover"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
  "serde_json",
 ]
 
@@ -2719,6 +2862,34 @@ dependencies = [
 
 [[package]]
 name = "reovim-tui-ext-notification"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-range-finder"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-signature-help"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-tetromino"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",

@@ -20,9 +20,12 @@ pub use reovim_driver_syntax::SyntaxSessionState;
 
 use {
     reovim_driver_session::SessionExtension,
-    reovim_driver_syntax::{SyntaxEdit, SyntaxHighlight},
+    reovim_driver_syntax::{AnnotationKind as DriverAnnotationKind, SyntaxEdit},
     reovim_kernel::api::v1::BufferId,
-    reovim_protocol::v2::{TokenSpan, TokenUpdate},
+    reovim_protocol::v2::{
+        AnnotationKind, BackgroundKind, ConcealKind, TokenSpan, TokenUpdate, VirtualTextKind,
+        annotation_kind,
+    },
     tokio::sync::mpsc,
 };
 
@@ -141,7 +144,8 @@ impl SyntaxStreamState {
         let Some(driver) = syntax.get(buffer_id) else {
             return;
         };
-        let highlights = driver.highlights(start_byte..end_byte);
+        let mut highlights = driver.highlights(start_byte..end_byte);
+        highlights.extend(driver.decorations(start_byte..end_byte));
 
         // Convert to TokenSpan
         let tokens: Vec<TokenSpan> = highlights
@@ -149,7 +153,8 @@ impl SyntaxStreamState {
             .map(|span| TokenSpan {
                 start_byte: span.start_byte as u32,
                 end_byte: span.end_byte as u32,
-                category: span.group.category().to_string(),
+                category: span.category.to_string(),
+                kind: annotation_kind_to_proto(&span.kind),
             })
             .collect();
 
@@ -160,6 +165,8 @@ impl SyntaxStreamState {
             start_line,
             end_line,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         // Broadcast to subscribers (remove disconnected ones)
@@ -185,8 +192,9 @@ impl SyntaxStreamState {
             return;
         }
 
-        // Get all highlights
-        let highlights = driver.highlights(0..usize::MAX);
+        // Get all highlights and decorations
+        let mut highlights = driver.highlights(0..usize::MAX);
+        highlights.extend(driver.decorations(0..usize::MAX));
 
         // Convert to TokenSpan
         let tokens: Vec<TokenSpan> = highlights
@@ -194,7 +202,8 @@ impl SyntaxStreamState {
             .map(|span| TokenSpan {
                 start_byte: span.start_byte as u32,
                 end_byte: span.end_byte as u32,
-                category: span.group.category().to_string(),
+                category: span.category.to_string(),
+                kind: annotation_kind_to_proto(&span.kind),
             })
             .collect();
 
@@ -204,11 +213,74 @@ impl SyntaxStreamState {
             start_line: 0,
             end_line: total_lines.saturating_sub(1),
             full_refresh: true,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         // Broadcast to subscribers
         self.subscribers
             .retain(|tx| tx.try_send(update.clone()).is_ok());
+    }
+}
+
+/// Build a `TokenUpdate` from a syntax driver's current highlights.
+///
+/// This is a standalone function to avoid double-borrow issues when
+/// both `SyntaxSessionState` and `SyntaxStreamState` are in the same
+/// `ExtensionMap`. Call this after updating the driver, then pass the
+/// result to `SyntaxStreamState::broadcast()`.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub fn build_token_update(
+    syntax: &SyntaxSessionState,
+    buffer_id: BufferId,
+    total_lines: u64,
+    full_refresh: bool,
+) -> Option<TokenUpdate> {
+    let driver = syntax.get(buffer_id)?;
+    let mut highlights = driver.highlights(0..usize::MAX);
+    highlights.extend(driver.decorations(0..usize::MAX));
+
+    let tokens: Vec<TokenSpan> = highlights
+        .into_iter()
+        .map(|span| TokenSpan {
+            start_byte: span.start_byte as u32,
+            end_byte: span.end_byte as u32,
+            category: span.category.to_string(),
+            kind: annotation_kind_to_proto(&span.kind),
+        })
+        .collect();
+
+    Some(TokenUpdate {
+        buffer_id: buffer_id.as_usize() as u64,
+        tokens,
+        start_line: 0,
+        end_line: total_lines.saturating_sub(1),
+        full_refresh,
+        layer: "syntax".into(),
+        priority: 0,
+    })
+}
+
+/// Convert a driver `AnnotationKind` to a proto `AnnotationKind`.
+///
+/// Returns `None` for `Highlight` (the default in proto — omitting the field
+/// saves bandwidth since most tokens are highlights).
+#[must_use]
+pub fn annotation_kind_to_proto(kind: &DriverAnnotationKind) -> Option<AnnotationKind> {
+    match kind {
+        DriverAnnotationKind::Highlight => None,
+        DriverAnnotationKind::Conceal { replacement } => Some(AnnotationKind {
+            kind: Some(annotation_kind::Kind::Conceal(ConcealKind {
+                replacement: replacement.clone(),
+            })),
+        }),
+        DriverAnnotationKind::Background => Some(AnnotationKind {
+            kind: Some(annotation_kind::Kind::Background(BackgroundKind {})),
+        }),
+        DriverAnnotationKind::VirtualText { text } => Some(AnnotationKind {
+            kind: Some(annotation_kind::Kind::VirtualText(VirtualTextKind { text: text.clone() })),
+        }),
     }
 }
 
@@ -227,7 +299,7 @@ mod tests {
     use std::{ops::Range, sync::Arc};
 
     use reovim_driver_syntax::{
-        HighlightGroup, HighlightSpan, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
+        Annotation, HighlightCategory, SyntaxDriver, SyntaxDriverFactory, SyntaxEdit,
     };
 
     /// A minimal test driver for unit tests.
@@ -260,12 +332,12 @@ mod tests {
             // No-op
         }
 
-        fn highlights(&self, byte_range: Range<usize>) -> Vec<HighlightSpan> {
+        fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                vec![HighlightSpan::new(
+                vec![Annotation::highlight(
                     byte_range.start,
                     byte_range.end,
-                    HighlightGroup::Comment,
+                    HighlightCategory::new("comment"),
                 )]
             } else {
                 Vec::new()
@@ -344,12 +416,16 @@ mod tests {
             start_line: 0,
             end_line: 0,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         state.broadcast(&update);
 
         let received = rx.try_recv().expect("Should receive update");
         assert_eq!(received.buffer_id, 1);
+        assert_eq!(received.layer, "syntax");
+        assert_eq!(received.priority, 0);
     }
 
     #[test]
@@ -367,6 +443,8 @@ mod tests {
             start_line: 0,
             end_line: 0,
             full_refresh: false,
+            layer: "syntax".into(),
+            priority: 0,
         };
 
         state.broadcast(&update);
@@ -399,6 +477,8 @@ mod tests {
         let update = rx.try_recv().expect("Should receive update");
         assert_eq!(update.buffer_id, 1);
         assert!(!update.full_refresh);
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
     }
 
     #[test]
@@ -435,6 +515,8 @@ mod tests {
         assert_eq!(update.buffer_id, 1);
         assert!(update.full_refresh);
         assert_eq!(update.end_line, 9); // total_lines - 1
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
     }
 
     #[test]
@@ -501,6 +583,53 @@ mod tests {
     // SyntaxSessionState re-export sanity test
     // ========================================================================
 
+    // ========================================================================
+    // build_token_update tests
+    // ========================================================================
+
+    #[test]
+    fn test_build_token_update_with_driver() {
+        let mut syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(TestDriver::new("rust")));
+        syntax.get_mut(id).unwrap().parse("fn main() {}");
+
+        let update = build_token_update(&syntax, id, 10, true);
+        assert!(update.is_some());
+
+        let update = update.unwrap();
+        assert_eq!(update.buffer_id, 1);
+        assert!(update.full_refresh);
+        assert_eq!(update.start_line, 0);
+        assert_eq!(update.end_line, 9);
+        assert!(!update.tokens.is_empty());
+        assert_eq!(update.layer, "syntax");
+        assert_eq!(update.priority, 0);
+    }
+
+    #[test]
+    fn test_build_token_update_no_driver() {
+        let syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        let update = build_token_update(&syntax, id, 10, true);
+        assert!(update.is_none());
+    }
+
+    #[test]
+    fn test_build_token_update_incremental() {
+        let mut syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(TestDriver::new("rust")));
+        syntax.get_mut(id).unwrap().parse("fn main() {}");
+
+        let update = build_token_update(&syntax, id, 5, false).unwrap();
+        assert!(!update.full_refresh);
+        assert_eq!(update.end_line, 4);
+    }
+
     #[test]
     fn test_syntax_session_state_reexport() {
         // Verify re-export works: SyntaxSessionState accessible from this module
@@ -510,5 +639,202 @@ mod tests {
         state.set_factory(Arc::new(TestFactory));
         assert!(state.ensure_driver(id, "rust", "fn main() {}"));
         assert!(state.get(id).is_some());
+    }
+
+    // ========================================================================
+    // annotation_kind_to_proto tests
+    // ========================================================================
+
+    #[test]
+    fn test_annotation_kind_to_proto_highlight() {
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::Highlight);
+        assert!(result.is_none(), "Highlight should map to None (proto default)");
+    }
+
+    #[test]
+    fn test_annotation_kind_to_proto_conceal_no_replacement() {
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::Conceal { replacement: None });
+        let kind = result.expect("Conceal should produce Some").kind.unwrap();
+        match kind {
+            annotation_kind::Kind::Conceal(c) => assert!(c.replacement.is_none()),
+            other => panic!("Expected Conceal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_annotation_kind_to_proto_conceal_with_replacement() {
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::Conceal {
+            replacement: Some("icon".into()),
+        });
+        let kind = result.expect("Conceal should produce Some").kind.unwrap();
+        match kind {
+            annotation_kind::Kind::Conceal(c) => {
+                assert_eq!(c.replacement.as_deref(), Some("icon"));
+            }
+            other => panic!("Expected Conceal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_annotation_kind_to_proto_background() {
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::Background);
+        let kind = result
+            .expect("Background should produce Some")
+            .kind
+            .unwrap();
+        assert!(matches!(kind, annotation_kind::Kind::Background(_)));
+    }
+
+    #[test]
+    fn test_annotation_kind_to_proto_virtual_text() {
+        let result = annotation_kind_to_proto(&DriverAnnotationKind::VirtualText {
+            text: "ghost".into(),
+        });
+        let kind = result
+            .expect("VirtualText should produce Some")
+            .kind
+            .unwrap();
+        match kind {
+            annotation_kind::Kind::VirtualText(vt) => assert_eq!(vt.text, "ghost"),
+            other => panic!("Expected VirtualText, got {other:?}"),
+        }
+    }
+
+    // ========================================================================
+    // Pipeline preserves AnnotationKind tests
+    // ========================================================================
+
+    /// A test driver that returns mixed annotation kinds.
+    struct MixedAnnotationDriver {
+        parsed: bool,
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl SyntaxDriver for MixedAnnotationDriver {
+        #[allow(clippy::unnecessary_literal_bound)]
+        fn language(&self) -> &str {
+            "markdown"
+        }
+
+        fn parse(&mut self, _content: &str) {
+            self.parsed = true;
+        }
+
+        fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
+
+        fn highlights(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
+            if !self.parsed {
+                return Vec::new();
+            }
+            vec![
+                Annotation::highlight(0, 5, HighlightCategory::new("markup.heading")),
+                Annotation::new(
+                    0,
+                    2,
+                    HighlightCategory::new("markup.heading"),
+                    DriverAnnotationKind::Conceal {
+                        replacement: Some("icon ".into()),
+                    },
+                ),
+                Annotation::new(
+                    10,
+                    30,
+                    HighlightCategory::new("markup.raw.block"),
+                    DriverAnnotationKind::Background,
+                ),
+                Annotation::new(
+                    50,
+                    50,
+                    HighlightCategory::new("decoration.virtual"),
+                    DriverAnnotationKind::VirtualText {
+                        text: "ghost".into(),
+                    },
+                ),
+            ]
+        }
+
+        fn is_parsed(&self) -> bool {
+            self.parsed
+        }
+    }
+
+    #[test]
+    fn test_build_token_update_preserves_annotation_kinds() {
+        let mut syntax = SyntaxSessionState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(MixedAnnotationDriver { parsed: false }));
+        syntax
+            .get_mut(id)
+            .unwrap()
+            .parse("# heading\n```\ncode\n```\n");
+
+        let update = build_token_update(&syntax, id, 4, true).unwrap();
+        assert_eq!(update.tokens.len(), 4);
+
+        // Token 0: Highlight (kind = None)
+        assert!(update.tokens[0].kind.is_none());
+
+        // Token 1: Conceal with replacement
+        let kind1 = update.tokens[1]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
+        match kind1 {
+            annotation_kind::Kind::Conceal(c) => {
+                assert_eq!(c.replacement.as_deref(), Some("icon "));
+            }
+            other => panic!("Expected Conceal, got {other:?}"),
+        }
+
+        // Token 2: Background
+        let kind2 = update.tokens[2]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
+        assert!(matches!(kind2, annotation_kind::Kind::Background(_)));
+
+        // Token 3: VirtualText
+        let kind3 = update.tokens[3]
+            .kind
+            .as_ref()
+            .unwrap()
+            .kind
+            .as_ref()
+            .unwrap();
+        match kind3 {
+            annotation_kind::Kind::VirtualText(vt) => assert_eq!(vt.text, "ghost"),
+            other => panic!("Expected VirtualText, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_notify_edit_preserves_conceal_kind() {
+        let mut syntax = SyntaxSessionState::new();
+        let mut stream = SyntaxStreamState::new();
+        let id = buffer_id(1);
+
+        syntax.set(id, Box::new(MixedAnnotationDriver { parsed: false }));
+        syntax.get_mut(id).unwrap().parse("# heading");
+
+        let mut rx = stream.subscribe();
+        let edit = SyntaxEdit::insert(0, 0, 0, 9, 0, 9);
+        stream.notify_edit(&mut syntax, id, "# heading", &edit, 0, 0);
+
+        let update = rx.try_recv().expect("Should receive update");
+        // Should have a Conceal token in the update
+        let has_conceal = update.tokens.iter().any(|t| {
+            t.kind
+                .as_ref()
+                .and_then(|k| k.kind.as_ref())
+                .is_some_and(|k| matches!(k, annotation_kind::Kind::Conceal(_)))
+        });
+        assert!(has_conceal, "Update should contain a Conceal annotation");
     }
 }

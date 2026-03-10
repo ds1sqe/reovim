@@ -100,23 +100,6 @@ impl Module for MicroscopeModule {
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
-            // Normal mode: open pickers
-            KeybindingRegistration::new("<Space>f", ids::OPEN_FILES)
-                .with_modes(&["vim:normal"])
-                .with_description("Open file picker")
-                .with_category("picker"),
-            KeybindingRegistration::new("<Space>b", ids::OPEN_BUFFERS)
-                .with_modes(&["vim:normal"])
-                .with_description("Open buffer picker")
-                .with_category("picker"),
-            KeybindingRegistration::new("<Space>g", ids::OPEN_GREP)
-                .with_modes(&["vim:normal"])
-                .with_description("Open grep picker")
-                .with_category("picker"),
-            KeybindingRegistration::new("<Space>;", ids::OPEN_COMMANDS)
-                .with_modes(&["vim:normal"])
-                .with_description("Open command picker")
-                .with_category("picker"),
             // Microscope mode: navigation
             KeybindingRegistration::new("<C-n>", ids::NEXT_ITEM)
                 .with_modes(&["microscope:MICROSCOPE"])
@@ -228,17 +211,6 @@ mod tests {
         let module = MicroscopeModule::new();
         let bindings = module.keybindings();
         assert!(!bindings.is_empty());
-    }
-
-    #[test]
-    fn keybindings_have_normal_mode_openers() {
-        let module = MicroscopeModule::new();
-        let bindings = module.keybindings();
-        let count = bindings
-            .iter()
-            .filter(|b| b.modes.contains(&"vim:normal"))
-            .count();
-        assert_eq!(count, 4);
     }
 
     #[test]

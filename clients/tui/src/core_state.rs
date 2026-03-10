@@ -424,6 +424,19 @@ impl TuiCoreState {
     pub fn get_focused_scroll_top(&self) -> usize {
         self.get_scroll_top(self.focused_window_id)
     }
+
+    /// Get the buffer ID for the focused window.
+    ///
+    /// Searches `windows` for the entry matching `focused_window_id`.
+    /// Returns `None` if the window list is empty, no match is found,
+    /// or the matching window has no buffer assigned.
+    #[must_use]
+    pub fn get_focused_buffer_id(&self) -> Option<u64> {
+        self.windows
+            .iter()
+            .find(|w| w.window_id == self.focused_window_id)
+            .and_then(|w| w.buffer_id)
+    }
 }
 
 #[cfg(test)]
@@ -810,5 +823,53 @@ mod tests {
         state.cleanup_stale_cursors();
         assert!(state.scroll_tops.contains_key(&10));
         assert!(!state.scroll_tops.contains_key(&20));
+    }
+
+    #[test]
+    fn test_get_focused_buffer_id_found() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.windows = vec![WindowInfo {
+            window_id: 10,
+            buffer_id: Some(42),
+            rect: None,
+            focused: true,
+            opacity: None,
+        }];
+        assert_eq!(state.get_focused_buffer_id(), Some(42));
+    }
+
+    #[test]
+    fn test_get_focused_buffer_id_no_match() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 99;
+        state.windows = vec![WindowInfo {
+            window_id: 10,
+            buffer_id: Some(1),
+            rect: None,
+            focused: false,
+            opacity: None,
+        }];
+        assert_eq!(state.get_focused_buffer_id(), None);
+    }
+
+    #[test]
+    fn test_get_focused_buffer_id_empty_windows() {
+        let state = TuiCoreState::new(1);
+        assert_eq!(state.get_focused_buffer_id(), None);
+    }
+
+    #[test]
+    fn test_get_focused_buffer_id_none_buffer() {
+        let mut state = TuiCoreState::new(1);
+        state.focused_window_id = 10;
+        state.windows = vec![WindowInfo {
+            window_id: 10,
+            buffer_id: None,
+            rect: None,
+            focused: true,
+            opacity: None,
+        }];
+        assert_eq!(state.get_focused_buffer_id(), None);
     }
 }

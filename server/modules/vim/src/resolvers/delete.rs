@@ -598,7 +598,7 @@ mod tests {
             if let PopResult::ExecuteCommand { args, .. } = r {
                 assert_eq!(
                     args.get("linewise"),
-                    Some(&reovim_driver_command_types::ArgValue::Bang(true))
+                    Some(&reovim_driver_command_types::ArgValue::Bool(true))
                 );
             } else {
                 panic!("expected ExecuteCommand");
@@ -732,7 +732,7 @@ mod tests {
             if let PopResult::ExecuteCommand { args, .. } = r {
                 assert_eq!(
                     args.get("linewise"),
-                    Some(&reovim_driver_command_types::ArgValue::Bang(true))
+                    Some(&reovim_driver_command_types::ArgValue::Bool(true))
                 );
                 assert_eq!(
                     args.get("count"),
@@ -767,7 +767,7 @@ mod tests {
             if let PopResult::ExecuteCommand { args, .. } = r {
                 assert_eq!(
                     args.get("linewise"),
-                    Some(&reovim_driver_command_types::ArgValue::Bang(true))
+                    Some(&reovim_driver_command_types::ArgValue::Bool(true))
                 );
                 // count = operator_count(1) * motion_count(3) = 3
                 assert_eq!(
@@ -1080,7 +1080,7 @@ mod tests {
             // Should be linewise
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bang(true))
+                Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
             // Range should use cursor line (3)
             assert_eq!(
@@ -1275,7 +1275,7 @@ mod tests {
             );
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bang(false))
+                Some(&reovim_driver_command_types::ArgValue::Bool(false))
             );
         } else {
             panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -1323,7 +1323,7 @@ mod tests {
             );
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bang(false))
+                Some(&reovim_driver_command_types::ArgValue::Bool(false))
             );
         } else {
             panic!("expected Pop with ExecuteCommand, got {result:?}");
@@ -1390,7 +1390,7 @@ mod tests {
         {
             assert_eq!(
                 args.get("linewise"),
-                Some(&reovim_driver_command_types::ArgValue::Bang(true))
+                Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
         } else {
             panic!("expected Pop with ExecuteCommand, got {result:?}");

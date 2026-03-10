@@ -4,7 +4,7 @@
  * This header defines the ABI for external modules that wish to extend
  * reovim. Modules can be written in C, Haskell, or any language with C FFI.
  *
- * ABI Version: 1.0.0
+ * ABI Version: 1.2.0
  * API Version: 0.2.0
  *
  * See docs/architecture/ffi/overview.md for full documentation.
@@ -31,9 +31,14 @@ extern "C" {
  * Bumped when struct layouts or function signatures change.
  * Modules compiled against ABI 1.x.y are compatible with ABI 1.x.z (any patch).
  * Modules requiring ABI 1.2.x are compatible with ABI 1.3.x (higher minor).
+ *
+ * History:
+ *   1.0.0 - Initial stable ABI (ModuleProbe, logging, timers)
+ *   1.1.0 - Buffer, window, mode, command, and event APIs
+ *   1.2.0 - Clipboard, register, and undo APIs
  */
 #define REOVIM_ABI_VERSION_MAJOR 1
-#define REOVIM_ABI_VERSION_MINOR 0
+#define REOVIM_ABI_VERSION_MINOR 2
 #define REOVIM_ABI_VERSION_PATCH 0
 
 /**
@@ -46,16 +51,42 @@ extern "C" {
 #define REOVIM_API_VERSION_PATCH 0
 
 /* ============================================================================
+ * Error Codes
+ * ============================================================================
+ *
+ * All FFI functions return i32 status codes.
+ * - 0 (REOVIM_OK): Success
+ * - Negative values: Errors
+ * - Positive values: Non-error status (e.g., command results)
+ */
+
+#define REOVIM_OK               0
+#define REOVIM_ERR_NO_RUNTIME   (-1)   /* No active RuntimeGuard */
+#define REOVIM_ERR_NULL_PTR     (-2)   /* Required pointer was null */
+#define REOVIM_ERR_NOT_FOUND    (-3)   /* Buffer/window/mode not found */
+#define REOVIM_ERR_INVALID_UTF8 (-4)   /* String is not valid UTF-8 */
+#define REOVIM_ERR_OUT_OF_RANGE (-5)   /* Line/column index out of range */
+#define REOVIM_ERR_LAST_BUFFER  (-6)   /* Cannot delete last buffer */
+#define REOVIM_ERR_LAST_WINDOW  (-7)   /* Cannot close last window */
+#define REOVIM_ERR_FAILED       (-8)   /* Generic failure */
+#define REOVIM_ERR_PANIC        (-9)   /* Rust panic caught at FFI boundary */
+#define REOVIM_ERR_NO_INIT_CTX  (-10)  /* No active InitGuard */
+
+/* Command result codes (positive, returned by reovim_execute_command) */
+#define REOVIM_CMD_SUCCESS      0
+#define REOVIM_CMD_QUIT         1
+#define REOVIM_CMD_FORCE_QUIT   2
+#define REOVIM_CMD_DETACH       3
+#define REOVIM_CMD_ERROR        4
+
+/* ============================================================================
  * Type Definitions
  * ============================================================================ */
 
 /**
  * Semantic version representation.
  *
- * Size: 12 bytes
- * Alignment: 4 bytes
- *
- * Fields are ordered: major, minor, patch (each uint32_t).
+ * Size: 12 bytes, Alignment: 4 bytes
  */
 typedef struct ReovimVersion {
     uint32_t major;
@@ -64,42 +95,131 @@ typedef struct ReovimVersion {
 } ReovimVersion;
 
 /**
+ * A line/column position in a buffer.
+ *
+ * Both line and column are zero-based.
+ *
+ * Size: 8 bytes, Alignment: 4 bytes
+ */
+typedef struct ReovimPosition {
+    uint32_t line;      /* Zero-based line number */
+    uint32_t column;    /* Zero-based column number */
+} ReovimPosition;
+
+/**
+ * Result of a string read operation.
+ *
+ * When a function fills a caller-owned buffer with a string, this struct
+ * reports the status and actual length. If length > buf_len, the string
+ * was truncated.
+ *
+ * Size: 8 bytes, Alignment: 4 bytes
+ */
+typedef struct ReovimStringResult {
+    int32_t  status;    /* REOVIM_OK or error code */
+    uint32_t length;    /* Actual string length (may exceed buf_len) */
+} ReovimStringResult;
+
+/**
+ * Parsed command arguments passed to command callbacks.
+ *
+ * Size: 28 bytes, Alignment: 4 bytes
+ */
+typedef struct ReovimCommandArgs {
+    int32_t  has_count;     /* 0 = no count, 1 = count present */
+    uint32_t count;         /* Count value (valid if has_count == 1) */
+    int32_t  has_register;  /* 0 = no register, 1 = register present */
+    uint8_t  register_;     /* Register character (valid if has_register == 1) */
+    uint8_t  pad[3];        /* Padding for alignment */
+    int32_t  has_cursor;    /* 0 = no cursor, 1 = cursor present */
+    ReovimPosition cursor;  /* Cursor position (valid if has_cursor == 1) */
+} ReovimCommandArgs;
+
+/**
+ * Yank type for register operations.
+ *
+ * Determines paste behavior: characterwise inserts at cursor,
+ * linewise inserts above/below current line.
+ *
+ * Size: 4 bytes, Alignment: 4 bytes
+ */
+typedef enum ReovimYankType {
+    REOVIM_YANK_CHARACTERWISE = 0,
+    REOVIM_YANK_LINEWISE      = 1,
+} ReovimYankType;
+
+/** Opaque buffer ID. */
+typedef uint64_t ReovimBufferId;
+
+/** Opaque window ID. */
+typedef uint64_t ReovimWindowId;
+
+/**
+ * Subscription handle for event callbacks.
+ *
+ * id == 0 means null/invalid.
+ *
+ * Size: 8 bytes, Alignment: 8 bytes
+ */
+typedef struct ReovimSubscriptionHandle {
+    uint64_t id;
+} ReovimSubscriptionHandle;
+
+/**
  * FFI-safe module metadata for discovery.
  *
- * Size: 1308 bytes
- * Alignment: 4 bytes
+ * Size: 1308 bytes, Alignment: 4 bytes
  *
  * All strings are null-terminated within their fixed buffers.
- * Strings exceeding buffer size are truncated (not an error).
  */
 typedef struct ReovimModuleProbe {
-    /** Module ID (null-terminated, max 63 chars + nul) */
-    uint8_t id[64];
-
-    /** Module name (null-terminated, max 127 chars + nul) */
-    uint8_t name[128];
-
-    /** Module version */
-    ReovimVersion version;
-
-    /** Required kernel API version */
-    ReovimVersion api_version;
-
-    /** Rustc version used to compile (null-terminated, max 63 chars + nul) */
-    uint8_t rustc_version[64];
-
-    /** Number of required dependencies (max 8) */
-    uint8_t required_deps_count;
-
-    /** Required dependency IDs (null-terminated strings) */
-    uint8_t required_deps[8][64];
-
-    /** Number of optional dependencies (max 8) */
-    uint8_t optional_deps_count;
-
-    /** Optional dependency IDs (null-terminated strings) */
-    uint8_t optional_deps[8][64];
+    uint8_t id[64];                     /* Module ID (max 63 chars + nul) */
+    uint8_t name[128];                  /* Module name (max 127 chars + nul) */
+    ReovimVersion version;              /* Module version */
+    ReovimVersion api_version;          /* Required kernel API version */
+    uint8_t rustc_version[64];          /* Rustc version (max 63 chars + nul) */
+    uint8_t required_deps_count;        /* Number of required deps (max 8) */
+    uint8_t required_deps[8][64];       /* Required dependency IDs */
+    uint8_t optional_deps_count;        /* Number of optional deps (max 8) */
+    uint8_t optional_deps[8][64];       /* Optional dependency IDs */
 } ReovimModuleProbe;
+
+/**
+ * Command registration info.
+ *
+ * Passed to reovim_register_command() during module init.
+ */
+typedef struct ReovimCommandRegistration {
+    const char* id;             /* Command ID in "module:command" format */
+    const char* description;    /* Human-readable description */
+    int32_t (*callback)(void* user_data, const ReovimCommandArgs* args);
+    void* user_data;            /* Opaque pointer passed to callback */
+} ReovimCommandRegistration;
+
+/* ============================================================================
+ * Callback Types
+ * ============================================================================ */
+
+/** Timer callback. */
+typedef void (*ReovimTimerCallback)(void* user_data);
+
+/** Command callback. Returns REOVIM_CMD_* result code. */
+typedef int32_t (*ReovimCommandCallback)(void* user_data, const ReovimCommandArgs* args);
+
+/**
+ * Event callback.
+ *
+ * @param user_data       Opaque pointer from subscription
+ * @param event_type      Null-terminated event type name
+ * @param event_data      Event-specific data (NULL in v1)
+ * @param event_data_len  Length of event_data (0 in v1)
+ */
+typedef void (*ReovimEventCallback)(
+    void* user_data,
+    const char* event_type,
+    const void* event_data,
+    uint32_t event_data_len
+);
 
 /* ============================================================================
  * Module Entry Points
@@ -111,252 +231,540 @@ typedef struct ReovimModuleProbe {
  * 1. Read REOVIM_MODULE_API_VERSION for pre-load compatibility check
  * 2. Call reovim_module_probe() to get metadata
  * 3. Call reovim_module_entry() to create instance
- * 4. Call reovim_module_init() to initialize
- * 5. ... module runs ...
+ * 4. Call reovim_module_init(module, ctx)
+ *    - During init, module may call:
+ *      - reovim_register_command() to register command handlers
+ *      - reovim_subscribe_event() to subscribe to events
+ * 5. Module runs (engine calls registered command callbacks)
+ *    - During callbacks, module may call:
+ *      - Buffer API (reovim_buffer_line, reovim_insert_text, ...)
+ *      - Window API (reovim_active_window, reovim_cursor_position, ...)
+ *      - Mode API (reovim_current_mode, reovim_push_mode, ...)
+ *      - Command API (reovim_execute_command)
+ *      - Clipboard API (reovim_copy_to_clipboard, reovim_paste_from_clipboard, ...)
+ *      - Register API (reovim_get_register, reovim_set_register)
+ *      - Undo API (reovim_undo, reovim_redo, reovim_can_undo, reovim_can_redo)
  * 6. Call reovim_module_exit() to cleanup
  * 7. Call reovim_module_destroy() to free memory
  */
 
-/**
- * Static API version for pre-load check.
- *
- * Export this symbol with your module's required API version.
- * The loader reads this BEFORE calling any functions.
- *
- * Example:
- *   const ReovimVersion REOVIM_MODULE_API_VERSION = {0, 2, 0};
- */
 /* extern const ReovimVersion REOVIM_MODULE_API_VERSION; */
-
-/**
- * Return module metadata without full instantiation.
- *
- * Called by loader to discover module identity and dependencies.
- * May create a temporary instance internally.
- *
- * @return Populated ReovimModuleProbe struct
- */
 /* ReovimModuleProbe reovim_module_probe(void); */
-
-/**
- * Create module instance.
- *
- * Allocates and returns an opaque pointer to the module struct.
- * The module is not yet initialized - call reovim_module_init() next.
- *
- * @return Opaque pointer to module instance (caller must not dereference)
- */
 /* void* reovim_module_entry(void); */
-
-/**
- * Initialize module.
- *
- * @param module  Opaque pointer from reovim_module_entry()
- * @param ctx     Pointer to ModuleContext (treat as opaque)
- *
- * @return 0 = success, 1 = defer (try again later), -1 = failed, -2 = panic
- */
 /* int32_t reovim_module_init(void* module, const void* ctx); */
-
-/**
- * Cleanup module before unload.
- *
- * @param module  Opaque pointer from reovim_module_entry()
- *
- * @return 0 = success, -1 = error, -2 = panic
- */
 /* int32_t reovim_module_exit(void* module); */
-
-/**
- * Free module memory.
- *
- * Called after reovim_module_exit(). Must not be called twice.
- *
- * @param module  Opaque pointer from reovim_module_entry()
- */
 /* void reovim_module_destroy(void* module); */
 
 /* ============================================================================
- * Kernel Services
- * ============================================================================
- *
- * These functions are provided by the kernel for module use.
- */
+ * Kernel Services - Version
+ * ============================================================================ */
 
-/**
- * Get the kernel's ABI version.
- *
- * Call this to check compatibility before using other services.
- *
- * @return Current kernel ABI version
- */
+/** Get the kernel's ABI version. */
 ReovimVersion reovim_abi_version(void);
 
 /**
  * Check if two ABI versions are compatible.
  *
- * Compatibility rules:
- * - Major version must match exactly
- * - Required minor must be <= provided minor
- * - Patch version is ignored
- *
- * @param required  The version the module requires
- * @param provided  The version the kernel provides
- *
- * @return true if compatible, false otherwise
+ * - Major must match exactly
+ * - Required minor <= provided minor
+ * - Patch is ignored
  */
 bool reovim_abi_is_compatible(ReovimVersion required, ReovimVersion provided);
 
-/**
- * Log an info-level message.
- *
- * @param msg  Null-terminated message string (may be NULL)
- */
+/* ============================================================================
+ * Kernel Services - Logging
+ * ============================================================================ */
+
 void reovim_log_info(const char* msg);
-
-/**
- * Log a warning-level message.
- *
- * @param msg  Null-terminated message string (may be NULL)
- */
 void reovim_log_warn(const char* msg);
-
-/**
- * Log an error-level message.
- *
- * @param msg  Null-terminated message string (may be NULL)
- */
 void reovim_log_error(const char* msg);
-
-/**
- * Log a debug-level message.
- *
- * @param msg  Null-terminated message string (may be NULL)
- */
 void reovim_log_debug(const char* msg);
 
 /* ============================================================================
- * Timer Services
- * ============================================================================
- *
- * Schedule delayed and periodic work. Timers fire on the kernel's tick loop.
- *
- * IMPORTANT: Timer callbacks must:
- * - Return quickly (avoid blocking operations)
- * - Not panic (panics are caught but waste resources)
- * - Keep user_data valid until the timer fires or is cancelled
- */
+ * Kernel Services - Timers
+ * ============================================================================ */
 
-/**
- * Timer handle returned by scheduling functions.
- *
- * Size: 8 bytes
- * Alignment: 8 bytes
- *
- * Check handle.id != 0 to verify the timer was scheduled successfully.
- */
 typedef struct ReovimTimerHandle {
-    /** Timer ID. 0 indicates a failed/invalid timer. */
-    uint64_t id;
+    uint64_t id;    /* 0 = invalid */
 } ReovimTimerHandle;
 
-/**
- * Timer callback function type.
- *
- * @param user_data  Opaque pointer passed from schedule call
- */
-typedef void (*ReovimTimerCallback)(void* user_data);
-
-/**
- * Schedule a one-shot timer.
- *
- * The callback will be invoked once after delay_ms milliseconds.
- *
- * @param delay_ms   Delay in milliseconds before the callback fires
- * @param callback   Function to call when the timer fires (may be NULL)
- * @param user_data  Opaque pointer passed to the callback
- *
- * @return Timer handle. Check handle.id != 0 for success.
- *         Returns null handle (id=0) if:
- *         - Timer wheel is not initialized
- *         - Maximum timer limit reached
- *         - Callback is NULL
- */
 ReovimTimerHandle reovim_schedule_delayed(
     uint64_t delay_ms,
     ReovimTimerCallback callback,
     void* user_data
 );
 
-/**
- * Schedule a periodic timer.
- *
- * The callback will be invoked repeatedly at interval_ms intervals.
- *
- * @param interval_ms  Interval in milliseconds between callback invocations
- * @param callback     Function to call when the timer fires (may be NULL)
- * @param user_data    Opaque pointer passed to the callback
- *
- * @return Timer handle. Check handle.id != 0 for success.
- *         Returns null handle (id=0) if:
- *         - Timer wheel is not initialized
- *         - Maximum timer limit reached
- *         - Callback is NULL
- */
 ReovimTimerHandle reovim_schedule_periodic(
     uint64_t interval_ms,
     ReovimTimerCallback callback,
     void* user_data
 );
 
-/**
- * Cancel a scheduled timer.
- *
- * After cancellation, the timer's callback will not be invoked.
- * Safe to call on already-cancelled or fired timers.
- *
- * @param handle  Timer handle from schedule function
- *
- * @return true if timer was found and cancelled, false otherwise
- */
 bool reovim_cancel_timer(ReovimTimerHandle handle);
-
-/**
- * Check if a timer is still pending.
- *
- * @param handle  Timer handle to check
- *
- * @return true if timer is scheduled and hasn't fired yet, false otherwise
- */
 bool reovim_timer_is_pending(ReovimTimerHandle handle);
+size_t reovim_timer_count(void);
+
+/* ============================================================================
+ * Kernel Services - Buffer API (ABI 1.1.0)
+ * ============================================================================
+ *
+ * Buffer functions require an active RuntimeGuard (must be called during
+ * a command callback). Returns REOVIM_ERR_NO_RUNTIME otherwise.
+ */
 
 /**
- * Get the number of currently active timers.
+ * Get the active buffer ID.
  *
- * @return Number of pending timers, or 0 if timer wheel not initialized
+ * @param out_id  Receives the buffer ID on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
  */
-size_t reovim_timer_count(void);
+int32_t reovim_active_buffer(ReovimBufferId* out_id);
+
+/**
+ * Get a single line from a buffer.
+ *
+ * Writes the line content to buf. If the line is longer than buf_len,
+ * it is truncated but out_result->length reports the full length.
+ *
+ * @param buffer_id   Buffer to read from
+ * @param line        Zero-based line number
+ * @param buf         Caller-owned output buffer (may be NULL to query length)
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_OUT_OF_RANGE, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_buffer_line(
+    ReovimBufferId buffer_id,
+    uint32_t line,
+    uint8_t* buf,
+    uint32_t buf_len,
+    ReovimStringResult* out_result
+);
+
+/**
+ * Get the number of lines in a buffer.
+ *
+ * @param buffer_id  Buffer to query
+ * @param out_count  Receives line count on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_buffer_line_count(ReovimBufferId buffer_id, uint32_t* out_count);
+
+/**
+ * Get the byte length of a single line.
+ *
+ * @param buffer_id  Buffer to query
+ * @param line       Zero-based line number
+ * @param out_len    Receives line length in bytes on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_OUT_OF_RANGE, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_buffer_line_len(ReovimBufferId buffer_id, uint32_t line, uint32_t* out_len);
+
+/**
+ * Get text in a range from a buffer.
+ *
+ * @param buffer_id   Buffer to read from
+ * @param start       Start position (inclusive)
+ * @param end         End position (exclusive)
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_buffer_text_range(
+    ReovimBufferId buffer_id,
+    ReovimPosition start,
+    ReovimPosition end,
+    uint8_t* buf,
+    uint32_t buf_len,
+    ReovimStringResult* out_result
+);
+
+/**
+ * Get the full content of a buffer.
+ *
+ * @param buffer_id   Buffer to read from
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_buffer_content(
+    ReovimBufferId buffer_id,
+    uint8_t* buf,
+    uint32_t buf_len,
+    ReovimStringResult* out_result
+);
+
+/**
+ * Insert text at a position in a buffer.
+ *
+ * @param buffer_id  Target buffer
+ * @param pos        Insertion position
+ * @param text       Null-terminated text to insert
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_insert_text(
+    ReovimBufferId buffer_id,
+    ReovimPosition pos,
+    const char* text
+);
+
+/**
+ * Delete a range of text from a buffer.
+ *
+ * @param buffer_id  Target buffer
+ * @param start      Start position (inclusive)
+ * @param end        End position (exclusive)
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_delete_range(
+    ReovimBufferId buffer_id,
+    ReovimPosition start,
+    ReovimPosition end
+);
+
+/**
+ * Create a new buffer.
+ *
+ * @param name     Buffer name (null-terminated, may be NULL for unnamed)
+ * @param content  Initial content (null-terminated, may be NULL for empty)
+ * @param out_id   Receives the new buffer ID on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8,
+ *         or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_create_buffer(
+    const char* name,
+    const char* content,
+    ReovimBufferId* out_id
+);
+
+/**
+ * Delete a buffer.
+ *
+ * @param buffer_id  Buffer to delete
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, REOVIM_ERR_LAST_BUFFER, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_delete_buffer(ReovimBufferId buffer_id);
+
+/* ============================================================================
+ * Kernel Services - Window API (ABI 1.1.0)
+ * ============================================================================ */
+
+/**
+ * Get the active window ID.
+ *
+ * @param out_id  Receives the window ID on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_active_window(ReovimWindowId* out_id);
+
+/**
+ * Get the cursor position from the active window.
+ *
+ * @param out_pos  Receives the cursor position on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_cursor_position(ReovimPosition* out_pos);
+
+/**
+ * Get the number of windows.
+ *
+ * @param out_count  Receives window count on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_window_count(uint32_t* out_count);
+
+/**
+ * Get the buffer displayed in a window.
+ *
+ * @param window_id   Window to query
+ * @param out_buffer  Receives the buffer ID on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_window_buffer(ReovimWindowId window_id, ReovimBufferId* out_buffer);
+
+/**
+ * Create a new window.
+ *
+ * @param buffer_id  Buffer to display (0 = no buffer)
+ * @param out_id     Receives the new window ID on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_create_window(ReovimBufferId buffer_id, ReovimWindowId* out_id);
+
+/**
+ * Close a window.
+ *
+ * @param window_id  Window to close
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, REOVIM_ERR_LAST_WINDOW, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_close_window(ReovimWindowId window_id);
+
+/**
+ * Focus a window.
+ *
+ * @param window_id  Window to focus
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_focus_window(ReovimWindowId window_id);
+
+/* ============================================================================
+ * Kernel Services - Mode API (ABI 1.1.0)
+ * ============================================================================
+ *
+ * Mode IDs are strings in "module:name" format (e.g., "vim:normal").
+ */
+
+/**
+ * Get the current mode as a string.
+ *
+ * Writes the mode ID (e.g., "vim:normal") to the caller-owned buffer.
+ *
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_current_mode(uint8_t* buf, uint32_t buf_len, ReovimStringResult* out_result);
+
+/**
+ * Get the mode stack depth.
+ *
+ * @param out_depth  Receives depth on success
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_mode_depth(uint32_t* out_depth);
+
+/**
+ * Push a mode onto the mode stack.
+ *
+ * @param mode_id  Null-terminated "module:name" string
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_push_mode(const char* mode_id);
+
+/**
+ * Pop the current mode from the stack.
+ *
+ * Returns to the previous mode. Cannot pop the home mode.
+ *
+ * @return REOVIM_OK, REOVIM_ERR_FAILED (home mode), or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_pop_mode(void);
+
+/**
+ * Replace the current mode (pop + push atomically).
+ *
+ * @param mode_id  Null-terminated "module:name" string
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_set_mode(const char* mode_id);
+
+/* ============================================================================
+ * Kernel Services - Command API (ABI 1.1.0)
+ * ============================================================================ */
+
+/**
+ * Execute a command by ID string.
+ *
+ * @param cmd_id    Null-terminated "module:command" string
+ * @param count     Count prefix (-1 for none)
+ * @param register_ Register character (0 for none)
+ * @return REOVIM_CMD_* result or REOVIM_ERR_* error code
+ */
+int32_t reovim_execute_command(const char* cmd_id, int32_t count, uint8_t register_);
+
+/**
+ * Register a command handler.
+ *
+ * Must be called during module init (InitGuard active).
+ *
+ * @param reg  Pointer to registration info
+ * @return REOVIM_OK or error code
+ */
+int32_t reovim_register_command(const ReovimCommandRegistration* reg);
+
+/* ============================================================================
+ * Kernel Services - Event API (ABI 1.1.0)
+ * ============================================================================
+ *
+ * Event names are strings (e.g., "buffer:changed", "mode:changed").
+ * In v1, event_data is always NULL and event_data_len is always 0.
+ */
+
+/**
+ * Subscribe to an event type.
+ *
+ * Must be called during module init (InitGuard active).
+ *
+ * @param event_type  Null-terminated event type name
+ * @param callback    Function to call when event fires
+ * @param user_data   Opaque pointer passed to callback
+ * @param priority    Subscription priority (lower = earlier)
+ * @return Subscription handle (id == 0 on error)
+ */
+ReovimSubscriptionHandle reovim_subscribe_event(
+    const char* event_type,
+    ReovimEventCallback callback,
+    void* user_data,
+    uint32_t priority
+);
+
+/**
+ * Unsubscribe from an event.
+ *
+ * Must be called during module init (InitGuard active).
+ *
+ * @param handle  Handle from reovim_subscribe_event
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_INIT_CTX
+ */
+int32_t reovim_unsubscribe_event(ReovimSubscriptionHandle handle);
+
+/* ============================================================================
+ * Kernel Services - Clipboard API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Clipboard operations may fail silently when clipboard is unavailable
+ * (headless, SSH, Wayland without clipboard manager).
+ */
+
+/**
+ * Copy text to the system clipboard (+ register).
+ *
+ * @param text  Null-terminated text to copy
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8,
+ *         REOVIM_ERR_FAILED, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_copy_to_clipboard(const char* text);
+
+/**
+ * Paste text from the system clipboard (+ register).
+ *
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_paste_from_clipboard(uint8_t* buf, uint32_t buf_len, ReovimStringResult* out_result);
+
+/**
+ * Copy text to the selection clipboard (* register, X11 primary selection).
+ *
+ * @param text  Null-terminated text to copy
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8,
+ *         REOVIM_ERR_FAILED, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_copy_to_selection(const char* text);
+
+/**
+ * Paste text from the selection clipboard (* register).
+ *
+ * @param buf         Caller-owned output buffer
+ * @param buf_len     Size of buf in bytes
+ * @param out_result  Receives status and actual string length
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_paste_from_selection(uint8_t* buf, uint32_t buf_len, ReovimStringResult* out_result);
+
+/* ============================================================================
+ * Kernel Services - Register API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Register names are passed as uint8_t:
+ * - 0     = unnamed register (default)
+ * - 'a'   = named register "a
+ * - '"'   = explicit unnamed register
+ * - '+'   = system clipboard register
+ * - '*'   = selection clipboard register
+ */
+
+/**
+ * Get register contents.
+ *
+ * @param name          Register character (0 for unnamed)
+ * @param buf           Caller-owned output buffer for text
+ * @param buf_len       Size of buf in bytes
+ * @param out_result    Receives status and actual string length
+ * @param out_yank_type Receives yank type (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_get_register(
+    uint8_t name,
+    uint8_t* buf,
+    uint32_t buf_len,
+    ReovimStringResult* out_result,
+    ReovimYankType* out_yank_type
+);
+
+/**
+ * Set register contents.
+ *
+ * @param name       Register character (0 for unnamed)
+ * @param text       Null-terminated text to store
+ * @param yank_type  REOVIM_YANK_CHARACTERWISE or REOVIM_YANK_LINEWISE
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, REOVIM_ERR_INVALID_UTF8, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_set_register(uint8_t name, const char* text, ReovimYankType yank_type);
+
+/* ============================================================================
+ * Kernel Services - Undo API (ABI 1.2.0)
+ * ============================================================================
+ *
+ * Undo/redo operations apply edits automatically. The FFI module receives
+ * only the restored cursor position, not the edit list.
+ */
+
+/**
+ * Undo the last change for a buffer.
+ *
+ * @param buffer_id   Buffer to undo in
+ * @param out_cursor  Receives restored cursor position (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_undo(ReovimBufferId buffer_id, ReovimPosition* out_cursor);
+
+/**
+ * Redo the last undone change for a buffer.
+ *
+ * @param buffer_id   Buffer to redo in
+ * @param out_cursor  Receives restored cursor position (may be NULL)
+ * @return REOVIM_OK, REOVIM_ERR_NOT_FOUND, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_redo(ReovimBufferId buffer_id, ReovimPosition* out_cursor);
+
+/**
+ * Check if undo is available for a buffer.
+ *
+ * @param buffer_id  Buffer to query
+ * @param out_bool   Receives 1 (can undo) or 0 (cannot)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_can_undo(ReovimBufferId buffer_id, int32_t* out_bool);
+
+/**
+ * Check if redo is available for a buffer.
+ *
+ * @param buffer_id  Buffer to query
+ * @param out_bool   Receives 1 (can redo) or 0 (cannot)
+ * @return REOVIM_OK, REOVIM_ERR_NULL_PTR, or REOVIM_ERR_NO_RUNTIME
+ */
+int32_t reovim_can_redo(ReovimBufferId buffer_id, int32_t* out_bool);
 
 /* ============================================================================
  * Helper Macros
  * ============================================================================ */
 
-/**
- * Create a ReovimVersion literal.
- */
+/** Create a ReovimVersion literal. */
 #define REOVIM_VERSION(major, minor, patch) \
     ((ReovimVersion){(major), (minor), (patch)})
 
-/**
- * Check if kernel ABI is compatible with required version.
- *
- * Usage:
- *   if (!REOVIM_CHECK_ABI(1, 0, 0)) {
- *       return -1;  // Incompatible
- *   }
- */
+/** Check if kernel ABI is compatible with required version. */
 #define REOVIM_CHECK_ABI(major, minor, patch) \
     reovim_abi_is_compatible(REOVIM_VERSION((major), (minor), (patch)), reovim_abi_version())
+
+/** Null subscription handle. */
+#define REOVIM_NULL_SUBSCRIPTION ((ReovimSubscriptionHandle){0})
 
 #ifdef __cplusplus
 }

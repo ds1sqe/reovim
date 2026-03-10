@@ -526,28 +526,30 @@ fn build_option_notification(
 ///
 /// Returns `None` if the bridge is unknown or the extension has no state.
 #[allow(clippy::cast_possible_truncation)]
-fn build_extension_notification(
+pub(crate) fn build_extension_notification(
     kind: &str,
     session: &Session,
     timestamp: u64,
     client_id: u64,
     bridges: &BridgeRegistry,
 ) -> Option<Notification> {
-    use reovim_driver_session::bridges::ExtensionScope;
+    use reovim_driver_session::bridges::{BridgeContext, ExtensionScope};
 
     let bridge = bridges.get(kind)?;
+    let cid = ClientId::new(client_id as usize);
 
     let data = match bridge.scope() {
         ExtensionScope::Client => {
-            // Use with_client_extensions to avoid cloning EditingState
-            // (EditingState::clone() creates empty ExtensionMap)
-            session.with_client_extensions(ClientId::new(client_id as usize), |extensions| {
-                bridge.snapshot(extensions)
+            // Use with_bridge_context for cross-client reads (#543).
+            // Holds both clients + state locks, pre-collects opponent data.
+            session.with_bridge_context(cid, |own_ext, shared_ext, opponents| {
+                let driver_cid = reovim_driver_session::ClientId::new(client_id as usize);
+                let context = BridgeContext::new(driver_cid, shared_ext, opponents);
+                bridge.snapshot_with_context(own_ext, &context)
             })??
         }
         ExtensionScope::Shared => {
-            // Shared extensions not yet implemented at session level
-            return None;
+            session.with_state_sync(|state| bridge.snapshot(&state.app.extensions))?
         }
     };
 
@@ -1829,42 +1831,80 @@ mod tests {
         assert!(notifications.is_empty(), "Should not emit notification for unknown bridge kind");
     }
 
+    /// Test extension for bridge tests, replacing module-cmdline dev-dependency.
+    struct TestBridgeExtension {
+        active: bool,
+    }
+
+    impl reovim_driver_session::SessionExtension for TestBridgeExtension {
+        fn create() -> Self {
+            Self { active: false }
+        }
+    }
+
+    /// Test bridge that serializes `TestBridgeExtension` to JSON.
+    struct TestBridge;
+
+    impl reovim_driver_session::bridges::ExtensionStateBridge for TestBridge {
+        fn kind(&self) -> &'static str {
+            "test-ext"
+        }
+
+        fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
+            reovim_driver_session::bridges::ExtensionScope::Client
+        }
+
+        fn snapshot(
+            &self,
+            extensions: &reovim_driver_session::ExtensionMap,
+        ) -> Option<serde_json::Value> {
+            let ext = extensions.get::<TestBridgeExtension>()?;
+            Some(serde_json::json!({
+                "active": ext.active,
+            }))
+        }
+
+        fn is_active(&self, extensions: &reovim_driver_session::ExtensionMap) -> bool {
+            extensions
+                .get::<TestBridgeExtension>()
+                .is_some_and(|e| e.active)
+        }
+
+        fn on_mode_changed(
+            &self,
+            _from: &str,
+            _to: &str,
+            _extensions: &mut reovim_driver_session::ExtensionMap,
+        ) {
+        }
+    }
+
     #[test]
-    fn test_extension_changed_with_cmdline_bridge() {
-        use {
-            reovim_driver_session::bridges::BridgeRegistry,
-            reovim_module_cmdline::{CmdlineBridge, CmdlinePrompt, CmdlineState},
-        };
+    fn test_extension_changed_with_bridge() {
+        use reovim_driver_session::bridges::BridgeRegistry;
 
         let mut changes = StateChanges::new();
-        changes.record_extension_change("cmdline".into());
+        changes.record_extension_change("test-ext".into());
 
-        // Create session with client that has CmdlineState
         let session = Session::new(SessionId::new("test"));
         let client_id = ClientId::new(42);
         session.add_client(client_id);
-        // Initialize CmdlineState in client extensions
         session.update_client_state(client_id, |state| {
-            let cmdline = state.extensions.get_or_insert::<CmdlineState>();
-            cmdline.enter(CmdlinePrompt::Command);
-            cmdline.insert_char('w');
+            let ext = state.extensions.get_or_insert::<TestBridgeExtension>();
+            ext.active = true;
         });
 
         let mut registry = BridgeRegistry::new();
-        registry.register(CmdlineBridge);
+        registry.register(TestBridge);
 
         let notifications = build_notifications(&changes, &session, 42, Some(&registry));
         assert_eq!(notifications.len(), 1);
         assert_eq!(notifications[0].event_type, "extension_updated");
         if let Some(notification::Payload::ExtensionUpdated(payload)) = &notifications[0].payload {
-            assert_eq!(payload.kind, "cmdline");
+            assert_eq!(payload.kind, "test-ext");
             assert_eq!(payload.client_id, 42);
-            // Verify JSON data contains expected fields
             let data: serde_json::Value = serde_json::from_str(&payload.data).expect("valid JSON");
             assert_eq!(data["active"], true);
-            assert_eq!(data["prompt"], ":");
-            assert_eq!(data["input"], "w");
-            assert_eq!(data["cursor"], 1);
         } else {
             panic!("Expected ExtensionUpdated payload");
         }
@@ -1872,22 +1912,20 @@ mod tests {
 
     #[test]
     fn test_extension_not_changed_no_notification() {
-        use {
-            reovim_driver_session::bridges::BridgeRegistry, reovim_module_cmdline::CmdlineBridge,
-        };
+        use reovim_driver_session::bridges::BridgeRegistry;
 
         let changes = StateChanges::new(); // No extension changes
 
         let session = Session::new(SessionId::new("test"));
         let mut registry = BridgeRegistry::new();
-        registry.register(CmdlineBridge);
+        registry.register(TestBridge);
 
         let notifications = build_notifications(&changes, &session, 0, Some(&registry));
         assert!(notifications.is_empty());
     }
 
     #[test]
-    fn test_build_extension_notification_shared_scope_returns_none() {
+    fn test_build_extension_notification_shared_scope_returns_notification() {
         use reovim_driver_session::{
             ExtensionMap,
             bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
@@ -1915,6 +1953,51 @@ mod tests {
 
         let session = Session::new(SessionId::new("shared-test"));
         let result = build_extension_notification("shared-test", &session, 12345, 1, &bridges);
+        // Shared scope now produces a notification (#543)
+        assert!(result.is_some());
+        let notif = result.unwrap();
+        assert_eq!(notif.event_type, "extension_updated");
+        match &notif.payload {
+            Some(notification::Payload::ExtensionUpdated(payload)) => {
+                assert_eq!(payload.kind, "shared-test");
+                assert!(payload.data.contains("shared"));
+            }
+            _ => panic!("expected ExtensionUpdated payload"),
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    #[test]
+    fn test_build_extension_notification_shared_scope_empty_returns_none() {
+        use reovim_driver_session::{
+            ExtensionMap,
+            bridges::{BridgeRegistry, ExtensionScope, ExtensionStateBridge},
+        };
+
+        /// Bridge that returns None when no extension is present.
+        struct EmptySharedBridge;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl ExtensionStateBridge for EmptySharedBridge {
+            fn kind(&self) -> &'static str {
+                "empty-shared"
+            }
+            fn scope(&self) -> ExtensionScope {
+                ExtensionScope::Shared
+            }
+            fn snapshot(&self, _: &ExtensionMap) -> Option<serde_json::Value> {
+                None
+            }
+            fn is_active(&self, _: &ExtensionMap) -> bool {
+                false
+            }
+        }
+
+        let mut bridges = BridgeRegistry::new();
+        bridges.register(EmptySharedBridge);
+
+        let session = Session::new(SessionId::new("empty-shared"));
+        let result = build_extension_notification("empty-shared", &session, 12345, 1, &bridges);
+        // snapshot() returns None → build returns None
         assert!(result.is_none());
     }
 

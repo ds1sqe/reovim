@@ -126,7 +126,8 @@ mod tests {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -147,13 +148,8 @@ mod tests {
         struct StubExecutor;
         #[cfg_attr(coverage_nightly, coverage(off))]
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
@@ -290,6 +286,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = yank.execute(&mut op_ctx, range);
@@ -313,6 +310,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank "hello" (columns 0..5)
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
@@ -341,6 +339,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank "world" (columns 6..11)
         let range = super::super::Range::new(Position::new(0, 6), Position::new(0, 11));
@@ -368,6 +367,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank from (0,3) to (1,3) => "lo\nwor"
         let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
@@ -395,6 +395,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank line 0 (linewise)
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
@@ -422,6 +423,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank lines 0-1 (linewise)
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(1, 0));
@@ -449,6 +451,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank beyond buffer end (end line 99, should be clamped to 1)
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(99, 0));
@@ -476,6 +479,7 @@ mod tests {
             register: Register::Slot('a'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = yank.execute(&mut op_ctx, range);
@@ -502,6 +506,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         yank.execute(&mut op_ctx, range).unwrap();
@@ -529,6 +534,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Empty range (same start/end column)
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 3));
@@ -556,6 +562,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank from (0,1) to (2,2) => "aa\nbbb\ncc"
         let range = super::super::Range::new(Position::new(0, 1), Position::new(2, 2));
@@ -583,6 +590,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
         let result = yank.execute(&mut op_ctx, range);
@@ -609,6 +617,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // End column beyond line length should be clamped
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 100));
@@ -636,6 +645,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank the only line
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
@@ -663,6 +673,7 @@ mod tests {
             register: Register::Slot('z'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 6), Position::new(0, 11));
         let result = yank.execute(&mut op_ctx, range);
@@ -689,6 +700,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
         let result = yank.execute(&mut op_ctx, range);
@@ -715,6 +727,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Yank just 'h'
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 1));
@@ -755,6 +768,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
+            cursor_after: None,
         };
         // Yank "cde" (columns 2..5)
         let range = super::super::Range::new(Position::new(0, 2), Position::new(0, 5));
@@ -782,6 +796,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Yank lines 1-3 (b, c, d)
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(3, 0));
@@ -809,6 +824,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
+            cursor_after: None,
         };
         // Yank from (0,2) to (1,3) => "llo\nwor"
         let range = super::super::Range::new(Position::new(0, 2), Position::new(1, 3));
@@ -869,6 +885,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         yank.execute(&mut op_ctx, range).unwrap();
@@ -894,6 +911,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         yank.execute(&mut op_ctx, range).unwrap();
@@ -919,6 +937,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
         yank.execute(&mut op_ctx, range).unwrap();
@@ -945,11 +964,42 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 2),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 2), Position::new(1, 3));
         yank.execute(&mut op_ctx, range).unwrap();
 
         drop(op_ctx);
         assert!(registers.get().is_characterwise());
+    }
+
+    // ========================================================================
+    // cursor_after tests (#552)
+    // ========================================================================
+
+    #[test]
+    fn test_yank_does_not_set_cursor_after() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let yank = YankOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+            cursor_after: None,
+        };
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = yank.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        // Yank does not set cursor_after — it stays None
+        assert_eq!(op_ctx.cursor_after, None);
     }
 }

@@ -9,15 +9,14 @@
 //!
 //! This crate follows the Linux kernel "mechanism vs policy" principle:
 //!
-//! - **Driver provides MECHANISM**: The [`SyntaxHighlight`] trait defines HOW
-//!   highlights are categorized (abstract interface).
-//! - **Driver provides POLICY**: The [`HighlightGroup`] enum defines WHAT
-//!   categories exist (specific implementation).
+//! - **Driver provides MECHANISM**: The [`HighlightCategory`] type and [`Annotation`] struct
+//!   define HOW highlights are represented (open, string-based categories).
+//! - **Modules provide POLICY**: Language modules decide WHAT categories to emit.
 //!
 //! # Architecture
 //!
 //! ```text
-//! server/lib/drivers/syntax/             <-- SyntaxHighlight trait, HighlightGroup, SyntaxDriver
+//! server/lib/drivers/syntax/             <-- HighlightCategory, Annotation, SyntaxDriver
 //!        ^
 //!        |  implements
 //!        |
@@ -30,8 +29,8 @@
 //! - [`SyntaxDriverFactory`] - Creates drivers for languages
 //! - [`LanguageRegistry`] - Language detection and metadata
 //! - [`SyntaxCache`] - Highlight result caching
-//! - [`HighlightGroup`] - Highlight categories (implements `SyntaxHighlight`)
-//! - [`HighlightSpan`] - A highlighted byte range
+//! - [`HighlightCategory`] - Open string-based highlight categories
+//! - [`Annotation`] - A highlighted byte range with category and kind
 //! - [`SyntaxEdit`] - Edit description for incremental parsing
 //! - [`FoldRange`], [`FoldKind`] - Foldable code regions
 //! - [`Injection`] - Embedded language regions
@@ -53,8 +52,8 @@
 //!
 //! // Get highlights for rendering
 //! let highlights = driver.highlights(0..100);
-//! for span in highlights {
-//!     println!("{:?}: {}", span.byte_range(), span.group.category());
+//! for ann in highlights {
+//!     println!("{:?}: {}", ann.byte_range(), ann.category.as_str());
 //! }
 //! ```
 //!
@@ -68,6 +67,8 @@
 // ============================================================================
 
 mod cache;
+mod composite;
+pub mod decoration;
 mod driver;
 mod edit;
 mod error;
@@ -75,6 +76,7 @@ mod factory;
 mod fold;
 mod highlight;
 mod injection;
+mod lang_store;
 mod registry;
 pub mod state;
 mod store;
@@ -85,24 +87,23 @@ mod store;
 
 // Core traits
 pub use {
-    cache::SyntaxCache, driver::SyntaxDriver, factory::SyntaxDriverFactory,
-    registry::LanguageRegistry, store::SyntaxFactoryStore,
+    cache::SyntaxCache, composite::CompositeFactory, driver::SyntaxDriver,
+    factory::SyntaxDriverFactory, registry::LanguageRegistry, store::SyntaxFactoryStore,
 };
 
 // Types
 pub use {
+    decoration::{DecorationCapture, DecorationRule, apply_rules},
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
-    highlight::{HighlightGroup, HighlightSpan},
+    highlight::{Annotation, AnnotationKind, HighlightCategory},
     injection::Injection,
-    registry::{CommentTokens, LanguageInfo},
+    lang_store::LanguageInfoStore,
+    registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},
 };
 
 // Error types
 pub use error::ModuleError;
-
-// SyntaxHighlight trait (defined in this crate)
-pub use highlight::SyntaxHighlight;
 
 // Per-session syntax driver storage
 pub use state::SyntaxSessionState;

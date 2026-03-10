@@ -62,10 +62,14 @@ pub enum ArgKind {
     String,
     /// Bang modifier (e.g., `!` in `:q!`).
     Bang,
+    /// Boolean flag (e.g., `linewise`, `find_inclusive`).
+    Bool,
     /// Buffer identifier (set by runner before command execution).
     BufferId,
     /// Single character (e.g., for find-char operations).
     Char,
+    /// All remaining text after previous arguments (e.g., `:colorscheme dark`).
+    Rest,
 }
 
 /// Argument value parsed from user input.
@@ -85,12 +89,16 @@ pub enum ArgValue {
     String(String),
     /// A bang modifier.
     Bang(bool),
+    /// A boolean flag (e.g., `linewise`, `find_inclusive`).
+    Bool(bool),
     /// A buffer identifier (raw usize, converted to `BufferId` by helper).
     BufferId(usize),
     /// A single character (e.g., for find-char targets).
     Char(char),
     /// A position (line, column) for operator ranges (Epic #415).
     Position(usize, usize),
+    /// A window identifier (raw usize, converted to `WindowId` by helper).
+    WindowId(usize),
 }
 
 #[cfg(test)]
@@ -125,8 +133,10 @@ mod tests {
             ArgKind::FilePath,
             ArgKind::String,
             ArgKind::Bang,
+            ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
+            ArgKind::Rest,
         ];
         for kind in kinds {
             let spec = ArgSpec::required("test", kind, "desc");
@@ -145,8 +155,10 @@ mod tests {
             ArgKind::FilePath,
             ArgKind::String,
             ArgKind::Bang,
+            ArgKind::Bool,
             ArgKind::BufferId,
             ArgKind::Char,
+            ArgKind::Rest,
         ];
         for kind in kinds {
             let spec = ArgSpec::optional("test", kind, "desc");
@@ -183,8 +195,10 @@ mod tests {
         assert_ne!(ArgKind::Count, ArgKind::Register);
         assert_ne!(ArgKind::Motion, ArgKind::Range);
         assert_ne!(ArgKind::FilePath, ArgKind::String);
+        assert_ne!(ArgKind::Bang, ArgKind::Bool);
         assert_ne!(ArgKind::Bang, ArgKind::BufferId);
         assert_ne!(ArgKind::Char, ArgKind::Count);
+        assert_ne!(ArgKind::Rest, ArgKind::String);
     }
 
     #[test]
@@ -206,8 +220,10 @@ mod tests {
         assert_eq!(format!("{:?}", ArgKind::FilePath), "FilePath");
         assert_eq!(format!("{:?}", ArgKind::String), "String");
         assert_eq!(format!("{:?}", ArgKind::Bang), "Bang");
+        assert_eq!(format!("{:?}", ArgKind::Bool), "Bool");
         assert_eq!(format!("{:?}", ArgKind::BufferId), "BufferId");
         assert_eq!(format!("{:?}", ArgKind::Char), "Char");
+        assert_eq!(format!("{:?}", ArgKind::Rest), "Rest");
     }
 
     // === ArgValue tests ===
@@ -262,6 +278,16 @@ mod tests {
     }
 
     #[test]
+    fn test_arg_value_bool() {
+        let val_true = ArgValue::Bool(true);
+        let val_false = ArgValue::Bool(false);
+        assert_eq!(val_true, ArgValue::Bool(true));
+        assert_eq!(val_false, ArgValue::Bool(false));
+        assert_ne!(val_true, val_false);
+        assert_ne!(val_true, ArgValue::Bang(true));
+    }
+
+    #[test]
     fn test_arg_value_buffer_id() {
         let val = ArgValue::BufferId(7);
         assert_eq!(val, ArgValue::BufferId(7));
@@ -273,6 +299,14 @@ mod tests {
         let val = ArgValue::Char('x');
         assert_eq!(val, ArgValue::Char('x'));
         assert_ne!(val, ArgValue::Char('y'));
+    }
+
+    #[test]
+    fn test_arg_value_window_id() {
+        let val = ArgValue::WindowId(3);
+        assert_eq!(val, ArgValue::WindowId(3));
+        assert_ne!(val, ArgValue::WindowId(4));
+        assert_ne!(val, ArgValue::BufferId(3));
     }
 
     #[test]
@@ -305,11 +339,13 @@ mod tests {
         let register = ArgValue::Register('a');
         let string = ArgValue::String("1".to_string());
         let bang = ArgValue::Bang(true);
+        let bool_val = ArgValue::Bool(true);
         let char_val = ArgValue::Char('a');
 
         assert_ne!(count, register);
         assert_ne!(count, string);
         assert_ne!(count, bang);
+        assert_ne!(bang, bool_val);
         assert_ne!(register, char_val);
     }
 }

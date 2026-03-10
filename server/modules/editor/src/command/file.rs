@@ -51,9 +51,8 @@ impl Command for WriteBufferCommand {
         )]
     }
 
-    fn names(&self) -> &[&'static str] {
-        &["w", "write"]
-    }
+    // No names() — WriteCommand in commands module owns ["w", "write"].
+    // This command is only accessible via CommandId for programmatic use.
 }
 
 impl CommandHandler for WriteBufferCommand {
@@ -102,7 +101,7 @@ mod tests {
         reovim_driver_command::CommandContext,
         reovim_driver_session::{
             ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-            api::CommandExecutor,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_driver_vfs::{MockVfs, VfsDriver},
         reovim_kernel::api::{
@@ -176,13 +175,8 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _cmd: &KernelCommandId,
-            _ctx: &CommandContext,
-            _kernel: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -284,11 +278,10 @@ mod tests {
     }
 
     #[test]
-    fn test_write_command_names() {
+    fn test_write_command_names_empty() {
         let cmd = WriteBufferCommand;
-        let names = cmd.names();
-        assert!(names.contains(&"w"));
-        assert!(names.contains(&"write"));
+        // WriteBufferCommand has no user-facing names — WriteCommand owns ["w", "write"]
+        assert!(cmd.names().is_empty());
     }
 
     #[test]

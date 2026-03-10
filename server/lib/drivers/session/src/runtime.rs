@@ -39,7 +39,7 @@
 
 use {
     reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
-    reovim_driver_command_types::{CommandContext, CommandResult},
+    reovim_driver_command_types::{CommandContext, CommandResult, RuntimeSignal},
     reovim_driver_display::{
         NavigateDirection, Rect, SplitDirection,
         layout::{LayerId, OverlayConstraints, WindowPlacement},
@@ -118,6 +118,12 @@ pub struct SessionRuntime<'a> {
     /// Extension operations use this directly. Per-client module state
     /// isolation is enforced by requiring this field at construction time.
     extensions: &'a mut crate::ExtensionMap,
+    /// Session-wide shared extensions (optional, #543).
+    ///
+    /// When `Some`, commands can access session-wide state via `shared_ext()` /
+    /// `shared_ext_mut()`. When `None` (tests, single-player), shared access
+    /// returns `None`. Set via [`with_shared_extensions()`](Self::with_shared_extensions).
+    shared_extensions: Option<&'a mut crate::ExtensionMap>,
     /// Per-client compositor for window layout (#474).
     ///
     /// Each client owns their own compositor cloned from the shared template.
@@ -151,6 +157,14 @@ pub struct SessionRuntime<'a> {
     screen: Rect,
     /// Accumulated changes - runner takes at end.
     changes: StateChanges,
+    /// Signal queue — commands push signals during execution,
+    /// server drains after command returns (#547).
+    signals: Vec<RuntimeSignal>,
+    /// Recursion depth counter for re-entrant command execution (#547).
+    ///
+    /// Incremented before each `execute_command()` call, decremented after.
+    /// Max depth is 16 — deeper recursion returns an error.
+    command_depth: usize,
 }
 
 impl<'a> SessionRuntime<'a> {
@@ -212,6 +226,7 @@ impl<'a> SessionRuntime<'a> {
             mode_stack: client.mode_stack,
             windows: client.windows,
             extensions: client.extensions,
+            shared_extensions: None,
             compositor: client.compositor,
             tabs: client.tabs,
             registers: client.registers,
@@ -222,6 +237,8 @@ impl<'a> SessionRuntime<'a> {
             executor,
             screen,
             changes: StateChanges::new(),
+            signals: Vec::new(),
+            command_depth: 0,
         }
     }
 
@@ -274,6 +291,7 @@ impl<'a> SessionRuntime<'a> {
             mode_stack: client.mode_stack,
             windows: client.windows,
             extensions: client.extensions,
+            shared_extensions: None,
             compositor: client.compositor,
             tabs: client.tabs,
             registers: client.registers,
@@ -284,6 +302,8 @@ impl<'a> SessionRuntime<'a> {
             executor,
             screen,
             changes: StateChanges::new(),
+            signals: Vec::new(),
+            command_depth: 0,
         }
     }
 
@@ -307,6 +327,34 @@ impl<'a> SessionRuntime<'a> {
     #[must_use]
     pub const fn owner(&self) -> Option<crate::ClientId> {
         self.owner
+    }
+
+    /// Set shared extensions for session-wide state access (#543).
+    ///
+    /// Called by server code that has access to `AppState.extensions`.
+    /// Enables `shared_ext()` / `shared_ext_mut()` in commands.
+    #[must_use]
+    pub const fn with_shared_extensions(mut self, extensions: &'a mut crate::ExtensionMap) -> Self {
+        self.shared_extensions = Some(extensions);
+        self
+    }
+
+    /// Push a lifecycle signal onto the queue (#547).
+    ///
+    /// Commands call this during execution. The server drains
+    /// the queue after the command returns and acts on the signals.
+    /// Same pattern as `StateChanges` — accumulate during execution,
+    /// drain after.
+    pub fn signal(&mut self, signal: RuntimeSignal) {
+        self.signals.push(signal);
+    }
+
+    /// Drain the signal queue, returning all accumulated signals (#547).
+    ///
+    /// Called by the server after command execution completes.
+    /// Returns the signals and empties the queue.
+    pub fn take_signals(&mut self) -> Vec<RuntimeSignal> {
+        std::mem::take(&mut self.signals)
     }
 
     // Note: has_client_mode_stack(), has_client_windows(), has_client_extensions()
@@ -1143,13 +1191,25 @@ impl UndoApi for SessionRuntime<'_> {
 
 impl CommandApi for SessionRuntime<'_> {
     fn execute_command(&mut self, cmd: CommandId, ctx: CommandContext) -> CommandResult {
-        // Execute command via the injected executor.
-        //
-        // KernelContext uses interior mutability (Arc<RwLock<...>>), so
-        // &KernelContext is sufficient for command execution.
-        self.executor
-            .execute(&cmd, &ctx, self.kernel)
-            .unwrap_or_else(|| CommandResult::Error(format!("command not found: {cmd:?}")))
+        // Recursion guard (#547): max depth 16.
+        if self.command_depth >= 16 {
+            return CommandResult::Error(
+                "command recursion limit exceeded (max depth: 16)".to_string(),
+            );
+        }
+        self.command_depth += 1;
+
+        // get_handle() returns an owned Arc, releasing the borrow on
+        // self.executor. This enables re-entrant execution: the returned
+        // handle can call back into self via handle.execute(self, &ctx).
+        let handle = self.executor.get_handle(&cmd);
+        let result = handle.map_or_else(
+            || CommandResult::Error(format!("command not found: {cmd:?}")),
+            |handle| handle.execute(self, &ctx),
+        );
+
+        self.command_depth -= 1;
+        result
     }
 }
 
@@ -1170,6 +1230,16 @@ impl ExtensionApi for SessionRuntime<'_> {
     fn ext_mut<T: SessionExtension>(&mut self) -> &mut T {
         // #471 Phase 0: Per-client extensions are required, direct access
         self.extensions.get_or_insert::<T>()
+    }
+
+    fn shared_ext<T: SessionExtension>(&self) -> Option<&T> {
+        self.shared_extensions.as_ref().and_then(|m| m.get::<T>())
+    }
+
+    fn shared_ext_mut<T: SessionExtension>(&mut self) -> Option<&mut T> {
+        self.shared_extensions
+            .as_mut()
+            .map(|m| m.get_or_insert::<T>())
     }
 }
 
@@ -1745,17 +1815,16 @@ mod tests {
         ModeId::with_discriminant(ModuleId::new("test"), "insert", 1)
     }
 
+    use std::sync::Arc;
+
+    use crate::api::CommandHandle;
+
     struct StubExecutor;
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     impl CommandExecutor for StubExecutor {
-        fn execute(
-            &self,
-            _cmd: &CommandId,
-            _ctx: &CommandContext,
-            _kernel: &KernelContext,
-        ) -> Option<CommandResult> {
-            Some(CommandResult::Success)
+        fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
+            None
         }
     }
 
@@ -2161,6 +2230,283 @@ mod tests {
 
         // ext now returns it
         assert_eq!(runtime.ext::<TestExtension>().unwrap().value, 100);
+    }
+
+    // ========================================================================
+    // Shared extension tests (#543)
+    // ========================================================================
+
+    #[test]
+    fn test_shared_ext_without_shared_extensions_returns_none() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        #[derive(Debug)]
+        struct SharedTestExt;
+
+        impl SessionExtension for SharedTestExt {
+            fn create() -> Self {
+                Self
+            }
+        }
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                tabs: &mut tabs,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
+            },
+            &kernel,
+            &executor,
+        );
+
+        // Without shared_extensions, shared_ext returns None
+        assert!(runtime.shared_ext::<SharedTestExt>().is_none());
+    }
+
+    #[test]
+    fn test_shared_ext_mut_without_shared_extensions_returns_none() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        #[derive(Debug)]
+        struct SharedTestExt2 {
+            _value: i32,
+        }
+
+        impl SessionExtension for SharedTestExt2 {
+            fn create() -> Self {
+                Self { _value: 0 }
+            }
+        }
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                tabs: &mut tabs,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
+            },
+            &kernel,
+            &executor,
+        );
+
+        // Without shared_extensions, shared_ext_mut returns None
+        assert!(runtime.shared_ext_mut::<SharedTestExt2>().is_none());
+    }
+
+    #[test]
+    fn test_shared_ext_with_shared_extensions_returns_value() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        #[derive(Debug)]
+        struct SharedTestExt3 {
+            value: i32,
+        }
+
+        impl SessionExtension for SharedTestExt3 {
+            fn create() -> Self {
+                Self { value: 99 }
+            }
+        }
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut shared_extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
+
+        // Pre-populate shared extensions
+        shared_extensions.get_or_insert::<SharedTestExt3>();
+
+        let runtime = SessionRuntime::new(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                tabs: &mut tabs,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
+            },
+            &kernel,
+            &executor,
+        )
+        .with_shared_extensions(&mut shared_extensions);
+
+        // With shared_extensions, shared_ext returns the value
+        let ext = runtime.shared_ext::<SharedTestExt3>();
+        assert!(ext.is_some());
+        assert_eq!(ext.unwrap().value, 99);
+    }
+
+    #[test]
+    fn test_shared_ext_mut_creates_and_returns() {
+        use reovim_kernel::api::v1::ModeStack;
+
+        #[derive(Debug)]
+        struct SharedTestExt4 {
+            value: i32,
+        }
+
+        impl SessionExtension for SharedTestExt4 {
+            fn create() -> Self {
+                Self { value: 77 }
+            }
+        }
+
+        let mut session = Session::new(ClientId::new(1), test_mode());
+        let kernel = KernelContext::default();
+        let executor = StubExecutor;
+
+        let mut mode_stack = ModeStack::new(test_mode());
+        let mut windows = crate::WindowLayout::empty();
+        let mut extensions = crate::ExtensionMap::new();
+        let mut shared_extensions = crate::ExtensionMap::new();
+        let mut compositor = None;
+        let mut tabs = crate::TabPageSet::new();
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut local_marks = MarkBank::new();
+        let mut active_buffer = None;
+        let mut terminal_size = (80u16, 24u16);
+
+        let mut runtime = SessionRuntime::new(
+            &mut session,
+            crate::ClientContext {
+                mode_stack: &mut mode_stack,
+                windows: &mut windows,
+                extensions: &mut extensions,
+                compositor: &mut compositor,
+                tabs: &mut tabs,
+                registers: &mut registers,
+                clipboard_history: &mut clipboard_history,
+                local_marks: &mut local_marks,
+                active_buffer: &mut active_buffer,
+                terminal_size: &mut terminal_size,
+            },
+            &kernel,
+            &executor,
+        )
+        .with_shared_extensions(&mut shared_extensions);
+
+        // shared_ext_mut creates and returns
+        let ext = runtime.shared_ext_mut::<SharedTestExt4>();
+        assert!(ext.is_some());
+        let ext = ext.unwrap();
+        assert_eq!(ext.value, 77);
+        ext.value = 200;
+
+        // shared_ext reads the updated value
+        assert_eq!(runtime.shared_ext::<SharedTestExt4>().unwrap().value, 200);
+    }
+
+    #[test]
+    fn test_shared_ext_default_trait_returns_none() {
+        // Verify the default trait implementation (not SessionRuntime) returns None.
+        struct MinimalApi;
+
+        #[derive(Debug)]
+        struct AnyExt;
+        impl SessionExtension for AnyExt {
+            fn create() -> Self {
+                Self
+            }
+        }
+
+        impl ExtensionApi for MinimalApi {
+            fn ext<T: SessionExtension>(&self) -> Option<&T> {
+                None
+            }
+            fn ext_mut<T: SessionExtension>(&mut self) -> &mut T {
+                unimplemented!()
+            }
+        }
+
+        let api = MinimalApi;
+        assert!(api.shared_ext::<AnyExt>().is_none());
+    }
+
+    #[test]
+    fn test_shared_ext_mut_default_trait_returns_none() {
+        struct MinimalApi2;
+
+        #[derive(Debug)]
+        struct AnyExt2;
+        impl SessionExtension for AnyExt2 {
+            fn create() -> Self {
+                Self
+            }
+        }
+
+        impl ExtensionApi for MinimalApi2 {
+            fn ext<T: SessionExtension>(&self) -> Option<&T> {
+                None
+            }
+            fn ext_mut<T: SessionExtension>(&mut self) -> &mut T {
+                unimplemented!()
+            }
+        }
+
+        let mut api = MinimalApi2;
+        assert!(api.shared_ext_mut::<AnyExt2>().is_none());
     }
 
     #[test]
@@ -3034,8 +3380,8 @@ mod tests {
 
         let result =
             harness.with_runtime(|runtime| runtime.execute_command(cmd, CommandContext::new()));
-        // StubExecutor always returns Success
-        assert!(matches!(result, reovim_driver_command_types::CommandResult::Success));
+        // StubExecutor returns None (command not found) -> Error
+        assert!(matches!(result, reovim_driver_command_types::CommandResult::Error(_)));
     }
 
     // =========================================================================
@@ -3559,12 +3905,7 @@ mod tests {
 
         struct NullExecutor;
         impl CommandExecutor for NullExecutor {
-            fn execute(
-                &self,
-                _cmd: &CommandId,
-                _ctx: &CommandContext,
-                _kernel: &KernelContext,
-            ) -> Option<CommandResult> {
+            fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
                 None
             }
         }
@@ -3604,6 +3945,34 @@ mod tests {
         let cmd = CommandId::new(ModuleId::new("test"), "nonexistent");
         let result = runtime.execute_command(cmd, CommandContext::new());
         assert!(matches!(result, CommandResult::Error(_)));
+    }
+
+    // =========================================================================
+    // ExecuteCommand: recursion guard (#547)
+    // =========================================================================
+
+    #[test]
+    fn test_execute_command_recursion_guard() {
+        use {
+            crate::testing::TestSessionRuntime, reovim_driver_command_types::CommandContext,
+            reovim_kernel::api::v1::ModuleId,
+        };
+
+        let mut harness = TestSessionRuntime::new();
+        let cmd = CommandId::new(ModuleId::new("test"), "test_cmd");
+
+        // Manually set command_depth to 16 (the limit)
+        harness.with_runtime(|runtime| {
+            runtime.command_depth = 16;
+            let result = runtime.execute_command(cmd, CommandContext::new());
+            assert!(result.is_error());
+            match result {
+                CommandResult::Error(msg) => {
+                    assert!(msg.contains("recursion limit"));
+                }
+                CommandResult::Success => panic!("Expected recursion limit error"),
+            }
+        });
     }
 
     // =========================================================================
@@ -7025,6 +7394,82 @@ mod tests {
 
             BufferApi::set_active_buffer(runtime, buf_id);
             assert_eq!(BufferApi::active_buffer(runtime), buf_id);
+        });
+    }
+
+    // ========================================================================
+    // Signal queue tests (#547)
+    // ========================================================================
+
+    #[test]
+    fn test_signal_queue_initially_empty() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            let signals = runtime.take_signals();
+            assert!(signals.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_signal_push_and_take() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert_eq!(signals[0], RuntimeSignal::Quit);
+        });
+    }
+
+    #[test]
+    fn test_signal_take_drains_queue() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            let first = runtime.take_signals();
+            assert_eq!(first.len(), 1);
+
+            // Second take should be empty
+            let second = runtime.take_signals();
+            assert!(second.is_empty());
+        });
+    }
+
+    #[test]
+    fn test_signal_multiple_fifo_order() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("");
+        harness.with_runtime(|runtime| {
+            runtime.signal(RuntimeSignal::Quit);
+            runtime.signal(RuntimeSignal::Quit);
+            runtime.signal(RuntimeSignal::Quit);
+
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 3);
+            // All should be Quit (FIFO preserved)
+            for s in &signals {
+                assert_eq!(*s, RuntimeSignal::Quit);
+            }
+        });
+    }
+
+    #[test]
+    fn test_signal_queue_independent_of_state_changes() {
+        use crate::testing::TestSessionRuntime;
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            // Push a signal and also create state changes
+            runtime.signal(RuntimeSignal::Quit);
+            let changes = runtime.take_changes();
+            let signals = runtime.take_signals();
+
+            // Both should be independent
+            assert_eq!(signals.len(), 1);
+            // State changes are their own thing
+            drop(changes);
         });
     }
 }

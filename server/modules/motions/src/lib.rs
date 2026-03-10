@@ -154,8 +154,8 @@ mod tests {
     fn test_command_handlers_total() {
         let module = MotionsModule;
         let handlers = module.command_handlers();
-        // 8 word + 6 line + 6 find_char + 7 search = 27
-        assert_eq!(handlers.len(), 27);
+        // 8 word + 6 line + 7 find_char + 7 search = 28
+        assert_eq!(handlers.len(), 28);
     }
 
     #[test]
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn test_find_char_commands_count() {
         let cmds = find_char::all_commands();
-        assert_eq!(cmds.len(), 6); // f, F, t, T, ;, ,
+        assert_eq!(cmds.len(), 7); // dispatch, f, F, t, T, ;, ,
     }
 
     #[test]

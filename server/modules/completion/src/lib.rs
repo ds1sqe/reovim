@@ -23,11 +23,8 @@ pub use {bridge::CompletionBridge, state::CompletionState};
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_completion::CompletionSourceRegistry,
-    reovim_driver_input::KeybindingStore,
     reovim_driver_session::bridges::BridgeProvider,
-    reovim_kernel::api::v1::{
-        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-    },
+    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
     std::sync::Arc,
 };
 
@@ -94,28 +91,11 @@ impl Module for CompletionModule {
             command_store.add(handler);
         }
 
-        // Register keybindings.
-        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
-        keybinding_store.add_all(self.keybindings());
-
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
-    }
-
-    fn keybindings(&self) -> Vec<KeybindingRegistration> {
-        vec![
-            KeybindingRegistration::new("<C-y>", ids::CONFIRM)
-                .with_modes(&["vim:insert"])
-                .with_category("completion")
-                .with_description("Confirm completion"),
-            KeybindingRegistration::new("<C-e>", ids::DISMISS)
-                .with_modes(&["vim:insert"])
-                .with_category("completion")
-                .with_description("Dismiss completion"),
-        ]
     }
 }
 
@@ -195,44 +175,6 @@ mod tests {
         // Verify commands were registered.
         let command_store = services.get::<CommandHandlerStore>();
         assert!(command_store.is_some());
-
-        // Verify keybindings were registered.
-        let keybinding_store = services.get::<KeybindingStore>();
-        assert!(keybinding_store.is_some());
-    }
-
-    #[test]
-    fn keybindings_not_empty() {
-        let module = CompletionModule::new();
-        let bindings = module.keybindings();
-        assert!(!bindings.is_empty());
-    }
-
-    #[test]
-    fn keybindings_have_insert_mode() {
-        let module = CompletionModule::new();
-        let bindings = module.keybindings();
-        let count = bindings
-            .iter()
-            .filter(|b| b.modes.contains(&"vim:insert"))
-            .count();
-        assert_eq!(count, 2);
-    }
-
-    #[test]
-    fn keybinding_confirm() {
-        let module = CompletionModule::new();
-        let bindings = module.keybindings();
-        let confirm = bindings.iter().find(|b| b.keys == "<C-y>").unwrap();
-        assert_eq!(confirm.command_id, ids::CONFIRM);
-    }
-
-    #[test]
-    fn keybinding_dismiss() {
-        let module = CompletionModule::new();
-        let bindings = module.keybindings();
-        let dismiss = bindings.iter().find(|b| b.keys == "<C-e>").unwrap();
-        assert_eq!(dismiss.command_id, ids::DISMISS);
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

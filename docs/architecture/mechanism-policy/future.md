@@ -36,7 +36,7 @@ Future configuration could allow runtime resolver swapping:
 [resolvers]
 normal = "eager"  # Swap Vim for immediate execution
 insert = "vim"    # Keep Vim behavior in insert mode
-tetris = "eager"  # Game modes always eager
+tetromino = "eager"  # Game modes always eager
 ```
 
 ### Per-Filetype Policies

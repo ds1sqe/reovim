@@ -4,10 +4,16 @@
 //! - `:detach` - Detach from server (server continues)
 //! - `:servers` - List running server instances
 //! - `:kill-server` - Kill the current server
-//!
-//! These commands are part of issue #350 (Unified Port System).
 
-use crate::types::{CommandError, ExCommandContext, ExCommandHandler};
+use {
+    reovim_driver_command::{
+        Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
+    },
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::{CommandId, ModuleId},
+};
+
+const COMMANDS_MODULE: ModuleId = ModuleId::new("commands");
 
 // ============================================================================
 // Detach Command
@@ -22,24 +28,24 @@ use crate::types::{CommandError, ExCommandContext, ExCommandHandler};
 /// Usage: `:detach`
 pub struct DetachCommand;
 
-impl ExCommandHandler for DetachCommand {
-    fn id(&self) -> &'static str {
-        "detach"
+impl Command for DetachCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(COMMANDS_MODULE, "detach")
+    }
+
+    fn description(&self) -> &'static str {
+        "Detach from the server (server continues running)"
     }
 
     fn names(&self) -> &[&'static str] {
         &["detach"]
     }
+}
 
-    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
-        // Note: The actual detach is handled by the runner.
-        // This command signals the intent to detach.
-        // The runner checks for this command and sends DETACH notification.
-        Ok(())
-    }
-
-    fn help(&self) -> &'static str {
-        "Detach from the server (server continues running)"
+impl CommandHandler for DetachCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        runtime.signal(RuntimeSignal::Quit);
+        CommandResult::Success
     }
 }
 
@@ -49,30 +55,27 @@ impl ExCommandHandler for DetachCommand {
 
 /// List running server instances.
 ///
-/// Queries the instance registry and displays all registered servers
-/// with their names, transport addresses, and PIDs.
-///
 /// Usage: `:servers`
 pub struct ServersCommand;
 
-impl ExCommandHandler for ServersCommand {
-    fn id(&self) -> &'static str {
-        "servers"
+impl Command for ServersCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(COMMANDS_MODULE, "servers")
+    }
+
+    fn description(&self) -> &'static str {
+        "List running server instances"
     }
 
     fn names(&self) -> &[&'static str] {
         &["servers"]
     }
+}
 
-    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
+impl CommandHandler for ServersCommand {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
         // Note: The actual listing is handled by the runner.
-        // This command signals the intent to list servers.
-        // The runner queries the instance registry and displays results.
-        Ok(())
-    }
-
-    fn help(&self) -> &'static str {
-        "List running server instances"
+        CommandResult::Success
     }
 }
 
@@ -88,24 +91,24 @@ impl ExCommandHandler for ServersCommand {
 /// Usage: `:kill-server`
 pub struct KillServerCommand;
 
-impl ExCommandHandler for KillServerCommand {
-    fn id(&self) -> &'static str {
-        "kill-server"
+impl Command for KillServerCommand {
+    fn id(&self) -> CommandId {
+        CommandId::new(COMMANDS_MODULE, "kill-server")
+    }
+
+    fn description(&self) -> &'static str {
+        "Kill the current server (terminates all sessions)"
     }
 
     fn names(&self) -> &[&'static str] {
         &["kill-server", "killserver"]
     }
+}
 
-    fn execute(&self, _ctx: &mut ExCommandContext<'_>, _args: &[&str]) -> Result<(), CommandError> {
-        // Note: The actual termination is handled by the runner.
-        // This command signals the intent to kill the server.
-        // The runner initiates a forced quit.
-        Ok(())
-    }
-
-    fn help(&self) -> &'static str {
-        "Kill the current server (terminates all sessions)"
+impl CommandHandler for KillServerCommand {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _ctx: &CommandContext) -> CommandResult {
+        runtime.signal(RuntimeSignal::Quit);
+        CommandResult::Success
     }
 }
 
@@ -113,9 +116,9 @@ impl ExCommandHandler for KillServerCommand {
 // Command Collection
 // ============================================================================
 
-/// Get all session management commands.
+/// Get all session management command handlers.
 #[must_use]
-pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
+pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
     vec![
         Box::new(DetachCommand),
         Box::new(ServersCommand),
@@ -129,7 +132,7 @@ pub fn commands() -> Vec<Box<dyn ExCommandHandler>> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, reovim_kernel::api::v1::KernelContext};
+    use super::*;
 
     // ========================================================================
     // DetachCommand tests
@@ -138,7 +141,8 @@ mod tests {
     #[test]
     fn test_detach_command_id() {
         let cmd = DetachCommand;
-        assert_eq!(cmd.id(), "detach");
+        assert_eq!(cmd.id().name(), "detach");
+        assert_eq!(cmd.id().module().as_str(), "commands");
     }
 
     #[test]
@@ -149,11 +153,11 @@ mod tests {
     }
 
     #[test]
-    fn test_detach_command_help() {
+    fn test_detach_command_description() {
         let cmd = DetachCommand;
-        let help = cmd.help();
-        assert!(!help.is_empty());
-        assert!(help.contains("Detach"));
+        let desc = cmd.description();
+        assert!(!desc.is_empty());
+        assert!(desc.contains("Detach"));
     }
 
     #[test]
@@ -163,26 +167,6 @@ mod tests {
         assert!(completions.is_empty());
     }
 
-    #[test]
-    fn test_detach_command_execute() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = DetachCommand;
-        let result = cmd.execute(&mut ctx, &[]);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_detach_command_execute_ignores_args() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = DetachCommand;
-        let result = cmd.execute(&mut ctx, &["extra", "args"]);
-        assert!(result.is_ok());
-    }
-
     // ========================================================================
     // ServersCommand tests
     // ========================================================================
@@ -190,7 +174,8 @@ mod tests {
     #[test]
     fn test_servers_command_id() {
         let cmd = ServersCommand;
-        assert_eq!(cmd.id(), "servers");
+        assert_eq!(cmd.id().name(), "servers");
+        assert_eq!(cmd.id().module().as_str(), "commands");
     }
 
     #[test]
@@ -201,11 +186,11 @@ mod tests {
     }
 
     #[test]
-    fn test_servers_command_help() {
+    fn test_servers_command_description() {
         let cmd = ServersCommand;
-        let help = cmd.help();
-        assert!(!help.is_empty());
-        assert!(help.contains("server"));
+        let desc = cmd.description();
+        assert!(!desc.is_empty());
+        assert!(desc.contains("server"));
     }
 
     #[test]
@@ -215,26 +200,6 @@ mod tests {
         assert!(completions.is_empty());
     }
 
-    #[test]
-    fn test_servers_command_execute() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = ServersCommand;
-        let result = cmd.execute(&mut ctx, &[]);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_servers_command_execute_ignores_args() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = ServersCommand;
-        let result = cmd.execute(&mut ctx, &["arg1"]);
-        assert!(result.is_ok());
-    }
-
     // ========================================================================
     // KillServerCommand tests
     // ========================================================================
@@ -242,7 +207,8 @@ mod tests {
     #[test]
     fn test_kill_server_command_id() {
         let cmd = KillServerCommand;
-        assert_eq!(cmd.id(), "kill-server");
+        assert_eq!(cmd.id().name(), "kill-server");
+        assert_eq!(cmd.id().module().as_str(), "commands");
     }
 
     #[test]
@@ -255,11 +221,11 @@ mod tests {
     }
 
     #[test]
-    fn test_kill_server_command_help() {
+    fn test_kill_server_command_description() {
         let cmd = KillServerCommand;
-        let help = cmd.help();
-        assert!(!help.is_empty());
-        assert!(help.contains("Kill"));
+        let desc = cmd.description();
+        assert!(!desc.is_empty());
+        assert!(desc.contains("Kill"));
     }
 
     #[test]
@@ -269,58 +235,42 @@ mod tests {
         assert!(completions.is_empty());
     }
 
-    #[test]
-    fn test_kill_server_command_execute() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = KillServerCommand;
-        let result = cmd.execute(&mut ctx, &[]);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_kill_server_command_execute_ignores_args() {
-        let kernel = KernelContext::default();
-        let mut ctx = ExCommandContext::new(&kernel);
-
-        let cmd = KillServerCommand;
-        let result = cmd.execute(&mut ctx, &["extra"]);
-        assert!(result.is_ok());
-    }
-
     // ========================================================================
-    // commands() collection tests
+    // command_handlers() collection tests
     // ========================================================================
 
     #[test]
-    fn test_commands_collection_count() {
-        let cmds = commands();
+    fn test_command_handlers_collection_count() {
+        let cmds = command_handlers();
         assert_eq!(cmds.len(), 3);
     }
 
     #[test]
-    fn test_commands_collection_ids() {
-        let cmds = commands();
-        let ids: Vec<_> = cmds.iter().map(|c| c.id()).collect();
+    fn test_command_handlers_collection_ids() {
+        let cmds = command_handlers();
+        let ids: Vec<_> = cmds.iter().map(|c| c.id().name()).collect();
         assert!(ids.contains(&"detach"));
         assert!(ids.contains(&"servers"));
         assert!(ids.contains(&"kill-server"));
     }
 
     #[test]
-    fn test_commands_collection_all_have_names() {
-        let cmds = commands();
+    fn test_command_handlers_all_have_names() {
+        let cmds = command_handlers();
         for cmd in &cmds {
-            assert!(!cmd.names().is_empty(), "command '{}' has no names", cmd.id());
+            assert!(!cmd.names().is_empty(), "command '{}' has no names", cmd.id().name());
         }
     }
 
     #[test]
-    fn test_commands_collection_all_have_help() {
-        let cmds = commands();
+    fn test_command_handlers_all_have_descriptions() {
+        let cmds = command_handlers();
         for cmd in &cmds {
-            assert!(!cmd.help().is_empty(), "command '{}' has no help text", cmd.id());
+            assert!(
+                !cmd.description().is_empty(),
+                "command '{}' has no description",
+                cmd.id().name()
+            );
         }
     }
 
@@ -330,14 +280,63 @@ mod tests {
 
     #[test]
     fn test_session_commands_as_trait_objects() {
-        let cmds: Vec<Box<dyn ExCommandHandler>> = vec![
+        let cmds: Vec<Box<dyn CommandHandler>> = vec![
             Box::new(DetachCommand),
             Box::new(ServersCommand),
             Box::new(KillServerCommand),
         ];
         assert_eq!(cmds.len(), 3);
         for cmd in &cmds {
-            assert!(!cmd.id().is_empty());
+            assert!(!cmd.id().name().is_empty());
         }
+    }
+
+    // ========================================================================
+    // Execute tests
+    // ========================================================================
+
+    #[test]
+    fn test_detach_execute_signals_quit() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = DetachCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert!(matches!(signals[0], RuntimeSignal::Quit));
+        });
+    }
+
+    #[test]
+    fn test_servers_execute_returns_success() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = ServersCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+        });
+    }
+
+    #[test]
+    fn test_kill_server_execute_signals_quit() {
+        use reovim_driver_session::testing::TestSessionRuntime;
+
+        let mut harness = TestSessionRuntime::with_buffer("hello");
+        harness.with_runtime(|runtime| {
+            let cmd = KillServerCommand;
+            let ctx = CommandContext::new();
+            let result = cmd.execute(runtime, &ctx);
+            assert!(result.is_success());
+            let signals = runtime.take_signals();
+            assert_eq!(signals.len(), 1);
+            assert!(matches!(signals[0], RuntimeSignal::Quit));
+        });
     }
 }

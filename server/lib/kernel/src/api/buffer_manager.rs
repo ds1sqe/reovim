@@ -89,7 +89,8 @@ pub trait BufferManager: Send + Sync {
     /// Returns `Err(BufferError::NotFound)` if the buffer does not exist.
     fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError>;
 
-    /// List all buffer IDs.
+    /// List all buffer IDs. Order is not guaranteed; callers that need
+    /// deterministic ordering must sort the result.
     fn list(&self) -> Vec<BufferId>;
 
     /// Get count of buffers.

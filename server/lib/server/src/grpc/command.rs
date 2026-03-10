@@ -8,10 +8,10 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_command::{CommandQueryService, ExCommandQueryService, ExCommandRegistry},
+    reovim_driver_command::{CommandNameIndex, CommandQueryService},
     reovim_protocol::v2::{
-        CommandSource, CompleteArgsRequest, CompleteArgsResponse, ExCommandEntry,
-        KeybindingCommandEntry, SearchCommandsRequest, SearchCommandsResponse,
+        CommandSource, CompleteArgsRequest, CompleteArgsResponse, KeybindingCommandEntry,
+        SearchCommandsRequest, SearchCommandsResponse, UserCommandEntry,
         command_service_server::CommandService,
     },
     tonic::{Request, Response, Status},
@@ -62,21 +62,21 @@ impl CommandService for CommandServiceImpl {
             let services = &state.app.kernel.services;
 
             let mut resp = SearchCommandsResponse {
-                ex_commands: Vec::new(),
+                user_commands: Vec::new(),
                 keybinding_commands: Vec::new(),
             };
 
-            // Search ex-commands
-            if matches!(source, CommandSource::All | CommandSource::Ex)
-                && let Some(registry) = services.get::<ExCommandRegistry>()
+            // Search user commands via CommandNameIndex (#547)
+            if matches!(source, CommandSource::All | CommandSource::User)
+                && let Some(index) = services.get::<CommandNameIndex>()
             {
-                resp.ex_commands = registry
+                resp.user_commands = index
                     .search_by_prefix(&req.prefix)
                     .into_iter()
-                    .map(|info| ExCommandEntry {
-                        id: info.id,
-                        names: info.names,
-                        help: info.help,
+                    .map(|(id, cmd)| UserCommandEntry {
+                        id: id.name().to_string(),
+                        names: cmd.names().iter().map(|s| (*s).to_string()).collect(),
+                        help: cmd.description().to_string(),
                     })
                     .collect();
             }
@@ -114,10 +114,8 @@ impl CommandService for CommandServiceImpl {
                 .app
                 .kernel
                 .services
-                .get::<ExCommandRegistry>()
-                .map_or_else(Vec::new, |registry| {
-                    registry.complete_args(&req.command, &req.partial)
-                })
+                .get::<CommandNameIndex>()
+                .map_or_else(Vec::new, |index| index.complete_args(&req.command, &req.partial))
         });
 
         Ok(Response::new(CompleteArgsResponse { completions }))
@@ -129,58 +127,52 @@ mod tests {
     use {
         super::*,
         crate::session::SessionState,
-        reovim_driver_command::{ExCommandContext, ExCommandError, ExCommandHandler},
+        reovim_driver_command::Command,
+        reovim_kernel::api::v1::{CommandId, ModuleId},
     };
 
-    // === Helper: create a session with services registered ===
+    // === Helper: create a session with CommandNameIndex registered ===
 
-    fn make_session_with_ex_commands() -> Arc<Session> {
-        struct WriteHandler;
-        impl ExCommandHandler for WriteHandler {
-            fn id(&self) -> &'static str {
-                "write"
+    fn make_session_with_name_index() -> Arc<Session> {
+        struct WriteCmd;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl Command for WriteCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("commands"), "write")
+            }
+            fn description(&self) -> &'static str {
+                "Write buffer"
             }
             fn names(&self) -> &[&'static str] {
                 &["w", "write"]
             }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
-            fn help(&self) -> &'static str {
-                "Write buffer"
-            }
         }
 
-        struct QuitHandler;
-        impl ExCommandHandler for QuitHandler {
-            fn id(&self) -> &'static str {
-                "quit"
+        struct QuitCmd;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl Command for QuitCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("commands"), "quit")
+            }
+            fn description(&self) -> &'static str {
+                "Quit editor"
             }
             fn names(&self) -> &[&'static str] {
                 &["q", "quit"]
             }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
-            }
-            fn help(&self) -> &'static str {
-                "Quit editor"
-            }
         }
 
-        let handlers: Vec<Arc<dyn ExCommandHandler>> =
-            vec![Arc::new(WriteHandler), Arc::new(QuitHandler)];
-        let registry = ExCommandRegistry::from_handlers(handlers);
+        let mut index = CommandNameIndex::new();
+        let write: Arc<dyn Command> = Arc::new(WriteCmd);
+        let quit: Arc<dyn Command> = Arc::new(QuitCmd);
+
+        index.insert("w".to_string(), write.id(), Arc::clone(&write));
+        index.insert("write".to_string(), write.id(), write);
+        index.insert("q".to_string(), quit.id(), Arc::clone(&quit));
+        index.insert("quit".to_string(), quit.id(), quit);
 
         let state = SessionState::default();
-        state.app.kernel.services.register(Arc::new(registry));
+        state.app.kernel.services.register(Arc::new(index));
 
         Arc::new(Session::from_state(SessionId::new("test"), state))
     }
@@ -214,25 +206,25 @@ mod tests {
     // === SearchCommands tests ===
 
     #[tokio::test]
-    async fn test_search_commands_ex_only() {
-        let session = make_session_with_ex_commands();
+    async fn test_search_commands_user_only() {
+        let session = make_session_with_name_index();
         let sessions = make_sessions_with(&session);
         let service = CommandServiceImpl::new(sessions, SessionId::new("test"));
 
         let request = Request::new(SearchCommandsRequest {
             prefix: "w".to_string(),
-            source: CommandSource::Ex.into(),
+            source: CommandSource::User.into(),
         });
         let response = service.search_commands(request).await.unwrap().into_inner();
 
-        assert_eq!(response.ex_commands.len(), 1);
-        assert_eq!(response.ex_commands[0].id, "write");
+        assert_eq!(response.user_commands.len(), 1);
+        assert_eq!(response.user_commands[0].id, "write");
         assert!(response.keybinding_commands.is_empty());
     }
 
     #[tokio::test]
     async fn test_search_commands_keybinding_only() {
-        let session = make_session_with_ex_commands();
+        let session = make_session_with_name_index();
         let sessions = make_sessions_with(&session);
         let service = CommandServiceImpl::new(sessions, SessionId::new("test"));
 
@@ -243,13 +235,13 @@ mod tests {
         let response = service.search_commands(request).await.unwrap().into_inner();
 
         // No keybinding commands registered in our test session
-        assert!(response.ex_commands.is_empty());
+        assert!(response.user_commands.is_empty());
         assert!(response.keybinding_commands.is_empty());
     }
 
     #[tokio::test]
     async fn test_search_commands_all() {
-        let session = make_session_with_ex_commands();
+        let session = make_session_with_name_index();
         let sessions = make_sessions_with(&session);
         let service = CommandServiceImpl::new(sessions, SessionId::new("test"));
 
@@ -259,8 +251,8 @@ mod tests {
         });
         let response = service.search_commands(request).await.unwrap().into_inner();
 
-        // Empty prefix → all ex-commands (2 handlers)
-        assert_eq!(response.ex_commands.len(), 2);
+        // Empty prefix → all user commands (2 unique commands)
+        assert_eq!(response.user_commands.len(), 2);
     }
 
     #[tokio::test]
@@ -281,9 +273,8 @@ mod tests {
     async fn test_search_commands_keybinding_with_snapshot() {
         use {
             crate::CommandQuerySnapshot,
-            reovim_driver_command::{ArgSpec, Command, CommandHandler, CommandResult},
+            reovim_driver_command::{ArgSpec, CommandHandler, CommandResult},
             reovim_driver_session::SessionRuntime,
-            reovim_kernel::api::v1::{CommandId, ModuleId},
         };
 
         struct MoveDown;
@@ -339,31 +330,29 @@ mod tests {
 
     #[tokio::test]
     async fn test_complete_args_found() {
-        struct ColorschemeHandler;
-        impl ExCommandHandler for ColorschemeHandler {
-            fn id(&self) -> &'static str {
-                "colorscheme"
+        struct ColorschemeCmd;
+        #[cfg_attr(coverage_nightly, coverage(off))]
+        impl Command for ColorschemeCmd {
+            fn id(&self) -> CommandId {
+                CommandId::new(ModuleId::new("commands"), "colorscheme")
+            }
+            fn description(&self) -> &'static str {
+                "Set colorscheme"
             }
             fn names(&self) -> &[&'static str] {
                 &["colorscheme"]
-            }
-            fn execute(
-                &self,
-                _ctx: &mut ExCommandContext<'_>,
-                _args: &[&str],
-            ) -> Result<(), ExCommandError> {
-                Ok(())
             }
             fn complete(&self, partial: &str) -> Vec<String> {
                 vec![format!("{partial}-dark"), format!("{partial}-light")]
             }
         }
 
-        let handlers: Vec<Arc<dyn ExCommandHandler>> = vec![Arc::new(ColorschemeHandler)];
-        let registry = ExCommandRegistry::from_handlers(handlers);
+        let mut index = CommandNameIndex::new();
+        let cmd: Arc<dyn Command> = Arc::new(ColorschemeCmd);
+        index.insert("colorscheme".to_string(), cmd.id(), cmd);
 
         let state = SessionState::default();
-        state.app.kernel.services.register(Arc::new(registry));
+        state.app.kernel.services.register(Arc::new(index));
 
         let session = Arc::new(Session::from_state(SessionId::new("test"), state));
         let sessions = make_sessions_with(&session);
@@ -381,7 +370,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_complete_args_not_found() {
-        let session = make_session_with_ex_commands();
+        let session = make_session_with_name_index();
         let sessions = make_sessions_with(&session);
         let service = CommandServiceImpl::new(sessions, SessionId::new("test"));
 

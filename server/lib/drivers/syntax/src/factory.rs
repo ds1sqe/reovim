@@ -66,7 +66,7 @@ mod tests {
         super::*,
         crate::{
             edit::SyntaxEdit,
-            highlight::{HighlightGroup, HighlightSpan},
+            highlight::{Annotation, HighlightCategory},
         },
         std::ops::Range,
     };
@@ -85,8 +85,12 @@ mod tests {
 
         fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
 
-        fn highlights(&self, _byte_range: Range<usize>) -> Vec<HighlightSpan> {
-            vec![HighlightSpan::new(0, 1, HighlightGroup::Comment)]
+        fn highlights(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
+            vec![Annotation::highlight(
+                0,
+                1,
+                HighlightCategory::new("comment"),
+            )]
         }
 
         fn is_parsed(&self) -> bool {
@@ -221,7 +225,7 @@ mod tests {
         // MinimalDriver always returns a highlight
         let highlights = driver.highlights(0..100);
         assert_eq!(highlights.len(), 1);
-        assert_eq!(highlights[0].group, HighlightGroup::Comment);
+        assert_eq!(highlights[0].category.as_str(), "comment");
     }
 
     #[test]

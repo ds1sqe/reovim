@@ -168,9 +168,10 @@ impl Operator for DeleteOperator {
                 // Case 1: Cursor at column 0
                 0
             };
-            // Note: Cursor position after delete is determined by the caller
-            // For undo tracking, we use the calculated final position
+            // Cursor position after delete — used for both undo tracking and
+            // communicating desired cursor back to execute_operator (#552)
             let cursor_after = reovim_kernel::api::v1::Position::new(final_line, final_col);
+            ctx.cursor_after = Some(cursor_after);
 
             // Record edit for undo
             if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
@@ -224,8 +225,9 @@ impl Operator for DeleteOperator {
             // Delete the text from buffer
             buffer.delete_range(start, end);
 
-            // Cursor after characterwise delete is at the start position
+            // Cursor after characterwise delete is at the start position (#552)
             let cursor_after = start;
+            ctx.cursor_after = Some(cursor_after);
 
             // Record edit for undo
             if let Some(undo_registry) = ctx.kernel.services.get::<UndoProviderRegistry>()
@@ -263,7 +265,8 @@ mod tests {
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
         reovim_driver_session::{
-            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::CommandExecutor,
+            ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
@@ -284,13 +287,8 @@ mod tests {
         struct StubExecutor;
         #[cfg_attr(coverage_nightly, coverage(off))]
         impl CommandExecutor for StubExecutor {
-            fn execute(
-                &self,
-                _: &CommandId,
-                _: &CommandContext,
-                _: &KernelContext,
-            ) -> Option<CommandResult> {
-                Some(CommandResult::Success)
+            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
+                None
             }
         }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
@@ -427,6 +425,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = delete.execute(&mut op_ctx, range);
@@ -450,6 +449,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete "hello" (columns 0..5)
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
@@ -483,6 +483,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 6),
+            cursor_after: None,
         };
         // Delete "world" (columns 6..11)
         let range = super::super::Range::new(Position::new(0, 6), Position::new(0, 11));
@@ -514,6 +515,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         // Delete from (0,3) to (1,3) => "lo\nwor"
         let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
@@ -541,6 +543,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete line 0 (linewise) - Case 1: deleting non-last line
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
@@ -572,6 +575,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete line 1 (linewise) - Case 2: deleting last line but not all
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -603,6 +607,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete line 0 (linewise) - Case 3: deleting the only line
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
@@ -635,6 +640,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete lines 1-2 (linewise) - Case 1: not last lines
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(2, 0));
@@ -666,6 +672,7 @@ mod tests {
             register: Register::Slot('a'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = delete.execute(&mut op_ctx, range);
@@ -692,6 +699,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete with end beyond buffer - should clamp to last line
         // This is Case 3: start.line == 0, clamped_end is last line
@@ -722,6 +730,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         // Delete same position
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 3));
@@ -751,6 +760,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete lines 1-2 (the last two lines) - Case 2
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(2, 0));
@@ -779,6 +789,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 1),
+            cursor_after: None,
         };
         // Delete from (0,1) to (2,2) => "aa\nbbb\ncc"
         let range = super::super::Range::new(Position::new(0, 1), Position::new(2, 2));
@@ -806,6 +817,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete middle line (linewise) - Case 1: not last line
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -837,6 +849,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete just 'h' (0,0) to (0,1)
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 1));
@@ -868,6 +881,7 @@ mod tests {
             register: Register::Slot('b'),
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = delete.execute(&mut op_ctx, range);
@@ -894,6 +908,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete all lines
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(2, 0));
@@ -945,6 +960,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // Delete entire line content characterwise
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
@@ -976,6 +992,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         // End column beyond line length - should be clamped
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 100));
@@ -1098,6 +1115,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         let result = delete.execute(&mut op_ctx, range);
@@ -1128,6 +1146,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         let result = delete.execute(&mut op_ctx, range);
@@ -1162,6 +1181,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete line 1 (last line, which is empty) - Case 2
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -1187,6 +1207,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(1, 0),
+            cursor_after: None,
         };
         // Delete last line - Case 2 (not all lines, but last line)
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -1245,6 +1266,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
         delete.execute(&mut op_ctx, range).unwrap();
@@ -1270,6 +1292,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 0),
+            cursor_after: None,
         };
         let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
         delete.execute(&mut op_ctx, range).unwrap();
@@ -1296,6 +1319,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 3), Position::new(0, 8));
         delete.execute(&mut op_ctx, range).unwrap();
@@ -1326,6 +1350,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: cursor_before,
+            cursor_after: None,
         };
         // Delete middle line (linewise, Case 1: non-last line)
         let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
@@ -1356,6 +1381,7 @@ mod tests {
             register: Register::Default,
             count: 1,
             cursor_position: Position::new(0, 3),
+            cursor_after: None,
         };
         let range = super::super::Range::new(Position::new(0, 3), Position::new(1, 3));
         let result = delete.execute(&mut op_ctx, range);
@@ -1368,5 +1394,116 @@ mod tests {
         } else {
             panic!("Expected Delete edit");
         }
+    }
+
+    // ========================================================================
+    // cursor_after tests (#552)
+    // ========================================================================
+
+    #[test]
+    fn test_delete_linewise_sets_cursor_after_case1() {
+        // Case 1: delete non-last line → cursor at (start.line, 0)
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\nbbb\nccc");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+            cursor_after: None,
+        };
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
+    }
+
+    #[test]
+    fn test_delete_linewise_sets_cursor_after_case2() {
+        // Case 2: delete last line(s) but not all → cursor at last valid line
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("aaa\nbbb");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(1, 0),
+            cursor_after: None,
+        };
+        // Delete line 1 (last line)
+        let range = super::super::Range::linewise(Position::new(1, 0), Position::new(1, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        // After delete, only "aaa" remains (line 0, len 3). Cursor at (0, 2) — last valid col
+        assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 2)));
+    }
+
+    #[test]
+    fn test_delete_linewise_sets_cursor_after_case3() {
+        // Case 3: delete all lines → cursor at (0, 0)
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("only");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+            cursor_after: None,
+        };
+        let range = super::super::Range::linewise(Position::new(0, 0), Position::new(0, 0));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
+    }
+
+    #[test]
+    fn test_delete_characterwise_sets_cursor_after() {
+        let ctx = create_test_context();
+        let buffer = Buffer::from_string("hello world");
+        let buffer_id = ctx.buffers.register(buffer);
+
+        let delete = DeleteOperator;
+        let mut registers = RegisterBank::new();
+        let mut clipboard_history = HistoryRing::new();
+        let mut op_ctx = OperatorContext {
+            kernel: &ctx,
+            registers: &mut registers,
+            clipboard_history: &mut clipboard_history,
+            buffer_id,
+            register: Register::Default,
+            count: 1,
+            cursor_position: Position::new(0, 0),
+            cursor_after: None,
+        };
+        // Delete "hello" (0,0)-(0,5)
+        let range = super::super::Range::new(Position::new(0, 0), Position::new(0, 5));
+        let result = delete.execute(&mut op_ctx, range);
+        assert!(result.is_ok());
+        // Characterwise: cursor at start of deleted range
+        assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
     }
 }

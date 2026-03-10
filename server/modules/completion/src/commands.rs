@@ -5,7 +5,7 @@
 //! `ExtensionMap`.
 
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -17,11 +17,12 @@ use {
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_completion::{CompletionContext, CompletionSourceRegistry},
     reovim_driver_lsp::{
-        LspKey, LspProvider, LspProviderRegistry, LspRequest, LspServerConfig, uri_from_path,
+        LspKey, LspLifecycleRegistry, LspProviderRegistry, LspRequest, LspServerConfig,
+        uri_from_path,
     },
     reovim_driver_session::{
-        BufferApi, ChangeTracker, ExtensionApi, ModeApi, Selection, SessionRuntime,
-        TransitionContext,
+        BufferApi, ChangeTracker, ExtensionApi, NotificationDrainRegistry, SessionRuntime,
+        SnippetExpanderRegistry,
     },
     reovim_kernel::api::v1::{CommandId, Position, ServiceRegistry, oneshot},
     tracing::{debug, info, warn},
@@ -231,6 +232,9 @@ impl CommandHandler for Confirm {
 }
 
 /// Handle snippet insertion from completion confirm.
+///
+/// Delegates to [`SnippetExpanderRegistry`] (#542: decouple from module-snippet).
+/// Falls back to raw text insertion if no expander is registered.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn confirm_snippet(
     runtime: &mut SessionRuntime<'_>,
@@ -238,54 +242,17 @@ fn confirm_snippet(
     insert_pos: Position,
     snippet_body: &str,
 ) {
-    use reovim_module_snippet::{
-        engine::ActiveSnippet, ids as snippet_ids, parser, state::SnippetSessionState,
-        variables::VariableContext,
-    };
+    let expander = runtime
+        .kernel()
+        .services
+        .get::<SnippetExpanderRegistry>()
+        .and_then(|reg| reg.get());
 
-    // Parse the snippet body.
-    let Ok(body) = parser::parse(snippet_body) else {
-        // Fallback: insert raw text if parsing fails.
+    if let Some(exp) = expander {
+        exp.expand(runtime, buffer_id, insert_pos, snippet_body);
+    } else {
+        // Fallback: insert raw text if no snippet expander is available.
         runtime.insert_text(buffer_id, insert_pos, snippet_body);
-        return;
-    };
-
-    // Build variable context.
-    let var_ctx = VariableContext {
-        file_path: runtime.buffer_file_path(buffer_id),
-        line_number: insert_pos.line,
-        ..VariableContext::empty()
-    };
-
-    // Expand the snippet.
-    let (expanded_text, active_snippet) = ActiveSnippet::expand(&body, insert_pos, &var_ctx);
-    runtime.insert_text(buffer_id, insert_pos, &expanded_text);
-
-    let has_tab_stops = !active_snippet.is_done();
-    let first_stop_range = active_snippet.current().map(|ts| (ts.start, ts.end));
-
-    // Store active snippet state.
-    let state = runtime.ext_mut::<SnippetSessionState>();
-    state.active = Some(active_snippet);
-
-    // Enter snippet navigation mode if there are tab stops.
-    if has_tab_stops {
-        runtime.push_mode(snippet_ids::NAVIGATING_MODE, TransitionContext::new());
-        if let Some((start, end)) = first_stop_range {
-            if let Some(w) = runtime.windows_mut().active_mut() {
-                w.cursor.line = start.line;
-                w.cursor.column = start.column;
-                if start == end {
-                    w.selection = None;
-                } else {
-                    w.selection = Some(Selection::character(start, end));
-                }
-            }
-            runtime.record_cursor_move(buffer_id);
-            if start != end {
-                runtime.record_selection_change(buffer_id);
-            }
-        }
     }
 }
 
@@ -316,36 +283,19 @@ impl CommandHandler for Dismiss {
 // Helpers
 // ============================================================================
 
-/// Drain pending notifications from background threads into `NotificationState`.
+/// Drain pending notifications from background threads into session state.
 ///
-/// Background threads (LSP completion, auto-start) push to
-/// `PendingNotificationQueue` in `ServiceRegistry`. This function drains the
-/// queue and forwards them to the per-client `NotificationState` so they
-/// appear as toast messages in the TUI/web client.
+/// Delegates to [`NotificationDrainRegistry`] (#542: decouple from module-notification).
+/// The notification module registers its implementation during `init()`.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn drain_pending_notifications(runtime: &mut SessionRuntime<'_>) {
-    use reovim_module_notification::{NotificationLevel, NotificationState};
-
-    let queue = runtime.kernel().services.get::<PendingNotificationQueue>();
-    let Some(queue) = queue else { return };
-    let pending = queue.drain();
-    if pending.is_empty() {
+    let Some(reg) = runtime.kernel().services.get::<NotificationDrainRegistry>() else {
         return;
-    }
-
-    let state = runtime.ext_mut::<NotificationState>();
-    for notification in &pending {
-        let level = match notification.level {
-            PendingLevel::Info => NotificationLevel::Info,
-            PendingLevel::Success => NotificationLevel::Success,
-            PendingLevel::Warning => NotificationLevel::Warning,
-            PendingLevel::Error => NotificationLevel::Error,
-        };
-        state.push(level, &notification.title);
-    }
-    runtime
-        .take_changes()
-        .record_extension_change("notification".into());
+    };
+    let Some(drain) = reg.get() else {
+        return;
+    };
+    drain.drain_pending(runtime);
 }
 
 /// Build a `CompletionContext` from the current buffer state.
@@ -425,7 +375,7 @@ fn fire_lsp_completion(services: &Arc<ServiceRegistry>, ctx: &CompletionContext)
         Some(p) if p.is_active() => p,
         _ => {
             // No active provider — try to auto-start one.
-            try_auto_start_lsp(services, &file_path, &lang, &ctx.content);
+            try_auto_start_lsp(services, &file_path, &lang, &ctx.content, ctx.buffer_id as u64);
             return;
         }
     };
@@ -522,8 +472,12 @@ fn try_auto_start_lsp(
     file_path: &str,
     lang: &str,
     buffer_content: &str,
+    buffer_id: u64,
 ) {
-    // Only Rust is supported for now.
+    // Only Rust is supported for completion auto-start.
+    // Note: LspModule's FileOpened handler (#564) uses config_for_language()
+    // which supports all configured languages. This Rust-only guard is
+    // specific to the completion trigger path (<C-Space>).
     if lang != "rust" {
         return;
     }
@@ -546,119 +500,33 @@ fn try_auto_start_lsp(
     };
 
     let config = LspServerConfig::rust_analyzer(&root);
-    let services_clone = Arc::clone(services);
-    let lang_owned = lang.to_owned();
-    let file_path_owned = file_path.to_owned();
-    let content_owned = buffer_content.to_owned();
-    let notify_queue = services.get::<PendingNotificationQueue>();
 
-    if let Some(q) = &notify_queue {
-        q.push(PendingLevel::Info, "Starting rust-analyzer...");
-    }
-
-    // Use tokio runtime to spawn the async LSP server start.
-    if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.spawn(async move {
-            info!(root = ?root, "Auto-starting rust-analyzer");
-            match reovim_module_lsp::LspSaturator::start(config, lang_owned.clone()).await {
-                Ok(lsp_handle) => {
-                    // Send DidOpen so the server knows about the file.
-                    let uri = uri_from_path(Path::new(&file_path_owned));
-                    lsp_handle.send_request(LspRequest::DidOpen {
-                        uri,
-                        language_id: lang_owned.clone(),
-                        version: 1,
-                        content: content_owned,
-                    });
-
-                    // Register in LspProviderRegistry.
-                    let registry = services_clone.get_or_create::<LspProviderRegistry>();
-                    registry.register(LspKey::Language(lang_owned), Arc::new(lsp_handle));
-                    info!("rust-analyzer registered and ready");
-                    if let Some(q) = &notify_queue {
-                        q.push(PendingLevel::Success, "rust-analyzer ready");
-                    }
-
-                    // Reset starting guard (#521).
-                    if let Some(g) = services_clone.get::<LspStartingGuard>() {
-                        g.0.store(false, Ordering::Release);
-                    }
-                }
-                Err(e) => {
-                    warn!("Failed to start rust-analyzer: {e}");
-                    if let Some(q) = &notify_queue {
-                        q.push(
-                            PendingLevel::Warning,
-                            format!("Failed to start rust-analyzer: {e}"),
-                        );
-                    }
-
-                    // Reset starting guard so retries are possible (#521).
-                    if let Some(g) = services_clone.get::<LspStartingGuard>() {
-                        g.0.store(false, Ordering::Release);
-                    }
-                }
-            }
-        });
-    } else {
-        // No tokio runtime — reset guard.
+    // Delegate to LspLifecycleRegistry (#542: decouple from module-lsp).
+    let Some(reg) = services.get::<LspLifecycleRegistry>() else {
+        debug!("No LspLifecycleRegistry registered, cannot auto-start LSP");
         guard.0.store(false, Ordering::Release);
-    }
-}
-
-/// Walk up from a file path to find the project root.
-///
-/// Looks for `Cargo.toml` (Rust), `package.json` (JS/TS), or `pyproject.toml` (Python).
-/// Returns the directory containing the project marker file.
-#[must_use]
-pub fn find_project_root(file_path: &Path) -> Option<PathBuf> {
-    let markers = ["Cargo.toml", "package.json", "pyproject.toml", "go.mod"];
-
-    let mut dir = if file_path.is_file() {
-        file_path.parent()?
-    } else {
-        file_path
+        return;
+    };
+    let Some(lifecycle) = reg.get() else {
+        debug!("No LspLifecycle implementation registered");
+        guard.0.store(false, Ordering::Release);
+        return;
     };
 
-    loop {
-        for marker in &markers {
-            if dir.join(marker).exists() {
-                return Some(dir.to_path_buf());
-            }
-        }
-        dir = dir.parent()?;
-    }
+    lifecycle.auto_start(
+        services,
+        config,
+        lang.to_owned(),
+        file_path.to_owned(),
+        buffer_content.to_owned(),
+        buffer_id,
+    );
+    // Guard not reset here — once the provider registers in LspProviderRegistry,
+    // fire_lsp_completion() finds it and skips try_auto_start_lsp entirely.
 }
 
-/// Derive the language ID from a file path's extension.
-///
-/// Maps file extensions to LSP language identifiers used for server
-/// lookup and `textDocument/didOpen` notifications.
-#[must_use]
-pub fn language_id_from_path(path: &str) -> Option<String> {
-    let ext = Path::new(path).extension()?.to_str()?;
-    let lang = match ext {
-        "rs" => "rust",
-        "py" | "pyi" => "python",
-        "ts" => "typescript",
-        "tsx" => "typescriptreact",
-        "js" => "javascript",
-        "jsx" => "javascriptreact",
-        "c" | "h" => "c",
-        "cpp" | "cc" | "cxx" | "hpp" => "cpp",
-        "go" => "go",
-        "java" => "java",
-        "lua" => "lua",
-        "rb" => "ruby",
-        "zig" => "zig",
-        "toml" => "toml",
-        "json" => "json",
-        "yaml" | "yml" => "yaml",
-        "md" | "markdown" => "markdown",
-        _ => return None,
-    };
-    Some(lang.to_owned())
-}
+// Re-export from driver-lsp (#564: shared helpers moved to driver layer).
+pub use reovim_driver_lsp::{find_project_root, language_id_from_path};
 
 /// Collect all command handlers for registration.
 #[must_use]
