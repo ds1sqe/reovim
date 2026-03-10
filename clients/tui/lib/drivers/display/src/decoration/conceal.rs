@@ -92,8 +92,7 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
                 replacement,
                 style,
             } if span.affects_line(line) => {
-                let (start_col, end_col) =
-                    span_cols_for_line(span, line, char_count as u32);
+                let (start_col, end_col) = span_cols_for_line(span, line, char_count as u32);
                 Some(ConcealRegion {
                     start_col: start_col as usize,
                     end_col: end_col as usize,
@@ -102,8 +101,7 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
                 })
             }
             Decoration::Hide { span } if span.affects_line(line) => {
-                let (start_col, end_col) =
-                    span_cols_for_line(span, line, char_count as u32);
+                let (start_col, end_col) = span_cols_for_line(span, line, char_count as u32);
                 Some(ConcealRegion {
                     start_col: start_col as usize,
                     end_col: end_col as usize,

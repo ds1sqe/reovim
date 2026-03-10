@@ -2402,8 +2402,8 @@ mod tests {
         let tokens = vec![
             // Backtick at byte 10 (char 4) → hide
             TokenSpan {
-                start_byte: 10,  // byte offset of first backtick
-                end_byte: 11,    // byte offset past first backtick
+                start_byte: 10, // byte offset of first backtick
+                end_byte: 11,   // byte offset past first backtick
                 category: "punctuation.delimiter".to_string(),
                 kind: CachedAnnotationKind::Conceal { replacement: None },
             },

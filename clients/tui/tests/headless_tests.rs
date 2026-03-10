@@ -920,5 +920,3 @@ async fn test_cmdline_search_prompt() {
 
     handle.stop().await;
 }
-
-
