@@ -38,10 +38,7 @@ pub struct GitProviderStore {
 impl fmt::Debug for GitProviderStore {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GitProviderStore")
-            .field(
-                "registered",
-                &self.inner.read().unwrap().is_some(),
-            )
+            .field("registered", &self.inner.read().unwrap().is_some())
             .finish()
     }
 }

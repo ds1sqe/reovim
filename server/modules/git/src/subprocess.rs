@@ -42,9 +42,14 @@ impl GitProvider for SubprocessGitProvider {
     }
 
     fn branches(&self, cwd: &Path) -> Vec<BranchInfo> {
-        let Some(output) =
-            run_git(cwd, &["branch", "--list", "--format=%(HEAD)%(refname:short)\t%(upstream:short)"])
-        else {
+        let Some(output) = run_git(
+            cwd,
+            &[
+                "branch",
+                "--list",
+                "--format=%(HEAD)%(refname:short)\t%(upstream:short)",
+            ],
+        ) else {
             return vec![];
         };
 
@@ -100,12 +105,7 @@ impl GitProvider for SubprocessGitProvider {
 
     fn log(&self, cwd: &Path, query: &str, limit: usize) -> Vec<LogEntry> {
         let limit_str = limit.to_string();
-        let mut args = vec![
-            "log",
-            "--format=%H\t%h\t%aN\t%ai\t%s",
-            "-n",
-            &limit_str,
-        ];
+        let mut args = vec!["log", "--format=%H\t%h\t%aN\t%ai\t%s", "-n", &limit_str];
         if !query.is_empty() {
             args.push("--grep");
             args.push(query);
@@ -226,10 +226,7 @@ fn parse_hunk_header(line: &str) -> Option<DiffHunk> {
 /// Parse a range like "10,3" or "10" (count defaults to 1).
 fn parse_range(s: &str) -> (usize, usize) {
     if let Some((start, count)) = s.split_once(',') {
-        (
-            start.parse().unwrap_or(0),
-            count.parse().unwrap_or(1),
-        )
+        (start.parse().unwrap_or(0), count.parse().unwrap_or(1))
     } else {
         (s.parse().unwrap_or(0), 1)
     }
