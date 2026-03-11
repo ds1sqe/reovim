@@ -5,6 +5,7 @@
 //! - `:w` / `:write` - Write the buffer to disk
 //! - `:wq` - Write and quit
 //! - `:e` / `:edit` - Open a file
+//! - `:set` - Set editor options
 //! - `:colorscheme` - Switch color theme
 //! - `:detach` - Detach from server
 //! - `:servers` - List server instances
@@ -14,6 +15,7 @@ mod colorscheme;
 mod edit;
 mod quit;
 mod session;
+mod set;
 mod write;
 
 use {
@@ -26,6 +28,7 @@ pub use {
     edit::EditCommand,
     quit::QuitCommand,
     session::{DetachCommand, KillServerCommand, ServersCommand},
+    set::SetCommand,
     write::{WriteCommand, WriteQuitCommand},
 };
 
@@ -38,6 +41,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(WriteCommand),
         Box::new(WriteQuitCommand),
         Box::new(ColorschemeCommand),
+        Box::new(SetCommand),
     ];
     cmds.extend(session::command_handlers());
     cmds
@@ -107,7 +111,7 @@ mod tests {
     #[test]
     fn test_command_handlers_count() {
         let cmds = command_handlers();
-        assert_eq!(cmds.len(), 8); // 5 base + 3 session commands
+        assert_eq!(cmds.len(), 9); // 6 base + 3 session commands
     }
 
     #[test]
@@ -119,6 +123,7 @@ mod tests {
         assert!(ids.contains(&"write"));
         assert!(ids.contains(&"write-quit"));
         assert!(ids.contains(&"colorscheme"));
+        assert!(ids.contains(&"set"));
         assert!(ids.contains(&"detach"));
         assert!(ids.contains(&"servers"));
         assert!(ids.contains(&"kill-server"));
@@ -227,7 +232,7 @@ mod tests {
 
         // Verify commands were registered in the CommandHandlerStore
         let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-        assert_eq!(store.len(), 8);
+        assert_eq!(store.len(), 9);
     }
 
     #[test]
@@ -242,6 +247,6 @@ mod tests {
         module.init(&ctx);
 
         let store = ctx.services.get::<CommandHandlerStore>().unwrap();
-        assert_eq!(store.len(), 16); // 8 + 8
+        assert_eq!(store.len(), 18); // 9 + 9
     }
 }

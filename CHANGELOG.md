@@ -4,6 +4,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Added
+
+- **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
+  `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
+  `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,
+  type-safe value parsing, constraint validation. Emits `OptionChanged`/`OptionReset`
+  via EventBus for module notification and records `StateChanges` for client notification.
+
 ### Changed
 
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
