@@ -65,6 +65,15 @@ pub const INPUT_BACKSPACE: CommandId = CommandId::new(MODULE, "input-backspace")
 /// Copy the selected item's path to clipboard.
 pub const YANK_PATH: CommandId = CommandId::new(MODULE, "yank-path");
 
+/// Toggle display of gitignored files.
+pub const TOGGLE_GITIGNORED: CommandId = CommandId::new(MODULE, "toggle-gitignored");
+
+/// Mark the selected item for cut (move).
+pub const CUT_MARK: CommandId = CommandId::new(MODULE, "cut-mark");
+
+/// Paste (move) the cut-marked item to the cursor directory.
+pub const PASTE: CommandId = CommandId::new(MODULE, "paste");
+
 #[cfg(test)]
 #[path = "ids_tests.rs"]
 mod tests;

@@ -45,6 +45,8 @@ pub struct FileNode {
     pub depth: usize,
     /// Whether this is a hidden file (starts with `.`).
     pub is_hidden: bool,
+    /// Whether this file is matched by a `.gitignore` pattern.
+    pub is_gitignored: bool,
 }
 
 impl FileNode {
@@ -82,6 +84,7 @@ impl FileNode {
             node_type,
             depth,
             is_hidden,
+            is_gitignored: false,
         })
     }
 
@@ -119,6 +122,7 @@ impl FileNode {
             node_type,
             depth,
             is_hidden,
+            is_gitignored: false,
         })
     }
 

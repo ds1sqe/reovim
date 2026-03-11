@@ -2316,6 +2316,7 @@ dependencies = [
 name = "reovim-module-explorer"
 version = "0.10.0-dev"
 dependencies = [
+ "ignore",
  "reovim-bench-utils",
  "reovim-driver-command",
  "reovim-driver-command-types",

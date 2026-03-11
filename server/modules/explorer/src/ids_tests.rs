@@ -28,6 +28,9 @@ fn command_ids_have_correct_module() {
         CANCEL_INPUT,
         INPUT_BACKSPACE,
         YANK_PATH,
+        TOGGLE_GITIGNORED,
+        CUT_MARK,
+        PASTE,
     ];
     for cmd in &commands {
         assert_eq!(cmd.module(), &MODULE);
@@ -57,6 +60,9 @@ fn command_ids_are_unique() {
         CANCEL_INPUT.name(),
         INPUT_BACKSPACE.name(),
         YANK_PATH.name(),
+        TOGGLE_GITIGNORED.name(),
+        CUT_MARK.name(),
+        PASTE.name(),
     ];
     let mut deduped = names.clone();
     deduped.sort_unstable();

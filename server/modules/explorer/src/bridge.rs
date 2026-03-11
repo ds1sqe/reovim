@@ -65,6 +65,7 @@ impl ExtensionStateBridge for ExplorerBridge {
             "inputMode": input_mode_str,
             "inputBuffer": state.input_buffer,
             "showHidden": state.show_hidden,
+            "showGitignored": state.show_gitignored,
         });
 
         if !is_delta {
@@ -74,7 +75,7 @@ impl ExtensionStateBridge for ExplorerBridge {
                     .tree
                     .as_ref()
                     .map(|tree| {
-                        tree.flatten_with_metadata(state.show_hidden)
+                        tree.flatten_with_metadata(state.show_hidden, state.show_gitignored)
                             .into_iter()
                             .map(|flat| {
                                 let (is_dir, is_expanded, size) = match &flat.node.node_type {
@@ -104,6 +105,10 @@ impl ExtensionStateBridge for ExplorerBridge {
             });
             json["nodes"] = serde_json::json!(nodes_json);
             state.set_snapshot_generation(tree_gen);
+        }
+
+        if let Some(ref cut) = state.cut_path {
+            json["cutPath"] = serde_json::json!(cut.to_string_lossy());
         }
 
         if let Some(ref msg) = state.message {

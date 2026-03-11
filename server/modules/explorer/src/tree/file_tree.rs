@@ -4,6 +4,7 @@
 //! adapted to use `VfsDriver` instead of `std::fs`.
 
 use {
+    ignore::gitignore::Gitignore,
     reovim_driver_vfs::{VfsDriver, VfsError},
     std::path::{Path, PathBuf},
 };
@@ -17,6 +18,8 @@ pub struct FileTree {
     root: FileNode,
     /// Root directory path.
     root_path: PathBuf,
+    /// Gitignore matcher built from the root `.gitignore`.
+    gitignore: Option<Gitignore>,
 }
 
 impl FileTree {
@@ -33,7 +36,16 @@ impl FileTree {
         root.set_expanded(true);
         root.load_children(vfs)?;
 
-        Ok(Self { root, root_path })
+        let gitignore = build_gitignore(&root_path, vfs);
+        if let Some(ref gi) = gitignore {
+            mark_gitignored_recursive(&mut root, gi);
+        }
+
+        Ok(Self {
+            root,
+            root_path,
+            gitignore,
+        })
     }
 
     /// Get the root path.
@@ -64,9 +76,14 @@ impl FileTree {
     pub fn refresh(&mut self, vfs: &dyn VfsDriver) -> Result<(), VfsError> {
         let expanded_paths = self.collect_expanded_paths();
 
+        self.gitignore = build_gitignore(&self.root_path, vfs);
         self.root = FileNode::from_path(&self.root_path, vfs, 0)?;
         self.root.set_expanded(true);
         self.root.load_children(vfs)?;
+
+        if let Some(ref gi) = self.gitignore {
+            mark_gitignored_recursive(&mut self.root, gi);
+        }
 
         for path in expanded_paths {
             let _ = self.expand(&path, vfs);
@@ -153,6 +170,13 @@ impl FileTree {
             node.set_expanded(true);
             node.load_children(vfs)?;
         }
+        // Mark newly loaded children as gitignored.
+        if let Some(gi) = self.gitignore.take() {
+            if let Some(node) = self.get_node_mut(path) {
+                mark_gitignored_recursive(node, &gi);
+            }
+            self.gitignore = Some(gi);
+        }
         Ok(())
     }
 
@@ -189,10 +213,11 @@ impl FileTree {
     ///
     /// Only includes nodes whose parents are expanded.
     /// Skips hidden files unless `show_hidden` is true.
+    /// Skips gitignored files unless `show_gitignored` is true.
     #[must_use]
-    pub fn flatten(&self, show_hidden: bool) -> Vec<&FileNode> {
+    pub fn flatten(&self, show_hidden: bool, show_gitignored: bool) -> Vec<&FileNode> {
         let mut result = Vec::new();
-        Self::flatten_recursive(&self.root, show_hidden, &mut result);
+        Self::flatten_recursive(&self.root, show_hidden, show_gitignored, &mut result);
         result
     }
 
@@ -203,9 +228,13 @@ impl FileTree {
     fn flatten_recursive<'a>(
         node: &'a FileNode,
         show_hidden: bool,
+        show_gitignored: bool,
         result: &mut Vec<&'a FileNode>,
     ) {
         if node.depth > 0 && node.is_hidden && !show_hidden {
+            return;
+        }
+        if node.depth > 0 && node.is_gitignored && !show_gitignored {
             return;
         }
 
@@ -215,7 +244,7 @@ impl FileTree {
             && let Some(children) = node.children()
         {
             for child in children {
-                Self::flatten_recursive(child, show_hidden, result);
+                Self::flatten_recursive(child, show_hidden, show_gitignored, result);
             }
         }
     }
@@ -225,12 +254,17 @@ impl FileTree {
     /// Returns nodes with information about their position in the tree,
     /// including vertical line data for box-drawing characters.
     #[must_use]
-    pub fn flatten_with_metadata(&self, show_hidden: bool) -> Vec<FlattenedNode<'_>> {
+    pub fn flatten_with_metadata(
+        &self,
+        show_hidden: bool,
+        show_gitignored: bool,
+    ) -> Vec<FlattenedNode<'_>> {
         let mut result = Vec::new();
         let mut vertical_lines = Vec::new();
         Self::flatten_with_metadata_recursive(
             &self.root,
             show_hidden,
+            show_gitignored,
             &mut result,
             &mut vertical_lines,
             true,
@@ -245,11 +279,15 @@ impl FileTree {
     fn flatten_with_metadata_recursive<'a>(
         node: &'a FileNode,
         show_hidden: bool,
+        show_gitignored: bool,
         result: &mut Vec<FlattenedNode<'a>>,
         vertical_lines: &mut Vec<bool>,
         is_last: bool,
     ) {
         if node.depth > 0 && node.is_hidden && !show_hidden {
+            return;
+        }
+        if node.depth > 0 && node.is_gitignored && !show_gitignored {
             return;
         }
 
@@ -265,6 +303,7 @@ impl FileTree {
             let visible_children: Vec<_> = children
                 .iter()
                 .filter(|child| show_hidden || !child.is_hidden)
+                .filter(|child| show_gitignored || !child.is_gitignored)
                 .collect();
 
             for (i, child) in visible_children.iter().enumerate() {
@@ -274,6 +313,7 @@ impl FileTree {
                 Self::flatten_with_metadata_recursive(
                     child,
                     show_hidden,
+                    show_gitignored,
                     result,
                     vertical_lines,
                     is_last_child,
@@ -281,6 +321,34 @@ impl FileTree {
 
                 vertical_lines.pop();
             }
+        }
+    }
+}
+
+/// Build a gitignore matcher from `.gitignore` in the given directory via VFS.
+fn build_gitignore(root: &Path, vfs: &dyn VfsDriver) -> Option<Gitignore> {
+    let gitignore_path = root.join(".gitignore");
+    let content = vfs.read(&gitignore_path).ok()?;
+    let text = std::str::from_utf8(&content).ok()?;
+
+    let mut builder = ignore::gitignore::GitignoreBuilder::new(root);
+    for line in text.lines() {
+        let _ = builder.add_line(Some(gitignore_path.clone()), line);
+    }
+    builder.build().ok()
+}
+
+/// Recursively mark children as gitignored based on a gitignore matcher.
+fn mark_gitignored_recursive(node: &mut FileNode, gitignore: &Gitignore) {
+    if let Some(children) = node.children_mut() {
+        for child in children.iter_mut() {
+            if gitignore
+                .matched_path_or_any_parents(&child.path, child.is_dir())
+                .is_ignore()
+            {
+                child.is_gitignored = true;
+            }
+            mark_gitignored_recursive(child, gitignore);
         }
     }
 }
