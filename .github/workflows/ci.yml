@@ -10,8 +10,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  NIGHTLY: "nightly-2026-03-01"
+  MCDC_RUSTFLAGS: "--cfg coverage_nightly -Z coverage-options=condition"
+  SERVER_RUSTFLAGS: "--cfg coverage_nightly"
 
 jobs:
+  # ─── Gate: Format ───
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -19,108 +23,252 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: ${{ env.NIGHTLY }}
           components: rustfmt
       - name: Check formatting
-        run: cargo +nightly fmt --all -- --check
+        run: cargo fmt --all -- --check
 
-  clippy:
-    name: Clippy
+  # ─── Gate: Lint (Clippy + MSRV) ───
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: ${{ env.NIGHTLY }}
           components: clippy
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
       - uses: Swatinem/rust-cache@v2
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Clippy (zero warnings)
-        run: cargo +nightly clippy --all-targets --all-features --workspace -- -D warnings
+        run: >
+          cargo +${{ env.NIGHTLY }} clippy
+          --all-targets --all-features --workspace -- -D warnings
+      - name: MSRV check
+        run: cargo +1.92 check --workspace
 
-  build:
-    name: Build
+  # ─── Build: MC/DC variant ───
+  build-mcdc:
+    name: Build (MC/DC)
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92"
-      - uses: Swatinem/rust-cache@v2
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Build workspace
-        run: cargo build --workspace
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92"
-      - uses: Swatinem/rust-cache@v2
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Build workspace
-        run: cargo build --workspace
-      - name: Build test modules with FFI symbols
-        run: cargo build -p reovim-module-defaults --features dynamic
-      - name: Run tests
-        run: cargo test --workspace
-      - name: Run doc tests
-        run: cargo test --doc --workspace
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
+    needs: [fmt, lint]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
+          toolchain: ${{ env.NIGHTLY }}
           components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Build workspace (server binary + FFI modules for integration tests)
+      - name: Build workspace + tests (instrumented)
         run: |
-          cargo +nightly build --workspace
-          cargo +nightly build -p reovim-module-defaults --features dynamic
-      - name: MC/DC coverage (non-server crates)
+          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
+          cargo build --workspace --tests \
+            --exclude reovim-module-macros \
+            --exclude reovim-driver-ffi-python \
+            --exclude reovim-bench \
+            --exclude perf-report \
+            --exclude reovim-server
+      - name: Build FFI modules (instrumented)
         run: |
-          RUSTFLAGS="--cfg coverage_nightly -Z coverage-options=condition" \
-          cargo +nightly llvm-cov --workspace \
+          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
+          cargo build -p reovim-module-defaults --features dynamic
+      - name: Save build cache
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: mcdc-${{ github.run_id }}
+
+  # ─── Build: Server variant ───
+  build-server:
+    name: Build (Server)
+    runs-on: ubuntu-latest
+    needs: [fmt, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+          components: llvm-tools-preview
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Build server + tests (instrumented)
+        run: |
+          RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
+          cargo build -p reovim-server --tests
+      - name: Save build cache
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: server-${{ github.run_id }}
+
+  # ─── Test: MC/DC Unit Tests ───
+  test-mcdc-unit:
+    name: MC/DC Unit
+    runs-on: ubuntu-latest
+    needs: [build-mcdc]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: mcdc-${{ github.run_id }}
+      - name: Run unit tests with coverage
+        run: |
+          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
+          cargo llvm-cov nextest --lib --workspace \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
             --exclude perf-report \
             --exclude reovim-server \
-            --lcov --output-path mcdc-lcov.info
-      - name: Line coverage (server crate)
+            --lcov --output-path mcdc-unit.info
+      - name: Filter test code
+        run: ./scripts/lcov-filter-tests.sh mcdc-unit.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcdc-unit-lcov
+          path: mcdc-unit.info
+
+  # ─── Test: MC/DC Integration Tests ───
+  test-mcdc-integration:
+    name: MC/DC Integration
+    runs-on: ubuntu-latest
+    needs: [build-mcdc]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: mcdc-${{ github.run_id }}
+      - name: Run integration tests with coverage
         run: |
-          cargo +nightly llvm-cov clean --workspace
-          RUSTFLAGS="--cfg coverage_nightly" \
-          cargo +nightly llvm-cov -p reovim-server \
+          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
+          cargo llvm-cov nextest --test '*' --workspace \
+            --exclude reovim-module-macros \
+            --exclude reovim-driver-ffi-python \
+            --exclude reovim-bench \
+            --exclude perf-report \
+            --exclude reovim-server \
+            --lcov --output-path mcdc-integration.info
+      - name: Filter test code
+        run: ./scripts/lcov-filter-tests.sh mcdc-integration.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcdc-integration-lcov
+          path: mcdc-integration.info
+
+  # ─── Test: Server Line Coverage ───
+  test-server:
+    name: Server Coverage
+    runs-on: ubuntu-latest
+    needs: [build-server]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          toolchain: ${{ env.NIGHTLY }}
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@nextest
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Restore build cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            target/
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: server-${{ github.run_id }}
+      - name: Run server tests with coverage
+        run: |
+          RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
+          cargo llvm-cov nextest -p reovim-server \
             --lcov --output-path server-lcov.info
-      - name: Filter test code from LCOV
+      - name: Filter test code
+        run: ./scripts/lcov-filter-tests.sh server-lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-lcov
+          path: server-lcov.info
+
+  # ─── Doc Tests ───
+  doc-tests:
+    name: Doc Tests
+    runs-on: ubuntu-latest
+    needs: [fmt, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
+      - uses: Swatinem/rust-cache@v2
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Run doc tests
+        run: cargo test --doc --workspace
+
+  # ─── Upload: Merge + Codecov ───
+  coverage-upload:
+    name: Coverage Upload
+    runs-on: ubuntu-latest
+    needs: [test-mcdc-unit, test-mcdc-integration, test-server]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcdc-unit-lcov
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcdc-integration-lcov
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-lcov
+      - name: Merge reports
+        run: cat mcdc-unit.info mcdc-integration.info server-lcov.info > lcov.info
+      - name: Generate reports
         run: |
-          ./scripts/lcov-filter-tests.sh mcdc-lcov.info
-          ./scripts/lcov-filter-tests.sh server-lcov.info
-      - name: Merge coverage reports
-        run: cat mcdc-lcov.info server-lcov.info > lcov.info
-      - name: Generate coverage reports
-        run: |
-          ./scripts/coverage-report.sh mcdc-lcov.info
+          ./scripts/coverage-report.sh lcov.info
           mv COVERAGE.md COVERAGE-workspace.md
-          ./scripts/coverage-report.sh server-lcov.info --server
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
-          path: |
-            COVERAGE-workspace.md
-            COVERAGE-server.md
+          path: COVERAGE-workspace.md
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
