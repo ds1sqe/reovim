@@ -119,9 +119,17 @@ fn test_all_bindings_have_category() {
 }
 
 #[test]
+fn test_layer_opacity_bindings_exist() {
+    let bindings = bindings();
+    let keys: Vec<_> = bindings.iter().map(|b| b.keys).collect();
+    assert!(keys.contains(&"."), "Should have '.' for increase opacity");
+    assert!(keys.contains(&","), "Should have ',' for decrease opacity");
+}
+
+#[test]
 fn test_bindings_count() {
     let b = bindings();
     // Navigation (4) + Arrows (4) + Cycling (3) + Split (3) + Close (3) +
-    // Resize (5) + Float (3) + Tabs (1) + Escape (1) = 27
-    assert_eq!(b.len(), 27);
+    // Resize (5) + Float (3) + Opacity (2) + Tabs (1) + Escape (1) = 29
+    assert_eq!(b.len(), 29);
 }
