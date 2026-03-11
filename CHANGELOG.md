@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Configuration profiles module (#593)**: New `reovim-module-profiles` crate implementing
+  `:profile-save`, `:profile-load`, `:profile-list` commands for named option snapshots.
+  Profiles are stored as versioned TOML files with explicit type tags. Save captures
+  non-default option overrides from the registry; load applies them with warnings for
+  unknown/invalid options. Includes profile name validation (alphanumeric + hyphen/underscore,
+  max 64 chars) and VFS-based I/O for testability. Integrated into the defaults module bundle.
+
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
   `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,

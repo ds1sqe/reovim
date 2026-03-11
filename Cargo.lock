@@ -2271,6 +2271,7 @@ dependencies = [
  "reovim-module-microscope",
  "reovim-module-motions",
  "reovim-module-notification",
+ "reovim-module-profiles",
  "reovim-module-range-finder",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
@@ -2426,6 +2427,21 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-module-profiles"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-session",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]

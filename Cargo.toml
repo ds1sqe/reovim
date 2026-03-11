@@ -66,6 +66,7 @@ members = [
     "server/modules/vim-completion",
     "server/modules/vim-range-finder",
     "server/modules/vim-snippet",
+    "server/modules/profiles",
     "server/modules/tetromino",
 
     # Client layer - TUI
@@ -253,6 +254,7 @@ reovim-module-vim-explorer = { path = "./server/modules/vim-explorer", version =
 reovim-module-vim-completion = { path = "./server/modules/vim-completion", version = "0.10.0-dev" }
 reovim-module-vim-range-finder = { path = "./server/modules/vim-range-finder", version = "0.10.0-dev" }
 reovim-module-vim-snippet = { path = "./server/modules/vim-snippet", version = "0.10.0-dev" }
+reovim-module-profiles = { path = "./server/modules/profiles", version = "0.10.0-dev" }
 reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
 
 # CLI
