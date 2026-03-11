@@ -12,6 +12,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   type-safe value parsing, constraint validation. Emits `OptionChanged`/`OptionReset`
   via EventBus for module notification and records `StateChanges` for client notification.
 
+- **Completion and microscope options (#574)**: Register 7 options for plugin modules.
+  Completion: `pumheight` (ph), `pumwidth` (pw) with range constraints. Microscope:
+  `picker_height`, `picker_preview`, `picker_ignorecase`, `picker_border` (Choice type),
+  `picker_prompt` (String with length constraint). All with `.with_owner()` ownership.
+
 - **Standard vim/editor options (#573)**: Register 12 standard options with proper ownership,
   scope, and constraints. Vim module: `scrolloff`, `sidescrolloff`, `ignorecase`, `smartcase`,
   `hlsearch`, `incsearch`, `wrapscan` (7 Global options). Editor module: `tabstop`,

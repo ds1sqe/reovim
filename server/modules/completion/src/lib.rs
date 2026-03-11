@@ -25,7 +25,10 @@ use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_completion::CompletionSourceRegistry,
     reovim_driver_session::bridges::BridgeProvider,
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_kernel::api::v1::{
+        Module, ModuleContext, ModuleError, ModuleId, OptionConstraint, OptionSpec, OptionValue,
+        ProbeResult, Version,
+    },
     std::sync::Arc,
 };
 
@@ -92,12 +95,42 @@ impl Module for CompletionModule {
             command_store.add(handler);
         }
 
+        // Epic #570: Register completion options (#574)
+        for spec in completion_option_specs() {
+            if let Err(e) = ctx.kernel.options.register(spec) {
+                return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                    "Failed to register completion option: {e}"
+                )));
+            }
+        }
+
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+}
+
+/// Completion option specifications.
+///
+/// Popup menu height and width for the completion UI.
+/// Registered during `CompletionModule::init()`.
+fn completion_option_specs() -> Vec<OptionSpec> {
+    vec![
+        OptionSpec::new(
+            "pumheight",
+            "Maximum number of items in completion popup",
+            OptionValue::int(10),
+        )
+        .with_short("ph")
+        .with_constraint(OptionConstraint::range(1, 50))
+        .with_owner(ids::MODULE),
+        OptionSpec::new("pumwidth", "Minimum width of completion popup", OptionValue::int(15))
+            .with_short("pw")
+            .with_constraint(OptionConstraint::range(5, 80))
+            .with_owner(ids::MODULE),
+    ]
 }
 
 #[cfg(feature = "dynamic")]
@@ -176,6 +209,57 @@ mod tests {
         // Verify commands were registered.
         let command_store = services.get::<CommandHandlerStore>();
         assert!(command_store.is_some());
+    }
+
+    // ========================================================================
+    // Epic #570: Completion options (#574)
+    // ========================================================================
+
+    #[test]
+    fn completion_option_specs_count() {
+        let specs = completion_option_specs();
+        assert_eq!(specs.len(), 2);
+    }
+
+    #[test]
+    fn completion_options_registered_after_init() {
+        let ctx = ModuleContext::default();
+        let mut module = CompletionModule::new();
+        module.init(&ctx);
+
+        for name in &["pumheight", "pumwidth"] {
+            assert!(ctx.kernel.options.contains(name), "'{name}' should be registered");
+        }
+    }
+
+    #[test]
+    fn completion_options_aliases() {
+        let ctx = ModuleContext::default();
+        let mut module = CompletionModule::new();
+        module.init(&ctx);
+
+        assert_eq!(ctx.kernel.options.resolve_name("ph"), Some("pumheight".to_string()));
+        assert_eq!(ctx.kernel.options.resolve_name("pw"), Some("pumwidth".to_string()));
+    }
+
+    #[test]
+    fn completion_options_defaults() {
+        let ctx = ModuleContext::default();
+        let mut module = CompletionModule::new();
+        module.init(&ctx);
+
+        assert_eq!(ctx.kernel.options.get_global("pumheight"), Some(OptionValue::int(10)));
+        assert_eq!(ctx.kernel.options.get_global("pumwidth"), Some(OptionValue::int(15)));
+    }
+
+    #[test]
+    fn completion_options_ownership() {
+        let ctx = ModuleContext::default();
+        let mut module = CompletionModule::new();
+        module.init(&ctx);
+
+        let owned = ctx.kernel.options.list_by_module(&ids::MODULE);
+        assert_eq!(owned.len(), 2);
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]

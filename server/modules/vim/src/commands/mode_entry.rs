@@ -18,8 +18,10 @@ use {
     reovim_kernel::api::v1::{BufferId, CommandId, OptionScopeId, Position},
 };
 
-use crate::{ids, modes::VimMode};
-use reovim_module_editor::command::get_line_indent;
+use {
+    crate::{ids, modes::VimMode},
+    reovim_module_editor::command::get_line_indent,
+};
 
 /// Helper to get cursor position from the active window.
 fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {

@@ -29,7 +29,8 @@ use {
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
-        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
+        OptionSpec, OptionValue, ProbeResult, Version,
     },
 };
 
@@ -92,6 +93,15 @@ impl Module for MicroscopeModule {
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
 
+        // Epic #570: Register microscope options (#574)
+        for spec in microscope_option_specs() {
+            if let Err(e) = ctx.kernel.options.register(spec) {
+                return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                    "Failed to register microscope option: {e}"
+                )));
+            }
+        }
+
         ProbeResult::Success
     }
 
@@ -126,6 +136,51 @@ impl Module for MicroscopeModule {
                 .with_description("Delete character"),
         ]
     }
+}
+
+/// Microscope option specifications.
+///
+/// Picker layout, preview, search, and prompt options.
+/// Registered during `MicroscopeModule::init()`.
+fn microscope_option_specs() -> Vec<OptionSpec> {
+    vec![
+        OptionSpec::new(
+            "picker_height",
+            "Maximum height of the picker window",
+            OptionValue::int(15),
+        )
+        .with_constraint(OptionConstraint::range(3, 50))
+        .with_owner(ids::MODULE),
+        OptionSpec::new("picker_preview", "Show preview pane in picker", OptionValue::bool(true))
+            .with_owner(ids::MODULE),
+        OptionSpec::new(
+            "picker_ignorecase",
+            "Ignore case in picker search",
+            OptionValue::bool(true),
+        )
+        .with_owner(ids::MODULE),
+        OptionSpec::new(
+            "picker_border",
+            "Border style for picker window",
+            OptionValue::choice(
+                "rounded",
+                vec![
+                    "none".to_string(),
+                    "single".to_string(),
+                    "double".to_string(),
+                    "rounded".to_string(),
+                ],
+            ),
+        )
+        .with_owner(ids::MODULE),
+        OptionSpec::new(
+            "picker_prompt",
+            "Prompt string shown in picker input",
+            OptionValue::string("> "),
+        )
+        .with_constraint(OptionConstraint::string_length(0, 10))
+        .with_owner(ids::MODULE),
+    ]
 }
 
 #[cfg(feature = "dynamic")]
@@ -224,6 +279,75 @@ mod tests {
             .filter(|b| b.modes.contains(&"microscope:MICROSCOPE"))
             .count();
         assert_eq!(count, 7);
+    }
+
+    // ========================================================================
+    // Epic #570: Microscope options (#574)
+    // ========================================================================
+
+    #[test]
+    fn microscope_option_specs_count() {
+        let specs = microscope_option_specs();
+        assert_eq!(specs.len(), 5);
+    }
+
+    #[test]
+    fn microscope_options_registered_after_init() {
+        let ctx = ModuleContext::default();
+        let mut module = MicroscopeModule::new();
+        module.init(&ctx);
+
+        let expected = [
+            "picker_height",
+            "picker_preview",
+            "picker_ignorecase",
+            "picker_border",
+            "picker_prompt",
+        ];
+        for name in &expected {
+            assert!(ctx.kernel.options.contains(name), "'{name}' should be registered");
+        }
+    }
+
+    #[test]
+    fn microscope_options_defaults() {
+        let ctx = ModuleContext::default();
+        let mut module = MicroscopeModule::new();
+        module.init(&ctx);
+
+        assert_eq!(ctx.kernel.options.get_global("picker_height"), Some(OptionValue::int(15)));
+        assert_eq!(ctx.kernel.options.get_global("picker_preview"), Some(OptionValue::bool(true)));
+        assert_eq!(
+            ctx.kernel.options.get_global("picker_ignorecase"),
+            Some(OptionValue::bool(true))
+        );
+        assert_eq!(ctx.kernel.options.get_global("picker_prompt"), Some(OptionValue::string("> ")));
+    }
+
+    #[test]
+    fn microscope_options_border_is_choice() {
+        let ctx = ModuleContext::default();
+        let mut module = MicroscopeModule::new();
+        module.init(&ctx);
+
+        let value = ctx.kernel.options.get_global("picker_border");
+        assert!(matches!(
+            value,
+            Some(OptionValue::Choice {
+                ref value,
+                ref choices
+            }) if value == "rounded" && choices.len() == 4
+        ));
+    }
+
+    #[test]
+    fn microscope_options_ownership() {
+        let ctx = ModuleContext::default();
+        let mut module = MicroscopeModule::new();
+        module.init(&ctx);
+
+        let owned = ctx.kernel.options.list_by_module(&ids::MODULE);
+        assert_eq!(owned.len(), 5);
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
