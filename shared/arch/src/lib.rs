@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Platform abstraction layer for reovim.
 //!
 //! Linux equivalent: `arch/`

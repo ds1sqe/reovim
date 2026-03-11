@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Input driver for reovim - canonical input types and traits.
 //!
 //! Linux equivalent: `drivers/input/` + `include/linux/input.h`

@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Markdown syntax highlighting module for reovim.
 //!
 //! This module provides Markdown language support for syntax highlighting

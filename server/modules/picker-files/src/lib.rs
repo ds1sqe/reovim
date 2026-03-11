@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! File picker module for reovim.
 //!
 //! Provides a fuzzy file finder with `.gitignore` support via the `ignore` crate.

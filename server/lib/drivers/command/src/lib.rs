@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Command driver for reovim - command execution framework.
 //!
 //! Linux equivalent: `drivers/block/` (block command interface)

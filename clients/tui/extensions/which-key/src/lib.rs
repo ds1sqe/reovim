@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Which-key TUI extension.
 //!
 //! Displays a popup showing available key continuations when a prefix

@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Common Client Model for Reovim
 //!
 //! This crate provides platform-agnostic abstractions for Reovim clients.

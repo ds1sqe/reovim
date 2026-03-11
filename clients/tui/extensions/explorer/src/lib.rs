@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! File explorer sidebar TUI extension.
 //!
 //! Renders a sidebar tree view on the left side of the terminal.

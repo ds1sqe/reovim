@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim CLI Client - gRPC v2 command-line interface.
 //!
 //! This crate provides a CLI client for interacting with reovim servers

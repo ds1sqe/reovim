@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Range-finder module - POLICY layer.
 //!
 //! This module provides jump navigation and code folding:

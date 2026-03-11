@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Undo module for reovim.
 //!
 //! Provides per-buffer undo/redo with integrated persistence to disk.

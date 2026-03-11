@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim motions module - POLICY.
 //!
 //! This module implements motion commands that move the cursor:

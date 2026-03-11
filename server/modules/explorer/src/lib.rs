@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! File explorer module for reovim - POLICY layer.
 //!
 //! Provides a sidebar tree view for navigating and managing files.

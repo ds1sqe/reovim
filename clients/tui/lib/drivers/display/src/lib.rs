@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Display driver for reovim.
 //!
 //! Linux equivalent: `drivers/video/`, `drivers/gpu/`

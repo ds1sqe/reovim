@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim TUI Client - terminal user interface (gRPC v2 only).
 //!
 //! This crate provides the terminal user interface for connecting

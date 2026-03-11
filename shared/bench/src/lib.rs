@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Shared benchmarking utilities for reovim modules.
 //!
 //! Analogous to [`reovim-testing`] for integration tests, this crate provides

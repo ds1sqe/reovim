@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Snippet expansion module for reovim (#136).
 //!
 //! Provides TextMate/LSP-compatible snippet expansion with intelligent

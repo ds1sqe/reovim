@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Scratch buffer handler for reovim.
 //!
 //! Provides [`ScratchBufferHandler`] which creates an empty buffer

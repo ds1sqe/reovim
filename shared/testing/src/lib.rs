@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Integration test harness for reovim.
 //!
 //! This crate provides the **mechanism** layer for integration testing.

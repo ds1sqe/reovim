@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim Server - the editing engine.
 //!
 //! This crate provides the server-side implementation of reovim:

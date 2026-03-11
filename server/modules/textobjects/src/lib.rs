@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim text objects module - POLICY.
 //!
 //! This module implements text object commands for operator-pending mode:

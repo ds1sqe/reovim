@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Local filesystem VFS provider module.
 //!
 //! This module provides the [`LocalFsProvider`] which handles the `file://` scheme

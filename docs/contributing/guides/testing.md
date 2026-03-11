@@ -551,7 +551,7 @@ For genuinely untestable code, use the `coverage(off)` attribute:
 fn untestable_function() { /* ... */ }
 ```
 
-This requires `#![cfg_attr(coverage_nightly, feature(coverage_attribute))]` in the crate's `lib.rs`.
+The `coverage_attribute` feature is now stable — no feature gate is needed in `lib.rs`.
 
 Use sparingly — only for code paths that cannot be exercised in unit tests (async runtime internals, tracing closures, panic handlers).
 

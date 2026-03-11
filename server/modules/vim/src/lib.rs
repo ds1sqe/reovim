@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim policy module.
 //!
 //! This module provides Vim-style behavior for reovim:

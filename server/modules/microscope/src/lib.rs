@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Microscope fuzzy finder module - POLICY layer.
 //!
 //! Orchestrates the fuzzy finder UI: provides session state management,

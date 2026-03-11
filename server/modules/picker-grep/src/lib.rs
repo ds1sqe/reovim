@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Grep picker module for reovim.
 //!
 //! Provides content search using ripgrep subprocess.

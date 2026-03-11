@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Search module for reovim.
 //!
 //! Provides regex-based pattern matching for Vim-style / and ? commands.

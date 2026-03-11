@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Buffer picker module for reovim.
 //!
 //! Provides a picker to switch between open buffers.

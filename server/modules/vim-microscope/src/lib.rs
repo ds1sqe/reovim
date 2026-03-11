@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim keybinding adapter for microscope picker commands.
 //!
 //! This adapter module bridges `vim` (editor personality) and

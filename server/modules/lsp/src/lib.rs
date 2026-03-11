@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! LSP module for reovim.
 //!
 //! Provides Language Server Protocol integration following the

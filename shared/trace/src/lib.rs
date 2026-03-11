@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tracing/profiling driver for reovim.
 //!
 //! This driver implements the kernel's `Profiler` trait using the tracing ecosystem.

@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tree-sitter based syntax driver implementation.
 //!
 //! This crate provides a tree-sitter based implementation of the `SyntaxDriver`

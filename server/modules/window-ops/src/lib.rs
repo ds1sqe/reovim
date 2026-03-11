@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Window Operations Module
 //!
 //! This module handles window lifecycle and viewport events from the kernel `EventBus`.

@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Reovim - the main entry point binary.
 //!
 //! # Usage
