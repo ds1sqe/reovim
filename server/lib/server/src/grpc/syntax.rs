@@ -31,10 +31,7 @@ use {
     tonic::{Request, Response, Status},
 };
 
-use crate::session::{
-    Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState,
-    annotation_kind_to_proto,
-};
+use crate::session::{Session, SessionId, SessionRegistry, SyntaxSessionState, SyntaxStreamState};
 
 /// Forward syntax token updates from session to gRPC stream.
 ///
@@ -308,7 +305,6 @@ impl SyntaxService for SyntaxServiceImpl {
                                 start_byte: span.start_byte as u32,
                                 end_byte: span.end_byte as u32,
                                 category: span.category.to_string(),
-                                kind: annotation_kind_to_proto(&span.kind),
                             })
                             .collect()
                     })
@@ -384,7 +380,6 @@ impl SyntaxService for SyntaxServiceImpl {
                             start_byte: span.start_byte as u32,
                             end_byte: span.end_byte as u32,
                             category: span.category.to_string(),
-                            kind: annotation_kind_to_proto(&span.kind),
                         })
                         .collect()
                 });
@@ -996,7 +991,7 @@ mod tests {
 
             fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
                 if self.parsed {
-                    vec![Annotation::highlight(
+                    vec![Annotation::new(
                         byte_range.start,
                         byte_range.end.min(100),
                         HighlightCategory::new("keyword"),
@@ -1276,7 +1271,6 @@ mod tests {
                         start_byte: span.start_byte as u32,
                         end_byte: span.end_byte as u32,
                         category: span.category.to_string(),
-                        kind: None,
                     })
                     .collect();
                 let update = reovim_protocol::v2::TokenUpdate {

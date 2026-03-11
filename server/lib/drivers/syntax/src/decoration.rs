@@ -1,7 +1,7 @@
 //! Decoration types for the syntax driver layer.
 //!
 //! This module provides types for declarative decoration rules that map
-//! tree-sitter capture names to [`AnnotationKind`] variants. Language modules
+//! tree-sitter capture names to semantic categories. Language modules
 //! provide these rules as data; the driver applies them mechanically.
 //!
 //! # Design
@@ -18,21 +18,20 @@
 
 use std::sync::Arc;
 
-use crate::{Annotation, AnnotationKind, HighlightCategory};
+use crate::{Annotation, HighlightCategory};
 
-/// A declarative rule mapping a query capture name to an annotation.
+/// A declarative rule mapping a query capture name to a semantic category.
 ///
 /// Language modules provide these to describe how tree-sitter captures
-/// should be rendered. The driver applies them — no callbacks needed.
+/// should be annotated. The driver applies them — no callbacks needed.
 ///
 /// # Example
 ///
 /// ```
-/// use reovim_driver_syntax::{AnnotationKind, DecorationRule, HighlightCategory};
+/// use reovim_driver_syntax::{DecorationRule, HighlightCategory};
 ///
 /// let rule = DecorationRule {
 ///     capture_name: "heading.1.marker".into(),
-///     kind: AnnotationKind::Conceal { replacement: Some("# ".into()) },
 ///     category: HighlightCategory::new("markup.heading.1"),
 /// };
 /// assert_eq!(rule.capture_name.as_ref(), "heading.1.marker");
@@ -41,9 +40,7 @@ use crate::{Annotation, AnnotationKind, HighlightCategory};
 pub struct DecorationRule {
     /// Capture name to match (e.g., `"heading.1.marker"`, `"code_block"`).
     pub capture_name: Arc<str>,
-    /// The visual effect to produce.
-    pub kind: AnnotationKind,
-    /// Theming category (e.g., `"markup.heading.1"`, `"markup.raw.block"`).
+    /// Semantic category (e.g., `"markup.heading.1"`, `"markup.raw.block"`).
     pub category: HighlightCategory,
 }
 
@@ -99,20 +96,19 @@ impl DecorationCapture {
 ///
 /// For each capture, finds the first rule whose `capture_name` matches
 /// the capture's `name`, and produces an [`Annotation`] with the rule's
-/// kind and category. Captures with no matching rule are skipped.
+/// category. Captures with no matching rule are skipped.
 ///
 /// # Example
 ///
 /// ```
 /// use reovim_driver_syntax::{
-///     AnnotationKind, DecorationCapture, DecorationRule, HighlightCategory,
+///     DecorationCapture, DecorationRule, HighlightCategory,
 ///     decoration::apply_rules,
 /// };
 ///
 /// let rules = vec![
 ///     DecorationRule {
 ///         capture_name: "code_block".into(),
-///         kind: AnnotationKind::Background,
 ///         category: HighlightCategory::new("markup.raw.block"),
 ///     },
 /// ];
@@ -125,7 +121,6 @@ impl DecorationCapture {
 /// let annotations = apply_rules(&captures, &rules);
 /// assert_eq!(annotations.len(), 1);
 /// assert_eq!(annotations[0].start_byte, 10);
-/// assert_eq!(annotations[0].kind, AnnotationKind::Background);
 /// ```
 #[must_use]
 pub fn apply_rules(captures: &[DecorationCapture], rules: &[DecorationRule]) -> Vec<Annotation> {
@@ -135,14 +130,7 @@ pub fn apply_rules(captures: &[DecorationCapture], rules: &[DecorationRule]) -> 
             rules
                 .iter()
                 .find(|r| r.capture_name.as_ref() == cap.name.as_ref())
-                .map(|rule| {
-                    Annotation::new(
-                        cap.start_byte,
-                        cap.end_byte,
-                        rule.category.clone(),
-                        rule.kind.clone(),
-                    )
-                })
+                .map(|rule| Annotation::new(cap.start_byte, cap.end_byte, rule.category.clone()))
         })
         .collect()
 }
@@ -156,37 +144,25 @@ mod tests {
     // ========================================================================
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decoration_rule_creation() {
         let rule = DecorationRule {
             capture_name: "heading.1.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f0965} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.1"),
         };
 
         assert_eq!(rule.capture_name.as_ref(), "heading.1.marker");
         assert_eq!(rule.category.as_str(), "markup.heading.1");
-        assert!(matches!(
-            rule.kind,
-            AnnotationKind::Conceal {
-                replacement: Some(ref r)
-            } if r.contains('\u{f0965}')
-        ));
     }
 
     #[test]
     fn test_decoration_rule_clone() {
         let rule = DecorationRule {
             capture_name: "code_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.block"),
         };
         #[allow(clippy::redundant_clone)]
         let cloned = rule.clone();
         assert_eq!(cloned.capture_name.as_ref(), "code_block");
-        assert_eq!(cloned.kind, AnnotationKind::Background);
         assert_eq!(cloned.category.as_str(), "markup.raw.block");
     }
 
@@ -194,59 +170,11 @@ mod tests {
     fn test_decoration_rule_debug() {
         let rule = DecorationRule {
             capture_name: "test".into(),
-            kind: AnnotationKind::Highlight,
             category: HighlightCategory::new("test"),
         };
         let debug = format!("{rule:?}");
         assert!(debug.contains("DecorationRule"));
         assert!(debug.contains("test"));
-    }
-
-    #[test]
-    fn test_decoration_rule_all_annotation_kinds() {
-        // Highlight
-        let rule = DecorationRule {
-            capture_name: "hl".into(),
-            kind: AnnotationKind::Highlight,
-            category: HighlightCategory::new("test"),
-        };
-        assert_eq!(rule.kind, AnnotationKind::Highlight);
-
-        // Conceal with replacement
-        let rule = DecorationRule {
-            capture_name: "con".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("x".into()),
-            },
-            category: HighlightCategory::new("test"),
-        };
-        assert!(matches!(rule.kind, AnnotationKind::Conceal { .. }));
-
-        // Conceal without replacement
-        let rule = DecorationRule {
-            capture_name: "con2".into(),
-            kind: AnnotationKind::Conceal { replacement: None },
-            category: HighlightCategory::new("test"),
-        };
-        assert!(matches!(rule.kind, AnnotationKind::Conceal { replacement: None }));
-
-        // Background
-        let rule = DecorationRule {
-            capture_name: "bg".into(),
-            kind: AnnotationKind::Background,
-            category: HighlightCategory::new("test"),
-        };
-        assert_eq!(rule.kind, AnnotationKind::Background);
-
-        // VirtualText
-        let rule = DecorationRule {
-            capture_name: "vt".into(),
-            kind: AnnotationKind::VirtualText {
-                text: "ghost".into(),
-            },
-            category: HighlightCategory::new("test"),
-        };
-        assert!(matches!(rule.kind, AnnotationKind::VirtualText { .. }));
     }
 
     // ========================================================================
@@ -355,7 +283,6 @@ mod tests {
     fn test_apply_rules_basic_match() {
         let rules = vec![DecorationRule {
             capture_name: "code_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.block"),
         }];
 
@@ -369,18 +296,13 @@ mod tests {
         assert_eq!(annotations.len(), 1);
         assert_eq!(annotations[0].start_byte, 10);
         assert_eq!(annotations[0].end_byte, 50);
-        assert_eq!(annotations[0].kind, AnnotationKind::Background);
         assert_eq!(annotations[0].category.as_str(), "markup.raw.block");
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_apply_rules_conceal_with_replacement() {
+    fn test_apply_rules_heading_category() {
         let rules = vec![DecorationRule {
             capture_name: "heading.1.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f0965} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.1"),
         }];
 
@@ -392,17 +314,15 @@ mod tests {
 
         let annotations = apply_rules(&captures, &rules);
         assert_eq!(annotations.len(), 1);
-        assert!(matches!(
-            &annotations[0].kind,
-            AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{f0965}')
-        ));
+        assert_eq!(annotations[0].category.as_str(), "markup.heading.1");
+        assert_eq!(annotations[0].start_byte, 0);
+        assert_eq!(annotations[0].end_byte, 2);
     }
 
     #[test]
     fn test_apply_rules_skips_unmatched_captures() {
         let rules = vec![DecorationRule {
             capture_name: "code_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.block"),
         }];
 
@@ -428,7 +348,6 @@ mod tests {
     fn test_apply_rules_empty_captures() {
         let rules = vec![DecorationRule {
             capture_name: "code_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.block"),
         }];
 
@@ -459,21 +378,14 @@ mod tests {
         let rules = vec![
             DecorationRule {
                 capture_name: "heading.1.marker".into(),
-                kind: AnnotationKind::Conceal {
-                    replacement: Some("H1".into()),
-                },
                 category: HighlightCategory::new("markup.heading.1"),
             },
             DecorationRule {
                 capture_name: "code_block".into(),
-                kind: AnnotationKind::Background,
                 category: HighlightCategory::new("markup.raw.block"),
             },
             DecorationRule {
                 capture_name: "list.bullet".into(),
-                kind: AnnotationKind::Conceal {
-                    replacement: Some("\u{2022}".into()),
-                },
                 category: HighlightCategory::new("markup.list"),
             },
         ];
@@ -500,13 +412,8 @@ mod tests {
         assert_eq!(annotations.len(), 3);
 
         assert_eq!(annotations[0].category.as_str(), "markup.heading.1");
-        assert!(matches!(annotations[0].kind, AnnotationKind::Conceal { .. }));
-
         assert_eq!(annotations[1].category.as_str(), "markup.raw.block");
-        assert_eq!(annotations[1].kind, AnnotationKind::Background);
-
         assert_eq!(annotations[2].category.as_str(), "markup.list");
-        assert!(matches!(annotations[2].kind, AnnotationKind::Conceal { .. }));
     }
 
     #[test]
@@ -514,12 +421,10 @@ mod tests {
         let rules = vec![
             DecorationRule {
                 capture_name: "test".into(),
-                kind: AnnotationKind::Background,
                 category: HighlightCategory::new("first"),
             },
             DecorationRule {
                 capture_name: "test".into(),
-                kind: AnnotationKind::Highlight,
                 category: HighlightCategory::new("second"),
             },
         ];
@@ -533,32 +438,6 @@ mod tests {
         let annotations = apply_rules(&captures, &rules);
         assert_eq!(annotations.len(), 1);
         assert_eq!(annotations[0].category.as_str(), "first");
-        assert_eq!(annotations[0].kind, AnnotationKind::Background);
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_apply_rules_virtual_text() {
-        let rules = vec![DecorationRule {
-            capture_name: "hint".into(),
-            kind: AnnotationKind::VirtualText {
-                text: " // inferred: i32".into(),
-            },
-            category: HighlightCategory::new("hint.type"),
-        }];
-
-        let captures = vec![DecorationCapture {
-            name: "hint".into(),
-            start_byte: 5,
-            end_byte: 5,
-        }];
-
-        let annotations = apply_rules(&captures, &rules);
-        assert_eq!(annotations.len(), 1);
-        assert!(matches!(
-            &annotations[0].kind,
-            AnnotationKind::VirtualText { text } if text == " // inferred: i32"
-        ));
     }
 
     #[test]
@@ -566,12 +445,10 @@ mod tests {
         let rules = vec![
             DecorationRule {
                 capture_name: "a".into(),
-                kind: AnnotationKind::Background,
                 category: HighlightCategory::new("a"),
             },
             DecorationRule {
                 capture_name: "b".into(),
-                kind: AnnotationKind::Background,
                 category: HighlightCategory::new("b"),
             },
         ];

@@ -50,7 +50,7 @@ pub trait DecorationProvider: Send + Sync {
 
 #[cfg(test)]
 mod tests {
-    use reovim_driver_syntax::{AnnotationKind, HighlightCategory};
+    use reovim_driver_syntax::HighlightCategory;
 
     use super::*;
 
@@ -116,16 +116,14 @@ mod tests {
             annotations: vec![Annotation::new(
                 0,
                 2,
-                HighlightCategory::new("conceal"),
-                AnnotationKind::Conceal {
-                    replacement: Some("FN".into()),
-                },
+                HighlightCategory::new("markup.raw.block"),
             )],
         };
         let result = provider.decorations(&tree, "fn main() {}", 0..12);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].start_byte, 0);
         assert_eq!(result[0].end_byte, 2);
+        assert_eq!(result[0].category.as_str(), "markup.raw.block");
     }
 
     #[test]

@@ -26,11 +26,10 @@ use crate::render_backend::{RenderBackend as _, TuiExtension};
 use {
     crossterm::event::{KeyCode, KeyModifiers},
     reovim_driver_display::{
-        AnnotationCacheManager, BuiltinTheme, CachedAnnotationKind, FrameBuffer, ThemeLoader,
-        ThemeManager, TokenSpan,
+        AnnotationCacheManager, BuiltinTheme, FrameBuffer, ThemeLoader, ThemeManager, TokenSpan,
     },
     reovim_protocol::v2::{
-        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect, annotation_kind,
+        GetLayoutResponse, Notification, WindowInfo, WindowNode, WindowRect,
         option_changed_payload::Value as OptionValue,
     },
     tokio::{select, sync::mpsc, time::interval},
@@ -47,27 +46,6 @@ use crate::{
     render_engine::render_frame,
     tui_output::{CursorStyleHint, TuiOutput},
 };
-
-/// Convert a proto `AnnotationKind` to a `CachedAnnotationKind`.
-///
-/// Returns `Highlight` when the proto kind is absent (the proto default).
-fn proto_kind_to_cached(
-    kind: Option<&reovim_protocol::v2::AnnotationKind>,
-) -> CachedAnnotationKind {
-    let Some(ak) = kind.and_then(|k| k.kind.as_ref()) else {
-        return CachedAnnotationKind::Highlight;
-    };
-    match ak {
-        annotation_kind::Kind::Highlight(_) => CachedAnnotationKind::Highlight,
-        annotation_kind::Kind::Conceal(c) => CachedAnnotationKind::Conceal {
-            replacement: c.replacement.clone(),
-        },
-        annotation_kind::Kind::Background(_) => CachedAnnotationKind::Background,
-        annotation_kind::Kind::VirtualText(vt) => CachedAnnotationKind::VirtualText {
-            text: vt.text.clone(),
-        },
-    }
-}
 
 /// TUI application error.
 #[derive(Debug)]
@@ -462,7 +440,6 @@ impl<O: TuiOutput> TuiApp<O> {
                         start_byte: t.start_byte,
                         end_byte: t.end_byte,
                         category: t.category,
-                        kind: proto_kind_to_cached(t.kind.as_ref()),
                     })
                     .collect();
 
@@ -779,13 +756,42 @@ impl<O: TuiOutput> TuiApp<O> {
 
         if let Some((rect, total_lines)) = focused_info {
             let gutter_width = self.calculate_gutter_width(total_lines);
+            let scroll_top = self.state.get_focused_scroll_top();
+
+            // Count virtual lines from extensions between scroll_top and cursor
+            #[allow(clippy::cast_possible_truncation)]
+            let cursor_line_idx = cursor_pos.line as usize;
+            let virtual_count: usize = self
+                .extensions
+                .iter()
+                .filter(|e| e.is_active())
+                .flat_map(|e| e.virtual_lines())
+                .filter(|vl| vl.buffer_line >= scroll_top && vl.buffer_line <= cursor_line_idx)
+                .count();
 
             #[allow(clippy::cast_possible_truncation)]
-            let cursor_x = rect.x as u16 + gutter_width + cursor_pos.column as u16;
-            let scroll_top = self.state.get_focused_scroll_top();
+            let cursor_y = rect.y as u16
+                + (cursor_pos.line as usize).saturating_sub(scroll_top) as u16
+                + virtual_count as u16;
+
+            // Extension column mapping (e.g., table expanded columns)
+            let buffer_id = self.state.get_focused_buffer_id().unwrap_or(0);
             #[allow(clippy::cast_possible_truncation)]
-            let cursor_y =
-                rect.y as u16 + (cursor_pos.line as usize).saturating_sub(scroll_top) as u16;
+            let cursor_x = self
+                .extensions
+                .iter()
+                .filter(|e| e.is_active())
+                .find_map(|e| {
+                    e.map_cursor_column(
+                        buffer_id,
+                        cursor_pos.line as usize,
+                        cursor_pos.column as usize,
+                    )
+                })
+                .map_or_else(
+                    || rect.x as u16 + gutter_width + cursor_pos.column as u16,
+                    |col| rect.x as u16 + gutter_width + col,
+                );
 
             self.output.position_cursor(cursor_x, cursor_y);
 

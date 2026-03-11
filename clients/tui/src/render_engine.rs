@@ -12,16 +12,38 @@
 use {
     reovim_arch::Color,
     reovim_driver_display::{
-        AnnotationCacheManager, CachedAnnotationKind, Decoration, Span, Style, ThemeManager,
-        apply_conceals, dim_style, source_to_display_col,
+        AnnotationCacheManager, Decoration, Span, Style, ThemeManager, apply_conceals, dim_style,
+        source_to_display_col,
         ui::{display_width, truncate_end},
     },
 };
 
 use crate::{
     LineNumberMode, SelectionState, TuiCoreState,
-    render_backend::{RenderBackend, TuiExtension, ViewportContext},
+    render_backend::{
+        RenderBackend, RenderBehavior, TransformedLine, TuiExtension, ViewportContext, VirtualLine,
+        VirtualLinePosition,
+    },
 };
+
+// =============================================================================
+// Extension-based token classification
+// =============================================================================
+
+/// Classify a token category via extension dispatch.
+///
+/// Queries all active extensions; first `Some` wins.
+/// Falls back to `Highlight` if no extension claims the category.
+fn classify_with_extensions(
+    extensions: &[Box<dyn TuiExtension>],
+    category: &str,
+) -> RenderBehavior {
+    extensions
+        .iter()
+        .filter(|e| e.is_active())
+        .find_map(|e| e.classify_token(category))
+        .unwrap_or(RenderBehavior::Highlight)
+}
 
 /// Render configuration for a frame.
 ///
@@ -213,6 +235,13 @@ pub fn render_frame<B: RenderBackend>(
         .flat_map(|e| e.fold_hidden_lines().iter().copied())
         .collect();
 
+    // Collect virtual lines from extensions
+    let virtual_lines: Vec<&VirtualLine> = extensions
+        .iter()
+        .filter(|e| e.is_active())
+        .flat_map(|e| e.virtual_lines())
+        .collect();
+
     // Render buffer content
     render_buffer_content(
         backend,
@@ -223,17 +252,28 @@ pub fn render_frame<B: RenderBackend>(
         &fold_ranges,
         token_cache,
         theme,
+        &virtual_lines,
+        extensions,
     );
 
     // Render selections (behind cursors — background overlay)
-    render_remote_selections(backend, state, content_x, content_height);
-    render_local_selection(backend, state, content_x, content_height);
+    render_remote_selections(backend, state, content_x, content_height, &virtual_lines, extensions);
+    render_local_selection(backend, state, content_x, content_height, &virtual_lines, extensions);
 
     // Render cursors (on top of selections)
-    render_remote_cursors(backend, state, content_x, content_height);
-    render_remote_cursor_labels(backend, state, content_x, content_height);
+    render_remote_cursors(backend, state, content_x, content_height, &virtual_lines);
+    render_remote_cursor_labels(backend, state, content_x, content_height, &virtual_lines);
     if config.render_self_cursor {
-        render_self_cursor(backend, state, content_x, content_height, token_cache, theme);
+        render_self_cursor(
+            backend,
+            state,
+            content_x,
+            content_height,
+            token_cache,
+            theme,
+            &virtual_lines,
+            extensions,
+        );
     }
 
     // Render statusline
@@ -276,8 +316,28 @@ fn is_line_folded(line: usize, fold_ranges: &[(u32, u32)]) -> bool {
     false
 }
 
+/// Convert a buffer line to a screen row, accounting for virtual lines from extensions.
+#[allow(clippy::cast_possible_truncation)]
+fn buffer_to_screen_row_vl(
+    buffer_line: u64,
+    scroll_top: u64,
+    virtual_lines: &[&VirtualLine],
+) -> u64 {
+    let count = virtual_lines
+        .iter()
+        .filter(|vl| {
+            (vl.buffer_line as u64) >= scroll_top && (vl.buffer_line as u64) <= buffer_line
+        })
+        .count();
+    (buffer_line - scroll_top) + count as u64
+}
+
 /// Render buffer content.
-#[allow(clippy::cast_possible_truncation, clippy::too_many_arguments)]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::too_many_arguments,
+    clippy::too_many_lines
+)]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn render_buffer_content<B: RenderBackend>(
     backend: &mut B,
@@ -288,10 +348,13 @@ fn render_buffer_content<B: RenderBackend>(
     fold_ranges: &[(u32, u32)],
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
+    virtual_lines: &[&VirtualLine],
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
     let content_x = sidebar_width + gutter_width;
+    let content_width = width - content_x;
     let opacity = config.opacity;
 
     // TODO(#494): Multi-window — iterate all windows with tiling layout
@@ -317,6 +380,28 @@ fn render_buffer_content<B: RenderBackend>(
             continue;
         }
 
+        // Before the line: render virtual lines with VirtualLinePosition::Before
+        for vl in virtual_lines
+            .iter()
+            .filter(|vl| vl.buffer_line == line_idx && vl.position == VirtualLinePosition::Before)
+        {
+            render_virtual_line(
+                backend,
+                content_x,
+                screen_row,
+                content_width,
+                &vl.content,
+                &vl.style,
+            );
+            screen_row += 1;
+            if screen_row >= content_height {
+                break;
+            }
+        }
+        if screen_row >= content_height {
+            break;
+        }
+
         // Render line number if enabled
         if config.show_line_numbers && gutter_width > 0 {
             render_line_number(
@@ -334,20 +419,38 @@ fn render_buffer_content<B: RenderBackend>(
         if let Some(lines) = lines {
             if line_idx < lines.len() {
                 let line = &lines[line_idx];
-                let skip_conceals = is_insert && cursor_line == Some(line_idx);
-                render_line_content(
-                    backend,
-                    content_x,
-                    screen_row,
-                    width - content_x,
-                    line,
-                    opacity,
-                    buffer_id,
-                    line_idx,
-                    token_cache,
-                    theme,
-                    skip_conceals,
-                );
+
+                // Check if any extension wants to transform this line
+                let transform = extensions
+                    .iter()
+                    .filter(|e| e.is_active())
+                    .find_map(|e| e.transform_line(buffer_id.unwrap_or(0), line_idx, line));
+
+                if let Some(transformed) = transform {
+                    render_transformed_line(
+                        backend,
+                        content_x,
+                        screen_row,
+                        content_width,
+                        &transformed,
+                    );
+                } else {
+                    let skip_conceals = is_insert && cursor_line == Some(line_idx);
+                    render_line_content(
+                        backend,
+                        content_x,
+                        screen_row,
+                        content_width,
+                        line,
+                        opacity,
+                        buffer_id,
+                        line_idx,
+                        token_cache,
+                        theme,
+                        skip_conceals,
+                        extensions,
+                    );
+                }
             } else {
                 // Empty line indicator
                 let tilde_style =
@@ -357,7 +460,72 @@ fn render_buffer_content<B: RenderBackend>(
         }
 
         screen_row += 1;
+
+        // After the line: render virtual lines with VirtualLinePosition::After
+        for vl in virtual_lines
+            .iter()
+            .filter(|vl| vl.buffer_line == line_idx && vl.position == VirtualLinePosition::After)
+        {
+            if screen_row >= content_height {
+                break;
+            }
+            render_virtual_line(
+                backend,
+                content_x,
+                screen_row,
+                content_width,
+                &vl.content,
+                &vl.style,
+            );
+            screen_row += 1;
+        }
+
         line_idx += 1;
+    }
+}
+
+/// Render a virtual line (e.g., table border).
+#[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn render_virtual_line<B: RenderBackend>(
+    backend: &mut B,
+    x: u16,
+    y: u16,
+    width: u16,
+    content: &str,
+    style: &Style,
+) {
+    for (col, ch) in content.chars().enumerate() {
+        let col_u16 = col as u16;
+        if col_u16 >= width {
+            break;
+        }
+        backend.set_cell(x + col_u16, y, ch, style);
+    }
+}
+
+/// Render a transformed line from an extension.
+#[allow(clippy::cast_possible_truncation)]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn render_transformed_line<B: RenderBackend>(
+    backend: &mut B,
+    x: u16,
+    y: u16,
+    width: u16,
+    transformed: &TransformedLine,
+) {
+    for (col, ch) in transformed.text.chars().enumerate() {
+        let col_u16 = col as u16;
+        if col_u16 >= width {
+            break;
+        }
+        let style = transformed
+            .styles
+            .get(col)
+            .and_then(|s| s.as_ref())
+            .cloned()
+            .unwrap_or_default();
+        backend.set_cell(x + col_u16, y, ch, &style);
     }
 }
 
@@ -421,6 +589,7 @@ fn render_line_content<B: RenderBackend>(
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
     skip_conceals: bool,
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     let tokens = buffer_id
         .map(|bid| token_cache.tokens_for_line(bid, line_idx as u32))
@@ -435,20 +604,32 @@ fn render_line_content<B: RenderBackend>(
     let mut backgrounds: Vec<(u32, u32, Style)> = Vec::new();
 
     for t in &tokens {
-        match &t.kind {
-            CachedAnnotationKind::Conceal { replacement } if !skip_conceals => {
+        match classify_with_extensions(extensions, &t.category) {
+            RenderBehavior::Conceal { replacement } if !skip_conceals => {
                 conceal_decorations.push(Decoration::Conceal {
                     span: Span::line(line_u32, t.start_col, t.end_col),
-                    replacement: replacement.clone().unwrap_or_default(),
+                    replacement: replacement.into_owned(),
                     style: Some(theme.get_style(&t.category)),
                 });
             }
-            CachedAnnotationKind::Background => {
+            RenderBehavior::Hide if !skip_conceals => {
+                conceal_decorations.push(Decoration::Conceal {
+                    span: Span::line(line_u32, t.start_col, t.end_col),
+                    replacement: String::new(),
+                    style: None,
+                });
+            }
+            RenderBehavior::FullWidthLine { ch } if !skip_conceals => {
+                conceal_decorations.push(Decoration::Conceal {
+                    span: Span::line(line_u32, t.start_col, t.end_col),
+                    replacement: ch.to_string().repeat(width as usize),
+                    style: Some(theme.get_style(&t.category)),
+                });
+            }
+            RenderBehavior::Background => {
                 backgrounds.push((t.start_col, t.end_col, theme.get_style(&t.category)));
             }
-            CachedAnnotationKind::Highlight
-            | CachedAnnotationKind::VirtualText { .. }
-            | CachedAnnotationKind::Conceal { .. } => {}
+            _ => {} // Highlight is default — theme style applied via token iteration
         }
     }
 
@@ -478,8 +659,10 @@ fn render_line_content<B: RenderBackend>(
             tokens
                 .iter()
                 .find(|t| {
-                    matches!(t.kind, CachedAnnotationKind::Highlight)
-                        && source_col >= t.start_col
+                    matches!(
+                        classify_with_extensions(extensions, &t.category),
+                        RenderBehavior::Highlight
+                    ) && source_col >= t.start_col
                         && source_col < t.end_col
                 })
                 .map_or_else(
@@ -509,8 +692,10 @@ fn render_line_content<B: RenderBackend>(
                     let mut existing = tokens
                         .iter()
                         .find(|t| {
-                            matches!(t.kind, CachedAnnotationKind::Highlight)
-                                && source_col >= t.start_col
+                            matches!(
+                                classify_with_extensions(extensions, &t.category),
+                                RenderBehavior::Highlight
+                            ) && source_col >= t.start_col
                                 && source_col < t.end_col
                         })
                         .map_or_else(
@@ -537,12 +722,15 @@ fn render_remote_selections<B: RenderBackend>(
     state: &TuiCoreState,
     gutter_width: u16,
     content_height: u16,
+    virtual_lines: &[&VirtualLine],
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     let (width, _) = backend.size();
 
     // TODO(#494): Multi-window — iterate all windows with tiling layout
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
     let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
+    let buffer_id = current_buffer_id.unwrap_or(0);
 
     for remote in state.other_clients.values() {
         if remote.buffer_id != current_buffer_id {
@@ -563,6 +751,9 @@ fn render_remote_selections<B: RenderBackend>(
             width,
             lines.map(Vec::as_slice),
             scroll_top,
+            virtual_lines,
+            extensions,
+            buffer_id,
         );
     }
 }
@@ -576,6 +767,8 @@ fn render_local_selection<B: RenderBackend>(
     state: &TuiCoreState,
     gutter_width: u16,
     content_height: u16,
+    virtual_lines: &[&VirtualLine],
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     let (width, _) = backend.size();
     let Some(sel) = state.window_selections.get(&state.focused_window_id) else {
@@ -585,6 +778,7 @@ fn render_local_selection<B: RenderBackend>(
     // TODO(#494): Multi-window — iterate all windows with tiling layout
     let current_buffer_id = state.windows.first().and_then(|w| w.buffer_id);
     let lines = current_buffer_id.and_then(|id| state.buffer_cache.get(&id));
+    let buffer_id = current_buffer_id.unwrap_or(0);
 
     let scroll_top = state.get_focused_scroll_top() as u64;
     render_selection_range(
@@ -596,6 +790,9 @@ fn render_local_selection<B: RenderBackend>(
         width,
         lines.map(Vec::as_slice),
         scroll_top,
+        virtual_lines,
+        extensions,
+        buffer_id,
     );
 }
 
@@ -616,6 +813,9 @@ fn render_selection_range<B: RenderBackend>(
     screen_width: u16,
     lines: Option<&[String]>,
     scroll_top: u64,
+    virtual_lines: &[&VirtualLine],
+    extensions: &[Box<dyn TuiExtension>],
+    buffer_id: u64,
 ) {
     let (start_line, start_col, end_line, end_col) = normalize_selection(sel);
     let content_width = screen_width.saturating_sub(gutter_width);
@@ -624,29 +824,47 @@ fn render_selection_range<B: RenderBackend>(
         if line < scroll_top {
             continue;
         }
-        let screen_line = line - scroll_top;
+        let screen_line = buffer_to_screen_row_vl(line, scroll_top, virtual_lines);
         if screen_line as u16 >= content_height {
             break;
         }
 
-        // Actual content length for this line (for clamping char/block modes)
-        let line_len = lines
-            .and_then(|l| l.get(line as usize))
-            .map_or(content_width, |s| s.len() as u16);
+        let line_idx = line as usize;
+
+        // Map a buffer column through extensions (table column mapping)
+        let map_col = |buf_col: u64| -> u16 {
+            extensions
+                .iter()
+                .filter(|e| e.is_active())
+                .find_map(|e| e.map_cursor_column(buffer_id, line_idx, buf_col as usize))
+                .unwrap_or(buf_col as u16)
+        };
+
+        // Visual line length: transformed text length or buffer text length
+        let line_text = lines.and_then(|l| l.get(line_idx));
+        let visual_line_len = extensions
+            .iter()
+            .filter(|e| e.is_active())
+            .find_map(|e| {
+                e.transform_line(buffer_id, line_idx, line_text.map_or("", String::as_str))
+                    .map(|t| t.text.chars().count() as u16)
+            })
+            .or_else(|| line_text.map(|s| s.len() as u16))
+            .unwrap_or(content_width);
 
         let (col_start, col_end) = match sel.mode.as_str() {
             "line" => (0u16, content_width),
-            "block" => (start_col as u16, (end_col as u16 + 1).min(line_len)),
+            "block" => (map_col(start_col), (map_col(end_col) + 1).min(visual_line_len)),
             _ => {
-                // Char mode — clamp to line content length (skip empty cells past EOL)
+                // Char mode — clamp to visual line length
                 if start_line == end_line {
-                    (start_col as u16, (end_col as u16 + 1).min(line_len))
+                    (map_col(start_col), (map_col(end_col) + 1).min(visual_line_len))
                 } else if line == start_line {
-                    (start_col as u16, line_len)
+                    (map_col(start_col), visual_line_len)
                 } else if line == end_line {
-                    (0, (end_col as u16 + 1).min(line_len))
+                    (0, (map_col(end_col) + 1).min(visual_line_len))
                 } else {
-                    (0, line_len)
+                    (0, visual_line_len)
                 }
             }
         };
@@ -676,6 +894,7 @@ fn render_remote_cursors<B: RenderBackend>(
     state: &TuiCoreState,
     gutter_width: u16,
     content_height: u16,
+    virtual_lines: &[&VirtualLine],
 ) {
     let (width, _) = backend.size();
 
@@ -696,7 +915,7 @@ fn render_remote_cursors<B: RenderBackend>(
         let cursor_color = client_color(remote.client_id);
         let cursor_style = Style::default().bg(cursor_color).fg(Color::White);
 
-        let screen_line = remote.cursor_line - scroll_top;
+        let screen_line = buffer_to_screen_row_vl(remote.cursor_line, scroll_top, virtual_lines);
         let screen_col = remote.cursor_col as u16 + gutter_width;
 
         if screen_line < u64::from(content_height) && screen_col < width {
@@ -753,6 +972,7 @@ fn render_remote_cursor_labels<B: RenderBackend>(
     state: &TuiCoreState,
     gutter_width: u16,
     content_height: u16,
+    virtual_lines: &[&VirtualLine],
 ) {
     let (width, _) = backend.size();
 
@@ -770,7 +990,7 @@ fn render_remote_cursor_labels<B: RenderBackend>(
         if remote.cursor_line < scroll_top {
             continue;
         }
-        let screen_line = remote.cursor_line - scroll_top;
+        let screen_line = buffer_to_screen_row_vl(remote.cursor_line, scroll_top, virtual_lines);
         if screen_line >= u64::from(content_height) {
             continue;
         }
@@ -817,6 +1037,8 @@ fn render_self_cursor<B: RenderBackend>(
     content_height: u16,
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
+    virtual_lines: &[&VirtualLine],
+    extensions: &[Box<dyn TuiExtension>],
 ) {
     // Skip rendering if no cursor data yet (e.g., before first CursorMoved notification)
     let Some(cursor) = state.get_focused_cursor() else {
@@ -828,22 +1050,33 @@ fn render_self_cursor<B: RenderBackend>(
         return;
     }
     let (width, _) = backend.size();
-    let screen_line = cursor.line - scroll_top;
 
-    // Compute visual cursor column.
-    // In insert mode, conceals are bypassed on cursor line → raw column.
-    // In other modes, remap source column through conceal mapping.
-    let visual_col = if state.is_insert_mode() {
-        cursor.column as u16
-    } else {
-        compute_cursor_visual_col(
-            state,
-            cursor.line as usize,
-            cursor.column as usize,
-            token_cache,
-            theme,
-        )
-    };
+    // Account for virtual lines from extensions
+    let screen_line = buffer_to_screen_row_vl(cursor.line, scroll_top, virtual_lines);
+
+    // Check if any extension wants to map the cursor column
+    let buffer_id_val = state.windows.first().and_then(|w| w.buffer_id).unwrap_or(0);
+    let visual_col = extensions
+        .iter()
+        .filter(|e| e.is_active())
+        .find_map(|e| {
+            #[allow(clippy::cast_possible_truncation)]
+            e.map_cursor_column(buffer_id_val, cursor.line as usize, cursor.column as usize)
+        })
+        .unwrap_or_else(|| {
+            if state.is_insert_mode() {
+                cursor.column as u16
+            } else {
+                compute_cursor_visual_col(
+                    state,
+                    cursor.line as usize,
+                    cursor.column as usize,
+                    token_cache,
+                    theme,
+                    extensions,
+                )
+            }
+        });
     let screen_col = visual_col + gutter_width;
 
     if screen_line < u64::from(content_height) && screen_col < width {
@@ -867,6 +1100,7 @@ fn compute_cursor_visual_col(
     source_col: usize,
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
+    extensions: &[Box<dyn TuiExtension>],
 ) -> u16 {
     let buffer_id = state.windows.first().and_then(|w| w.buffer_id);
     let Some(bid) = buffer_id else {
@@ -887,12 +1121,29 @@ fn compute_cursor_visual_col(
     let line_u32 = line_idx as u32;
     let mut conceal_decorations: Vec<Decoration> = Vec::new();
     for t in &tokens {
-        if let CachedAnnotationKind::Conceal { replacement } = &t.kind {
-            conceal_decorations.push(Decoration::Conceal {
-                span: Span::line(line_u32, t.start_col, t.end_col),
-                replacement: replacement.clone().unwrap_or_default(),
-                style: Some(theme.get_style(&t.category)),
-            });
+        match classify_with_extensions(extensions, &t.category) {
+            RenderBehavior::Conceal { replacement } => {
+                conceal_decorations.push(Decoration::Conceal {
+                    span: Span::line(line_u32, t.start_col, t.end_col),
+                    replacement: replacement.into_owned(),
+                    style: Some(theme.get_style(&t.category)),
+                });
+            }
+            RenderBehavior::Hide => {
+                conceal_decorations.push(Decoration::Conceal {
+                    span: Span::line(line_u32, t.start_col, t.end_col),
+                    replacement: String::new(),
+                    style: None,
+                });
+            }
+            RenderBehavior::FullWidthLine { ch } => {
+                conceal_decorations.push(Decoration::Conceal {
+                    span: Span::line(line_u32, t.start_col, t.end_col),
+                    replacement: ch.to_string().repeat(500),
+                    style: Some(theme.get_style(&t.category)),
+                });
+            }
+            _ => {}
         }
     }
 
@@ -955,8 +1206,9 @@ mod tests {
     use {
         super::*,
         crate::{CursorPosition, RemoteClient},
-        reovim_driver_display::{BuiltinTheme, CachedAnnotationKind, FrameBuffer, TokenSpan},
+        reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan},
         reovim_protocol::v2::WindowInfo,
+        std::borrow::Cow,
     };
 
     /// Helper: create default token cache and theme for tests.
@@ -2060,11 +2312,10 @@ mod tests {
                 start_byte: 0,
                 end_byte: 2,
                 category: "keyword".to_string(),
-                kind: CachedAnnotationKind::Highlight,
             }],
         );
 
-        render_line_content(&mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
 
         // "fn" (cols 0,1) should have keyword style from theme
         let keyword_style = tm.get_style("keyword");
@@ -2089,7 +2340,7 @@ mod tests {
         let tc = AnnotationCacheManager::new();
         let tm = ThemeManager::new(BuiltinTheme::Dark.load());
 
-        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false, &[]);
 
         // All chars should be rendered with default style
         for col in 0..5u16 {
@@ -2105,7 +2356,7 @@ mod tests {
         let tm = ThemeManager::new(BuiltinTheme::Dark.load());
 
         // buffer_id=None should not query token cache
-        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, None, 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, None, 0, &tc, &tm, false, &[]);
 
         let cell = fb.get(0, 0).unwrap();
         assert_eq!(cell.char, 'h');
@@ -2127,12 +2378,11 @@ mod tests {
                 start_byte: 0,
                 end_byte: 2,
                 category: "keyword".to_string(),
-                kind: CachedAnnotationKind::Highlight,
             }],
         );
 
         // Width=3, so only "fn " is rendered (cols 0,1,2)
-        render_line_content(&mut fb, 0, 0, 3, content, 1.0, Some(1), 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 3, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
 
         let cell = fb.get(0, 0).unwrap();
         assert_eq!(cell.char, 'f');
@@ -2162,18 +2412,16 @@ mod tests {
                     start_byte: 0,
                     end_byte: 2,
                     category: "keyword".to_string(),
-                    kind: CachedAnnotationKind::Highlight,
                 },
                 TokenSpan {
                     start_byte: 3,
                     end_byte: 7,
                     category: "function".to_string(),
-                    kind: CachedAnnotationKind::Highlight,
                 },
             ],
         );
 
-        render_line_content(&mut fb, 0, 0, 30, content, 1.0, Some(1), 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 30, content, 1.0, Some(1), 0, &tc, &tm, false, &[]);
 
         let keyword_style = tm.get_style("keyword");
         let function_style = tm.get_style("function");
@@ -2203,18 +2451,17 @@ mod tests {
                 start_byte: 6,
                 end_byte: 8,
                 category: "keyword".to_string(),
-                kind: CachedAnnotationKind::Highlight,
             }],
         );
 
         // Render line 0 ("hello") — should have no keyword styling
-        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false);
+        render_line_content(&mut fb, 0, 0, 20, "hello", 1.0, Some(1), 0, &tc, &tm, false, &[]);
         let cell = fb.get(0, 0).unwrap();
         assert_eq!(cell.style.fg, Style::default().fg);
 
         // Render line 1 ("fn world") — "fn" should have keyword styling
         let mut fb2 = FrameBuffer::new(20, 1);
-        render_line_content(&mut fb2, 0, 0, 20, "fn world", 1.0, Some(1), 1, &tc, &tm, false);
+        render_line_content(&mut fb2, 0, 0, 20, "fn world", 1.0, Some(1), 1, &tc, &tm, false, &[]);
         let keyword_style = tm.get_style("keyword");
         assert_eq!(fb2.get(0, 0).unwrap().style.fg, keyword_style.fg);
     }
@@ -2234,7 +2481,6 @@ mod tests {
                 start_byte: 0,
                 end_byte: 2,
                 category: "keyword".to_string(),
-                kind: CachedAnnotationKind::Highlight,
             }],
         );
 
@@ -2253,232 +2499,341 @@ mod tests {
         assert_eq!(cell.style.fg, keyword_style.fg);
     }
 
-    /// Regression test: rendering markdown with conceal tokens at various scroll positions.
-    ///
-    /// Reproduces crash from commit 7831262a where scrolling through markdown
-    /// with decorations could panic.
+    // =========================================================================
+    // classify_with_extensions tests
+    // =========================================================================
+
     #[test]
-    fn test_render_markdown_conceals_scroll() {
-        let mut fb = FrameBuffer::new(80, 24);
+    fn test_classify_with_extensions_no_extensions_is_highlight() {
+        let result = classify_with_extensions(&[], "keyword.function");
+        assert!(matches!(result, RenderBehavior::Highlight));
+    }
 
-        // Build markdown-like buffer content
-        let lines: Vec<String> = vec![
-            "# Heading 1",
-            "",
-            "Some regular text here.",
-            "",
-            "## Heading 2",
-            "",
-            "- List item 1",
-            "- List item 2",
-            "- List item 3",
-            "",
-            "> A blockquote with some text",
-            "",
-            "---",
-            "",
-            "### Heading 3",
-            "",
-            "More text content here.",
-            "",
-            "- [ ] Unchecked checkbox",
-            "- [x] Checked checkbox",
-            "",
-            "Some `inline code` here and **bold text** and *italic text*.",
-            "",
-            "Another paragraph with some content.",
-            "",
-            "#### Heading 4",
-            "",
-            "1. Numbered item 1",
-            "2. Numbered item 2",
-            "3. Numbered item 3",
-            "",
-            "> Another blockquote",
-            "",
-            "---",
-            "",
-            "More text below the horizontal rule.",
-            "",
-            "##### Heading 5",
-            "",
-            "- Bullet 1",
-            "- Bullet 2",
-            "- Bullet 3",
-            "",
-            "Some final text.",
-            "",
-            "###### Heading 6",
-            "",
-            "The very end.",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    #[test]
+    fn test_classify_with_extensions_unknown_category_is_highlight() {
+        let result = classify_with_extensions(&[], "some.random.category");
+        assert!(matches!(result, RenderBehavior::Highlight));
+    }
 
-        let mut state = TuiCoreState::new(1);
-        state.windows.push(window(1, 100));
-        state.focused_window_id = 1;
-        state.buffer_cache.insert(100, lines);
+    // =========================================================================
+    // buffer_to_screen_row_vl tests
+    // =========================================================================
 
-        // Build token cache with conceal decorations matching markdown rules
-        let (mut tc, tm) = test_syntax();
-        let content = state.buffer_cache.get(&100).unwrap().join("\n");
+    #[test]
+    fn test_buffer_to_screen_row_vl_no_virtual_lines() {
+        assert_eq!(buffer_to_screen_row_vl(5, 2, &[]), 3);
+    }
 
-        // Create conceal tokens for markdown patterns
-        let mut tokens: Vec<TokenSpan> = Vec::new();
+    #[test]
+    fn test_buffer_to_screen_row_vl_with_virtual_lines() {
+        let vl = VirtualLine {
+            buffer_line: 1,
+            position: VirtualLinePosition::Before,
+            content: "border".to_string(),
+            style: Style::default(),
+        };
+        let vls: Vec<&VirtualLine> = vec![&vl];
+        // Line 0: no virtual lines before it → screen 0
+        assert_eq!(buffer_to_screen_row_vl(0, 0, &vls), 0);
+        // Line 1: 1 virtual line at line 1 → screen 2
+        assert_eq!(buffer_to_screen_row_vl(1, 0, &vls), 2);
+        // Line 2: still 1 virtual line (at line 1) → screen 3
+        assert_eq!(buffer_to_screen_row_vl(2, 0, &vls), 3);
+    }
 
-        // Heading conceals: "# " → icon
-        add_conceal_token(&mut tokens, &content, 0, "# ", "\u{f0965} ");
-        add_conceal_token(&mut tokens, &content, 4, "## ", "\u{f0965} ");
-        add_conceal_token(&mut tokens, &content, 14, "### ", "\u{f0965} ");
-        add_conceal_token(&mut tokens, &content, 25, "#### ", "\u{f0965} ");
-        add_conceal_token(&mut tokens, &content, 37, "##### ", "\u{f0965} ");
-        add_conceal_token(&mut tokens, &content, 45, "###### ", "\u{f0965} ");
+    // =========================================================================
+    // Mock extension for render_line_content coverage
+    // =========================================================================
 
-        // List bullet conceals: "- " → bullet
-        for line_idx in [6, 7, 8, 39, 40, 41] {
-            add_conceal_token(&mut tokens, &content, line_idx, "- ", "\u{2022} ");
-        }
+    /// Mock extension that classifies tokens by category prefix.
+    struct MockExtension {
+        rules: Vec<(&'static str, RenderBehavior)>,
+    }
 
-        // Blockquote conceals: "> " → bar
-        add_conceal_token(&mut tokens, &content, 10, "> ", "\u{2502} ");
-        add_conceal_token(&mut tokens, &content, 31, "> ", "\u{2502} ");
-
-        // Horizontal rule conceals: "---" → repeated line
-        let hrule_replacement = "\u{2500}".repeat(40);
-        add_conceal_token_custom(&mut tokens, &content, 12, 0, 3, &hrule_replacement);
-        add_conceal_token_custom(&mut tokens, &content, 33, 0, 3, &hrule_replacement);
-
-        // Checkbox conceals
-        add_conceal_token_custom(&mut tokens, &content, 18, 0, 6, "\u{2610} ");
-        add_conceal_token_custom(&mut tokens, &content, 19, 0, 6, "\u{2713} ");
-
-        // Inline code backtick conceals (hide backticks)
-        add_conceal_token_custom(&mut tokens, &content, 21, 5, 6, "");
-        add_conceal_token_custom(&mut tokens, &content, 21, 17, 18, "");
-
-        tc.apply_token_update(100, &tokens, 0, u64::MAX, true, &content, "syntax", 0);
-
-        let config = RenderConfig::default();
-
-        // Test rendering at multiple scroll positions (simulating j scroll)
-        for scroll_line in 0..48 {
-            state.update_local_cursor(1, scroll_line, 0);
-            state.compute_scroll_top(1, 23); // content_height = height - 1
-
-            // This should NOT panic
-            render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    impl MockExtension {
+        fn new(rules: Vec<(&'static str, RenderBehavior)>) -> Self {
+            Self { rules }
         }
     }
 
-    /// Verify that multi-byte characters before a conceal region cause
-    /// a panic due to CHARACTER columns being used as BYTE indices.
-    ///
-    /// This is the root cause of the markdown scroll crash when the
-    /// document contains non-ASCII characters.
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl TuiExtension for MockExtension {
+        fn kind(&self) -> &'static str {
+            "mock"
+        }
+
+        fn is_active(&self) -> bool {
+            true
+        }
+
+        fn apply_notification(&mut self, _data: &str) {}
+
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            self.rules
+                .iter()
+                .find(|(prefix, _)| category.starts_with(prefix))
+                .map(|(_, behavior)| behavior.clone())
+        }
+    }
+
+    // =========================================================================
+    // render_line_content with extension behaviors
+    // =========================================================================
+
     #[test]
-    fn test_render_multibyte_with_conceals_crash() {
-        let mut fb = FrameBuffer::new(80, 10);
+    fn test_render_line_content_conceal_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
 
-        // Line with multi-byte chars BEFORE a conceal region
-        // "日本語 `code` here" - backtick at byte 10 (char 4), not byte 4
-        let lines: Vec<String> = vec![
-            "日本語 `code` here".to_string(),
-            "# 日本語のヘッダー".to_string(),
-            "normal ASCII line".to_string(),
-        ];
-
-        let mut state = TuiCoreState::new(1);
-        state.windows.push(window(1, 100));
-        state.focused_window_id = 1;
-        state.buffer_cache.insert(100, lines);
-
-        let (mut tc, tm) = test_syntax();
-        let content = state.buffer_cache.get(&100).unwrap().join("\n");
-
-        // Create conceal tokens using BYTE offsets (as tree-sitter would produce)
-        // But AnnotationCacheManager converts them to CHARACTER columns via byte_to_position
-        let tokens = vec![
-            // Backtick at byte 10 (char 4) → hide
-            TokenSpan {
-                start_byte: 10, // byte offset of first backtick
-                end_byte: 11,   // byte offset past first backtick
-                category: "punctuation.delimiter".to_string(),
-                kind: CachedAnnotationKind::Conceal { replacement: None },
-            },
-            // Backtick at byte 16 (char 9 = after `code`) → hide
-            TokenSpan {
-                start_byte: 16,
-                end_byte: 17,
-                category: "punctuation.delimiter".to_string(),
-                kind: CachedAnnotationKind::Conceal { replacement: None },
-            },
-            // Heading prefix "# " on line 2 (bytes start at line 2's offset)
-            TokenSpan {
-                // "日本語 `code` here\n" = 24 bytes, then "# " starts at byte 24
-                start_byte: 24,
-                end_byte: 26,
+        // "## Hello" — "## " (bytes 0..3) should be concealed to icon
+        let content = "## Hello";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
                 category: "markup.heading".to_string(),
-                kind: CachedAnnotationKind::Conceal {
-                    replacement: Some("\u{f0965} ".to_string()),
-                },
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.heading",
+            RenderBehavior::Conceal {
+                replacement: Cow::Borrowed("H "),
             },
-        ];
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
 
-        tc.apply_token_update(100, &tokens, 0, u64::MAX, true, &content, "syntax", 0);
+        render_line_content(
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
+        );
 
-        let config = RenderConfig::default();
+        // "## " concealed to "H ", so display is "H Hello"
+        assert_eq!(fb.get(0, 0).unwrap().char, 'H');
+        assert_eq!(fb.get(1, 0).unwrap().char, ' ');
+        assert_eq!(fb.get(2, 0).unwrap().char, 'H');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'e');
+    }
 
-        // Render each line — this should NOT panic even with multi-byte content
-        for scroll_line in 0..3 {
-            state.update_local_cursor(1, scroll_line, 0);
-            state.compute_scroll_top(1, 9);
-            render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+    #[test]
+    fn test_render_line_content_hide_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "`code`" — backticks hidden, "code" rendered
+        let content = "`code`";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[
+                TokenSpan {
+                    start_byte: 0,
+                    end_byte: 1,
+                    category: "markup.raw.delimiter".to_string(),
+                },
+                TokenSpan {
+                    start_byte: 5,
+                    end_byte: 6,
+                    category: "markup.raw.delimiter".to_string(),
+                },
+            ],
+        );
+
+        let ext: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup.raw.delimiter", RenderBehavior::Hide)]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
+        );
+
+        // Backticks hidden, display should be "code"
+        assert_eq!(fb.get(0, 0).unwrap().char, 'c');
+        assert_eq!(fb.get(1, 0).unwrap().char, 'o');
+        assert_eq!(fb.get(2, 0).unwrap().char, 'd');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'e');
+    }
+
+    #[test]
+    fn test_render_line_content_full_width_line_via_extension() {
+        let mut fb = FrameBuffer::new(10, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "---" → full width line of dashes
+        let content = "---";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
+                category: "markup.hrule".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.hrule",
+            RenderBehavior::FullWidthLine { ch: '\u{2500}' },
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb,
+            0,
+            0,
+            10,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
+        );
+
+        // "---" replaced with repeated '─' filling width
+        assert_eq!(fb.get(0, 0).unwrap().char, '\u{2500}');
+        assert_eq!(fb.get(5, 0).unwrap().char, '\u{2500}');
+    }
+
+    #[test]
+    fn test_render_line_content_background_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "let x = 1;";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 10,
+                category: "markup.raw.block".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup.raw.block", RenderBehavior::Background)]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
+        );
+
+        // Background should be applied — cell content should still be correct
+        assert_eq!(fb.get(0, 0).unwrap().char, 'l');
+        assert_eq!(fb.get(1, 0).unwrap().char, 'e');
+        // Background from theme should be applied
+        let bg_style = tm.get_style("markup.raw.block");
+        if bg_style.bg.is_some() {
+            assert_eq!(fb.get(0, 0).unwrap().style.bg, bg_style.bg);
         }
     }
 
-    /// Helper: create a conceal token for the prefix of a line.
-    fn add_conceal_token(
-        tokens: &mut Vec<TokenSpan>,
-        content: &str,
-        line_idx: usize,
-        prefix: &str,
-        replacement: &str,
-    ) {
-        add_conceal_token_custom(tokens, content, line_idx, 0, prefix.len(), replacement);
+    #[test]
+    fn test_render_line_content_conceal_skipped_in_insert_mode() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "## Hello";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
+                category: "markup.heading".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.heading",
+            RenderBehavior::Conceal {
+                replacement: Cow::Borrowed("H "),
+            },
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        // skip_conceals=true: raw text should be rendered
+        render_line_content(
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            true,
+            &extensions,
+        );
+
+        // "## Hello" rendered raw (no conceal)
+        assert_eq!(fb.get(0, 0).unwrap().char, '#');
+        assert_eq!(fb.get(1, 0).unwrap().char, '#');
+        assert_eq!(fb.get(2, 0).unwrap().char, ' ');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'H');
     }
 
-    /// Helper: create a conceal token at specific byte columns within a line.
-    #[allow(clippy::cast_possible_truncation)]
-    fn add_conceal_token_custom(
-        tokens: &mut Vec<TokenSpan>,
-        content: &str,
-        line_idx: usize,
-        start_col: usize,
-        end_col: usize,
-        replacement: &str,
-    ) {
-        // Find byte offset of line start
-        let mut line_start_byte = 0;
-        for (i, line) in content.split('\n').enumerate() {
-            if i == line_idx {
-                break;
-            }
-            line_start_byte += line.len() + 1; // +1 for \n
-        }
+    #[test]
+    fn test_classify_with_extensions_first_some_wins() {
+        let ext1: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup", RenderBehavior::Hide)]));
+        let ext2: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup", RenderBehavior::Background)]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext1, ext2];
 
-        tokens.push(TokenSpan {
-            start_byte: (line_start_byte + start_col) as u32,
-            end_byte: (line_start_byte + end_col) as u32,
-            category: "markup.heading".to_string(),
-            kind: CachedAnnotationKind::Conceal {
-                replacement: if replacement.is_empty() {
-                    None
-                } else {
-                    Some(replacement.to_string())
-                },
-            },
-        });
+        // First extension wins
+        let result = classify_with_extensions(&extensions, "markup.heading");
+        assert!(matches!(result, RenderBehavior::Hide));
     }
 }

@@ -97,7 +97,7 @@ pub use {
     decoration::{DecorationCapture, DecorationRule, apply_rules},
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
-    highlight::{Annotation, AnnotationKind, HighlightCategory},
+    highlight::{Annotation, HighlightCategory},
     injection::Injection,
     lang_store::LanguageInfoStore,
     registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},

@@ -9,6 +9,7 @@
 use {
     crate::{Cell, FrameBuffer, Style},
     reovim_arch::Color,
+    std::borrow::Cow,
 };
 
 // ============================================================================
@@ -145,6 +146,72 @@ pub struct ViewportContext {
 }
 
 // ============================================================================
+// RenderBehavior — shared type for token classification
+// ============================================================================
+
+/// How the client renders a token based on its semantic category.
+///
+/// The render engine executes these as mechanism. Extensions decide
+/// which categories map to which behavior (policy) via
+/// [`TuiExtension::classify_token`].
+#[derive(Debug, Clone)]
+pub enum RenderBehavior {
+    /// Apply a style overlay (the common case — syntax highlighting).
+    Highlight,
+    /// Conceal the byte range and replace with a glyph.
+    Conceal { replacement: Cow<'static, str> },
+    /// Apply a background color only.
+    Background,
+    /// Hide the byte range entirely (zero-width conceal).
+    Hide,
+    /// Fill the entire viewport width with a repeated character.
+    FullWidthLine { ch: char },
+}
+
+// ============================================================================
+// Virtual line types
+// ============================================================================
+
+/// A virtual line injected between buffer lines.
+///
+/// Counterpart to [`TuiExtension::fold_hidden_lines`] which removes lines.
+/// The render engine inserts these at the appropriate screen position.
+#[derive(Debug, Clone)]
+pub struct VirtualLine {
+    /// Buffer line this virtual line is associated with.
+    pub buffer_line: usize,
+    /// Whether to insert before or after the buffer line.
+    pub position: VirtualLinePosition,
+    /// Text content of the virtual line.
+    pub content: String,
+    /// Style for the virtual line.
+    pub style: Style,
+}
+
+/// Where to insert a virtual line relative to a buffer line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtualLinePosition {
+    /// Insert before the associated buffer line.
+    Before,
+    /// Insert after the associated buffer line.
+    After,
+}
+
+/// A transformed line replacing the raw buffer content.
+///
+/// Returned by [`TuiExtension::transform_line`] when an extension wants
+/// to replace a buffer line with different visual content (e.g., expanded
+/// table rows with box-drawing borders).
+#[derive(Debug, Clone)]
+pub struct TransformedLine {
+    /// Replacement text to render instead of the buffer line.
+    pub text: String,
+    /// Per-character style: `styles[i]` applies to `text.chars().nth(i)`.
+    /// If shorter than text, remaining chars use default style.
+    pub styles: Vec<Option<Style>>,
+}
+
+// ============================================================================
 // TuiExtension trait
 // ============================================================================
 
@@ -246,6 +313,76 @@ pub trait TuiExtension: Send + Sync {
     fn render_with_viewport(&self, backend: &mut dyn RenderBackend, _viewport: &ViewportContext) {
         self.render(backend);
     }
+
+    /// Classify a token category into a render behavior.
+    ///
+    /// Return `Some(behavior)` to claim this category. The render engine
+    /// queries all active extensions; first `Some` wins. If no extension
+    /// claims a category, the engine falls back to [`RenderBehavior::Highlight`].
+    ///
+    /// Default: `None` (does not claim any categories).
+    fn classify_token(&self, _category: &str) -> Option<RenderBehavior> {
+        None
+    }
+
+    /// Called when buffer content changes.
+    ///
+    /// Extensions that need to analyze buffer content (e.g., detect tables)
+    /// cache derived state here. Called after the buffer cache is updated.
+    ///
+    /// Default: no-op.
+    fn on_buffer_update(&mut self, _buffer_id: u64, _lines: &[String]) {}
+
+    /// Virtual lines to inject between buffer lines.
+    ///
+    /// Counterpart to [`fold_hidden_lines`](Self::fold_hidden_lines) (which removes lines).
+    /// The render engine inserts these at appropriate screen positions.
+    ///
+    /// Default: empty (no virtual lines).
+    fn virtual_lines(&self) -> &[VirtualLine] {
+        &[]
+    }
+
+    /// Transform a buffer line's visual content.
+    ///
+    /// Return `Some(TransformedLine)` to replace the raw buffer line with
+    /// custom content (e.g., expanded table rows). First extension returning
+    /// `Some` wins.
+    ///
+    /// Default: `None` (no transformation).
+    fn transform_line(
+        &self,
+        _buffer_id: u64,
+        _line_idx: usize,
+        _line: &str,
+    ) -> Option<TransformedLine> {
+        None
+    }
+
+    /// Map buffer column to visual column for a transformed line.
+    ///
+    /// Used for cursor positioning inside transformed lines.
+    /// Return `None` to use default 1:1 mapping.
+    ///
+    /// Default: `None`.
+    fn map_cursor_column(
+        &self,
+        _buffer_id: u64,
+        _line_idx: usize,
+        _buffer_col: usize,
+    ) -> Option<u16> {
+        None
+    }
+
+    /// Called when cursor position changes.
+    ///
+    /// Default: no-op.
+    fn on_cursor_update(&mut self, _buffer_id: u64, _line: usize, _col: usize) {}
+
+    /// Called when mode changes.
+    ///
+    /// Default: no-op.
+    fn on_mode_change(&mut self, _mode_name: &str, _is_insert: bool) {}
 }
 
 #[cfg(test)]
@@ -565,6 +702,130 @@ mod tests {
             rendered: AtomicBool::new(false),
         };
         assert!(ext.fold_hidden_lines().is_empty());
+    }
+
+    #[test]
+    fn test_extension_default_classify_token() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        assert!(ext.classify_token("markup.heading.1").is_none());
+        assert!(ext.classify_token("keyword").is_none());
+    }
+
+    #[test]
+    fn test_extension_default_virtual_lines_empty() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        assert!(ext.virtual_lines().is_empty());
+    }
+
+    #[test]
+    fn test_extension_default_transform_line_none() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        assert!(ext.transform_line(1, 0, "hello").is_none());
+    }
+
+    #[test]
+    fn test_extension_default_map_cursor_column_none() {
+        let ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        assert!(ext.map_cursor_column(1, 0, 5).is_none());
+    }
+
+    #[test]
+    fn test_extension_default_on_buffer_update_noop() {
+        let mut ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        // Should not panic — just a no-op
+        ext.on_buffer_update(1, &["hello".to_string()]);
+    }
+
+    #[test]
+    fn test_extension_default_on_cursor_update_noop() {
+        let mut ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        ext.on_cursor_update(1, 0, 5);
+    }
+
+    #[test]
+    fn test_extension_default_on_mode_change_noop() {
+        let mut ext = MockExtension {
+            active: true,
+            rendered: AtomicBool::new(false),
+        };
+        ext.on_mode_change("NORMAL", false);
+    }
+
+    #[test]
+    fn test_render_behavior_debug() {
+        let highlight = RenderBehavior::Highlight;
+        let conceal = RenderBehavior::Conceal {
+            replacement: Cow::Borrowed("icon"),
+        };
+        let bg = RenderBehavior::Background;
+        let hide = RenderBehavior::Hide;
+        let full = RenderBehavior::FullWidthLine { ch: '─' };
+        assert!(format!("{highlight:?}").contains("Highlight"));
+        assert!(format!("{conceal:?}").contains("icon"));
+        assert!(format!("{bg:?}").contains("Background"));
+        assert!(format!("{hide:?}").contains("Hide"));
+        assert!(format!("{full:?}").contains("FullWidthLine"));
+    }
+
+    #[test]
+    fn test_render_behavior_clone() {
+        let original = RenderBehavior::Conceal {
+            replacement: Cow::Borrowed("test"),
+        };
+        let _cloned = original.clone();
+        if let RenderBehavior::Conceal { replacement } = original {
+            assert_eq!(replacement.as_ref(), "test");
+        } else {
+            panic!("Clone should preserve variant");
+        }
+    }
+
+    #[test]
+    fn test_virtual_line_position_eq() {
+        assert_eq!(VirtualLinePosition::Before, VirtualLinePosition::Before);
+        assert_eq!(VirtualLinePosition::After, VirtualLinePosition::After);
+        assert_ne!(VirtualLinePosition::Before, VirtualLinePosition::After);
+    }
+
+    #[test]
+    fn test_virtual_line_construction() {
+        let vl = VirtualLine {
+            buffer_line: 5,
+            position: VirtualLinePosition::Before,
+            content: "┌───┐".to_string(),
+            style: Style::default(),
+        };
+        assert_eq!(vl.buffer_line, 5);
+        assert_eq!(vl.position, VirtualLinePosition::Before);
+        assert_eq!(vl.content, "┌───┐");
+    }
+
+    #[test]
+    fn test_transformed_line_construction() {
+        let tl = TransformedLine {
+            text: "│ hello │".to_string(),
+            styles: vec![None; 9],
+        };
+        assert_eq!(tl.text, "│ hello │");
+        assert_eq!(tl.styles.len(), 9);
     }
 
     #[test]

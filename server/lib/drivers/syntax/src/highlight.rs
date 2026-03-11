@@ -2,14 +2,14 @@
 //!
 //! This module defines the highlight types used by syntax drivers.
 //!
-//! # Annotation Model (#540)
+//! # Annotation Model (#540, #551)
 //!
 //! The [`HighlightCategory`] type is an open string-based category.
 //! Any provider can emit any category. Well-known categories exist
 //! as constants for convenience, not constraint.
 //!
-//! [`Annotation`] extends byte-range spans with an [`AnnotationKind`] that
-//! describes the visual effect (highlight, conceal, background, virtual text).
+//! [`Annotation`] is a pure semantic marker: byte range + category.
+//! The server emits only WHAT to annotate; clients decide HOW to render.
 
 use std::{ops::Range, sync::Arc};
 
@@ -137,45 +137,20 @@ impl HighlightCategory {
     pub const SPECIAL: &str = "special";
 }
 
-/// What an annotation does visually.
-///
-/// Most syntax highlighting uses [`Highlight`](AnnotationKind::Highlight).
-/// The other variants support decorations (conceal, background, virtual text)
-/// that will be emitted by future providers (DAP, LSP, decoration queries).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AnnotationKind {
-    /// Style overlay — the common case for syntax highlighting.
-    /// Client resolves category -> Style via `ThemeManager`.
-    Highlight,
-
-    /// Conceal the text range, optionally replacing with different text.
-    /// `col_mapping` is computed client-side (rendering concern).
-    Conceal {
-        /// Replacement text, if any.
-        replacement: Option<String>,
-    },
-
-    /// Background highlight (independent of text style).
-    Background,
-
-    /// Virtual text inserted at this position (not in buffer).
-    VirtualText {
-        /// The virtual text content.
-        text: String,
-    },
-}
-
 /// A single annotation on a buffer range.
 ///
-/// Annotations are the unified representation for all visual markup:
+/// Annotations are the unified representation for all semantic markup:
 /// syntax highlights, decorations, diagnostics, search matches, etc.
+///
+/// The server emits only byte ranges and categories (mechanism).
+/// Clients decide how to render each category (policy).
 ///
 /// # Example
 ///
 /// ```
 /// use reovim_driver_syntax::{Annotation, HighlightCategory};
 ///
-/// let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword.function"));
+/// let ann = Annotation::new(0, 5, HighlightCategory::new("keyword.function"));
 /// assert_eq!(ann.category.as_str(), "keyword.function");
 /// assert_eq!(ann.len(), 5);
 /// ```
@@ -185,41 +160,18 @@ pub struct Annotation {
     pub start_byte: usize,
     /// End byte offset (exclusive).
     pub end_byte: usize,
-    /// Category string (e.g., "keyword.function", "dap.breakpoint").
+    /// Category string (e.g., "keyword.function", "markup.heading.1").
     pub category: HighlightCategory,
-    /// What this annotation does visually.
-    pub kind: AnnotationKind,
 }
 
 impl Annotation {
-    /// Create a highlight annotation (the common case).
+    /// Create an annotation.
     #[must_use]
-    pub const fn highlight(
-        start_byte: usize,
-        end_byte: usize,
-        category: HighlightCategory,
-    ) -> Self {
+    pub const fn new(start_byte: usize, end_byte: usize, category: HighlightCategory) -> Self {
         Self {
             start_byte,
             end_byte,
             category,
-            kind: AnnotationKind::Highlight,
-        }
-    }
-
-    /// Create an annotation with explicit kind.
-    #[must_use]
-    pub const fn new(
-        start_byte: usize,
-        end_byte: usize,
-        category: HighlightCategory,
-        kind: AnnotationKind,
-    ) -> Self {
-        Self {
-            start_byte,
-            end_byte,
-            category,
-            kind,
         }
     }
 
@@ -327,114 +279,35 @@ mod tests {
     }
 
     // ========================================================================
-    // AnnotationKind Tests
-    // ========================================================================
-
-    #[test]
-    fn test_annotation_kind_highlight() {
-        let kind = AnnotationKind::Highlight;
-        assert_eq!(kind, AnnotationKind::Highlight);
-    }
-
-    #[test]
-    fn test_annotation_kind_conceal_none() {
-        let kind = AnnotationKind::Conceal { replacement: None };
-        assert!(matches!(kind, AnnotationKind::Conceal { replacement: None }));
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_annotation_kind_conceal_with_replacement() {
-        let kind = AnnotationKind::Conceal {
-            replacement: Some("*".into()),
-        };
-        assert!(matches!(
-            kind,
-            AnnotationKind::Conceal { replacement: Some(ref r) } if r == "*"
-        ));
-    }
-
-    #[test]
-    fn test_annotation_kind_background() {
-        let kind = AnnotationKind::Background;
-        assert_eq!(kind, AnnotationKind::Background);
-    }
-
-    #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_annotation_kind_virtual_text() {
-        let kind = AnnotationKind::VirtualText {
-            text: "ghost".into(),
-        };
-        assert!(matches!(
-            kind,
-            AnnotationKind::VirtualText { ref text } if text == "ghost"
-        ));
-    }
-
-    #[test]
-    fn test_annotation_kind_clone() {
-        let kind = AnnotationKind::Conceal {
-            replacement: Some("x".into()),
-        };
-        let cloned = kind.clone();
-        assert_eq!(kind, cloned);
-    }
-
-    #[test]
-    fn test_annotation_kind_debug() {
-        let kind = AnnotationKind::Highlight;
-        let debug = format!("{kind:?}");
-        assert!(debug.contains("Highlight"));
-    }
-
-    // ========================================================================
     // Annotation Tests
     // ========================================================================
 
     #[test]
-    fn test_annotation_highlight_constructor() {
-        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+    fn test_annotation_new() {
+        let ann = Annotation::new(10, 20, HighlightCategory::new("keyword"));
         assert_eq!(ann.start_byte, 10);
         assert_eq!(ann.end_byte, 20);
         assert_eq!(ann.category.as_str(), "keyword");
-        assert_eq!(ann.kind, AnnotationKind::Highlight);
-    }
-
-    #[test]
-    fn test_annotation_new_with_kind() {
-        let ann = Annotation::new(
-            0,
-            5,
-            HighlightCategory::new("decoration.heading"),
-            AnnotationKind::Conceal {
-                replacement: Some("*".into()),
-            },
-        );
-        assert_eq!(ann.start_byte, 0);
-        assert_eq!(ann.end_byte, 5);
-        assert_eq!(ann.category.as_str(), "decoration.heading");
-        assert!(matches!(ann.kind, AnnotationKind::Conceal { .. }));
     }
 
     #[test]
     fn test_annotation_len() {
-        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(10, 20, HighlightCategory::new("keyword"));
         assert_eq!(ann.len(), 10);
     }
 
     #[test]
     fn test_annotation_is_empty() {
-        let ann = Annotation::highlight(5, 5, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(5, 5, HighlightCategory::new("keyword"));
         assert!(ann.is_empty());
 
-        let ann = Annotation::highlight(5, 10, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(5, 10, HighlightCategory::new("keyword"));
         assert!(!ann.is_empty());
     }
 
     #[test]
     fn test_annotation_overlaps() {
-        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(10, 20, HighlightCategory::new("keyword"));
         assert!(ann.overlaps(&(5..15)));
         assert!(ann.overlaps(&(15..25)));
         assert!(ann.overlaps(&(12..18)));
@@ -444,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_annotation_contains() {
-        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(10, 20, HighlightCategory::new("keyword"));
         assert!(ann.contains(10));
         assert!(ann.contains(15));
         assert!(ann.contains(19));
@@ -454,20 +327,20 @@ mod tests {
 
     #[test]
     fn test_annotation_byte_range() {
-        let ann = Annotation::highlight(10, 20, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(10, 20, HighlightCategory::new("keyword"));
         assert_eq!(ann.byte_range(), 10..20);
     }
 
     #[test]
     fn test_annotation_clone() {
-        let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(0, 5, HighlightCategory::new("keyword"));
         let cloned = ann.clone();
         assert_eq!(ann, cloned);
     }
 
     #[test]
     fn test_annotation_debug() {
-        let ann = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
+        let ann = Annotation::new(0, 5, HighlightCategory::new("keyword"));
         let debug = format!("{ann:?}");
         assert!(debug.contains("Annotation"));
         assert!(debug.contains("keyword"));
@@ -475,9 +348,9 @@ mod tests {
 
     #[test]
     fn test_annotation_equality() {
-        let a1 = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
-        let a2 = Annotation::highlight(0, 5, HighlightCategory::new("keyword"));
-        let a3 = Annotation::highlight(0, 5, HighlightCategory::new("function"));
+        let a1 = Annotation::new(0, 5, HighlightCategory::new("keyword"));
+        let a2 = Annotation::new(0, 5, HighlightCategory::new("keyword"));
+        let a3 = Annotation::new(0, 5, HighlightCategory::new("function"));
         assert_eq!(a1, a2);
         assert_ne!(a1, a3);
     }

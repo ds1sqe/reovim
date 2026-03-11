@@ -23,10 +23,14 @@ reovim-driver-syntax-treesitter = { workspace = true }
 # Tree-sitter Markdown grammar - this is where language-specific deps live
 tree-sitter-md = "0.3"
 
+# Streaming iterator (used by table/list decoration providers)
+streaming-iterator = "0.1"
+
 # Logging
 tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-testing = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
+tree-sitter = "0.24"
 tree-sitter-rust = "0.23"

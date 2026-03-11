@@ -7,7 +7,7 @@
 //!
 //! The server streams `TokenUpdate` messages containing:
 //! - `buffer_id`: Which buffer the tokens belong to
-//! - `tokens[]`: Array of `TokenSpan` (`start_byte`, `end_byte`, category, kind)
+//! - `tokens[]`: Array of `TokenSpan` (`start_byte`, `end_byte`, category)
 //! - `start_line`, `end_line`: Affected line range
 //! - `full_refresh`: If true, replace all cached tokens for that layer
 //! - `layer`: Layer name (e.g., "syntax", "lsp.semantic")
@@ -35,6 +35,4 @@
 
 mod cache;
 
-pub use cache::{
-    AnnotationCacheManager, CachedAnnotationKind, CachedToken, LayeredTokenCache, TokenSpan,
-};
+pub use cache::{AnnotationCacheManager, CachedToken, LayeredTokenCache, TokenSpan};

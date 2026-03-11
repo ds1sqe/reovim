@@ -108,7 +108,7 @@ mod tests {
     }
 
     fn ann(start: usize, end: usize, cat: &str) -> Annotation {
-        Annotation::highlight(start, end, HighlightCategory::new(cat))
+        Annotation::new(start, end, HighlightCategory::new(cat))
     }
 
     #[test]

@@ -136,7 +136,7 @@ impl InjectionLayer {
                 let start_byte = range.start + node.start_byte();
                 let end_byte = range.start + node.end_byte();
 
-                highlights.push(Annotation::highlight(
+                highlights.push(Annotation::new(
                     start_byte,
                     end_byte,
                     HighlightCategory::new(*capture_name),

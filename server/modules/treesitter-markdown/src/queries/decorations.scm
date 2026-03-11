@@ -1,6 +1,6 @@
 ; Markdown decoration queries (block-level)
 ;
-; These captures are mapped to AnnotationKind via DecorationRule.
+; These captures are mapped to semantic categories via DecorationRule.
 ; Capture names are deliberately short — the rule provides the category.
 
 ; Heading markers (# ## ### etc.) — concealed with level-specific icons
@@ -11,10 +11,7 @@
 (atx_heading (atx_h5_marker) @heading.5.marker)
 (atx_heading (atx_h6_marker) @heading.6.marker)
 
-; List bullets — concealed with unicode bullet char
-(list_marker_minus) @list.bullet
-(list_marker_plus) @list.bullet
-(list_marker_star) @list.bullet
+; List bullets — handled by ListDecorationProvider (depth-dependent glyphs)
 
 ; Checkboxes — concealed with check/uncheck glyphs
 (task_list_marker_unchecked) @checkbox.unchecked

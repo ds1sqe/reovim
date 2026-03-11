@@ -7,38 +7,14 @@
 use std::collections::HashMap;
 
 // =============================================================================
-// CachedAnnotationKind - Visual effect type
-// =============================================================================
-
-/// What an annotation does visually.
-///
-/// Mirrors the protocol `AnnotationKind` message.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub enum CachedAnnotationKind {
-    /// Style overlay (the common case for syntax highlighting).
-    #[default]
-    Highlight,
-    /// Conceal the text range, optionally replacing with different text.
-    Conceal {
-        /// Replacement text (if any).
-        replacement: Option<String>,
-    },
-    /// Background highlight (independent of text style).
-    Background,
-    /// Virtual text inserted at this position (not in buffer).
-    VirtualText {
-        /// The virtual text content.
-        text: String,
-    },
-}
-
-// =============================================================================
 // CachedToken - Position-based token
 // =============================================================================
 
 /// A syntax token with position info (converted from byte offsets).
 ///
 /// Created by converting `TokenSpan` from the protocol.
+/// The client's `render_behavior()` function decides visual rendering
+/// based on the category string (mechanism vs policy separation).
 #[derive(Debug, Clone)]
 pub struct CachedToken {
     /// Line number (0-indexed).
@@ -49,8 +25,6 @@ pub struct CachedToken {
     pub end_col: u32,
     /// Token category (e.g., "keyword", "function.builtin").
     pub category: String,
-    /// Visual effect kind.
-    pub kind: CachedAnnotationKind,
 }
 
 // =============================================================================
@@ -68,8 +42,6 @@ pub struct TokenSpan {
     pub end_byte: u32,
     /// Category string (e.g., "keyword").
     pub category: String,
-    /// Visual effect kind.
-    pub kind: CachedAnnotationKind,
 }
 
 // =============================================================================
@@ -223,7 +195,6 @@ impl LayeredTokenCache {
                 start_col,
                 end_col,
                 category: span.category.clone(),
-                kind: span.kind.clone(),
             }];
         }
 
@@ -237,7 +208,6 @@ impl LayeredTokenCache {
             start_col,
             end_col: first_line_end,
             category: span.category.clone(),
-            kind: span.kind.clone(),
         });
 
         // Middle lines: full line
@@ -248,7 +218,6 @@ impl LayeredTokenCache {
                 start_col: 0,
                 end_col: line_end,
                 category: span.category.clone(),
-                kind: span.kind.clone(),
             });
         }
 
@@ -259,7 +228,6 @@ impl LayeredTokenCache {
                 start_col: 0,
                 end_col,
                 category: span.category.clone(),
-                kind: span.kind.clone(),
             });
         }
 
@@ -340,17 +308,6 @@ impl LayeredTokenCache {
             result.extend(&layer.tokens[start..end]);
         }
         result
-    }
-
-    /// Get decoration tokens for a line (conceal, virtual text, background).
-    ///
-    /// Returns only non-Highlight tokens, sorted by layer priority.
-    #[must_use]
-    pub fn decorations_for_line(&self, line: u32) -> Vec<&CachedToken> {
-        self.tokens_for_line(line)
-            .into_iter()
-            .filter(|t| t.kind != CachedAnnotationKind::Highlight)
-            .collect()
     }
 
     /// Check if all layers are empty.
@@ -504,60 +461,13 @@ impl Default for AnnotationCacheManager {
 mod tests {
     use super::*;
 
-    /// Helper: create a highlight token span.
+    /// Helper: create a token span.
     fn span(start: u32, end: u32, cat: &str) -> TokenSpan {
         TokenSpan {
             start_byte: start,
             end_byte: end,
             category: cat.to_string(),
-            kind: CachedAnnotationKind::Highlight,
         }
-    }
-
-    // =========================================================================
-    // CachedAnnotationKind tests
-    // =========================================================================
-
-    #[test]
-    fn test_cached_annotation_kind_default() {
-        assert_eq!(CachedAnnotationKind::default(), CachedAnnotationKind::Highlight);
-    }
-
-    #[test]
-    fn test_cached_annotation_kind_variants() {
-        let highlight = CachedAnnotationKind::Highlight;
-        let conceal_none = CachedAnnotationKind::Conceal { replacement: None };
-        let conceal_some = CachedAnnotationKind::Conceal {
-            replacement: Some("…".to_string()),
-        };
-        let background = CachedAnnotationKind::Background;
-        let virtual_text = CachedAnnotationKind::VirtualText {
-            text: "hint".to_string(),
-        };
-
-        // All variants are distinct
-        assert_ne!(highlight, conceal_none);
-        assert_ne!(conceal_none, conceal_some);
-        assert_ne!(highlight, background);
-        assert_ne!(highlight, virtual_text);
-
-        // Same variant with same data is equal
-        assert_eq!(CachedAnnotationKind::Conceal { replacement: None }, conceal_none);
-        assert_eq!(
-            CachedAnnotationKind::VirtualText {
-                text: "hint".to_string()
-            },
-            virtual_text
-        );
-    }
-
-    #[test]
-    fn test_cached_annotation_kind_clone() {
-        let original = CachedAnnotationKind::VirtualText {
-            text: "test".to_string(),
-        };
-        let cloned = original.clone();
-        assert_eq!(original, cloned);
     }
 
     // =========================================================================
@@ -685,7 +595,6 @@ mod tests {
         assert_eq!(line_tokens[0].category, "keyword");
         assert_eq!(line_tokens[0].start_col, 0);
         assert_eq!(line_tokens[0].end_col, 2);
-        assert_eq!(line_tokens[0].kind, CachedAnnotationKind::Highlight);
     }
 
     #[test]
@@ -764,7 +673,6 @@ mod tests {
             start_byte: 0,
             end_byte: 8,
             category: "comment".to_string(),
-            kind: CachedAnnotationKind::Highlight,
         }];
 
         cache.apply_update(&tokens, 0, 2, true, content);
@@ -820,7 +728,6 @@ mod tests {
             start_byte: 100,
             end_byte: 200,
             category: "error".to_string(),
-            kind: CachedAnnotationKind::Highlight,
         };
 
         cache.apply_update(&[invalid_span], 0, 0, true, content);
@@ -949,51 +856,22 @@ mod tests {
     }
 
     #[test]
-    fn test_decorations_for_line() {
+    fn test_multi_layer_tokens_for_line() {
         let mut cache = LayeredTokenCache::new();
         let content = "hello world";
 
         // Syntax highlight
         cache.apply_layer_update("syntax", 0, &[span(0, 5, "keyword")], 0, 0, true, content);
 
-        // Decoration: virtual text
-        let vt_span = TokenSpan {
-            start_byte: 5,
-            end_byte: 5,
-            category: "hint".to_string(),
-            kind: CachedAnnotationKind::VirtualText {
-                text: " -> ()".to_string(),
-            },
-        };
-        cache.apply_layer_update("decorations", 20, &[vt_span], 0, 0, true, content);
+        // Decoration layer
+        cache.apply_layer_update("decorations", 20, &[span(5, 5, "hint")], 0, 0, true, content);
 
         // tokens_for_line returns all
         assert_eq!(cache.tokens_for_line(0).len(), 2);
-
-        // decorations_for_line returns only non-Highlight
-        let decorations = cache.decorations_for_line(0);
-        assert_eq!(decorations.len(), 1);
-        assert_eq!(
-            decorations[0].kind,
-            CachedAnnotationKind::VirtualText {
-                text: " -> ()".to_string()
-            }
-        );
     }
 
     #[test]
-    fn test_decorations_for_line_empty() {
-        let mut cache = LayeredTokenCache::new();
-        let content = "hello";
-
-        cache.apply_layer_update("syntax", 0, &[span(0, 5, "keyword")], 0, 0, true, content);
-
-        // No decorations when all tokens are Highlight
-        assert!(cache.decorations_for_line(0).is_empty());
-    }
-
-    #[test]
-    fn test_token_span_with_conceal() {
+    fn test_token_span_with_category() {
         let mut cache = LayeredTokenCache::new();
         let content = "```rust\ncode\n```";
 
@@ -1001,25 +879,17 @@ mod tests {
             start_byte: 0,
             end_byte: 7,
             category: "markup.raw".to_string(),
-            kind: CachedAnnotationKind::Conceal {
-                replacement: Some("▍".to_string()),
-            },
         };
 
         cache.apply_layer_update("syntax", 0, &[conceal_span], 0, 0, true, content);
 
         let tokens = cache.tokens_for_line(0);
         assert_eq!(tokens.len(), 1);
-        assert_eq!(
-            tokens[0].kind,
-            CachedAnnotationKind::Conceal {
-                replacement: Some("▍".to_string())
-            }
-        );
+        assert_eq!(tokens[0].category, "markup.raw");
     }
 
     #[test]
-    fn test_token_span_with_background() {
+    fn test_token_span_with_search_category() {
         let mut cache = LayeredTokenCache::new();
         let content = "hello";
 
@@ -1027,41 +897,33 @@ mod tests {
             start_byte: 0,
             end_byte: 5,
             category: "search.match".to_string(),
-            kind: CachedAnnotationKind::Background,
         };
 
         cache.apply_layer_update("search", 50, &[bg_span], 0, 0, true, content);
 
         let tokens = cache.tokens_for_line(0);
         assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].kind, CachedAnnotationKind::Background);
         assert_eq!(tokens[0].category, "search.match");
     }
 
     #[test]
-    fn test_multi_line_background_splits_to_all_lines() {
+    fn test_multi_line_token_splits_to_all_lines() {
         let mut cache = LayeredTokenCache::new();
         let content = "line1\nline2\nline3\nline4";
 
-        // Background spanning lines 0-3 (bytes 0..22)
+        // Token spanning lines 0-3 (bytes 0..22)
         let bg_span = TokenSpan {
             start_byte: 0,
             end_byte: 22,
             category: "markup.raw.block".to_string(),
-            kind: CachedAnnotationKind::Background,
         };
 
         cache.apply_layer_update("decoration", 5, &[bg_span], 0, 3, true, content);
 
-        // All 4 lines should have a Background token
+        // All 4 lines should have a token
         for line in 0..4 {
             let tokens = cache.tokens_for_line(line);
-            assert!(!tokens.is_empty(), "Line {line} should have a Background token");
-            assert_eq!(
-                tokens[0].kind,
-                CachedAnnotationKind::Background,
-                "Line {line} token should be Background"
-            );
+            assert!(!tokens.is_empty(), "Line {line} should have a token");
             assert_eq!(tokens[0].category, "markup.raw.block");
         }
 

@@ -56,11 +56,13 @@
 
 mod driver;
 mod injection;
+mod provider;
 
 pub use {
     driver::{TreeSitterDriver, TreeSitterDriverBuilder},
     injection::{InjectionLayer, InjectionLayerFactory, InjectionLayerStore, InjectionManager},
+    provider::DecorationProvider,
 };
 
 // Re-export tree_sitter types that language modules need
-pub use tree_sitter::{Language, Query};
+pub use tree_sitter::{Language, Node, Query, QueryCursor, Tree};

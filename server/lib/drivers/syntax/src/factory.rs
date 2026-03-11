@@ -86,11 +86,7 @@ mod tests {
         fn update(&mut self, _content: &str, _edit: &SyntaxEdit) {}
 
         fn highlights(&self, _byte_range: Range<usize>) -> Vec<Annotation> {
-            vec![Annotation::highlight(
-                0,
-                1,
-                HighlightCategory::new("comment"),
-            )]
+            vec![Annotation::new(0, 1, HighlightCategory::new("comment"))]
         }
 
         fn is_parsed(&self) -> bool {

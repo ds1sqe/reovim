@@ -94,8 +94,9 @@ pub trait SyntaxDriver: Send + Sync {
 
     /// Get decoration annotations for a byte range.
     ///
-    /// Returns annotations with non-Highlight kinds (`Conceal`, `Background`,
-    /// `VirtualText`) that language modules define via decoration queries.
+    /// Returns annotations from decoration queries (e.g., markdown heading
+    /// markers, list bullets, code blocks). These carry semantic categories
+    /// like `markup.heading.1` that clients map to render behaviors.
     /// Use-sites call this separately from [`highlights()`](Self::highlights)
     /// to opt in to decoration rendering.
     ///
@@ -175,7 +176,7 @@ mod tests {
 
         fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                vec![Annotation::highlight(
+                vec![Annotation::new(
                     byte_range.start,
                     byte_range.end,
                     HighlightCategory::new("comment"),

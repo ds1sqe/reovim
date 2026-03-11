@@ -41,6 +41,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
     mode (raw text visible while typing)
   - Cursor column remapping: visual cursor position accounts for conceal offsets
     via `source_to_display_col`
+  - **Markdown extension extraction (Phase H)**: Extract ALL markdown rendering
+    policy from `render_engine.rs` into `MarkdownRenderExtension` crate.
+    Render engine is now pure mechanism — knows HOW to conceal/highlight/background
+    but never WHICH categories trigger which behavior.
+    - `RenderBehavior` enum moved to display driver as shared public type
+    - 7 new `TuiExtension` trait methods: `classify_token()`, `on_buffer_update()`,
+      `virtual_lines()`, `transform_line()`, `map_cursor_column()`,
+      `on_cursor_update()`, `on_mode_change()`
+    - New `reovim-tui-ext-markdown` crate: category-to-behavior mappings,
+      table detection/layout/rendering, column mapping (68 tests)
+    - Extension lifecycle hooks wired in notification handler
+    - Hardware cursor accounts for virtual lines and extension column mapping
+    - Strip inline markdown (`**`, `~~`, `` ` ``) from table cell display text
+    - Fix `map_cursor_column()` to use stored buffer lines (was passing empty string)
+    - Visual selection rendering maps columns through extensions for table alignment
 - **TUI syntax highlighting (#548)**: Wire `AnnotationCacheManager` and `ThemeManager`
   into the TUI render engine for per-character syntax coloring. `render_line_content()`
   queries cached tokens for each line and resolves categories to styled colors via
