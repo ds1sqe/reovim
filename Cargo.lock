@@ -2755,6 +2755,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-picker-git-branches"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-log"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-stash"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-status"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-picker-grep"
 version = "0.10.0-dev"
 dependencies = [

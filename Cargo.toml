@@ -71,6 +71,10 @@ members = [
     "server/modules/tetromino",
     "server/modules/health-check",
     "server/modules/git",
+    "server/modules/picker-git-branches",
+    "server/modules/picker-git-log",
+    "server/modules/picker-git-status",
+    "server/modules/picker-git-stash",
 
     # Client layer - TUI
     "clients/tui",
@@ -263,6 +267,10 @@ reovim-module-profiles = { path = "./server/modules/profiles", version = "0.10.0
 reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
 reovim-module-health-check = { path = "./server/modules/health-check", version = "0.10.0-dev" }
 reovim-module-git = { path = "./server/modules/git", version = "0.10.0-dev" }
+reovim-picker-git-branches = { path = "./server/modules/picker-git-branches", version = "0.10.0-dev" }
+reovim-picker-git-log = { path = "./server/modules/picker-git-log", version = "0.10.0-dev" }
+reovim-picker-git-status = { path = "./server/modules/picker-git-status", version = "0.10.0-dev" }
+reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

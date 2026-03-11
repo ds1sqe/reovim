@@ -20,6 +20,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   unknown/invalid options. Includes profile name validation (alphanumeric + hyphen/underscore,
   max 64 chars) and VFS-based I/O for testability. Integrated into the defaults module bundle.
 
+- **Git provider architecture (#530)**: Shared provider pattern for cross-cutting
+  git services. Phase A: `reovim-driver-git` crate defines `GitProvider` trait (6 methods:
+  `current_branch`, `branches`, `status`, `log`, `stash_list`, `diff_hunks`) with typed
+  data structs and `GitProviderStore` for `ServiceRegistry` integration.
+  `reovim-module-git` provides `SubprocessGitProvider` implementation via `git` CLI.
+  Phase B: 4 picker modules consuming `GitProvider` -- `picker-git-branches` (static,
+  lists branches with current marker), `picker-git-log` (dynamic, query-filters commits),
+  `picker-git-status` (static, opens changed files), `picker-git-stash` (static, lists
+  stash entries). 53 tests across Phase B modules.
+
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
   `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,
