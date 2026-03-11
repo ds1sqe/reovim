@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Core Editor Module for Reovim
 //!
 //! This module provides basic editor commands (cursor movement, text operations)

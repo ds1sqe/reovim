@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! LSP navigation module for reovim.
 //!
 //! Provides `gd` (goto definition) and `gr` (find references) commands.

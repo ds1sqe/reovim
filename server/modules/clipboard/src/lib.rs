@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Clipboard module for reovim.
 //!
 //! Provides system clipboard access via `arboard`.

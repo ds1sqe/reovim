@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Completion module - POLICY layer.
 //!
 //! Orchestrates the completion popup: registers completion sources, provides

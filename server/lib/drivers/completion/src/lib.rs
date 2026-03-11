@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Completion driver for reovim.
 //!
 //! This driver defines the interface for pluggable completion sources.

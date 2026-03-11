@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Which-key popup module - POLICY layer.
 //!
 //! Shows available keybinding completions when the user has a pending

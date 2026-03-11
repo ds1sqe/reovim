@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Command picker module for reovim.
 //!
 //! Provides a command palette for registered commands.

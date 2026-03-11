@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Wire protocol types for reovim client-server communication.
 //!
 //! This crate defines the message types and shared data structures

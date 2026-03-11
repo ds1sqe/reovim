@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Network driver for reovim.
 //!
 //! Linux equivalent: `net/`, `include/linux/net.h`

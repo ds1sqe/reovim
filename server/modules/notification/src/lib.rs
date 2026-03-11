@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Notification module - POLICY layer.
 //!
 //! Provides toast notification state and bridge for server-to-client

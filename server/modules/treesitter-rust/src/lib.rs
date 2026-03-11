@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Rust syntax highlighting module for reovim.
 //!
 //! This module provides Rust language support for syntax highlighting

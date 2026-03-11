@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Vim keybinding adapter for range-finder commands.
 //!
 //! This adapter module bridges `vim` (editor personality) and

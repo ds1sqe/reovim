@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Command-line mode module - POLICY layer.
 //!
 //! This module owns all command-line mode state and behavior:

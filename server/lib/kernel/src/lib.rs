@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Core kernel mechanisms for reovim.
 //!
 //! Linux equivalent: `kernel/`

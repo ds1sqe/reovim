@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tetromino game module for reovim - POLICY layer.
 //!
 //! Architecture proof-of-concept: validates that the module/bridge/extension

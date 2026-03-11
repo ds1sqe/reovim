@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! FFI driver for reovim.
 //!
 //! This crate inherently requires unsafe code for FFI operations.

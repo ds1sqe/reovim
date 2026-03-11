@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Session driver for reovim.
 //!
 //! Provides traits and types for session management.

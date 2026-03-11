@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Undo provider driver for reovim.
 //!
 //! This driver defines the interface for per-buffer undo/redo operations.
