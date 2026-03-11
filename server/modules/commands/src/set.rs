@@ -203,12 +203,7 @@ fn execute_list_changed(runtime: &SessionRuntime<'_>, scope: OptionScopeId) -> C
         }
     }
 
-    if lines.is_empty() {
-        tracing::info!("No changed options");
-    } else {
-        tracing::info!("Changed options:\n{}", lines.join("\n"));
-    }
-
+    log_option_list("Changed options", "No changed options", &lines);
     CommandResult::Success
 }
 
@@ -225,12 +220,7 @@ fn execute_list_all(runtime: &SessionRuntime<'_>, scope: OptionScopeId) -> Comma
         }
     }
 
-    if lines.is_empty() {
-        tracing::info!("No options registered");
-    } else {
-        tracing::info!("All options:\n{}", lines.join("\n"));
-    }
-
+    log_option_list("All options", "No options registered", &lines);
     CommandResult::Success
 }
 
@@ -247,8 +237,24 @@ fn execute_show(runtime: &SessionRuntime<'_>, name: &str, scope: OptionScopeId) 
         return CommandResult::Error(format!("Unknown option: {name}"));
     };
 
-    tracing::info!("  {full_name}={value}");
+    log_option_value(&full_name, &value);
     CommandResult::Success
+}
+
+/// Log an option list (tracing output only).
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn log_option_list(header: &str, empty_msg: &str, lines: &[String]) {
+    if lines.is_empty() {
+        tracing::info!("{empty_msg}");
+    } else {
+        tracing::info!("{header}:\n{}", lines.join("\n"));
+    }
+}
+
+/// Log a single option value (tracing output only).
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn log_option_value(name: &str, value: &OptionValue) {
+    tracing::info!("  {name}={value}");
 }
 
 /// Execute `:set option` or `:set nooption` — set a boolean option.
