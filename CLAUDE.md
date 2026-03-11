@@ -292,20 +292,27 @@ This project enforces **100% code coverage** in CI via Codecov status checks.
 
 **IMPORTANT**: Claude Code does NOT automatically enforce plan file naming. You MUST manually ensure plans follow this convention.
 
-**Plan File Convention:**
+**Plan File Convention (directory per issue):**
 ```
-~/.claude/plans/reovim/{ISSUE_NUMBER}-{Version/Phase}-{SUBJECT}.md
+~/.claude/plans/reovim/{ISSUE}/
+├── flight-log.md              # Session handoff (append-only)
+├── 01-{SUBJECT}.md            # First plan (unit of work)
+├── 02-{SUBJECT}.md            # Second plan (different work)
+└── ...
 ```
 
 **Examples:**
-- `489-490-v1-documentation-drift.md` - Issues #489 and #490, version 1
-- `465-phase-12-syntax-drivers.md` - Issue #465, phase 12
-- `417-part3-true-clean-architecture.md` - Issue #417, part 3
+- `567/01-buffer-api-redesign.md` - Issue #567, first plan
+- `567/02-driver-integration.md` - Issue #567, second plan
+- `489/01-documentation-drift.md` - Issue #489, single plan
 
-**Naming Components:**
-- `{ISSUE_NUMBER}` - GitHub issue number(s), use hyphen for multiple (e.g., `489-490`)
-- `{Version/Phase}` - Version (`v1`, `v2`) or phase identifier (`phase-10`, `part-2`)
+**Naming Rules:**
+- `{ISSUE}` - GitHub issue number (directory name)
+- `01-`, `02-` - Sequence number (zero-padded, creation order)
 - `{SUBJECT}` - Brief kebab-case description of the work
+- One plan = one unit of work (NOT revisions — edit in place if approach changes)
+- New file only for genuinely different work
+- Even single-plan issues use directory structure
 
 **Plan Requirements:**
 - Plans must be **self-contained** (works after context compact/clear)
@@ -322,12 +329,70 @@ After creating a plan, **YOU MUST DO** verify and rename to follow the conventio
 
 **Workaround:**
 1. When plan mode creates a file, note the random filename
-2. After exiting plan mode, move to correct path:
- -  random-name plan should be removed
+2. After exiting plan mode, create issue directory and move:
    ```bash
-   mv ~/.claude/plans/{random-name}.md ~/.claude/plans/reovim/{ISSUE}-{VERSION}-{SUBJECT}.md
+   mkdir -p ~/.claude/plans/reovim/{ISSUE}
+   mv ~/.claude/plans/{random-name}.md ~/.claude/plans/reovim/{ISSUE}/01-{SUBJECT}.md
    ```
 3. Continue with countdown/implementation using the correctly named file
+
+### Multi-Flight Workflow
+
+Issues often span multiple Claude Code sessions (flights). Use flight logs to maintain continuity.
+
+**Session Protocol:**
+- **Start of flight**: Read `~/.claude/plans/reovim/{ISSUE}/flight-log.md` before doing anything
+- **End of flight**: Append a flight entry before session ends
+
+**Flight Log Format** (`flight-log.md`):
+
+```markdown
+# Flight Log — Issue #{ISSUE}: {TITLE}
+
+## Current Status
+- **Active Plan**: 02-driver-integration.md
+- **Phase**: In Progress
+- **Last Flight**: 3
+
+---
+
+## Flight 1 — {date}
+
+### Work Done
+- Completed plan 01-buffer-api-redesign.md
+- Implemented BufferApi trait in server/lib/kernel/src/api/buffer.rs
+
+### Decisions
+- Chose trait-based dispatch over enum dispatch (compile-time safety)
+
+### Commits
+- abc1234 feat(kernel): add BufferApi trait (#567)
+
+---
+
+## Flight 2 — {date}
+
+### Work Done
+- Started plan 02-driver-integration.md
+- Completed phases 1-2, phase 3 in progress
+- Stopped at server/lib/drivers/buffer/src/lib.rs:142
+
+### Blockers
+- Found that DriverX needs a new kernel API — created plan 03
+
+### Commits
+- def5678 feat(driver): buffer driver scaffold (#567)
+
+### Next
+- Continue plan 02 phase 3 from server/lib/drivers/buffer/src/lib.rs:142
+- Watch out for: DriverX depends on plan 03 completion
+```
+
+**Rules:**
+- **Current Status** at top — always updated to reflect latest state
+- **Append-only** flight entries — never edit previous flights
+- **"Next" section** only on the latest flight — tells next session exactly where to pick up
+- **Decisions recorded** — prevents re-debating things already decided
 
 ## Build Commands
 
@@ -530,21 +595,10 @@ All must GO before coding starts!
 
 Use `/final-approach [issue]` or run manually:
 
-1. **Sync with upstream (CRUCIAL)**:
-   ```bash
-   git stash && git fetch origin develop && git rebase origin/develop
-   ```
-   - Save work with `git stash` first to avoid rebase conflicts with unstaged changes
-   - **Check upstream changes carefully**: Review what changed with `git log HEAD..origin/develop` and `git diff HEAD..origin/develop` before rebasing
-   - **Use gh cli to check context**: Check recent PRs/issues with `gh pr list`, `gh issue list`, or `gh pr view <number>` to understand upstream changes
-   - Carefully rebase - resolve any conflicts before landing
-   - Contributors own their conflicts
-   - Restore with `git stash pop` after successful rebase
-
-2. **Run Full Check** → `./scripts/check.sh`
+1. **Run Full Check** → `./scripts/check.sh`
    - Format, build, clippy (zero warnings), all tests must pass
 
-3. **Go Poll** (agents in `reentry` mode):
+2. **Go Poll** (agents in `reentry` mode):
    | Agent | Focus | Call |
    |-------|-------|------|
    | `mission-control` | Plan compliance, documentation | *"Mission Control: GO"* |
@@ -556,10 +610,10 @@ Use `/final-approach [issue]` or run manually:
    **Grading:** A+ (exceeds, skip next round) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
    - Each agent writes to `tmp/{ISSUE}/landing/round-{N}/{agent}.md`
    - **Must achieve GO (A or A+) from ALL THREE agents**
-   - If ANY agent reports NO-GO (B or below) → fix issues → go back to Step 2
+   - If ANY agent reports NO-GO (B or below) → fix issues → go back to Step 1
    - Loop until all agents report GO
 
-4. **Create Landing Document** at `tmp/{ISSUE}/landing.md`:
+3. **Create Landing Document** at `tmp/{ISSUE}/landing.md`:
    - **Section 1: Go Poll Summary**
      - Final grades table (all three agents) with links to detailed reports
      - Files changed (new/modified with LOC)
@@ -573,12 +627,37 @@ Use `/final-approach [issue]` or run manually:
      - Files to stage
      - Git commands for user
 
-5. **Update CHANGELOG.md** with correct phase number (match issue title)
+4. **Update CHANGELOG.md** with correct phase number (match issue title)
 
-6. **(Optional) Generate performance report** for version releases:
+5. **(Optional) Generate performance report** for version releases:
    ```bash
    cargo run -p perf-report -- bench -v X.Y.Z
    ```
+
+### Rebase Procedure
+
+Rebase is a **standalone workflow** invoked explicitly by the user — NOT part of Final Approach.
+The user always specifies the rebase target. There is no default.
+
+**Target format:**
+- `origin/develop` — remote branch (fetch + rebase)
+- `develop` — local branch (rebase only, no fetch)
+- `phase-10` — local branch (rebase only)
+- `origin/feature-x` — remote branch (fetch + rebase)
+
+Rule: if target contains `origin/`, fetch first. Otherwise rebase against local only.
+
+**Steps:**
+
+1. User specifies target (e.g., "rebase onto origin/develop")
+2. Check what changed: `git log HEAD..{TARGET}` and `git diff HEAD..{TARGET}`
+3. If remote target (`origin/*`): check context with `gh pr list --state merged --limit 5`
+4. Stash current work: `git stash`
+5. If remote target: `git fetch origin`
+6. Rebase: `git rebase {TARGET}`
+7. Resolve conflicts carefully — contributors own their conflicts
+8. Restore: `git stash pop`
+9. Verify: `./scripts/check.sh`
 
 ### Cross-Session Communication
 

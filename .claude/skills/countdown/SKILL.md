@@ -28,7 +28,7 @@ Countdown is the pre-implementation workflow:
 
 Oracle creates the implementation plan at:
 ```
-~/.claude/plans/reovim/{issue_number}-{subject}.md
+~/.claude/plans/reovim/{ISSUE}/01-{subject}.md
 ```
 
 ### Phase 2: Go Poll
@@ -84,7 +84,7 @@ If any agent gives below A:
 When invoked, you MUST:
 
 1. Determine the issue number from context (git branch, user input, or ask)
-2. Check if a plan exists at `~/.claude/plans/reovim/{issue}-*.md`
+2. Check if a plan exists at `~/.claude/plans/reovim/{ISSUE}/`
 3. If no plan exists or plan needs refinement:
    - Launch `oracle` agent (Opus) to create/refine the plan
 4. Determine the round number (start at 1, increment for re-reviews)
@@ -104,7 +104,7 @@ You are Oracle - the far-seeing architect.
 2. Explore the codebase to understand current architecture
 3. Design a phased implementation plan
 
-Write the plan to: ~/.claude/plans/reovim/{ISSUE}-{subject}.md
+Write the plan to: ~/.claude/plans/reovim/{ISSUE}/01-{subject}.md
 
 Include:
 - Summary and approach
@@ -124,7 +124,7 @@ You are Mission Control validating the plan before launch.
 
 Focus: Plan completeness and clarity.
 
-1. Read the plan at ~/.claude/plans/reovim/{ISSUE}-*.md
+1. Read the plan(s) at ~/.claude/plans/reovim/{ISSUE}/
 2. Verify all phases have clear acceptance criteria
 3. Check dependencies between phases
 4. Ensure scope is well-bounded
@@ -142,7 +142,7 @@ You are Telemetry validating the test strategy.
 
 Focus: Test coverage planning.
 
-1. Read the plan at ~/.claude/plans/reovim/{ISSUE}-*.md
+1. Read the plan(s) at ~/.claude/plans/reovim/{ISSUE}/
 2. Verify test strategy covers happy paths, errors, edge cases
 3. Check that critical functionality has test targets
 4. Identify any testing gaps
@@ -160,7 +160,7 @@ You are Flight Director validating the architecture.
 
 Focus: Unix philosophy and layer boundaries.
 
-1. Read the plan at ~/.claude/plans/reovim/{ISSUE}-*.md
+1. Read the plan(s) at ~/.claude/plans/reovim/{ISSUE}/
 2. Verify mechanism vs policy separation
 3. Check layer boundaries are respected
 4. Assess complexity and simplicity

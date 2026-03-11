@@ -71,7 +71,7 @@ Help with:
 
 ### Phase 1: Plan Acquisition
 
-1. **Locate the plan file** (typically in `~/.claude/plans/` or `tmp/`)
+1. **Locate the plan files** (at `~/.claude/plans/reovim/{ISSUE}/` or `tmp/`)
 2. **Parse all planned phases** into a checklist
 3. **Identify acceptance criteria** for each phase
 4. **Note any dependencies** between phases

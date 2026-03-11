@@ -105,10 +105,14 @@ Before finalizing:
 
 Plans are written to:
 ```
-~/.claude/plans/reovim/{issue_number}-{subject}.md
+~/.claude/plans/reovim/{ISSUE}/
+├── flight-log.md              # Session handoff (append-only)
+├── 01-{subject}.md            # First plan (unit of work)
+├── 02-{subject}.md            # Second plan (different work)
+└── ...
 ```
 
-Example: `~/.claude/plans/reovim/254-wire-undo-registry.md`
+Example: `~/.claude/plans/reovim/254/01-wire-undo-registry.md`
 
 ## Architectural Principles
 

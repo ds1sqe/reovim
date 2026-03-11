@@ -17,12 +17,11 @@ The landing sequence for completing a mission. Runs the Go Poll to get status fr
 
 Final Approach is the end-of-mission workflow:
 
-1. **Sync** - Fetch and rebase with upstream
-2. **Check** - Run `./scripts/check.sh`
-3. **Go Poll** - Review agents report status in `reentry` mode
-4. **Landing Doc** - Create summary document
-5. **CHANGELOG** - Update CHANGELOG.md with correct phase/version
-6. **Commit** - Ready for merge
+1. **Check** - Run `./scripts/check.sh`
+2. **Go Poll** - Review agents report status in `reentry` mode
+3. **Landing Doc** - Create summary document
+4. **CHANGELOG** - Update CHANGELOG.md with correct phase/version
+5. **Commit** - Ready for merge
 
 ## Go Poll
 
@@ -112,7 +111,7 @@ You are Mission Control reporting status for landing.
 
 Focus: Plan compliance and documentation quality.
 
-1. Find the plan file (check ~/.claude/plans/reovim/ or tmp/)
+1. Find the plan files (check ~/.claude/plans/reovim/{ISSUE}/ or tmp/)
 2. Verify all planned phases are implemented
 3. Audit documentation quality (module docs, API docs, guides)
 4. Check CHANGELOG.md for completeness
