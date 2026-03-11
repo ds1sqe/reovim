@@ -25,6 +25,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Parallel check.sh (#588)**: Rewrite `scripts/check.sh` with parallel execution
+  (clippy and tests run concurrently using separate CARGO_TARGET_DIR), CLI modes
+  (`--quick`, `--sequential`, `--clean-cache`), structured report generation
+  (`tmp/check-report.md`), and per-step log capture (`tmp/check-logs/`). Removes
+  3 redundant steps and 4 stale package excludes. Also cleans stale excludes from
+  `coverage.sh` and `coverage-all.sh`.
+
+- **CI build cache fix (#588)**: Fix broken build cache in CI by using
+  `cargo llvm-cov show-env --sh` in build steps to match RUSTC_WRAPPER fingerprints.
+  Switch cache keys from `github.run_id` (never reused) to `hashFiles('Cargo.lock')`
+  (cross-PR reuse). Replace `apt-get install protobuf-compiler` with
+  `arduino/setup-protoc@v3`. Merge fmt into lint job, split MSRV to non-blocking
+  parallel job checking key crates only (`reovim-app`, `reovim-kernel`, `reovim-server`).
+
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
   `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and

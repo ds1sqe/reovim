@@ -130,6 +130,12 @@ cargo clippy             # Run linter
 # Run tests for a specific crate
 cargo test -p reovim-kernel
 
+# Pre-commit check script
+./scripts/check.sh                # Full parallel check (fmt + clippy || tests)
+./scripts/check.sh --quick        # Format + clippy only (fast dev iteration)
+./scripts/check.sh --sequential   # Sequential execution (debugging / low-memory)
+./scripts/check.sh --clean-cache  # Remove clippy build cache (target/check-clippy)
+
 # Generate performance report
 cargo run -p perf-report -- bench -v X.Y.Z
 ```
