@@ -34,7 +34,6 @@ members = [
     "server/modules/commands",
     "server/modules/keymap",
     "server/modules/mode-manager",
-    "server/modules/options",
     "server/modules/buffer-ops",
     "server/modules/buffer-simple",
     "server/modules/scratch-buffer",
@@ -221,7 +220,6 @@ reovim-module-textobjects = { path = "./server/modules/textobjects", version = "
 reovim-module-commands = { path = "./server/modules/commands", version = "0.10.0-dev" }
 reovim-module-keymap = { path = "./server/modules/keymap", version = "0.10.0-dev" }
 reovim-module-mode-manager = { path = "./server/modules/mode-manager", version = "0.10.0-dev" }
-reovim-module-options = { path = "./server/modules/options", version = "0.10.0-dev" }
 reovim-module-buffer-ops = { path = "./server/modules/buffer-ops", version = "0.10.0-dev" }
 reovim-module-buffer-simple = { path = "./server/modules/buffer-simple", version = "0.10.0-dev" }
 reovim-module-scratch-buffer = { path = "./server/modules/scratch-buffer", version = "0.10.0-dev" }

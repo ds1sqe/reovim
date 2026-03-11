@@ -4,6 +4,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Removed
+
+- **Orphaned OptionsModule (#575)**: Remove unused `reovim-module-options` crate. It was
+  a pre-kernel leftover not loaded by `DefaultsModule` and conflicting with the kernel's
+  `OptionRegistry` mechanism. If `virtualedit` support is needed, it should be registered
+  as an `OptionSpec` in the vim module.
+
 ### Fixed
 
 - **Markdown scroll crash (#565)**: Fix character/byte column mismatch in conceal
