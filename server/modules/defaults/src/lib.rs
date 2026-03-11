@@ -59,7 +59,7 @@ use {
     reovim_module_vim_range_finder as vim_range_finder, reovim_module_vim_snippet as vim_snippet,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
-    reovim_picker_grep as picker_grep,
+    reovim_picker_grep as picker_grep, reovim_picker_options as picker_options,
 };
 
 /// Default modules bundle.
@@ -119,6 +119,7 @@ impl DefaultsModule {
             Box::new(picker_buffers::PickerBuffersModule::new()),
             Box::new(picker_commands::PickerCommandsModule::new()),
             Box::new(picker_grep::PickerGrepModule::new()),
+            Box::new(picker_options::PickerOptionsModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
             // Vim-microscope adapter - bridges vim keybindings to picker commands
@@ -200,6 +201,7 @@ impl Module for DefaultsModule {
             ModuleId::new("picker-buffers"),
             ModuleId::new("picker-commands"),
             ModuleId::new("picker-grep"),
+            ModuleId::new("picker-options"),
             // Picker orchestration (#522)
             ModuleId::new("microscope"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
@@ -291,7 +293,7 @@ mod tests {
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (3): cmdline, whichkey, notification
-        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -301,8 +303,8 @@ mod tests {
         // Explorer (1): explorer
         // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
         // Tetromino (1): tetromino
-        // Total: 34 modules
-        assert_eq!(deps.len(), 34);
+        // Total: 35 modules
+        assert_eq!(deps.len(), 35);
     }
 
     #[test]
@@ -312,7 +314,7 @@ mod tests {
         // Utility modules (2): keymap, commands
         // Policy modules (3): editor, motions, vim
         // Extension bridge modules (3): cmdline, whichkey, notification
-        // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+        // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
         // Picker orchestration (1): microscope
         // Syntax modules (2): treesitter-rust, treesitter-markdown
         // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -323,7 +325,7 @@ mod tests {
         // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
         // Tetromino (1): tetromino
         // Total: 33 modules
-        assert_eq!(modules.len(), 34);
+        assert_eq!(modules.len(), 35);
     }
 
     #[test]

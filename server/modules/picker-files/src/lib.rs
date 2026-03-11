@@ -261,6 +261,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         }
     }
 

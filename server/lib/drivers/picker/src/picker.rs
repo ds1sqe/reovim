@@ -167,6 +167,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         let items = picker.items(&ctx, &services());
         assert_eq!(items.len(), 1);
@@ -181,6 +182,7 @@ mod tests {
             query: "search".to_owned(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         let items = picker.items(&ctx, &services());
         assert!(items.is_empty());

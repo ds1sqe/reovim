@@ -23,7 +23,7 @@ mod registry;
 
 pub use {
     action::PickerAction,
-    context::{BufferInfo, CommandInfo, PickerContext},
+    context::{BufferInfo, CommandInfo, OptionInfo, PickerContext},
     engine::{EngineItem, PickerEngine, TickStatus, push_item, push_items},
     item::{PickerData, PickerItem},
     picker::Picker,

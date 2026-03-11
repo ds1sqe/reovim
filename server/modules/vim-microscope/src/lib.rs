@@ -89,6 +89,10 @@ impl Module for VimMicroscopeModule {
                 .with_modes(&["vim:normal"])
                 .with_category("picker")
                 .with_description("Open command picker"),
+            KeybindingRegistration::new("<Space>o", microscope::OPEN_OPTIONS)
+                .with_modes(&["vim:normal"])
+                .with_category("picker")
+                .with_description("Open option picker"),
         ]
     }
 }
@@ -152,7 +156,7 @@ mod tests {
     #[test]
     fn keybindings_count() {
         let module = VimMicroscopeModule::new();
-        assert_eq!(module.keybindings().len(), 4);
+        assert_eq!(module.keybindings().len(), 5);
     }
 
     #[test]
@@ -163,6 +167,7 @@ mod tests {
         assert!(keys.contains(&"<Space>b"));
         assert!(keys.contains(&"<Space>g"));
         assert!(keys.contains(&"<Space>;"));
+        assert!(keys.contains(&"<Space>o"));
     }
 
     #[test]
