@@ -33,12 +33,7 @@ impl SubprocessGitProvider {
 impl GitProvider for SubprocessGitProvider {
     fn current_branch(&self, cwd: &Path) -> Option<String> {
         let output = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-        let branch = output.trim().to_owned();
-        if branch.is_empty() {
-            None
-        } else {
-            Some(branch)
-        }
+        parse_branch_name(&output)
     }
 
     fn branches(&self, cwd: &Path) -> Vec<BranchInfo> {
@@ -170,6 +165,13 @@ impl GitProvider for SubprocessGitProvider {
             .filter_map(parse_hunk_header)
             .collect()
     }
+}
+
+/// Parse the output of `git rev-parse --abbrev-ref HEAD`.
+/// Returns `None` if the output is empty (e.g. bare repo).
+fn parse_branch_name(output: &str) -> Option<String> {
+    let branch = output.trim().to_owned();
+    if branch.is_empty() { None } else { Some(branch) }
 }
 
 /// Run a git command and return stdout on success.
@@ -322,5 +324,162 @@ mod tests {
         // Should return None for an invalid git command
         let result = run_git(Path::new("."), &["not-a-real-command"]);
         assert!(result.is_none());
+    }
+
+    // -- Integration tests using the real repo --
+    // These tests run against the actual git repository we're in.
+
+    /// Helper to get the repo root.
+    fn repo_root() -> PathBuf {
+        let output = Command::new("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .output()
+            .expect("git available");
+        PathBuf::from(String::from_utf8(output.stdout).unwrap().trim())
+    }
+
+    #[test]
+    fn current_branch_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        let branch = provider.current_branch(&root);
+        // We're in a git repo, so this should return something
+        assert!(branch.is_some());
+        assert!(!branch.unwrap().is_empty());
+    }
+
+    #[test]
+    fn current_branch_empty_on_nonrepo() {
+        let provider = SubprocessGitProvider::new();
+        let result = provider.current_branch(Path::new("/tmp"));
+        // /tmp is not a git repo — returns None
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn branches_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        let branches = provider.branches(&root);
+        // A real repo has at least one branch
+        assert!(!branches.is_empty());
+        // Exactly one branch should be current
+        let current_count = branches.iter().filter(|b| b.is_current).count();
+        assert_eq!(current_count, 1);
+        // All branch names are non-empty
+        assert!(branches.iter().all(|b| !b.name.is_empty()));
+    }
+
+    #[test]
+    fn branches_empty_on_nonrepo() {
+        let provider = SubprocessGitProvider::new();
+        assert!(provider.branches(Path::new("/tmp")).is_empty());
+    }
+
+    #[test]
+    fn status_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        // Status should not panic — may be empty if working tree is clean
+        let _ = provider.status(&root);
+    }
+
+    #[test]
+    fn status_empty_on_nonrepo() {
+        let provider = SubprocessGitProvider::new();
+        assert!(provider.status(Path::new("/tmp")).is_empty());
+    }
+
+    #[test]
+    fn log_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        let entries = provider.log(&root, "", 5);
+        // A real repo with commits should return entries
+        assert!(!entries.is_empty());
+        assert!(entries.len() <= 5);
+        // Each entry should have non-empty fields
+        for entry in &entries {
+            assert!(!entry.hash.is_empty());
+            assert!(!entry.short_hash.is_empty());
+            assert!(!entry.author.is_empty());
+            assert!(!entry.date.is_empty());
+        }
+    }
+
+    #[test]
+    fn log_with_query() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        // Query for something that likely exists
+        let entries = provider.log(&root, "feat", 10);
+        // May be empty if no commit message contains "feat", but shouldn't panic
+        for entry in &entries {
+            assert!(!entry.hash.is_empty());
+        }
+    }
+
+    #[test]
+    fn log_empty_on_nonrepo() {
+        let provider = SubprocessGitProvider::new();
+        assert!(provider.log(Path::new("/tmp"), "", 10).is_empty());
+    }
+
+    #[test]
+    fn stash_list_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        // Stash may be empty but should not panic
+        let _ = provider.stash_list(&root);
+    }
+
+    #[test]
+    fn stash_list_empty_on_nonrepo() {
+        let provider = SubprocessGitProvider::new();
+        assert!(provider.stash_list(Path::new("/tmp")).is_empty());
+    }
+
+    #[test]
+    fn diff_hunks_in_repo() {
+        let provider = SubprocessGitProvider::new();
+        let root = repo_root();
+        // Diff on a known file — may return empty if no changes
+        let path = root.join("Cargo.toml");
+        let _ = provider.diff_hunks(&path);
+    }
+
+    #[test]
+    fn diff_hunks_nonexistent_file() {
+        let provider = SubprocessGitProvider::new();
+        let hunks = provider.diff_hunks(Path::new("/nonexistent/file.rs"));
+        assert!(hunks.is_empty());
+    }
+
+    #[test]
+    fn run_git_success() {
+        let root = repo_root();
+        let result = run_git(&root, &["rev-parse", "--git-dir"]);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains(".git"));
+    }
+
+    #[test]
+    fn run_git_failed_command() {
+        let root = repo_root();
+        // git log on a non-existent ref should fail
+        let result = run_git(&root, &["log", "--format=%H", "nonexistent-ref-abc123"]);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_branch_name_nonempty() {
+        assert_eq!(parse_branch_name("main\n"), Some("main".to_owned()));
+        assert_eq!(parse_branch_name("  feature/foo  \n"), Some("feature/foo".to_owned()));
+    }
+
+    #[test]
+    fn parse_branch_name_empty() {
+        assert!(parse_branch_name("").is_none());
+        assert!(parse_branch_name("  \n").is_none());
     }
 }
