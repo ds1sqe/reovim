@@ -626,10 +626,7 @@ mod tests {
 
         let mut module = VimModule::new();
         let result = module.init(&ctx);
-        assert!(
-            matches!(result, ProbeResult::Failed(_)),
-            "init should fail on duplicate option"
-        );
+        assert!(matches!(result, ProbeResult::Failed(_)), "init should fail on duplicate option");
     }
 
     // ========================================================================

@@ -363,10 +363,7 @@ mod tests {
 
         let mut module = MicroscopeModule::new();
         let result = module.init(&ctx);
-        assert!(
-            matches!(result, ProbeResult::Failed(_)),
-            "init should fail on duplicate option"
-        );
+        assert!(matches!(result, ProbeResult::Failed(_)), "init should fail on duplicate option");
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
