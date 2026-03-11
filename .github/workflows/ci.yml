@@ -148,13 +148,15 @@ jobs:
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run unit tests with coverage
         run: |
-          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest --lib --workspace \
+          export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} nextest run --lib --workspace \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
             --exclude perf-report \
-            --exclude reovim-server \
+            --exclude reovim-server
+          cargo +${{ env.NIGHTLY }} llvm-cov report \
             --lcov --output-path mcdc-unit.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh mcdc-unit.info
@@ -191,13 +193,15 @@ jobs:
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run integration tests with coverage
         run: |
-          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest --test '*' --workspace \
+          export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} nextest run --test '*' --workspace \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
             --exclude perf-report \
-            --exclude reovim-server \
+            --exclude reovim-server
+          cargo +${{ env.NIGHTLY }} llvm-cov report \
             --lcov --output-path mcdc-integration.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh mcdc-integration.info
@@ -234,8 +238,10 @@ jobs:
         run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run server tests with coverage
         run: |
-          RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
-          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest -p reovim-server \
+          export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} nextest run -p reovim-server
+          cargo +${{ env.NIGHTLY }} llvm-cov report \
             --lcov --output-path server-lcov.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh server-lcov.info
