@@ -188,6 +188,10 @@ impl Module for VimModule {
         Version::new(0, 9, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("editor"), ModuleId::new("motions")]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register default mode provider with typed key (Epic #417)
         let mode_registry = ctx.services.get_or_create::<ModeProviderRegistry>();

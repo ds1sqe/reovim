@@ -59,6 +59,10 @@ impl Module for VimCompletionModule {
         Version::new(0, 1, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("vim"), ModuleId::new("completion")]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let store = ctx.services.get_or_create::<KeybindingStore>();
         store.add_all(self.keybindings());

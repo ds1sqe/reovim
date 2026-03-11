@@ -148,6 +148,10 @@ impl Module for SnippetModule {
         Version::new(0, 1, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("vim-snippet")]
+    }
+
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // 1. Load snippet files from data directory (multi-source hierarchy)

@@ -22,11 +22,12 @@
 //!
 //! The `SessionState` then queries these registries via `ServiceRegistry`.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
+    reovim_driver_depgraph::{DepEntry, DependencyOrder, resolve_dependencies},
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
@@ -36,8 +37,8 @@ use {
     },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
-        OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
+        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, ModuleState,
+        MotionEngine, OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
     reovim_server::{
@@ -45,6 +46,16 @@ use {
         SessionState, SyntaxSessionState,
     },
 };
+
+/// Module with tracked lifecycle state (#582).
+///
+/// Wraps a `Box<dyn Module>` with `ModuleState` FSM tracking.
+/// Used during bootstrap to track init results and enable
+/// `on_all_loaded()` to skip failed modules.
+struct TrackedModule {
+    module: Box<dyn Module>,
+    state: ModuleState,
+}
 
 /// Collect extension bridges from modules via `BridgeProvider`.
 ///
@@ -60,11 +71,13 @@ use {
 pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
     use reovim_driver_session::bridges::{BridgeProvider, BridgeRegistry};
 
-    // Initialize modules in a temporary ServiceRegistry just for bridge collection.
+    // Initialize modules in dependency order (#582).
+    // This is a separate init pass (bridges are collected once globally,
+    // sessions are created per-connection).
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let module_ctx = create_module_context(kernel, Arc::clone(&services));
-    initialize_modules(&module_ctx);
+    let _tracked = initialize_modules(&module_ctx);
 
     let mut registry = BridgeRegistry::new();
     if let Some(provider) = services.get::<BridgeProvider>() {
@@ -107,8 +120,15 @@ pub fn create_session_state() -> SessionState {
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 
-    // Initialize all default modules
-    initialize_modules(&module_ctx);
+    // Initialize all modules in dependency order (#582)
+    let mut tracked = initialize_modules(&module_ctx);
+
+    // Wire on_all_loaded lifecycle hook (#582)
+    call_on_all_loaded(&mut tracked, &module_ctx);
+
+    // Modules are dropped here — exit() lifecycle requires a ManagedSession
+    // wrapper (future work: no module currently overrides exit() meaningfully).
+    drop(tracked);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
@@ -343,7 +363,11 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
     ModuleContext::new(kernel, services, data_dir, cache_dir)
 }
 
-/// Initialize all default modules plus any extra modules from environment.
+/// Initialize all modules in dependency-resolved order (#582).
+///
+/// Collects default + extra modules, resolves dependencies via Kahn's
+/// topological sort, and initializes in dependency order. Returns tracked
+/// modules for the `on_all_loaded()` lifecycle hook.
 ///
 /// Modules self-register their services during `init()`:
 /// - Resolvers → `ResolverRegistry`
@@ -351,24 +375,90 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_modules(ctx: &ModuleContext) {
-    let modules = DefaultsModule::create_modules();
+fn initialize_modules(ctx: &ModuleContext) -> Vec<TrackedModule> {
+    let mut all_modules = DefaultsModule::create_modules();
+    all_modules.extend(collect_extra_modules());
 
-    tracing::info!(count = modules.len(), "Initializing default modules");
+    tracing::info!(count = all_modules.len(), "Initializing modules");
 
-    for mut module in modules {
-        init_single_module(&mut *module, ctx);
+    // Save hardcoded order for shadow-mode comparison
+    let hardcoded_order: Vec<ModuleId> = all_modules.iter().map(|m| m.id()).collect();
+
+    // Build dependency entries from module declarations
+    let entries: Vec<DepEntry<ModuleId>> = all_modules
+        .iter()
+        .map(|m| DepEntry {
+            key: m.id(),
+            required: m.dependencies(),
+            optional: m.optional_dependencies(),
+        })
+        .collect();
+
+    // Resolve dependency order via Kahn's topological sort
+    let dep_order = match resolve_dependencies(&entries) {
+        Ok(order) => {
+            tracing::info!(count = order.order.len(), "Resolved module dependency order");
+            order
+        }
+        Err(e) => {
+            // TRANSITION SAFETY: Fallback to input order. This is UNSAFE for
+            // Tier 4 modules (vim-snippet, vim-range-finder, snippet,
+            // range-finder) which call .expect() during init and will panic
+            // if their deps aren't init'd first. Remove this fallback after
+            // integration tests verify toposort (#582).
+            tracing::error!(%e, "Dependency resolution failed, using input order");
+            DependencyOrder {
+                order: hardcoded_order.clone(),
+                dependents: HashMap::new(),
+            }
+        }
+    };
+
+    // Shadow-mode: compare relative ordering of dependent pairs (#582)
+    log_shadow_comparison(&hardcoded_order, &dep_order.order, &entries);
+
+    // Index modules by ID for O(1) lookup during ordered init
+    let mut module_map: HashMap<ModuleId, Box<dyn Module>> = all_modules
+        .into_iter()
+        .map(|m| {
+            let id = m.id();
+            (id, m)
+        })
+        .collect();
+
+    // Initialize in dependency order
+    let mut tracked = Vec::with_capacity(dep_order.order.len());
+    for id in &dep_order.order {
+        if let Some(module) = module_map.remove(id) {
+            let mut tm = TrackedModule {
+                state: ModuleState::Loaded,
+                module,
+            };
+            tm.state = ModuleState::Initializing;
+            let success = init_single_module(&mut *tm.module, ctx);
+            tm.state = if success {
+                ModuleState::Running
+            } else {
+                ModuleState::Failed("init returned non-success".into())
+            };
+            tracked.push(tm);
+        }
     }
 
-    // Load extra modules from REOVIM_EXTRA_MODULES env var
-    initialize_extra_modules(ctx);
+    let running = tracked
+        .iter()
+        .filter(|t| t.state == ModuleState::Running)
+        .count();
+    tracing::info!(total = tracked.len(), running, "Module initialization complete");
 
-    tracing::info!("Module initialization complete");
+    tracked
 }
 
 /// Initialize a single module, logging the result.
+///
+/// Returns `true` if the module initialized successfully.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) {
+fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) -> bool {
     let id = module.id();
     let name = module.name();
 
@@ -377,20 +467,38 @@ fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) {
     match module.init(ctx) {
         ProbeResult::Success => {
             tracing::info!(%id, name, "Module initialized successfully");
+            true
         }
         ProbeResult::Defer(msg) => {
             tracing::warn!(%id, name, %msg, "Module deferred initialization");
+            false
         }
         ProbeResult::Failed(err) => {
             tracing::error!(%id, name, ?err, "Module initialization failed");
+            false
         }
     }
 }
 
-/// Initialize extra modules from `REOVIM_EXTRA_MODULES` environment variable.
+/// Call `on_all_loaded()` on all running modules (#582).
 ///
-/// Parses a comma-separated list of module names and initializes each.
-/// Unknown names are logged as warnings and skipped.
+/// Invoked after all modules have completed `init()`. Currently a no-op
+/// for all modules (none override this hook), but wires the mechanism
+/// so future modules can use it for cross-module queries.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn call_on_all_loaded(modules: &mut [TrackedModule], ctx: &ModuleContext) {
+    for tm in modules.iter_mut() {
+        if tm.state == ModuleState::Running {
+            tm.module.on_all_loaded(ctx);
+        }
+    }
+    tracing::info!(count = modules.len(), "on_all_loaded complete");
+}
+
+/// Collect extra modules from `REOVIM_EXTRA_MODULES` environment variable.
+///
+/// Returns modules without initializing them — they are included in the
+/// dependency graph and initialized in order alongside default modules.
 ///
 /// # Example
 ///
@@ -398,9 +506,9 @@ fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) {
 /// REOVIM_EXTRA_MODULES=textobjects cargo run -- server --grpc 0
 /// ```
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_extra_modules(ctx: &ModuleContext) {
+fn collect_extra_modules() -> Vec<Box<dyn Module>> {
     let Ok(extra) = std::env::var("REOVIM_EXTRA_MODULES") else {
-        return;
+        return Vec::new();
     };
 
     let names: Vec<&str> = extra
@@ -409,16 +517,66 @@ fn initialize_extra_modules(ctx: &ModuleContext) {
         .filter(|s| !s.is_empty())
         .collect();
     if names.is_empty() {
-        return;
+        return Vec::new();
     }
 
     tracing::info!(count = names.len(), ?names, "Loading extra modules");
 
-    for name in names {
-        if let Some(mut module) = create_extra_module(name) {
-            init_single_module(&mut *module, ctx);
-        } else {
-            tracing::warn!(name, "Unknown extra module, skipping");
+    names
+        .into_iter()
+        .filter_map(|name| {
+            let module = create_extra_module(name);
+            if module.is_none() {
+                tracing::warn!(name, "Unknown extra module, skipping");
+            }
+            module
+        })
+        .collect()
+}
+
+/// Compare relative ordering of dependent pairs between hardcoded and
+/// computed orderings (#582 shadow-mode).
+///
+/// Only logs violations — does NOT compare absolute positions (which
+/// produces false positives from valid toposort reorderings of independent
+/// modules). Will be removed after transition is verified.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn log_shadow_comparison(
+    hardcoded: &[ModuleId],
+    computed: &[ModuleId],
+    entries: &[DepEntry<ModuleId>],
+) {
+    let hardcoded_pos: HashMap<&ModuleId, usize> = hardcoded
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id, i))
+        .collect();
+    let computed_pos: HashMap<&ModuleId, usize> =
+        computed.iter().enumerate().map(|(i, id)| (id, i)).collect();
+
+    for entry in entries {
+        for dep in &entry.required {
+            if let (Some(&h_dep), Some(&h_mod), Some(&c_dep), Some(&c_mod)) = (
+                hardcoded_pos.get(dep),
+                hardcoded_pos.get(&entry.key),
+                computed_pos.get(dep),
+                computed_pos.get(&entry.key),
+            ) {
+                if c_dep >= c_mod {
+                    tracing::error!(
+                        dep = %dep,
+                        module = %entry.key,
+                        "ORDERING BUG: dep not before module in computed order"
+                    );
+                }
+                if h_dep < h_mod && c_dep >= c_mod {
+                    tracing::warn!(
+                        dep = %dep,
+                        module = %entry.key,
+                        "Regression: hardcoded order was correct, computed is wrong"
+                    );
+                }
+            }
         }
     }
 }

@@ -128,9 +128,14 @@ fn test_command_provider_matches_all_commands() {
 // =========================================================================
 
 #[test]
-fn test_dependencies_default_empty() {
+fn test_dependencies() {
     let module = SnippetModule::new();
-    assert!(module.dependencies().is_empty());
+    let deps: Vec<String> = module
+        .dependencies()
+        .iter()
+        .map(|id| id.as_str().to_string())
+        .collect();
+    assert_eq!(deps, vec!["vim-snippet"]);
 }
 
 // =========================================================================

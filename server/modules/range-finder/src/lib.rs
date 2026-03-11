@@ -61,6 +61,10 @@ impl Module for RangeFinderModule {
         Version::new(0, 1, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("vim-range-finder")]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Register bridges (#524)
         let provider = ctx

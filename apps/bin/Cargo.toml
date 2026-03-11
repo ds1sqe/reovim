@@ -39,6 +39,9 @@ reovim-module-vim = { workspace = true }
 # Extra modules available via REOVIM_EXTRA_MODULES env var
 reovim-module-textobjects = { workspace = true }
 
+# Dependency resolution for module init ordering (#582)
+reovim-driver-depgraph = { workspace = true }
+
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
 

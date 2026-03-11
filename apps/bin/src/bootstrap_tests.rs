@@ -18,7 +18,7 @@ fn test_modules_register_services() {
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
 
-    initialize_modules(&ctx);
+    let _tracked = initialize_modules(&ctx);
 
     // After module initialization, services should be registered
     // Check for ResolverRegistry (registered by VimModule)
@@ -36,7 +36,7 @@ fn test_resolve_mode_str_valid() {
         let services = Arc::new(ServiceRegistry::new());
         let kernel = create_kernel_context(Arc::clone(&services));
         let ctx = create_module_context(kernel, Arc::clone(&services));
-        initialize_modules(&ctx);
+        let _tracked = initialize_modules(&ctx);
         let (mode_registry, _, _, _) = extract_registries(&services);
         mode_registry
     };
@@ -95,4 +95,72 @@ fn test_create_extra_module_textobjects() {
 fn test_create_extra_module_unknown() {
     assert!(create_extra_module("nonexistent").is_none());
     assert!(create_extra_module("").is_none());
+}
+
+#[test]
+fn test_all_module_deps_resolve() {
+    // Verify all default modules form a valid dependency graph (#582)
+    let modules = DefaultsModule::create_modules();
+    let entries: Vec<DepEntry<ModuleId>> = modules
+        .iter()
+        .map(|m| DepEntry {
+            key: m.id(),
+            required: m.dependencies(),
+            optional: m.optional_dependencies(),
+        })
+        .collect();
+    let result = resolve_dependencies(&entries);
+    assert!(result.is_ok(), "Module dependency graph has errors: {result:?}");
+    let order = result.unwrap();
+    assert_eq!(order.order.len(), modules.len());
+}
+
+#[test]
+fn test_tier_ordering() {
+    // Verify dependency order constraints (#582)
+    let modules = DefaultsModule::create_modules();
+    let entries: Vec<DepEntry<ModuleId>> = modules
+        .iter()
+        .map(|m| DepEntry {
+            key: m.id(),
+            required: m.dependencies(),
+            optional: m.optional_dependencies(),
+        })
+        .collect();
+    let order = resolve_dependencies(&entries).unwrap();
+    let pos = |name: &str| {
+        order
+            .order
+            .iter()
+            .position(|id| id.as_str() == name)
+            .unwrap()
+    };
+
+    // vim must come after editor and motions
+    assert!(pos("editor") < pos("vim"), "editor must init before vim");
+    assert!(pos("motions") < pos("vim"), "motions must init before vim");
+    // adapters after vim
+    assert!(pos("vim") < pos("vim-snippet"), "vim must init before vim-snippet");
+    assert!(pos("vim") < pos("vim-range-finder"), "vim must init before vim-range-finder");
+    // snippet after vim-snippet, range-finder after vim-range-finder
+    assert!(pos("vim-snippet") < pos("snippet"), "vim-snippet must init before snippet");
+    assert!(
+        pos("vim-range-finder") < pos("range-finder"),
+        "vim-range-finder must init before range-finder"
+    );
+}
+
+#[test]
+fn test_on_all_loaded_wired() {
+    // Verify on_all_loaded() is called without panic (#582)
+    let services = Arc::new(ServiceRegistry::new());
+    let kernel = create_kernel_context(Arc::clone(&services));
+    let ctx = create_module_context(kernel, Arc::clone(&services));
+    let mut tracked = initialize_modules(&ctx);
+    // Should not panic — currently no-op for all modules
+    call_on_all_loaded(&mut tracked, &ctx);
+    // Verify all modules are in Running state
+    for tm in &tracked {
+        assert_eq!(tm.state, ModuleState::Running);
+    }
 }

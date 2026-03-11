@@ -25,6 +25,7 @@ members = [
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
     "server/lib/drivers/completion",
+    "server/lib/drivers/depgraph",
 
     # Server modules
     "server/modules/vim",
@@ -195,6 +196,7 @@ reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.10.0-dev" 
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.10.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.10.0-dev" }
 reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.10.0-dev" }
+reovim-driver-depgraph = { path = "./server/lib/drivers/depgraph", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }

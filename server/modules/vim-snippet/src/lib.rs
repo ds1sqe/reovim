@@ -64,6 +64,10 @@ impl Module for VimSnippetModule {
         Version::new(0, 1, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("vim")]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Resolve vim:insert and register as SnippetParentMode for snippet
         let modes = ctx.services.get_or_create::<ModeInfoStore>();

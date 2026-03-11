@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Server module dependency resolution (#582)**: New `reovim-driver-depgraph` crate providing
+  generic Kahn's topological sort for dependency resolution. 9 modules declare explicit
+  `dependencies()` (vim, vim-microscope, vim-lsp, vim-completion, vim-explorer, vim-snippet,
+  vim-range-finder, snippet, range-finder). Bootstrap uses toposort-ordered initialization
+  instead of hardcoded Vec position. `on_all_loaded()` lifecycle hook wired for all Running
+  modules. `TrackedModule` with `ModuleState` FSM tracks init state. Shadow-mode logging
+  compares relative ordering of dependent pairs during transition.
+
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
   `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,

@@ -65,6 +65,10 @@ impl Module for VimRangeFinderModule {
         Version::new(0, 1, 0)
     }
 
+    fn dependencies(&self) -> Vec<ModuleId> {
+        vec![ModuleId::new("vim")]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         // Resolve vim:normal and register as JumpParentMode for range-finder
         let modes = ctx.services.get_or_create::<ModeInfoStore>();

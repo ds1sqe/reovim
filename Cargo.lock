@@ -1855,6 +1855,7 @@ dependencies = [
  "reovim-client-tui",
  "reovim-driver-buffer",
  "reovim-driver-command",
+ "reovim-driver-depgraph",
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
@@ -1988,6 +1989,10 @@ dependencies = [
  "nucleo",
  "reovim-kernel",
 ]
+
+[[package]]
+name = "reovim-driver-depgraph"
+version = "0.10.0-dev"
 
 [[package]]
 name = "reovim-driver-display"
