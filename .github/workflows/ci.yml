@@ -64,10 +64,10 @@ jobs:
           components: llvm-tools-preview
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Build workspace + tests (instrumented)
+      - name: Build workspace + tests + bins (instrumented)
         run: |
           RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo build --workspace --tests \
+          cargo build --workspace --tests --bins \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
@@ -99,10 +99,10 @@ jobs:
           components: llvm-tools-preview
       - name: Install protoc
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-      - name: Build server + tests (instrumented)
+      - name: Build server + app binary + tests (instrumented)
         run: |
           RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
-          cargo build -p reovim-server --tests
+          cargo build -p reovim-server -p reovim-app --tests --bins
       - name: Save build cache
         uses: actions/cache/save@v4
         with:
