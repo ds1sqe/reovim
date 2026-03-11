@@ -38,11 +38,7 @@ impl Command for ProfileSaveCommand {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::required(
-            "name",
-            ArgKind::Rest,
-            "Profile name",
-        )]
+        vec![ArgSpec::required("name", ArgKind::Rest, "Profile name")]
     }
 
     fn names(&self) -> &[&'static str] {
@@ -110,11 +106,7 @@ impl Command for ProfileLoadCommand {
     }
 
     fn args(&self) -> Vec<ArgSpec> {
-        vec![ArgSpec::required(
-            "name",
-            ArgKind::Rest,
-            "Profile name",
-        )]
+        vec![ArgSpec::required("name", ArgKind::Rest, "Profile name")]
     }
 
     fn names(&self) -> &[&'static str] {

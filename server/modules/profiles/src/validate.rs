@@ -14,10 +14,7 @@ pub fn validate_profile_name(name: &str) -> Result<(), String> {
     }
 
     if name.len() > 64 {
-        return Err(format!(
-            "profile name too long ({} chars, max 64)",
-            name.len()
-        ));
+        return Err(format!("profile name too long ({} chars, max 64)", name.len()));
     }
 
     let first = name.as_bytes()[0];
@@ -28,7 +25,10 @@ pub fn validate_profile_name(name: &str) -> Result<(), String> {
         ));
     }
 
-    if let Some(bad) = name.chars().find(|c| !matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-')) {
+    if let Some(bad) = name
+        .chars()
+        .find(|c| !matches!(c, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-'))
+    {
         return Err(format!(
             "profile name contains invalid character '{bad}' (only alphanumeric, '-', '_' allowed)"
         ));

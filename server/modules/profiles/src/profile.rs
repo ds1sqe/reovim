@@ -78,9 +78,7 @@ impl Profile {
         let mut profile = Self::new();
 
         for name in registry.list_all() {
-            if let Some((spec, current)) = registry
-                .get_spec(&name)
-                .zip(registry.get_global(&name))
+            if let Some((spec, current)) = registry.get_spec(&name).zip(registry.get_global(&name))
                 && current != spec.default
             {
                 profile
@@ -159,9 +157,7 @@ impl ProfileOption {
         match value {
             OptionValue::Bool(b) => Self::Bool { value: *b },
             OptionValue::Integer(i) => Self::Integer { value: *i },
-            OptionValue::String(s) => Self::Str {
-                value: s.clone(),
-            },
+            OptionValue::String(s) => Self::Str { value: s.clone() },
             OptionValue::Choice { value, choices } => Self::Choice {
                 value: value.clone(),
                 choices: choices.clone(),
