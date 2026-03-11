@@ -1,12 +1,13 @@
 #![allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
-use super::super::*;
-use reovim_driver_command::{CommandContext, CommandHandler, CommandResult};
-use reovim_driver_session::{SessionRuntime, api::ModeApi};
-use reovim_kernel::api::v1::Position;
-use crate::ids;
+use {
+    super::super::*,
+    crate::ids,
+    reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::{SessionRuntime, api::ModeApi},
+    reovim_kernel::api::v1::Position,
+};
 
-use reovim_kernel::testing::create_test_context;
-use {reovim_driver_command::Command};
+use {reovim_driver_command::Command, reovim_kernel::testing::create_test_context};
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
@@ -71,15 +72,11 @@ fn test_all_visual_entry_default() {
 // ========================================================================
 
 use {
-    reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, WindowLayout,
-    },
+    reovim_driver_session::{ClientId, ExtensionMap, Session, WindowLayout, testing::StubExecutor},
     reovim_kernel::api::{
         ModeStack,
         v1::{
-            Buffer, BufferId, HistoryRing, KernelContext,
-            MarkBank, ModeId, ModuleId, RegisterBank,
+            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
         },
     },
 };
@@ -540,4 +537,3 @@ fn test_all_entry_commands_clone_copy() {
     let _: EnterVisualLineMode = EnterVisualLineMode;
     let _: EnterVisualBlockMode = EnterVisualBlockMode;
 }
-

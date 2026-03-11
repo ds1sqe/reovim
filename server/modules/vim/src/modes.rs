@@ -199,4 +199,3 @@ impl Mode for VimMode {
         matches!(self, Self::Normal)
     }
 }
-

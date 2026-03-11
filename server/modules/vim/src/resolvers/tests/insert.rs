@@ -8,8 +8,10 @@ use {
     reovim_kernel::api::v1::ModeId,
 };
 
-use super::super::insert::*;
-use crate::{VimSessionState, modes::VimMode};
+use {
+    super::super::insert::*,
+    crate::{VimSessionState, modes::VimMode},
+};
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -83,8 +85,7 @@ fn test_insert_enter() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Enter), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Enter), &mut state, &input);
     assert!(matches!(result, ResolveResult::InsertChar { char: '\n', .. }));
 }
 
@@ -97,8 +98,7 @@ fn test_escape_not_handled() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 }
 
@@ -161,8 +161,7 @@ fn test_arrow_keys_not_handled() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Left), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Left), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 
     let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Up), &mut state, &input);
@@ -257,8 +256,7 @@ fn test_delete_key_not_handled() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Delete), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Delete), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 }
 
@@ -269,8 +267,7 @@ fn test_home_end_not_handled() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Home), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Home), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 
     let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::End), &mut state, &input);
@@ -284,8 +281,7 @@ fn test_f_keys_not_handled() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::F(1)), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::F(1)), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 }
 
@@ -311,8 +307,7 @@ fn test_escape_executes_with_keymap_binding() {
     let input = resolve_input(&keymap);
 
     // When keymap has binding for Escape, it should execute it
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     match result {
         ResolveResult::Execute(cmd, _) => {
             assert_eq!(cmd.name(), "test-cmd");
@@ -357,8 +352,7 @@ fn test_prefix_only_returns_pending() {
     let keymap = PrefixKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     assert!(matches!(result, ResolveResult::Pending));
 }
 
@@ -605,8 +599,7 @@ fn test_exact_with_longer_executes_exact() {
     let input = resolve_input(&keymap);
 
     // Non-insertable key with ExactWithLonger should execute exact match
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     match result {
         ResolveResult::Execute(cmd, _) => {
             assert_eq!(cmd.name(), "longer-cmd");

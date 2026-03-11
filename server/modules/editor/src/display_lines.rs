@@ -504,4 +504,3 @@ pub fn display_position_unicode(
 
     (display_line, col_in_line)
 }
-

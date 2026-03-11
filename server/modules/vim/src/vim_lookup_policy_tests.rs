@@ -1,5 +1,7 @@
-use reovim_driver_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState};
-use reovim_kernel::api::v1::{CommandId, ModuleId};
+use {
+    reovim_driver_input::{KeyLookupPolicy, KeyLookupResult, KeyLookupState},
+    reovim_kernel::api::v1::{CommandId, ModuleId},
+};
 
 use crate::vim_lookup_policy::*;
 

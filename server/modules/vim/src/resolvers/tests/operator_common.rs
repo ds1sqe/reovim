@@ -8,8 +8,7 @@ use {
     reovim_kernel::api::v1::{CommandId, ModuleId, Position},
 };
 
-use super::super::operator_common::*;
-use crate::modes::VimMode;
+use {super::super::operator_common::*, crate::modes::VimMode};
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -332,8 +331,7 @@ fn test_build_operator_execute_delete() {
 fn test_build_operator_execute_with_count_and_register() {
     let start = Position::new(1, 0);
     let end = Position::new(3, 0);
-    let result =
-        build_operator_execute(OperatorType::Yank, start, end, true, Some(3), Some('a'));
+    let result = build_operator_execute(OperatorType::Yank, start, end, true, Some(3), Some('a'));
 
     match result {
         PopResult::ExecuteCommand { command, args } => {

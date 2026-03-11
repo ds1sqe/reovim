@@ -2,16 +2,17 @@
 
 use {
     reovim_driver_input::{
-        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery,
-        ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
+        ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
 };
 
-use super::super::change::*;
-use crate::modes::VimMode;
-use crate::session_state::PendingMotion;
+use {
+    super::super::change::*,
+    crate::{modes::VimMode, session_state::PendingMotion},
+};
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -83,8 +84,7 @@ fn test_escape_cancels() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
         assert!(matches!(r, PopResult::Cancelled));
@@ -287,10 +287,7 @@ fn test_line_operator_cc_with_count() {
                 args.get("linewise"),
                 Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
-            assert_eq!(
-                args.get("count"),
-                Some(&reovim_driver_command_types::ArgValue::Count(2))
-            );
+            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(2)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -572,10 +569,7 @@ fn test_resolve_with_session_cc_uses_cursor() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
         assert_eq!(
             args.get("range_start"),
             Some(&reovim_driver_command_types::ArgValue::Position(4, 0))
@@ -618,10 +612,7 @@ fn test_resolve_with_session_cc_with_count() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
         // start=2, end=3 (2 lines from line 2)
         assert_eq!(
             args.get("range_start"),
@@ -812,10 +803,7 @@ fn test_on_command_complete_with_textobj_range() {
             args.get("range_end"),
             Some(&reovim_driver_command_types::ArgValue::Position(0, 8))
         );
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(false))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -858,10 +846,7 @@ fn test_on_command_complete_with_motion_range() {
             args.get("range_end"),
             Some(&reovim_driver_command_types::ArgValue::Position(0, 5))
         );
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(false))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -961,10 +946,7 @@ fn test_on_command_complete_linewise_motion() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -1371,11 +1353,7 @@ fn test_full_2cw_flow() {
         let vim = extensions
             .get::<crate::VimSessionState>()
             .expect("VimSessionState should exist");
-        assert_eq!(
-            vim.pending_count,
-            Some(2),
-            "After 'c', pending_count should STILL be Some(2)"
-        );
+        assert_eq!(vim.pending_count, Some(2), "After 'c', pending_count should STILL be Some(2)");
     }
 
     // Step 3: Verify pending_count is still available for change resolver

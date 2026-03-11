@@ -103,12 +103,12 @@ impl CommandProvider for MotionsModule {
 reovim_module_macros::declare_module!(MotionsModule);
 
 #[cfg(test)]
-mod lib_tests;
+mod find_char_tests;
 #[cfg(test)]
-mod search_tests;
+mod lib_tests;
 #[cfg(test)]
 mod line_tests;
 #[cfg(test)]
-mod word_tests;
+mod search_tests;
 #[cfg(test)]
-mod find_char_tests;
+mod word_tests;

@@ -195,4 +195,3 @@ pub const REPLACE_CHAR: CommandId = CommandId::new(MODULE, "replace-char");
 
 /// Toggle case (~).
 pub const TOGGLE_CASE: CommandId = CommandId::new(MODULE, "toggle-case");
-

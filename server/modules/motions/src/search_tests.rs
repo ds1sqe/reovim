@@ -1,19 +1,17 @@
 use {
-    crate::search::*,
-    crate::{ids, SearchState},
-    reovim_kernel::testing::{create_test_context, setup_buffer},
+    crate::{SearchState, ids, search::*},
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::{Direction, SearchKey, SearchProviderRegistry},
     reovim_driver_session::{
-        testing::StubExecutor,
         ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+        testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        KernelContext, ModeStack,
-        v1::{
-            Buffer, HistoryRing, MarkBank, ModeId, ModuleId,
-            Position, RegisterBank,
+    reovim_kernel::{
+        api::{
+            KernelContext, ModeStack,
+            v1::{Buffer, HistoryRing, MarkBank, ModeId, ModuleId, Position, RegisterBank},
         },
+        testing::{create_test_context, setup_buffer},
     },
     std::sync::Arc,
 };
@@ -791,11 +789,7 @@ impl SearchProvider for MockSearchProvider {
         }
     }
 
-    fn find_all(
-        &self,
-        buffer: &Buffer,
-        pattern: &str,
-    ) -> Result<Vec<SearchMatch>, SearchError> {
+    fn find_all(&self, buffer: &Buffer, pattern: &str) -> Result<Vec<SearchMatch>, SearchError> {
         let content = buffer.content();
         let mut matches = Vec::new();
         let mut start = 0;
@@ -824,9 +818,7 @@ impl SearchProvider for MockSearchProvider {
             start -= 1;
         }
         let mut end = cursor.column;
-        while end + 1 < chars.len()
-            && (chars[end + 1].is_alphanumeric() || chars[end + 1] == '_')
-        {
+        while end + 1 < chars.len() && (chars[end + 1].is_alphanumeric() || chars[end + 1] == '_') {
             end += 1;
         }
         let word: String = chars[start..=end].iter().collect();

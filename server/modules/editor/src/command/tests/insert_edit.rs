@@ -1,14 +1,17 @@
 use {
-    reovim_kernel::testing::{create_test_context, test_mode},
     super::*,
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
-        testing::StubExecutor,
         ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+        testing::StubExecutor,
     },
-    reovim_kernel::api::v1::{
-            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeStack, OptionScope, OptionSpec, OptionValue, RegisterBank,
+    reovim_kernel::{
+        api::v1::{
+            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeStack, OptionScope,
+            OptionSpec, OptionValue, RegisterBank,
         },
+        testing::{create_test_context, test_mode},
+    },
 };
 
 struct TestState {

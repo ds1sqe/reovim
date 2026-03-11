@@ -166,15 +166,11 @@ fn test_get_line_indent_single_tab() {
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::api::{
         ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing,
-            KernelContext, MarkBank, RegisterBank, RwLock,
-        },
+        v1::{Buffer, BufferId, HistoryRing, KernelContext, MarkBank, RegisterBank, RwLock},
     },
     std::sync::Arc,
 };
@@ -1143,4 +1139,3 @@ fn test_open_line_above_multiline_first_line_with_indent() {
     assert_eq!(window.cursor.line, 0);
     assert_eq!(window.cursor.column, 2); // indent from "  hello"
 }
-

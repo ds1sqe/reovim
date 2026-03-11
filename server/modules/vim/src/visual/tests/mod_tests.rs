@@ -2,24 +2,23 @@
 use super::super::*;
 
 use {
-    reovim_kernel::testing::create_test_context,
     reovim_driver_command::{Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing,
-            KernelContext, MarkBank, ModeId, ModuleId, Position,
-            RegisterBank,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position,
+                RegisterBank,
+            },
         },
+        testing::create_test_context,
     },
 };
 
 use crate::modes::VIM_MODULE;
-
 
 /// Test state holder for per-client state (#471 borrow checker fix).
 struct TestState {
@@ -381,8 +380,7 @@ fn test_toggle_visual_char_exits_if_already_char() {
     // Phase 8 (#465): Set up character selection on window, then toggle.
     // Toggle on char selection should exit (clear selection).
     let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Toggle char mode when already in char should exit (clear selection)
@@ -391,8 +389,7 @@ fn test_toggle_visual_char_exits_if_already_char() {
 
 #[test]
 fn test_toggle_visual_char_switches_from_line() {
-    use reovim_driver_session::{
-        SelectionMode, api::Selection};
+    use reovim_driver_session::{SelectionMode, api::Selection};
 
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
@@ -404,8 +401,7 @@ fn test_toggle_visual_char_switches_from_line() {
     // Phase 8 (#465): Set up LINE selection, then toggle to char.
     // Toggle char on line selection should switch to character mode.
     let selection = Selection::line(Position::new(0, 0), Position::new(1, 0));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualChar, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Toggle char mode when in line mode should switch to char
@@ -428,8 +424,7 @@ fn test_toggle_visual_line_exits_if_already_line() {
     // Phase 8 (#465): Set up LINE selection, then toggle.
     // Toggle line on line selection should exit (clear selection).
     let selection = Selection::line(Position::new(0, 0), Position::new(1, 0));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Toggle line mode when already in line should exit (clear selection)
@@ -438,8 +433,7 @@ fn test_toggle_visual_line_exits_if_already_line() {
 
 #[test]
 fn test_toggle_visual_block_switches_mode() {
-    use reovim_driver_session::{
-        SelectionMode, api::Selection};
+    use reovim_driver_session::{SelectionMode, api::Selection};
 
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
@@ -451,8 +445,7 @@ fn test_toggle_visual_block_switches_mode() {
     // Phase 8 (#465): Set up CHARACTER selection, then toggle to block.
     // Toggle block on char selection should switch to block mode.
     let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Toggle block mode when in char mode should switch to block
@@ -620,8 +613,7 @@ fn test_delete_selection_deletes_text() {
     // Phase 8 (#465): Selection lives in Window.
     // Set up selection for "hello" (0,0 to 0,5 exclusive = "hello")
     let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&DeleteSelection, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&DeleteSelection, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should have "hello" deleted
@@ -647,8 +639,7 @@ fn test_indent_selection_adds_indentation() {
     // Phase 8 (#465): Selection lives in Window.
     // Line-wise selection for lines 0-1 (end is exclusive, so line 2 not included)
     let selection = Selection::line(Position::new(0, 0), Position::new(2, 0));
-    let (result, _session) =
-        run_command_with_selection(&IndentSelection, &ctx, &args, selection);
+    let (result, _session) = run_command_with_selection(&IndentSelection, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be indented
@@ -673,8 +664,7 @@ fn test_dedent_selection_removes_indentation() {
     // Phase 8 (#465): Selection lives in Window.
     // Line-wise selection for lines 0-1
     let selection = Selection::line(Position::new(0, 0), Position::new(2, 0));
-    let (result, _session) =
-        run_command_with_selection(&DedentSelection, &ctx, &args, selection);
+    let (result, _session) = run_command_with_selection(&DedentSelection, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be dedented
@@ -729,8 +719,7 @@ fn test_change_selection_changes_text() {
     // Phase 8 (#465): Selection lives in Window.
     // Character-wise selection for "hello" (0,0 to 0,5 exclusive)
     let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&ChangeSelection, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ChangeSelection, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Buffer should have "hello" deleted (like delete, but followed by insert mode)
@@ -756,8 +745,7 @@ fn test_delete_selection_line_mode_deletes_entire_lines() {
     // Phase 8 (#465): Selection lives in Window.
     // Line-wise selection for lines 0-1 (end is exclusive, line 2 not included)
     let selection = Selection::line(Position::new(0, 0), Position::new(2, 0));
-    let (result, _session) =
-        run_command_with_selection(&DeleteSelection, &ctx, &args, selection);
+    let (result, _session) = run_command_with_selection(&DeleteSelection, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Lines 0-1 should be completely deleted, leaving only "line three"
@@ -878,8 +866,7 @@ fn test_dedent_selection_noop_without_selection() {
 
 #[test]
 fn test_toggle_visual_line_from_char_keeps_selection() {
-    use reovim_driver_session::{
-        SelectionMode, api::Selection};
+    use reovim_driver_session::{SelectionMode, api::Selection};
 
     let ctx = create_test_context();
     let buffer = Buffer::from_string("hello world");
@@ -890,8 +877,7 @@ fn test_toggle_visual_line_from_char_keeps_selection() {
 
     // Toggle from char to line should keep selection with Line mode
     let selection = Selection::character(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualLine, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     let window = windows.active().unwrap();
@@ -911,8 +897,7 @@ fn test_toggle_visual_block_exits_if_already_block() {
     args.set_buffer_id(buffer_id);
 
     let selection = Selection::block(Position::new(0, 0), Position::new(0, 5));
-    let (result, windows) =
-        run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
+    let (result, windows) = run_command_with_selection(&ToggleVisualBlock, &ctx, &args, selection);
     assert_eq!(result, CommandResult::Success);
 
     // Toggle block when already block exits (clears selection)
@@ -939,4 +924,3 @@ fn test_swap_anchor_with_different_lines() {
     assert_eq!(sel.start, Position::new(2, 1));
     assert_eq!(sel.end, Position::new(0, 2));
 }
-

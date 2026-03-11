@@ -1,25 +1,29 @@
 #![allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
-use super::super::*;
-use crate::modes::VimMode;
-use reovim_module_cmdline::{CmdlinePrompt, CmdlineState};
+use {
+    super::super::*,
+    crate::modes::VimMode,
+    reovim_module_cmdline::{CmdlinePrompt, CmdlineState},
+};
 
 use {
-    reovim_kernel::testing::create_test_context,
+    crate::ids,
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
         ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
         api::{CommandExecutor, CommandHandle},
+        testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, CommandId, HistoryRing,
-            KernelContext, MarkBank, Position, RegisterBank, RwLock,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, Position,
+                RegisterBank, RwLock,
+            },
         },
+        testing::create_test_context,
     },
     std::{collections::HashMap, sync::Arc},
-    crate::ids,
 };
 
 use reovim_driver_session::api::ModeApi;
@@ -1229,11 +1233,7 @@ impl SearchProvider for MockSearchProvider {
         self.result.read().clone().unwrap_or(Ok(None))
     }
 
-    fn find_all(
-        &self,
-        _buffer: &Buffer,
-        _pattern: &str,
-    ) -> Result<Vec<SearchMatch>, SearchError> {
+    fn find_all(&self, _buffer: &Buffer, _pattern: &str) -> Result<Vec<SearchMatch>, SearchError> {
         Ok(vec![])
     }
 
@@ -1506,11 +1506,7 @@ impl Command for ExTestCmd {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for ExTestCmd {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         self.result.clone()
     }
 }
@@ -2282,4 +2278,3 @@ fn test_cmdline_complete_no_registry() {
     // No registry → empty completions
     assert!(runtime.ext_mut::<CmdlineState>().completions().is_empty());
 }
-

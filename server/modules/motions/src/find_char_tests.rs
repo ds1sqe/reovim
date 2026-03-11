@@ -1,18 +1,17 @@
 use {
-    crate::{ids, find_char::*},
-    reovim_kernel::testing::{create_test_context, setup_buffer},
+    crate::{find_char::*, ids},
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
         ClientId, ExtensionMap, FindCharState, Session, SessionRuntime, Window, WindowLayout,
         api::{CommandExecutor, CommandHandle, ExtensionApi},
+        testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        KernelContext, ModeStack,
-        v1::{
-            BufferId, CommandId, HistoryRing, MarkBank,
-            ModeId, ModuleId, RegisterBank,
+    reovim_kernel::{
+        api::{
+            KernelContext, ModeStack,
+            v1::{BufferId, CommandId, HistoryRing, MarkBank, ModeId, ModuleId, RegisterBank},
         },
+        testing::{create_test_context, setup_buffer},
     },
     std::sync::Arc,
 };
@@ -112,11 +111,7 @@ struct RecordingHandle {
 }
 
 impl CommandHandle for RecordingHandle {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        ctx: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, ctx: &CommandContext) -> CommandResult {
         self.calls
             .lock()
             .unwrap()

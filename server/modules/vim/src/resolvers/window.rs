@@ -137,4 +137,3 @@ impl ModeKeyResolver for VimWindowResolver {
         // No state to reset in window mode
     }
 }
-

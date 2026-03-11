@@ -456,4 +456,3 @@ impl OperatorState {
         self.initialized = false;
     }
 }
-

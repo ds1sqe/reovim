@@ -1,6 +1,5 @@
 use super::super::*;
 
-
 #[test]
 fn test_operators_list() {
     let ops = operators();
@@ -118,4 +117,3 @@ fn test_operator_commands_all_vim_module() {
         );
     }
 }
-

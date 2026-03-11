@@ -1804,7 +1804,10 @@ mod tests {
     use {
         super::*,
         crate::{testing::StubExecutor, types::ClientId},
-        reovim_kernel::{api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank}, testing::test_mode},
+        reovim_kernel::{
+            api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
+            testing::test_mode,
+        },
     };
 
     fn test_mode_2() -> ModeId {

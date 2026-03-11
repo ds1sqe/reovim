@@ -8,8 +8,7 @@ use {
     reovim_kernel::api::v1::ModeId,
 };
 
-use super::super::window::*;
-use crate::modes::VimMode;
+use {super::super::window::*, crate::modes::VimMode};
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -73,8 +72,7 @@ fn test_escape_not_handled_without_binding() {
     let input = resolve_input(&keymap);
 
     // Escape with no keymap binding returns NotHandled
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     assert!(matches!(result, ResolveResult::NotHandled));
 }
 
@@ -204,8 +202,7 @@ fn test_escape_binding_pops_cancelled() {
     let keymap = CancelKeymap;
     let input = resolve_input_with(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     match result {
         ResolveResult::ModeTransition(ModeTransition::Pop {
             result: Some(PopResult::Cancelled),
@@ -269,8 +266,7 @@ fn test_cancel_with_exact_with_longer() {
     let keymap = CancelWithLongerKeymap;
     let input = resolve_input_with(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
     match result {
         ResolveResult::ModeTransition(ModeTransition::Pop {
             result: Some(PopResult::Cancelled),

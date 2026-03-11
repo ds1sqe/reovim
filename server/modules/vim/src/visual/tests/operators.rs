@@ -1,7 +1,9 @@
 use super::*;
 
-use reovim_kernel::testing::create_test_context;
-use {reovim_driver_command::Command, reovim_driver_session::api::Selection};
+use {
+    reovim_driver_command::Command, reovim_driver_session::api::Selection,
+    reovim_kernel::testing::create_test_context,
+};
 
 // ========================================================================
 // Command metadata tests
@@ -179,15 +181,13 @@ fn test_expand_line_mode_none_end_line_len() {
 use {
     reovim_driver_command::CommandHandler,
     reovim_driver_session::{
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, api::RegisterApi,
         testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
-        api::RegisterApi,
     },
     reovim_kernel::api::{
         ModeStack,
         v1::{
-            Buffer, BufferId, HistoryRing, KernelContext,
-            MarkBank, ModeId, ModuleId, RegisterBank,
+            Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
         },
     },
 };
@@ -1001,4 +1001,3 @@ fn test_dedent_selection_nonexistent_buffer() {
     let result = DedentSelection.execute(&mut runtime, &args);
     assert_eq!(result, CommandResult::Success);
 }
-

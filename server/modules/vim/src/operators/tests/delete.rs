@@ -1,24 +1,24 @@
 #![allow(
-clippy::significant_drop_tightening,
-clippy::uninlined_format_args,
-clippy::drop_non_drop
+    clippy::significant_drop_tightening,
+    clippy::uninlined_format_args,
+    clippy::drop_non_drop
 )]
 use super::super::*;
 
 use {
-    reovim_kernel::testing::create_test_context,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, CommandId, HistoryRing,
-            KernelContext, MarkBank, ModeId, ModuleId, Position,
-            Register, RegisterBank, RwLock,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, ModeId,
+                ModuleId, Position, Register, RegisterBank, RwLock,
+            },
         },
+        testing::create_test_context,
     },
     std::sync::Arc,
 };
@@ -1168,4 +1168,3 @@ fn test_delete_characterwise_sets_cursor_after() {
     // Characterwise: cursor at start of deleted range
     assert_eq!(op_ctx.cursor_after, Some(Position::new(0, 0)));
 }
-

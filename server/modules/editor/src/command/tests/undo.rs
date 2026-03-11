@@ -1,17 +1,18 @@
 use {
-    reovim_kernel::testing::{create_test_context, test_mode},
     super::super::*,
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
         ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-        api::CommandExecutor,
+        api::CommandExecutor, testing::StubExecutor,
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-    reovim_kernel::api::v1::{
-            Buffer, BufferId, Edit, HistoryRing, KernelContext, MarkBank, ModeStack, Position, RegisterBank,
-            UndoResult,
+    reovim_kernel::{
+        api::v1::{
+            Buffer, BufferId, Edit, HistoryRing, KernelContext, MarkBank, ModeStack, Position,
+            RegisterBank, UndoResult,
         },
+        testing::{create_test_context, test_mode},
+    },
     std::sync::Arc,
 };
 

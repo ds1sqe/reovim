@@ -1,5 +1,4 @@
-use super::*;
-use reovim_kernel::api::v1::YankType;
+use {super::*, reovim_kernel::api::v1::YankType};
 
 fn content(text: &str) -> RegisterContent {
     RegisterContent::new(text.to_string(), YankType::Characterwise)
@@ -263,10 +262,7 @@ impl reovim_driver_clipboard::ClipboardProvider for MockClipboardProvider {
     fn clipboard_available(&self) -> bool {
         true
     }
-    fn copy_to_clipboard(
-        &self,
-        text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         *self.clipboard.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
@@ -278,10 +274,7 @@ impl reovim_driver_clipboard::ClipboardProvider for MockClipboardProvider {
     fn selection_available(&self) -> bool {
         true
     }
-    fn copy_to_selection(
-        &self,
-        text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         *self.selection.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
@@ -441,4 +434,3 @@ fn test_option_char_to_register_some_history() {
 fn test_option_char_to_register_some_default() {
     assert_eq!(option_char_to_register(Some('"')), Register::Default);
 }
-

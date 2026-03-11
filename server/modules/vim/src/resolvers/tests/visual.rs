@@ -1,14 +1,14 @@
 #![allow(clippy::doc_markdown)]
 
 use {
+    super::super::visual::*,
+    crate::modes::VimMode,
     reovim_driver_input::{
-        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery,
-        ModeKeyResolver, ModeState, Modifiers, ResolveInput, ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
+        ModeState, Modifiers, ResolveInput, ResolveResult,
     },
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId},
 };
-use super::super::visual::*;
-use crate::modes::VimMode;
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -95,8 +95,7 @@ fn test_escape_exits_visual_mode() {
     let keymap = MockKeymap::not_found();
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     if let ResolveResult::Execute(cmd_id, _) = result {
         assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);
@@ -426,8 +425,7 @@ fn test_escape_from_line_wise_mode() {
     let keymap = MockKeymap::not_found();
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     if let ResolveResult::Execute(cmd_id, _) = result {
         assert_eq!(cmd_id, crate::ids::EXIT_VISUAL);

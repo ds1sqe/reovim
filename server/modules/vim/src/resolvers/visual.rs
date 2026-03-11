@@ -368,4 +368,3 @@ impl ModeKeyResolver for VimVisualResolver {
         self.state.write().expect("lock poisoned").reset();
     }
 }
-

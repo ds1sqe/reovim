@@ -485,4 +485,3 @@ impl ModeKeyResolver for VimDeleteResolver {
         self.state.write().expect("lock poisoned").reset();
     }
 }
-

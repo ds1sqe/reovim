@@ -451,4 +451,3 @@ pub struct LastChange {
     /// Register used with the original command.
     pub register: Option<char>,
 }
-

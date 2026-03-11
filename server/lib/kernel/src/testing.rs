@@ -22,11 +22,9 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{
-    api::v1::{
-        Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank, ModeId,
-        ModuleId, MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
-    },
+use crate::api::v1::{
+    Buffer, BufferError, BufferId, BufferManager, EventBus, KernelContext, MarkBank, ModeId,
+    ModuleId, MotionEngine, OptionRegistry, RwLock, ServiceRegistry, TextObjectEngine,
 };
 
 /// In-memory buffer manager for testing.
@@ -175,10 +173,7 @@ mod tests {
     fn test_buffer_manager_unregister_nonexistent() {
         let manager = TestBufferManager::new();
         let id = BufferId::from_raw(999);
-        assert_eq!(
-            manager.unregister(id).unwrap_err(),
-            BufferError::NotFound(id)
-        );
+        assert_eq!(manager.unregister(id).unwrap_err(), BufferError::NotFound(id));
     }
 
     #[test]

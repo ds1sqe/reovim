@@ -423,4 +423,3 @@ pub const AROUND_TAG: CommandId = CommandId::new(MODULE, "around-tag");
 pub const AROUND_SENTENCE: CommandId = CommandId::new(MODULE, "around-sentence");
 /// Around paragraph text object.
 pub const AROUND_PARAGRAPH: CommandId = CommandId::new(MODULE, "around-paragraph");
-

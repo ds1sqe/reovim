@@ -154,8 +154,7 @@ fn test_macro_content_empty() {
 
 #[test]
 fn test_macro_content_to_notation() {
-    let macro_content =
-        MacroContent::new(vec![key('d'), key('w'), KeyEvent::new(KeyCode::Escape)]);
+    let macro_content = MacroContent::new(vec![key('d'), key('w'), KeyEvent::new(KeyCode::Escape)]);
     assert_eq!(macro_content.to_notation(), "dw<Esc>");
 }
 

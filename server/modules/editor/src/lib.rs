@@ -156,8 +156,8 @@ fn editor_option_specs() -> Vec<OptionSpec> {
 reovim_module_macros::declare_module!(EditorModule);
 
 #[cfg(test)]
-mod lib_tests;
-#[cfg(test)]
 mod display_lines_tests;
 #[cfg(test)]
 mod ids_tests;
+#[cfg(test)]
+mod lib_tests;

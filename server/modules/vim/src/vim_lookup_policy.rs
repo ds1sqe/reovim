@@ -35,4 +35,3 @@ impl KeyLookupPolicy for VimLookupPolicy {
         }
     }
 }
-

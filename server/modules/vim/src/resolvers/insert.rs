@@ -157,4 +157,3 @@ impl ModeKeyResolver for VimInsertResolver {
         // No state to reset in insert mode
     }
 }
-

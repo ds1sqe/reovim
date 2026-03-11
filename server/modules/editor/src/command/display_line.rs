@@ -12,8 +12,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
-            BufferApi, ChangeTracker, SessionRuntime},
+    reovim_driver_session::{BufferApi, ChangeTracker, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, OptionScopeId, Position},
 };
 
@@ -310,4 +309,3 @@ impl CommandHandler for CursorDisplayUp {
         CommandResult::Success
     }
 }
-

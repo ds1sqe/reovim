@@ -8,10 +8,12 @@ use {
 
 use reovim_module_editor as editor;
 
-use super::super::normal::*;
-use crate::{
-    modes::VimMode,
-    session_state::{PendingCharOp, VimSessionState},
+use {
+    super::super::normal::*,
+    crate::{
+        modes::VimMode,
+        session_state::{PendingCharOp, VimSessionState},
+    },
 };
 
 fn key(c: char) -> KeyEvent {
@@ -194,8 +196,7 @@ fn test_resolve_escape_resets() {
     resolver.accumulate_count(&key('3'));
     *resolver.pending_register.write().unwrap() = Some('a');
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     assert!(matches!(result, ResolveResult::NotHandled));
     assert!(resolver.pending_count().is_none());
@@ -485,8 +486,7 @@ fn test_escape_clears_all_state() {
     assert!(!resolver.get_pending_keys().is_empty());
 
     // Press escape
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     assert!(matches!(result, ResolveResult::NotHandled));
     assert!(resolver.pending_count().is_none());
@@ -854,8 +854,7 @@ fn test_ext_count_flows_to_execute() {
     let keymap_exec = MockKeymap::exact_only("cursor-down");
     let input_exec = resolve_input(&keymap_exec);
 
-    let result =
-        resolve_with_ext(&resolver, &key('j'), &mut state, &input_exec, &mut extensions);
+    let result = resolve_with_ext(&resolver, &key('j'), &mut state, &input_exec, &mut extensions);
 
     match result {
         ResolveResult::Execute(cmd, ctx) => {
@@ -1064,10 +1063,7 @@ fn test_register_special_chars_valid() {
     for c in ['+', '-', '*', '/', '.', '%', '#', ':'] {
         *resolver.pending_register.write().unwrap() = Some('"');
         let result = resolver.handle_register_char(&key(c));
-        assert!(
-            matches!(result, ResolveResult::Pending),
-            "register char '{c}' should be valid"
-        );
+        assert!(matches!(result, ResolveResult::Pending), "register char '{c}' should be valid");
     }
 }
 
@@ -1169,10 +1165,7 @@ fn test_ext_find_char_forward() {
     let mut state = test_state();
     let motions_module = ModuleId::new("motions");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            motions_module,
-            "find-char-forward",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(motions_module, "find-char-forward")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1197,10 +1190,7 @@ fn test_ext_find_char_completes_with_character() {
     let mut state = test_state();
     let motions_module = ModuleId::new("motions");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            motions_module,
-            "find-char-forward",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(motions_module, "find-char-forward")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1231,10 +1221,7 @@ fn test_ext_find_char_backward() {
     let mut state = test_state();
     let motions_module = ModuleId::new("motions");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            motions_module,
-            "find-char-backward",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(motions_module, "find-char-backward")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1252,10 +1239,7 @@ fn test_ext_till_char_forward() {
     let mut state = test_state();
     let motions_module = ModuleId::new("motions");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            motions_module,
-            "till-char-forward",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(motions_module, "till-char-forward")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1286,10 +1270,7 @@ fn test_ext_till_char_backward() {
     let mut state = test_state();
     let motions_module = ModuleId::new("motions");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            motions_module,
-            "till-char-backward",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(motions_module, "till-char-backward")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1319,10 +1300,7 @@ fn test_ext_replace_char_sets_pending() {
     let mut state = test_state();
     let editor_module = reovim_kernel::api::v1::ModuleId::new("editor");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            editor_module,
-            "replace-char-start",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(editor_module, "replace-char-start")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();
@@ -1341,10 +1319,7 @@ fn test_ext_replace_char_dispatches() {
     let mut state = test_state();
     let editor_module = reovim_kernel::api::v1::ModuleId::new("editor");
     let keymap = MockKeymap {
-        response: KeyLookupState::ExactOnly(CommandId::new(
-            editor_module,
-            "replace-char-start",
-        )),
+        response: KeyLookupState::ExactOnly(CommandId::new(editor_module, "replace-char-start")),
     };
     let input = resolve_input(&keymap);
     let mut extensions = ExtensionMap::new();

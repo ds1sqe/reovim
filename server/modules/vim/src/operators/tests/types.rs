@@ -1,6 +1,7 @@
-use super::super::*;
-use reovim_kernel::api::v1::{BufferId, HistoryRing, Position, RegisterBank};
-
+use {
+    super::super::*,
+    reovim_kernel::api::v1::{BufferId, HistoryRing, Position, RegisterBank},
+};
 
 #[test]
 fn test_range_new() {
@@ -367,4 +368,3 @@ fn test_operator_error_source_is_none() {
     let err = OperatorError::OperationFailed("test".into());
     assert!(std::error::Error::source(&err).is_none());
 }
-

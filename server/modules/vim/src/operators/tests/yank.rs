@@ -1,24 +1,24 @@
 #![allow(
-clippy::uninlined_format_args,
-clippy::significant_drop_tightening,
-clippy::drop_non_drop
+    clippy::uninlined_format_args,
+    clippy::significant_drop_tightening,
+    clippy::drop_non_drop
 )]
 use super::super::*;
 
 use {
-    reovim_kernel::testing::create_test_context,
     reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, CommandId, HistoryRing,
-            KernelContext, MarkBank, ModeId, ModuleId, Position,
-            Register, RegisterBank,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, ModeId,
+                ModuleId, Position, Register, RegisterBank,
+            },
         },
+        testing::create_test_context,
     },
 };
 
@@ -812,4 +812,3 @@ fn test_yank_does_not_set_cursor_after() {
     // Yank does not set cursor_after — it stays None
     assert_eq!(op_ctx.cursor_after, None);
 }
-

@@ -1,25 +1,24 @@
 use {
     crate::{ids, line::*},
-    reovim_kernel::testing::{create_test_context, setup_buffer},
-    reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-        api::{CommandExecutor},
+    reovim_driver_command::{
+        ArgKind, ArgValue, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_kernel::api::{
-        KernelContext, ModeStack,
-        v1::{
-            BufferId, HistoryRing, MarkBank,
-            ModeId, ModuleId, Position, RegisterBank,
+    reovim_driver_session::{
+        ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
+        api::CommandExecutor, testing::StubExecutor,
+    },
+    reovim_kernel::{
+        api::{
+            KernelContext, ModeStack,
+            v1::{BufferId, HistoryRing, MarkBank, ModeId, ModuleId, Position, RegisterBank},
         },
+        testing::{create_test_context, setup_buffer},
     },
 };
 
 // =========================================================================
 // Test Infrastructure (#471)
 // =========================================================================
-
 
 /// Explicit test setup for motion commands.
 ///
@@ -87,10 +86,9 @@ impl TestSetup {
     /// Get current cursor position.
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn cursor(&self) -> Position {
-        self.windows.active().map_or_else(
-            || Position::new(0, 0),
-            |w| Position::new(w.cursor.line, w.cursor.column),
-        )
+        self.windows
+            .active()
+            .map_or_else(|| Position::new(0, 0), |w| Position::new(w.cursor.line, w.cursor.column))
     }
 
     /// Create command args with `buffer_id` set.

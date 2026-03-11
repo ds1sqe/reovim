@@ -1,18 +1,21 @@
 use {
-    crate::bracket::*,
-    reovim_kernel::testing::{create_test_context, setup_buffer, test_mode},
-    crate::TEXTOBJECTS_MODULE,
+    crate::{TEXTOBJECTS_MODULE, bracket::*},
     reovim_driver_command::{ArgKind, ArgValue, Command, CommandContext, CommandHandler},
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, OperatorPendingState, Session, SessionRuntime, Window, WindowLayout,
+        ClientId, ExtensionMap, OperatorPendingState, Session, SessionRuntime, Window,
+        WindowLayout,
         api::{CommandExecutor, ExtensionApi, SelectionMode},
+        testing::StubExecutor,
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position, RegisterBank,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position,
+                RegisterBank,
+            },
         },
+        testing::{create_test_context, setup_buffer, test_mode},
     },
 };
 

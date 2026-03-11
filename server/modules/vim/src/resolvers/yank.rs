@@ -415,4 +415,3 @@ impl ModeKeyResolver for VimYankResolver {
         self.state.write().expect("lock poisoned").reset();
     }
 }
-

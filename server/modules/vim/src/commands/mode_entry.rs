@@ -13,8 +13,7 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{
-            BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
+    reovim_driver_session::{BufferApi, SessionRuntime, TransitionContext, api::ModeApi},
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
     reovim_kernel::api::v1::{BufferId, CommandId, OptionScopeId, Position},
 };

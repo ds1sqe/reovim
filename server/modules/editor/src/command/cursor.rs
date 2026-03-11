@@ -14,8 +14,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
-            ChangeTracker, SessionRuntime, api::BufferApi},
+    reovim_driver_session::{ChangeTracker, SessionRuntime, api::BufferApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -330,4 +329,3 @@ impl CommandHandler for CursorRight {
         CommandResult::Success
     }
 }
-

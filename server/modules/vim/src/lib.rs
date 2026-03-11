@@ -71,21 +71,21 @@ pub mod vim_lookup_policy;
 pub mod visual;
 
 #[cfg(test)]
-mod registry_integration;
+mod ids_tests;
 #[cfg(test)]
 mod lib_tests;
-#[cfg(test)]
-mod session_state_tests;
-#[cfg(test)]
-mod ids_tests;
 #[cfg(test)]
 mod macros_tests;
 #[cfg(test)]
 mod modes_tests;
 #[cfg(test)]
-mod vim_lookup_policy_tests;
-#[cfg(test)]
 mod providers_tests;
+#[cfg(test)]
+mod registry_integration;
+#[cfg(test)]
+mod session_state_tests;
+#[cfg(test)]
+mod vim_lookup_policy_tests;
 
 // Re-export mode types (Epic #372 - Mode Ownership)
 pub use modes::{VIM_MODULE, VimMode};
@@ -348,4 +348,3 @@ fn vim_option_specs() -> Vec<OptionSpec> {
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
 #[cfg(feature = "dynamic")]
 reovim_module_macros::declare_module!(VimModule);
-

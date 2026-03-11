@@ -127,8 +127,7 @@ fn test_source_context_mode_none_returns_empty() {
     let source = LineNumberSource::absolute();
 
     // Context provides None mode - should return empty
-    let context =
-        AnnotationContext::with_line_number_mode(10, 5, "normal", LineNumberMode::None);
+    let context = AnnotationContext::with_line_number_mode(10, 5, "normal", LineNumberMode::None);
     let annotations = source.annotations(BufferId::new(), 0..10, &context);
 
     assert!(annotations.is_empty());

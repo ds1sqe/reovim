@@ -1,9 +1,7 @@
 use {
     reovim_driver_command::{CommandHandlerStore, CommandProvider},
     reovim_driver_display::{GutterRendererKey, GutterRendererRegistry},
-    reovim_driver_input::{
-        KeybindingStore, ModeInfoStore, ModeProviderRegistry, ResolverRegistry,
-    },
+    reovim_driver_input::{KeybindingStore, ModeInfoStore, ModeProviderRegistry, ResolverRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, OptionScope, OptionValue, ProbeResult},
 };
 
@@ -172,11 +170,7 @@ fn test_line_number_option_scope() {
     assert_eq!(number_spec.scope, OptionScope::Window, "'number' should have Window scope");
 
     let rnu_spec = ctx.kernel.options.get_spec("relativenumber").unwrap();
-    assert_eq!(
-        rnu_spec.scope,
-        OptionScope::Window,
-        "'relativenumber' should have Window scope"
-    );
+    assert_eq!(rnu_spec.scope, OptionScope::Window, "'relativenumber' should have Window scope");
 }
 
 // ========================================================================
@@ -359,12 +353,7 @@ fn test_command_handlers_all_have_ids() {
     let handlers = module.command_handlers();
     for handler in &handlers {
         let id = handler.id();
-        assert_eq!(
-            id.module().as_str(),
-            "vim",
-            "handler '{}' should be in vim module",
-            id.name()
-        );
+        assert_eq!(id.module().as_str(), "vim", "handler '{}' should be in vim module", id.name());
     }
 }
 

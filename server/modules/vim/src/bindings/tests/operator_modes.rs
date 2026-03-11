@@ -188,11 +188,7 @@ fn test_all_bindings_have_description() {
 #[test]
 fn test_all_bindings_have_category() {
     for binding in all_operator_bindings() {
-        assert!(
-            binding.category.is_some(),
-            "Binding '{}' should have a category",
-            binding.keys
-        );
+        assert!(binding.category.is_some(), "Binding '{}' should have a category", binding.keys);
     }
 }
 

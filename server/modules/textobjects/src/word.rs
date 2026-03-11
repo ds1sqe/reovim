@@ -16,7 +16,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{
-            OperatorPendingState, SessionRuntime, TextObjRange,
+        OperatorPendingState, SessionRuntime, TextObjRange,
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine, WordBoundary},
@@ -255,4 +255,3 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 // =============================================================================
 // Tests
 // =============================================================================
-

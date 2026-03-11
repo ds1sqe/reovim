@@ -63,4 +63,3 @@ impl VimModuleProviderExt {
         Some(Arc::new(VimDefaultModeProvider::new()))
     }
 }
-

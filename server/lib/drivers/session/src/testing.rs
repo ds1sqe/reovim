@@ -34,8 +34,8 @@ use {
         runtime::SessionRuntime,
     },
     reovim_kernel::api::v1::{
-        Buffer, BufferId, CommandId, HistoryRing, KernelContext,
-        MarkBank, ModeId, ModeStack, ModuleId, Position, RegisterBank,
+        Buffer, BufferId, CommandId, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack,
+        ModuleId, Position, RegisterBank,
     },
     std::sync::Arc,
 };
@@ -454,7 +454,6 @@ impl TestSessionRuntime {
         self.compositor = Some(compositor);
     }
 }
-
 
 /// Stub command executor for testing.
 ///

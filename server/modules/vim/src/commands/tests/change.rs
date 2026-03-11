@@ -1,22 +1,24 @@
 #![allow(clippy::significant_drop_tightening)]
-use super::super::*;
-use reovim_driver_command::{CommandContext, CommandHandler, CommandResult};
-use reovim_driver_session::SessionRuntime;
-use reovim_kernel::api::v1::Position;
-use crate::{ids, modes::VimMode};
+use {
+    super::super::*,
+    crate::{ids, modes::VimMode},
+    reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::Position,
+};
 
 use {
-    reovim_kernel::testing::create_test_context,
     reovim_driver_command::Command,
-    reovim_driver_session::{
-        ClientId, ExtensionMap, Session, WindowLayout,
-    },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing, KernelContext,
-            MarkBank, ModeId, ModuleId, RegisterBank,
+    reovim_driver_session::{ClientId, ExtensionMap, Session, WindowLayout},
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId,
+                RegisterBank,
+            },
         },
+        testing::create_test_context,
     },
 };
 
@@ -690,4 +692,3 @@ fn test_change_line_registers_deleted_text() {
     assert!(reg.text.contains("hello"));
     assert!(reg.text.contains("world"));
 }
-

@@ -9,8 +9,7 @@ use {
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
-    reovim_driver_session::{
-            ChangeTracker, SessionRuntime},
+    reovim_driver_session::{ChangeTracker, SessionRuntime},
     reovim_kernel::api::v1::{
         CommandId, Cursor, Direction, Motion, MotionEngine, Position, WordBoundary,
     },
@@ -363,4 +362,3 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 // =============================================================================
 // Tests
 // =============================================================================
-

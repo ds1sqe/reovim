@@ -2,14 +2,10 @@ use {
     super::super::*,
     reovim_driver_command::{Command, CommandContext},
     reovim_driver_session::{
-        testing::StubExecutor,
-        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
+        ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout, testing::StubExecutor,
     },
     reovim_kernel::{
-        api::v1::{
-            HistoryRing, KernelContext, MarkBank,
-            ModeStack, RegisterBank,
-        },
+        api::v1::{HistoryRing, KernelContext, MarkBank, ModeStack, RegisterBank},
         testing::test_mode,
     },
 };

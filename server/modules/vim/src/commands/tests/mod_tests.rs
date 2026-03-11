@@ -1,6 +1,5 @@
 use super::super::*;
 
-
 #[test]
 fn test_mode_commands_count() {
     let cmds = mode_commands();
@@ -136,4 +135,3 @@ fn test_mode_commands_contains_cancel_to_normal() {
     let has_cancel = cmds.iter().any(|c| c.id() == ids::CANCEL_TO_NORMAL);
     assert!(has_cancel);
 }
-

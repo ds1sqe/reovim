@@ -44,6 +44,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   based on module structure and test size), shared helper usage, test naming
   convention (`test_{action}_{scenario}`), and ignored test policy in
   `docs/contributing/guides/testing.md`.
+- **Inline test migration (#569)**: Migrate all inline `#[cfg(test)] mod tests`
+  blocks from source files into dedicated test files following the three-rule
+  layout standard. 142 files changed across 4 modules: textobjects (5 files),
+  motions (5 files), editor (14 files), vim (44 files). Source files now contain
+  only implementation code. Uses `#[path]` technique for 7 files with private
+  item access. All 2540 module tests pass.
 
 - **Parallel check.sh (#588)**: Rewrite `scripts/check.sh` with parallel execution
   (clippy and tests run concurrently using separate CARGO_TARGET_DIR), CLI modes

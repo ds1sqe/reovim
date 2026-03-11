@@ -105,12 +105,12 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 reovim_module_macros::declare_module!(TextObjectsModule);
 
 #[cfg(test)]
-mod lib_tests;
-#[cfg(test)]
 mod bracket_tests;
 #[cfg(test)]
-mod word_tests;
+mod lib_tests;
+#[cfg(test)]
+mod paragraph_tests;
 #[cfg(test)]
 mod quote_tests;
 #[cfg(test)]
-mod paragraph_tests;
+mod word_tests;

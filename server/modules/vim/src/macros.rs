@@ -199,4 +199,3 @@ impl std::fmt::Display for MacroContent {
         write!(f, "{}", self.to_notation())
     }
 }
-

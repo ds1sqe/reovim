@@ -39,11 +39,7 @@ fn test_all_bindings_has_description() {
 #[test]
 fn test_all_bindings_has_category() {
     for binding in all() {
-        assert!(
-            binding.category.is_some(),
-            "Binding '{}' should have a category",
-            binding.keys
-        );
+        assert!(binding.category.is_some(), "Binding '{}' should have a category", binding.keys);
     }
 }
 

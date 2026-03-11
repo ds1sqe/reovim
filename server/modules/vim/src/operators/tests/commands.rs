@@ -1,20 +1,22 @@
 #![allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
-use super::super::*;
-use reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult};
-use reovim_driver_session::SessionRuntime;
-use reovim_kernel::api::v1::Position;
+use {
+    super::super::*,
+    reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
+    reovim_driver_session::SessionRuntime,
+    reovim_kernel::api::v1::Position,
+};
 
 use {
-    reovim_kernel::testing::create_test_context,
-    reovim_driver_session::{
-        ClientId, ExtensionMap, Session, WindowLayout,
-    },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            Buffer, BufferId, HistoryRing, KernelContext,
-            MarkBank, ModeId, ModuleId, RegisterBank, RwLock,
+    reovim_driver_session::{ClientId, ExtensionMap, Session, WindowLayout},
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{
+                Buffer, BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId,
+                RegisterBank, RwLock,
+            },
         },
+        testing::create_test_context,
     },
     std::sync::Arc,
 };
@@ -781,4 +783,3 @@ fn test_execute_operator_buffer_not_found_returns_error() {
     let result = DeleteCommand.execute(&mut runtime, &args);
     assert!(matches!(result, CommandResult::Error(_)));
 }
-

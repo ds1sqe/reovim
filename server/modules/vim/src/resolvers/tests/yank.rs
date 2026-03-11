@@ -1,17 +1,15 @@
 #![allow(clippy::doc_markdown, clippy::equatable_if_let)]
 
 use {
+    super::super::yank::*,
+    crate::{modes::VimMode, session_state::PendingMotion},
     reovim_driver_input::{
-        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery,
-        ModeKeyResolver, ModeState, ModeTransition, PopResult, ResolveInput,
-        ResolveResult,
+        ExtensionMap, KeyCode, KeyEvent, KeyLookupState, KeySequence, KeymapQuery, ModeKeyResolver,
+        ModeState, ModeTransition, PopResult, ResolveInput, ResolveResult,
     },
     reovim_driver_session::OperatorPendingState,
     reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
 };
-use super::super::yank::*;
-use crate::modes::VimMode;
-use crate::session_state::PendingMotion;
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c))
@@ -73,8 +71,7 @@ fn test_escape_cancels() {
     let keymap = NotFoundKeymap;
     let input = resolve_input(&keymap);
 
-    let result =
-        resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
+    let result = resolver.resolve_with_keymap(&KeyEvent::new(KeyCode::Escape), &mut state, &input);
 
     if let ResolveResult::ModeTransition(ModeTransition::Pop { result: Some(r) }) = result {
         assert!(matches!(r, PopResult::Cancelled));
@@ -193,10 +190,7 @@ fn test_line_operator_yy_with_count() {
                 Some(&reovim_driver_command_types::ArgValue::Bool(true))
             );
             // count should be 3 * 1 = 3
-            assert_eq!(
-                args.get("count"),
-                Some(&reovim_driver_command_types::ArgValue::Count(3))
-            );
+            assert_eq!(args.get("count"), Some(&reovim_driver_command_types::ArgValue::Count(3)));
         } else {
             panic!("expected ExecuteCommand");
         }
@@ -531,10 +525,7 @@ fn test_resolve_with_session_yy_uses_cursor() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
         // Range should use cursor line (2)
         assert_eq!(
             args.get("range_start"),
@@ -579,10 +570,7 @@ fn test_resolve_with_session_yy_with_count_uses_cursor() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
         // With count=3 and cursor on line 1: start=1, end=3
         assert_eq!(
             args.get("range_start"),
@@ -771,10 +759,7 @@ fn test_on_command_complete_with_textobj_range() {
             args.get("range_end"),
             Some(&reovim_driver_command_types::ArgValue::Position(0, 7))
         );
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(false))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -802,10 +787,7 @@ fn test_on_command_complete_with_linewise_textobj() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
         assert_eq!(
             args.get("range_start"),
             Some(&reovim_driver_command_types::ArgValue::Position(1, 0))
@@ -857,10 +839,7 @@ fn test_on_command_complete_with_motion_range() {
             args.get("range_end"),
             Some(&reovim_driver_command_types::ArgValue::Position(0, 5))
         );
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(false))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(false)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }
@@ -924,10 +903,7 @@ fn test_on_command_complete_linewise_motion() {
         result: Some(PopResult::ExecuteCommand { args, .. }),
     }) = result
     {
-        assert_eq!(
-            args.get("linewise"),
-            Some(&reovim_driver_command_types::ArgValue::Bool(true))
-        );
+        assert_eq!(args.get("linewise"), Some(&reovim_driver_command_types::ArgValue::Bool(true)));
     } else {
         panic!("expected Pop with ExecuteCommand, got {result:?}");
     }

@@ -23,7 +23,7 @@
 use {
     reovim_driver_command::{ArgValue, Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-            FindCharState, SessionRuntime,
+        FindCharState, SessionRuntime,
         api::{CommandApi, ExtensionApi},
     },
     reovim_kernel::api::v1::{CommandId, ModuleId},
@@ -312,4 +312,3 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 // =============================================================================
 // Tests
 // =============================================================================
-

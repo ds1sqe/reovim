@@ -1,26 +1,26 @@
 #![allow(clippy::uninlined_format_args)]
-use super::super::*;
-use reovim_driver_command::{Command, CommandContext, CommandHandler};
-use reovim_driver_session::{SessionRuntime, api::ExtensionApi, BufferApi};
-use crate::session_state::{ChangeType, VimSessionState};
+use {
+    super::super::*,
+    crate::session_state::{ChangeType, VimSessionState},
+    reovim_driver_command::{Command, CommandContext, CommandHandler},
+    reovim_driver_session::{BufferApi, SessionRuntime, api::ExtensionApi},
+};
 
 use {
-    reovim_kernel::testing::{create_test_context, setup_buffer},
     crate::session_state::{LastChange, OperatorType},
     reovim_driver_command::ArgValue,
     reovim_driver_session::{
+        ClientId, ExtensionMap, Session, Window, WindowLayout, api::CommandExecutor,
         testing::StubExecutor,
-        ClientId, ExtensionMap, Session, Window, WindowLayout,
-        api::{CommandExecutor},
     },
-    reovim_kernel::api::{
-        ModeStack,
-        v1::{
-            BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
+    reovim_kernel::{
+        api::{
+            ModeStack,
+            v1::{BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank},
         },
+        testing::{create_test_context, setup_buffer},
     },
 };
-
 
 fn test_mode() -> ModeId {
     ModeId::new(ModuleId::new("vim"), "normal")
@@ -613,4 +613,3 @@ fn test_dot_repeat_insert_no_active_window() {
     // Should return error "No active window"
     assert!(result.is_error());
 }
-

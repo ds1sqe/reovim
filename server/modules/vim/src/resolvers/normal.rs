@@ -478,7 +478,11 @@ impl VimNormalResolver {
 
     /// Handle register character after `"` prefix (extension-based version).
     #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn handle_register_char_ext(&self, key: &KeyEvent, vim: &mut VimSessionState) -> ResolveResult {
+    pub fn handle_register_char_ext(
+        &self,
+        key: &KeyEvent,
+        vim: &mut VimSessionState,
+    ) -> ResolveResult {
         if let KeyCode::Char(c) = key.code {
             // Valid register characters: a-z, A-Z, 0-9, and special registers
             if c.is_ascii_alphanumeric() || "+-*/.%#:".contains(c) {
@@ -493,7 +497,11 @@ impl VimNormalResolver {
     }
 
     /// Build resolve context with count and register (extension-based version).
-    pub fn build_context_ext(&self, keys: KeySequence, vim: &mut VimSessionState) -> ResolveContext {
+    pub fn build_context_ext(
+        &self,
+        keys: KeySequence,
+        vim: &mut VimSessionState,
+    ) -> ResolveContext {
         let mut ctx = ResolveContext::new().keys(keys);
 
         if let Some(count) = vim.pending_count.take() {
@@ -882,4 +890,3 @@ impl VimNormalResolver {
         self.get_pending_keys()
     }
 }
-

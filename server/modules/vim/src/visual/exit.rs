@@ -5,7 +5,7 @@
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_session::{
-            BufferApi, SessionRuntime, TransitionContext,
+        BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ModeApi},
     },
     reovim_kernel::api::v1::CommandId,

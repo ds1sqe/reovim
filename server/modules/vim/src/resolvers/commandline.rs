@@ -108,4 +108,3 @@ impl ModeKeyResolver for VimCommandLineResolver {
         // No state to reset
     }
 }
-

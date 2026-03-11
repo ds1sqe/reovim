@@ -14,7 +14,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{
-            SessionRuntime,
+        SessionRuntime,
         api::{BufferApi, UndoApi},
     },
     reovim_kernel::api::v1::CommandId,
@@ -137,4 +137,3 @@ impl CommandHandler for RedoCommand {
         }
     }
 }
-
