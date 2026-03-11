@@ -109,6 +109,8 @@ When invoked, you MUST follow these steps in order:
 2. Determine the plan number (default `01`, or from user input)
 3. Run `./scripts/check.sh` - ALL checks must pass before proceeding
    - If checks fail, fix issues and re-run before continuing
+   - Check report available at `tmp/check-report.md`
+   - Individual logs at `tmp/check-logs/`
 
 ### Step 2: Go Poll
 
@@ -129,7 +131,7 @@ Create `tmp/{ISSUE}/landing.md` with three sections:
 - Highlights from each agent
 
 **Section 2: Verification Checklist**
-- `./scripts/check.sh` passed
+- `./scripts/check.sh` passed (see `tmp/check-report.md`)
 - CHANGELOG.md updated
 - All agents reported GO
 

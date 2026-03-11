@@ -69,16 +69,13 @@ fi
 #   reovim-module-macros     — proc-macro, runs at compile time
 #   reovim-driver-ffi-python — pyo3 cdylib, linker issues under coverage
 #   reovim-bench / perf-report — tools, not product code
-#   runner / layout / statusline / which-key — legacy (same as check.sh)
+#   reovim-driver-display    — v1 cell-grid rendering (client-side in v2)
 EXCLUDE=(
   --exclude reovim-module-macros
   --exclude reovim-driver-ffi-python
   --exclude reovim-bench
   --exclude perf-report
-  --exclude runner
-  --exclude reovim-module-layout
-  --exclude reovim-module-statusline
-  --exclude reovim-module-which-key
+  --exclude reovim-driver-display
 )
 
 # reovim-server: excluded from branch/mcdc (LLVM #119558), included in line mode

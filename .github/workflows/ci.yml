@@ -15,20 +15,7 @@ env:
   SERVER_RUSTFLAGS: "--cfg coverage_nightly"
 
 jobs:
-  # ─── Gate: Format ───
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: rustfmt
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  # ─── Gate: Lint (Clippy + MSRV) ───
+  # ─── Gate: Lint (fmt + clippy) ───
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -37,37 +24,54 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: ${{ env.NIGHTLY }}
-          components: clippy
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92"
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check formatting
+        run: cargo +${{ env.NIGHTLY }} fmt --all -- --check
       - name: Clippy (zero warnings)
         run: >
           cargo +${{ env.NIGHTLY }} clippy
           --all-targets --all-features --workspace -- -D warnings
-      - name: MSRV check
-        run: cargo +1.92 check --workspace
+
+  # ─── MSRV Check (non-blocking, parallel) ───
+  msrv:
+    name: MSRV Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.92"
+      - uses: Swatinem/rust-cache@v2
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: MSRV check (key crates)
+        run: cargo +1.92 check -p reovim-app -p reovim-kernel -p reovim-server
 
   # ─── Build: MC/DC variant ───
   build-mcdc:
     name: Build (MC/DC)
     runs-on: ubuntu-latest
-    needs: [fmt, lint]
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: ${{ env.NIGHTLY }}
           components: llvm-tools-preview
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build workspace + tests + bins (instrumented)
         run: |
-          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo build --workspace --tests --bins \
+          eval "$(RUSTFLAGS='${{ env.MCDC_RUSTFLAGS }}' \
+            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} build --workspace --tests --bins \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
@@ -75,8 +79,9 @@ jobs:
             --exclude reovim-server
       - name: Build FFI modules (instrumented)
         run: |
-          RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo build -p reovim-module-defaults --features dynamic
+          eval "$(RUSTFLAGS='${{ env.MCDC_RUSTFLAGS }}' \
+            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} build -p reovim-module-defaults --features dynamic
       - name: Save build cache
         uses: actions/cache/save@v4
         with:
@@ -84,25 +89,28 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ github.run_id }}
+          key: mcdc-${{ hashFiles('Cargo.lock') }}
 
   # ─── Build: Server variant ───
   build-server:
     name: Build (Server)
     runs-on: ubuntu-latest
-    needs: [fmt, lint]
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
           toolchain: ${{ env.NIGHTLY }}
           components: llvm-tools-preview
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build server + app binary + tests (instrumented)
         run: |
-          RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
-          cargo build -p reovim-server -p reovim-app --tests --bins
+          eval "$(RUSTFLAGS='${{ env.SERVER_RUSTFLAGS }}' \
+            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} build -p reovim-server -p reovim-app --tests --bins
       - name: Save build cache
         uses: actions/cache/save@v4
         with:
@@ -110,7 +118,7 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: server-${{ github.run_id }}
+          key: server-${{ hashFiles('Cargo.lock') }}
 
   # ─── Test: MC/DC Unit Tests ───
   test-mcdc-unit:
@@ -125,8 +133,9 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -134,11 +143,13 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ github.run_id }}
+          key: mcdc-${{ hashFiles('Cargo.lock') }}
+      - name: Clean stale profraw files
+        run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run unit tests with coverage
         run: |
           RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo llvm-cov nextest --lib --workspace \
+          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest --lib --workspace \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
@@ -165,8 +176,9 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -174,11 +186,13 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: mcdc-${{ github.run_id }}
+          key: mcdc-${{ hashFiles('Cargo.lock') }}
+      - name: Clean stale profraw files
+        run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run integration tests with coverage
         run: |
           RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}" \
-          cargo llvm-cov nextest --test '*' --workspace \
+          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest --test '*' --workspace \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
             --exclude reovim-bench \
@@ -205,8 +219,9 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: taiki-e/install-action@nextest
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -214,11 +229,13 @@ jobs:
             target/
             ~/.cargo/registry
             ~/.cargo/git
-          key: server-${{ github.run_id }}
+          key: server-${{ hashFiles('Cargo.lock') }}
+      - name: Clean stale profraw files
+        run: find target -name '*.profraw' -delete 2>/dev/null || true
       - name: Run server tests with coverage
         run: |
           RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}" \
-          cargo llvm-cov nextest -p reovim-server \
+          cargo +${{ env.NIGHTLY }} llvm-cov --no-clean nextest -p reovim-server \
             --lcov --output-path server-lcov.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh server-lcov.info
@@ -231,15 +248,16 @@ jobs:
   doc-tests:
     name: Doc Tests
     runs-on: ubuntu-latest
-    needs: [fmt, lint]
+    needs: [lint]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.92"
       - uses: Swatinem/rust-cache@v2
-      - name: Install protoc
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run doc tests
         run: cargo test --doc --workspace
 

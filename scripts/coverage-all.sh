@@ -50,11 +50,7 @@ EXCLUDE=(
   --exclude reovim-driver-ffi-python
   --exclude reovim-bench
   --exclude perf-report
-  --exclude runner
   --exclude reovim-driver-display
-  --exclude reovim-module-layout
-  --exclude reovim-module-statusline
-  --exclude reovim-module-which-key
 )
 
 if $CLEAN; then
