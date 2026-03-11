@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Completion popup TUI extension.
 //!
 //! Displays a floating completion popup below the cursor position.

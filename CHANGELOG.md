@@ -4,6 +4,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Fixed
+
+- **Markdown scroll crash (#565)**: Fix character/byte column mismatch in conceal
+  rendering pipeline that caused panics when scrolling through markdown files.
+  `apply_conceals()` was using character columns (from `byte_to_position()`) as
+  byte indices for string slicing. Also fixes `ConcealedLine::identity()` sizing,
+  `line_end_col()` return value, and background overlay column bounds — all were
+  using byte lengths where character counts were expected.
+
 ### Added
 
 - **Find-char repeat with extensible coordinator pattern (#563)**: Implement `;`
@@ -279,6 +288,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   are the same command). Returns `AmbiguousPrefix` error (E464) when a
   prefix matches multiple distinct commands. `execute_ex_command()` updated
   to use `resolve_prefix()` for all command resolution.
+- **MC/DC coverage + E2E tests for ex-command system (#556)**: Achieve 100% MC/DC
+  coverage on `name_index.rs` and `parse.rs` with targeted tests for tab separators,
+  single-quote backslash handling, unclosed double-quote trailing backslash, and
+  compound condition edge cases. Add 8 headless-capture integration tests for
+  ex-command execution: `:write`/`:w`, prefix matching (`:wri`), unknown command
+  error (E492), `:edit`, insert-then-write workflow, and sequential command execution.
 
 - **Architecture**: Extract vim-mode coupling from feature modules into adapter crates.
   Five new `vim-*` adapter crates (`vim-microscope`, `vim-explorer`, `vim-completion`,

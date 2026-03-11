@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Default TUI extensions meta-crate.
 //!
 //! This is the game-mod boundary: the engine depends ONLY on this crate

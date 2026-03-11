@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Microscope fuzzy finder TUI extension.
 //!
 //! Renders a Helix-style bottom-anchored fuzzy finder overlay.

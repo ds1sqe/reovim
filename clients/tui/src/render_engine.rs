@@ -492,9 +492,10 @@ fn render_line_content<B: RenderBackend>(
     }
 
     // Overlay background tokens
+    let line_char_count = line.chars().count() as u32;
     for (start_col, end_col, bg_style) in &backgrounds {
         let bg = apply_opacity(bg_style, opacity, DEFAULT_BG);
-        for source_col in *start_col..(*end_col).min(line.len() as u32) {
+        for source_col in *start_col..(*end_col).min(line_char_count) {
             // Map source column to display column for background overlay
             let display_col = concealed
                 .col_mapping
@@ -2250,5 +2251,234 @@ mod tests {
         let cell = fb.get(0, 0).unwrap();
         assert_eq!(cell.char, 'f');
         assert_eq!(cell.style.fg, keyword_style.fg);
+    }
+
+    /// Regression test: rendering markdown with conceal tokens at various scroll positions.
+    ///
+    /// Reproduces crash from commit 7831262a where scrolling through markdown
+    /// with decorations could panic.
+    #[test]
+    fn test_render_markdown_conceals_scroll() {
+        let mut fb = FrameBuffer::new(80, 24);
+
+        // Build markdown-like buffer content
+        let lines: Vec<String> = vec![
+            "# Heading 1",
+            "",
+            "Some regular text here.",
+            "",
+            "## Heading 2",
+            "",
+            "- List item 1",
+            "- List item 2",
+            "- List item 3",
+            "",
+            "> A blockquote with some text",
+            "",
+            "---",
+            "",
+            "### Heading 3",
+            "",
+            "More text content here.",
+            "",
+            "- [ ] Unchecked checkbox",
+            "- [x] Checked checkbox",
+            "",
+            "Some `inline code` here and **bold text** and *italic text*.",
+            "",
+            "Another paragraph with some content.",
+            "",
+            "#### Heading 4",
+            "",
+            "1. Numbered item 1",
+            "2. Numbered item 2",
+            "3. Numbered item 3",
+            "",
+            "> Another blockquote",
+            "",
+            "---",
+            "",
+            "More text below the horizontal rule.",
+            "",
+            "##### Heading 5",
+            "",
+            "- Bullet 1",
+            "- Bullet 2",
+            "- Bullet 3",
+            "",
+            "Some final text.",
+            "",
+            "###### Heading 6",
+            "",
+            "The very end.",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.buffer_cache.insert(100, lines);
+
+        // Build token cache with conceal decorations matching markdown rules
+        let (mut tc, tm) = test_syntax();
+        let content = state.buffer_cache.get(&100).unwrap().join("\n");
+
+        // Create conceal tokens for markdown patterns
+        let mut tokens: Vec<TokenSpan> = Vec::new();
+
+        // Heading conceals: "# " → icon
+        add_conceal_token(&mut tokens, &content, 0, "# ", "\u{f0965} ");
+        add_conceal_token(&mut tokens, &content, 4, "## ", "\u{f0965} ");
+        add_conceal_token(&mut tokens, &content, 14, "### ", "\u{f0965} ");
+        add_conceal_token(&mut tokens, &content, 25, "#### ", "\u{f0965} ");
+        add_conceal_token(&mut tokens, &content, 37, "##### ", "\u{f0965} ");
+        add_conceal_token(&mut tokens, &content, 45, "###### ", "\u{f0965} ");
+
+        // List bullet conceals: "- " → bullet
+        for line_idx in [6, 7, 8, 39, 40, 41] {
+            add_conceal_token(&mut tokens, &content, line_idx, "- ", "\u{2022} ");
+        }
+
+        // Blockquote conceals: "> " → bar
+        add_conceal_token(&mut tokens, &content, 10, "> ", "\u{2502} ");
+        add_conceal_token(&mut tokens, &content, 31, "> ", "\u{2502} ");
+
+        // Horizontal rule conceals: "---" → repeated line
+        let hrule_replacement = "\u{2500}".repeat(40);
+        add_conceal_token_custom(&mut tokens, &content, 12, 0, 3, &hrule_replacement);
+        add_conceal_token_custom(&mut tokens, &content, 33, 0, 3, &hrule_replacement);
+
+        // Checkbox conceals
+        add_conceal_token_custom(&mut tokens, &content, 18, 0, 6, "\u{2610} ");
+        add_conceal_token_custom(&mut tokens, &content, 19, 0, 6, "\u{2713} ");
+
+        // Inline code backtick conceals (hide backticks)
+        add_conceal_token_custom(&mut tokens, &content, 21, 5, 6, "");
+        add_conceal_token_custom(&mut tokens, &content, 21, 17, 18, "");
+
+        tc.apply_token_update(100, &tokens, 0, u64::MAX, true, &content, "syntax", 0);
+
+        let config = RenderConfig::default();
+
+        // Test rendering at multiple scroll positions (simulating j scroll)
+        for scroll_line in 0..48 {
+            state.update_local_cursor(1, scroll_line, 0);
+            state.compute_scroll_top(1, 23); // content_height = height - 1
+
+            // This should NOT panic
+            render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+        }
+    }
+
+    /// Verify that multi-byte characters before a conceal region cause
+    /// a panic due to CHARACTER columns being used as BYTE indices.
+    ///
+    /// This is the root cause of the markdown scroll crash when the
+    /// document contains non-ASCII characters.
+    #[test]
+    fn test_render_multibyte_with_conceals_crash() {
+        let mut fb = FrameBuffer::new(80, 10);
+
+        // Line with multi-byte chars BEFORE a conceal region
+        // "日本語 `code` here" - backtick at byte 10 (char 4), not byte 4
+        let lines: Vec<String> = vec![
+            "日本語 `code` here".to_string(),
+            "# 日本語のヘッダー".to_string(),
+            "normal ASCII line".to_string(),
+        ];
+
+        let mut state = TuiCoreState::new(1);
+        state.windows.push(window(1, 100));
+        state.focused_window_id = 1;
+        state.buffer_cache.insert(100, lines);
+
+        let (mut tc, tm) = test_syntax();
+        let content = state.buffer_cache.get(&100).unwrap().join("\n");
+
+        // Create conceal tokens using BYTE offsets (as tree-sitter would produce)
+        // But AnnotationCacheManager converts them to CHARACTER columns via byte_to_position
+        let tokens = vec![
+            // Backtick at byte 10 (char 4) → hide
+            TokenSpan {
+                start_byte: 10, // byte offset of first backtick
+                end_byte: 11,   // byte offset past first backtick
+                category: "punctuation.delimiter".to_string(),
+                kind: CachedAnnotationKind::Conceal { replacement: None },
+            },
+            // Backtick at byte 16 (char 9 = after `code`) → hide
+            TokenSpan {
+                start_byte: 16,
+                end_byte: 17,
+                category: "punctuation.delimiter".to_string(),
+                kind: CachedAnnotationKind::Conceal { replacement: None },
+            },
+            // Heading prefix "# " on line 2 (bytes start at line 2's offset)
+            TokenSpan {
+                // "日本語 `code` here\n" = 24 bytes, then "# " starts at byte 24
+                start_byte: 24,
+                end_byte: 26,
+                category: "markup.heading".to_string(),
+                kind: CachedAnnotationKind::Conceal {
+                    replacement: Some("\u{f0965} ".to_string()),
+                },
+            },
+        ];
+
+        tc.apply_token_update(100, &tokens, 0, u64::MAX, true, &content, "syntax", 0);
+
+        let config = RenderConfig::default();
+
+        // Render each line — this should NOT panic even with multi-byte content
+        for scroll_line in 0..3 {
+            state.update_local_cursor(1, scroll_line, 0);
+            state.compute_scroll_top(1, 9);
+            render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+        }
+    }
+
+    /// Helper: create a conceal token for the prefix of a line.
+    fn add_conceal_token(
+        tokens: &mut Vec<TokenSpan>,
+        content: &str,
+        line_idx: usize,
+        prefix: &str,
+        replacement: &str,
+    ) {
+        add_conceal_token_custom(tokens, content, line_idx, 0, prefix.len(), replacement);
+    }
+
+    /// Helper: create a conceal token at specific byte columns within a line.
+    #[allow(clippy::cast_possible_truncation)]
+    fn add_conceal_token_custom(
+        tokens: &mut Vec<TokenSpan>,
+        content: &str,
+        line_idx: usize,
+        start_col: usize,
+        end_col: usize,
+        replacement: &str,
+    ) {
+        // Find byte offset of line start
+        let mut line_start_byte = 0;
+        for (i, line) in content.split('\n').enumerate() {
+            if i == line_idx {
+                break;
+            }
+            line_start_byte += line.len() + 1; // +1 for \n
+        }
+
+        tokens.push(TokenSpan {
+            start_byte: (line_start_byte + start_col) as u32,
+            end_byte: (line_start_byte + end_col) as u32,
+            category: "markup.heading".to_string(),
+            kind: CachedAnnotationKind::Conceal {
+                replacement: if replacement.is_empty() {
+                    None
+                } else {
+                    Some(replacement.to_string())
+                },
+            },
+        });
     }
 }

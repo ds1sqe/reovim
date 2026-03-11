@@ -156,6 +156,7 @@ mod tests {
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decoration_rule_creation() {
         let rule = DecorationRule {
             capture_name: "heading.1.marker".into(),
@@ -373,6 +374,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_apply_rules_conceal_with_replacement() {
         let rules = vec![DecorationRule {
             capture_name: "heading.1.marker".into(),
@@ -535,6 +537,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_apply_rules_virtual_text() {
         let rules = vec![DecorationRule {
             capture_name: "hint".into(),

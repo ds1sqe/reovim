@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Undo provider driver for reovim.
 //!
 //! This driver defines the interface for per-buffer undo/redo operations.
@@ -12,8 +14,6 @@
 //! server/lib/drivers/undo/     → Trait + Key + Registry + Error (MECHANISM)
 //! server/modules/undo/         → UndoRegistry implementation (POLICY)
 //! ```
-
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 mod error;
 mod key;

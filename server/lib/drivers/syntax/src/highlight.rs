@@ -343,6 +343,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_annotation_kind_conceal_with_replacement() {
         let kind = AnnotationKind::Conceal {
             replacement: Some("*".into()),
@@ -360,6 +361,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_annotation_kind_virtual_text() {
         let kind = AnnotationKind::VirtualText {
             text: "ghost".into(),

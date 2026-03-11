@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Signature help popup TUI extension.
 //!
 //! Displays LSP signature help (function signature) in a single-line

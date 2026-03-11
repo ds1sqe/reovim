@@ -32,11 +32,11 @@ impl ConcealedLine {
     /// Create a new concealed line with no transformations.
     #[must_use]
     pub fn identity(content: &str) -> Self {
-        let len = content.len();
+        let char_count = content.chars().count();
         Self {
             text: content.to_string(),
-            col_mapping: (0..=len).map(|i| i as u16).collect(),
-            styles: vec![None; len],
+            col_mapping: (0..=char_count).map(|i| i as u16).collect(),
+            styles: vec![None; char_count],
         }
     }
 
@@ -73,7 +73,17 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
         return ConcealedLine::identity(content);
     }
 
-    // Collect applicable conceal/hide regions
+    // Build char→byte lookup for safe indexing with multi-byte content.
+    // Columns from CachedToken are CHARACTER-based (via byte_to_position),
+    // so we must map them to byte offsets before slicing into `content`.
+    let char_byte_offsets: Vec<usize> = content
+        .char_indices()
+        .map(|(byte, _)| byte)
+        .chain(std::iter::once(content.len()))
+        .collect();
+    let char_count = char_byte_offsets.len().saturating_sub(1);
+
+    // Collect applicable conceal/hide regions (columns are character-based)
     let mut regions: Vec<ConcealRegion> = decorations
         .iter()
         .filter_map(|d| match d {
@@ -82,7 +92,7 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
                 replacement,
                 style,
             } if span.affects_line(line) => {
-                let (start_col, end_col) = span_cols_for_line(span, line, content.len() as u32);
+                let (start_col, end_col) = span_cols_for_line(span, line, char_count as u32);
                 Some(ConcealRegion {
                     start_col: start_col as usize,
                     end_col: end_col as usize,
@@ -91,7 +101,7 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
                 })
             }
             Decoration::Hide { span } if span.affects_line(line) => {
-                let (start_col, end_col) = span_cols_for_line(span, line, content.len() as u32);
+                let (start_col, end_col) = span_cols_for_line(span, line, char_count as u32);
                 Some(ConcealRegion {
                     start_col: start_col as usize,
                     end_col: end_col as usize,
@@ -107,28 +117,39 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
         return ConcealedLine::identity(content);
     }
 
-    // Sort by start column
+    // Sort by start column (character-based)
     regions.sort_by_key(|r| r.start_col);
+
+    // Helper: convert character column to byte offset
+    let char_to_byte = |col: usize| -> usize {
+        char_byte_offsets
+            .get(col.min(char_count))
+            .copied()
+            .unwrap_or(content.len())
+    };
 
     // Build the transformed text
     let mut result_text = String::with_capacity(content.len());
     let mut col_mapping = Vec::with_capacity(content.len() + 1);
     let mut styles = Vec::with_capacity(content.len());
 
-    let mut source_col = 0;
+    // source_char tracks the current CHARACTER position (not byte)
+    let mut source_char = 0;
 
     for region in &regions {
         // Skip if this region starts before current position (overlapping regions)
-        if region.start_col < source_col {
+        if region.start_col < source_char {
             continue;
         }
 
         // Add unchanged content before this region
-        let unchanged_end = region.start_col.min(content.len());
-        if source_col < unchanged_end {
-            let slice = &content[source_col..unchanged_end];
-            for (i, _) in slice.char_indices() {
-                col_mapping.push((source_col + i) as u16);
+        let unchanged_end_char = region.start_col.min(char_count);
+        if source_char < unchanged_end_char {
+            let start_byte = char_to_byte(source_char);
+            let end_byte = char_to_byte(unchanged_end_char);
+            let slice = &content[start_byte..end_byte];
+            for (i, _) in slice.chars().enumerate() {
+                col_mapping.push((source_char + i) as u16);
                 styles.push(None);
             }
             result_text.push_str(slice);
@@ -136,9 +157,8 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
 
         // Apply the conceal/hide
         if let Some(replacement) = &region.replacement {
-            // Conceal: add replacement text
+            // Conceal: add replacement text, mapped to region start CHAR column
             for _ in replacement.chars() {
-                // Map all replacement chars to the start of the concealed region
                 col_mapping.push(region.start_col as u16);
                 styles.push(region.style.clone());
             }
@@ -146,22 +166,23 @@ pub fn apply_conceals(content: &str, line: u32, decorations: &[&Decoration]) -> 
         }
         // Hide: don't add anything (no output)
 
-        // Advance past the concealed/hidden region
-        source_col = region.end_col.min(content.len());
+        // Advance past the concealed/hidden region (in character units)
+        source_char = region.end_col.min(char_count);
     }
 
     // Add remaining content after last region
-    if source_col < content.len() {
-        let slice = &content[source_col..];
-        for (i, _) in slice.char_indices() {
-            col_mapping.push((source_col + i) as u16);
+    if source_char < char_count {
+        let start_byte = char_to_byte(source_char);
+        let slice = &content[start_byte..];
+        for (i, _) in slice.chars().enumerate() {
+            col_mapping.push((source_char + i) as u16);
             styles.push(None);
         }
         result_text.push_str(slice);
     }
 
     // Add final mapping for end position
-    col_mapping.push(content.len() as u16);
+    col_mapping.push(char_count as u16);
 
     ConcealedLine {
         text: result_text,

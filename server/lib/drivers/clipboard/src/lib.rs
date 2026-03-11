@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Clipboard provider driver for reovim.
 //!
 //! This driver defines the interface for OS clipboard access.
@@ -42,8 +44,6 @@
 //!     }
 //! }
 //! ```
-
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 mod error;
 mod key;

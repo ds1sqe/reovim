@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Markdown syntax highlighting module for reovim.
 //!
 //! This module provides Markdown language support for syntax highlighting
@@ -924,6 +926,7 @@ MIT
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_heading_markers() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -970,6 +973,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_list_bullets() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1008,6 +1012,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_checkboxes() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1053,6 +1058,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_blockquote_marker() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1071,6 +1077,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_horizontal_rule() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1204,6 +1211,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_inline_decorations_code_span() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1241,6 +1249,7 @@ MIT
     }
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_inline_decorations_link() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1283,6 +1292,7 @@ MIT
     // ========================================================================
 
     #[test]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_markdown_with_rust_injection_highlighting() {
         use reovim_module_treesitter_rust::RustSyntaxFactory;
 

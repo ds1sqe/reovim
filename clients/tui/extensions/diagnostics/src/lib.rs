@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Diagnostics inline TUI extension.
 //!
 //! Renders LSP diagnostic markers (underlines + virtual text) at buffer

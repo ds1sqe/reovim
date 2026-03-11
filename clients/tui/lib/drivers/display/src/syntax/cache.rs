@@ -292,7 +292,10 @@ impl LayeredTokenCache {
         Some((line_idx as u32, col as u32))
     }
 
-    /// Get the column index at end of a line.
+    /// Get the character column index at end of a line.
+    ///
+    /// Returns CHARACTER count (not byte length), consistent with
+    /// `byte_to_position` which returns character-based columns.
     fn line_end_col(&self, line: u32, content: &str) -> u32 {
         let line_idx = line as usize;
         let start = self.line_offsets.get(line_idx).copied().unwrap_or(0);
@@ -302,18 +305,14 @@ impl LayeredTokenCache {
             .copied()
             .unwrap_or(content.len());
 
-        // Exclude trailing newline
-        let line_len = end.saturating_sub(start);
-        let adjusted = if line_len > 0 && content.get(start..end).is_some_and(|s| s.ends_with('\n'))
-        {
-            line_len - 1
-        } else {
-            line_len
-        };
+        // Get the line content (excluding trailing newline)
+        let line_content = content.get(start..end).unwrap_or("");
+        let trimmed = line_content.strip_suffix('\n').unwrap_or(line_content);
 
+        // Count characters, not bytes
         #[allow(clippy::cast_possible_truncation)]
         {
-            adjusted as u32
+            trimmed.chars().count() as u32
         }
     }
 

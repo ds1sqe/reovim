@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Tetromino game TUI extension.
 //!
 //! Renders a centered tetromino game board as an overlay popup when active.

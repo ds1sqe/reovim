@@ -1,3 +1,5 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Network driver for reovim.
 //!
 //! Linux equivalent: `net/`, `include/linux/net.h`
@@ -59,8 +61,6 @@
 //! // Create error response
 //! let error = RpcError::method_not_found("unknown");
 //! ```
-
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 // ============================================================================
 // Modules

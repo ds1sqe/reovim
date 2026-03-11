@@ -1056,4 +1056,55 @@ mod tests {
         assert!(!store.is_empty());
         assert_eq!(store.len(), 1);
     }
+
+    #[test]
+    fn test_highlight_injections_skips_existing_layer() {
+        // Store contains a real factory for "rust"
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(RealRustLayerFactory::new()));
+
+        let mut manager = InjectionManager::with_store(store);
+
+        let full_content = "# Title\n\nfn main() { let x = 1; }extra";
+        let injection = Injection::new("rust".to_string(), 10..34, 1, 0, 1, 24);
+
+        // First call: dynamically creates the layer
+        let _ = manager.highlight_injections(
+            std::slice::from_ref(&injection),
+            full_content,
+            0..full_content.len(),
+        );
+        assert_eq!(manager.layer_count(), 1);
+
+        // Second call with same injection: layer already exists in self.layers,
+        // so `!self.layers.contains_key(...)` is false (line 295 false branch)
+        let highlights = manager.highlight_injections(
+            std::slice::from_ref(&injection),
+            full_content,
+            0..full_content.len(),
+        );
+
+        // Layer count unchanged — no duplicate creation
+        assert_eq!(manager.layer_count(), 1);
+        assert!(!highlights.is_empty());
+    }
+
+    #[test]
+    fn test_highlight_injections_skips_when_create_layer_returns_none() {
+        // MockLayerFactory's create_layer() returns None
+        let store = Arc::new(InjectionLayerStore::new());
+        store.add(Arc::new(MockLayerFactory { language: "rust" }));
+
+        let mut manager = InjectionManager::with_store(store);
+
+        let content = "fn main() {}";
+        let injection = Injection::new("rust".to_string(), 0..12, 0, 0, 0, 12);
+
+        // Store finds factory for "rust" but create_layer() returns None
+        // (line 297 false branch)
+        let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
+
+        assert!(highlights.is_empty());
+        assert_eq!(manager.layer_count(), 0);
+    }
 }

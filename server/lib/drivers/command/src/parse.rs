@@ -576,6 +576,12 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_unclosed_double_quote_trailing_backslash() {
+        // Backslash at end of unclosed double-quoted string: chars.next() returns None
+        assert_eq!(tokenize_args(r#""test\"#), vec!["test"]);
+    }
+
+    #[test]
     fn test_tokenize_unclosed_single_quote() {
         assert_eq!(tokenize_args("'foo bar"), vec!["foo bar"]);
     }
@@ -836,6 +842,132 @@ mod tests {
         let result = bind_args(&specs, "insert hello world", false).unwrap();
         assert_eq!(result.get("mode"), Some(&ArgValue::String("insert".to_string())));
         assert_eq!(result.get("text"), Some(&ArgValue::String("hello world".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_after_leading_whitespace() {
+        // Exercises the whitespace-skip loop in remaining_raw
+        let specs = [
+            ArgSpec::required("mode", ArgKind::String, "Mode"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        let result = bind_args(&specs, "  insert  hello world", false).unwrap();
+        assert_eq!(result.get("mode"), Some(&ArgValue::String("insert".to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("hello world".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_after_quoted_arg() {
+        // Exercises the quoted-token branch in remaining_raw
+        let specs = [
+            ArgSpec::required("file", ArgKind::String, "File"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        let result = bind_args(&specs, r#""my file" rest of text"#, false).unwrap();
+        assert_eq!(result.get("file"), Some(&ArgValue::String("my file".to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("rest of text".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_after_single_quoted_arg() {
+        let specs = [
+            ArgSpec::required("file", ArgKind::String, "File"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        let result = bind_args(&specs, "'my file' rest of text", false).unwrap();
+        assert_eq!(result.get("file"), Some(&ArgValue::String("my file".to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("rest of text".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_after_escaped_arg() {
+        // Exercises the backslash-escape branch in remaining_raw's unquoted scan
+        let specs = [
+            ArgSpec::required("file", ArgKind::String, "File"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        // Tokenizer: "my\ file" -> ["my file"], "rest" -> rest
+        let result = bind_args(&specs, r"my\ file rest", false).unwrap();
+        assert_eq!(result.get("file"), Some(&ArgValue::String("my file".to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("rest".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_after_quoted_with_escape() {
+        // Exercises the backslash-escape inside double-quoted token
+        let specs = [
+            ArgSpec::required("file", ArgKind::String, "File"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        let result = bind_args(&specs, r#""my \"file\"" rest"#, false).unwrap();
+        assert_eq!(result.get("file"), Some(&ArgValue::String(r#"my "file""#.to_string())));
+        assert_eq!(result.get("text"), Some(&ArgValue::String("rest".to_string())));
+    }
+
+    #[test]
+    fn test_bind_rest_exhausted_input() {
+        // When all tokens are consumed and Rest is optional, no key is set
+        let specs = [
+            ArgSpec::required("a", ArgKind::String, "A"),
+            ArgSpec::required("b", ArgKind::String, "B"),
+            ArgSpec::optional("text", ArgKind::Rest, "Remaining"),
+        ];
+        let result = bind_args(&specs, "one two", false).unwrap();
+        assert_eq!(result.get("a"), Some(&ArgValue::String("one".to_string())));
+        assert_eq!(result.get("b"), Some(&ArgValue::String("two".to_string())));
+        assert!(!result.contains_key("text"));
+    }
+
+    #[test]
+    fn test_remaining_raw_consumed_past_end() {
+        // Directly test remaining_raw with consumed > actual tokens
+        assert_eq!(remaining_raw("x", 2), String::new());
+    }
+
+    #[test]
+    fn test_remaining_raw_unclosed_quote() {
+        // Exercises the unclosed-quote path: pos scans to end without finding
+        // closing quote, and remaining is empty since whole string consumed
+        assert_eq!(remaining_raw(r#""unclosed"#, 1), String::new());
+    }
+
+    #[test]
+    fn test_remaining_raw_tab_separator() {
+        // Two consumed tokens separated by tab: the whitespace-skip loop at line 344
+        // encounters tab on the second iteration (between first and second token)
+        let specs = [
+            ArgSpec::required("a", ArgKind::String, "A"),
+            ArgSpec::required("b", ArgKind::String, "B"),
+            ArgSpec::optional("rest", ArgKind::Rest, "Rest"),
+        ];
+        let result = bind_args(&specs, "first\tsecond rest", false).unwrap();
+        assert_eq!(result["a"], ArgValue::String("first".to_string()));
+        assert_eq!(result["b"], ArgValue::String("second".to_string()));
+        assert_eq!(result["rest"], ArgValue::String("rest".to_string()));
+    }
+
+    #[test]
+    fn test_remaining_raw_single_quote_with_backslash() {
+        // Single-quoted arg containing backslash: bytes[pos] == b'\\' && quote == b'"' is false
+        let specs = [
+            ArgSpec::required("a", ArgKind::String, "A"),
+            ArgSpec::optional("rest", ArgKind::Rest, "Rest"),
+        ];
+        let result = bind_args(&specs, r"'foo\bar' rest", false).unwrap();
+        assert_eq!(result["a"], ArgValue::String(r"foo\bar".to_string()));
+        assert_eq!(result["rest"], ArgValue::String("rest".to_string()));
+    }
+
+    #[test]
+    fn test_remaining_raw_unquoted_token_before_tab() {
+        // Unquoted token followed by tab: bytes[pos] != b'\t' is false (exits loop)
+        let specs = [
+            ArgSpec::required("a", ArgKind::String, "A"),
+            ArgSpec::optional("rest", ArgKind::Rest, "Rest"),
+        ];
+        let result = bind_args(&specs, "first\trest", false).unwrap();
+        assert_eq!(result["a"], ArgValue::String("first".to_string()));
+        assert_eq!(result["rest"], ArgValue::String("rest".to_string()));
     }
 
     #[test]

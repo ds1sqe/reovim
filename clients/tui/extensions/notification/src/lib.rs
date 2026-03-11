@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Notification toast TUI extension.
 //!
 //! Displays stacked toast notifications in the top-right corner.

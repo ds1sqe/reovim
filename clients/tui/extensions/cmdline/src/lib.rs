@@ -1,4 +1,3 @@
-#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Cmdline TUI extension.
 //!
 //! Displays a floating command-line popup for ex-commands (`:`, `/`, `?`).
