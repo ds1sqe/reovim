@@ -41,7 +41,7 @@ pub use {
     delete::{DeleteChar, DeleteCharBefore, DeleteLine, DeleteToEndOfLine},
     display_line::{CursorDisplayDown, CursorDisplayUp},
     file::WriteBufferCommand,
-    insert_edit::{InsertNewline, InsertTab},
+    insert_edit::{InsertNewline, InsertTab, get_line_indent},
     operators::{
         EnterChangeOperator, EnterDedentOperator, EnterDeleteOperator, EnterIndentOperator,
         EnterYankOperator,

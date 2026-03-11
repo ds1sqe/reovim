@@ -4,6 +4,40 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Added
+
+- **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
+  `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
+  `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,
+  type-safe value parsing, constraint validation. Emits `OptionChanged`/`OptionReset`
+  via EventBus for module notification and records `StateChanges` for client notification.
+
+- **Completion and microscope options (#574)**: Register 7 options for plugin modules.
+  Completion: `pumheight` (ph), `pumwidth` (pw) with range constraints. Microscope:
+  `picker_height`, `picker_preview`, `picker_ignorecase`, `picker_border` (Choice type),
+  `picker_prompt` (String with length constraint). All with `.with_owner()` ownership.
+
+- **Standard vim/editor options (#573)**: Register 12 standard options with proper ownership,
+  scope, and constraints. Vim module: `scrolloff`, `sidescrolloff`, `ignorecase`, `smartcase`,
+  `hlsearch`, `incsearch`, `wrapscan` (7 Global options). Editor module: `tabstop`,
+  `shiftwidth`, `expandtab`, `autoindent`, `textwidth` (5 Buffer-scoped options). Test helpers
+  consolidated to use module-level option specs instead of per-test inline registrations.
+
+### Changed
+
+- **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
+  `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
+  `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and
+  `list_by_module()` for introspection. `OptionChanged`/`OptionReset` events extended
+  with `scope: OptionScopeId` for runtime context. Vim module options now carry ownership.
+
+### Removed
+
+- **Orphaned OptionsModule (#575)**: Remove unused `reovim-module-options` crate. It was
+  a pre-kernel leftover not loaded by `DefaultsModule` and conflicting with the kernel's
+  `OptionRegistry` mechanism. If `virtualedit` support is needed, it should be registered
+  as an `OptionSpec` in the vim module.
+
 ### Fixed
 
 - **Markdown scroll crash (#565)**: Fix character/byte column mismatch in conceal

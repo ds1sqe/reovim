@@ -13,7 +13,6 @@ This directory contains documentation for reovim's built-in policy modules.
 | [commands](./commands.md) | `reovim-module-commands` | Ex commands (:w, :q, :e) | Documented |
 | [defaults](./defaults.md) | `reovim-module-defaults` | Default modules bundle | Documented |
 | [mode-manager](./mode-manager.md) | `reovim-module-mode-manager` | Mode state management | Documented |
-| [options](./options.md) | `reovim-module-options` | Editor options (virtualedit) | Documented |
 | [scratch-buffer](./scratch-buffer.md) | `reovim-module-scratch-buffer` | Empty buffer on startup | Documented |
 | [cmdline](./cmdline.md) | `reovim-module-cmdline` | Command-line mode input (#468) | Documented |
 | [whichkey](./whichkey.md) | `reovim-module-whichkey` | Which-key hints (#468) | Documented |
@@ -28,7 +27,7 @@ This directory contains documentation for reovim's built-in policy modules.
 | treesitter-rust | `reovim-module-treesitter-rust` | Rust syntax | Implemented |
 | treesitter-markdown | `reovim-module-treesitter-markdown` | Markdown syntax | Implemented |
 
-**Total: 21 modules** (10 documented + 11 implemented)
+**Total: 20 modules** (9 documented + 11 implemented)
 
 ## Module Architecture
 

@@ -51,8 +51,8 @@ use {
         ResolverRegistry,
     },
     reovim_kernel::api::v1::{
-        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionScope,
-        OptionSpec, OptionValue, ProbeResult, Version, pr_info,
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
+        OptionScope, OptionSpec, OptionValue, ProbeResult, Version, pr_info,
     },
 };
 
@@ -214,7 +214,8 @@ impl Module for VimModule {
         if let Err(e) = ctx.kernel.options.register(
             OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
                 .with_short("nu")
-                .with_scope(OptionScope::Window),
+                .with_scope(OptionScope::Window)
+                .with_owner(VIM_MODULE),
         ) {
             return ProbeResult::Failed(ModuleError::InitFailed(format!(
                 "Failed to register 'number' option: {e}"
@@ -227,11 +228,21 @@ impl Module for VimModule {
                 OptionValue::bool(false),
             )
             .with_short("rnu")
-            .with_scope(OptionScope::Window),
+            .with_scope(OptionScope::Window)
+            .with_owner(VIM_MODULE),
         ) {
             return ProbeResult::Failed(ModuleError::InitFailed(format!(
                 "Failed to register 'relativenumber' option: {e}"
             )));
+        }
+
+        // Epic #570: Register vim behavior options (#573)
+        for spec in vim_option_specs() {
+            if let Err(e) = ctx.kernel.options.register(spec) {
+                return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                    "Failed to register vim option: {e}"
+                )));
+            }
         }
 
         // Epic #458: Register GutterRenderer with LineNumberSource and LineNumberPresenter
@@ -274,6 +285,50 @@ impl CommandProvider for VimModule {
         handlers.extend(operators::operator_commands()); // Epic #415
         handlers
     }
+}
+
+// ============================================================================
+// Option specifications (#573)
+// ============================================================================
+
+/// Vim behavior option specifications.
+///
+/// These are standard vim options for search, scroll, and display behavior.
+/// Registered during `VimModule::init()`.
+fn vim_option_specs() -> Vec<OptionSpec> {
+    vec![
+        OptionSpec::new("scrolloff", "Minimum lines above/below cursor", OptionValue::int(0))
+            .with_short("so")
+            .with_constraint(OptionConstraint::min(0))
+            .with_owner(VIM_MODULE),
+        OptionSpec::new(
+            "sidescrolloff",
+            "Minimum columns left/right of cursor",
+            OptionValue::int(0),
+        )
+        .with_short("siso")
+        .with_constraint(OptionConstraint::min(0))
+        .with_owner(VIM_MODULE),
+        OptionSpec::new("ignorecase", "Ignore case in search patterns", OptionValue::bool(false))
+            .with_short("ic")
+            .with_owner(VIM_MODULE),
+        OptionSpec::new(
+            "smartcase",
+            "Override ignorecase if pattern has uppercase",
+            OptionValue::bool(false),
+        )
+        .with_short("scs")
+        .with_owner(VIM_MODULE),
+        OptionSpec::new("hlsearch", "Highlight search matches", OptionValue::bool(false))
+            .with_short("hls")
+            .with_owner(VIM_MODULE),
+        OptionSpec::new("incsearch", "Show search matches incrementally", OptionValue::bool(false))
+            .with_short("is")
+            .with_owner(VIM_MODULE),
+        OptionSpec::new("wrapscan", "Wrap search around end of file", OptionValue::bool(true))
+            .with_short("ws")
+            .with_owner(VIM_MODULE),
+    ]
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
@@ -455,6 +510,86 @@ mod tests {
     }
 
     // ========================================================================
+    // Epic #570: Vim behavior options (#573)
+    // ========================================================================
+
+    #[test]
+    fn test_vim_option_specs_count() {
+        let specs = vim_option_specs();
+        assert_eq!(specs.len(), 7);
+    }
+
+    #[test]
+    fn test_vim_options_registered_after_init() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let expected = [
+            "scrolloff",
+            "sidescrolloff",
+            "ignorecase",
+            "smartcase",
+            "hlsearch",
+            "incsearch",
+            "wrapscan",
+        ];
+        for name in &expected {
+            assert!(ctx.kernel.options.contains(name), "'{name}' should be registered");
+        }
+    }
+
+    #[test]
+    fn test_vim_options_aliases() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let aliases = [
+            ("so", "scrolloff"),
+            ("siso", "sidescrolloff"),
+            ("ic", "ignorecase"),
+            ("scs", "smartcase"),
+            ("hls", "hlsearch"),
+            ("is", "incsearch"),
+            ("ws", "wrapscan"),
+        ];
+        for (short, full) in &aliases {
+            assert_eq!(
+                ctx.kernel.options.resolve_name(short),
+                Some(full.to_string()),
+                "'{short}' should resolve to '{full}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_vim_options_defaults() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        assert_eq!(ctx.kernel.options.get_global("scrolloff"), Some(OptionValue::int(0)));
+        assert_eq!(ctx.kernel.options.get_global("sidescrolloff"), Some(OptionValue::int(0)));
+        assert_eq!(ctx.kernel.options.get_global("ignorecase"), Some(OptionValue::bool(false)));
+        assert_eq!(ctx.kernel.options.get_global("smartcase"), Some(OptionValue::bool(false)));
+        assert_eq!(ctx.kernel.options.get_global("hlsearch"), Some(OptionValue::bool(false)));
+        assert_eq!(ctx.kernel.options.get_global("incsearch"), Some(OptionValue::bool(false)));
+        assert_eq!(ctx.kernel.options.get_global("wrapscan"), Some(OptionValue::bool(true)));
+    }
+
+    #[test]
+    fn test_vim_options_ownership() {
+        let mut module = VimModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let vim_options = ctx.kernel.options.list_by_module(&VIM_MODULE);
+        // 2 line number + 7 behavior = 9
+        assert_eq!(vim_options.len(), 9);
+    }
+
+    // ========================================================================
     // Epic #458: GutterRenderer registration test
     // ========================================================================
 
@@ -476,6 +611,22 @@ mod tests {
         let renderer = renderer.unwrap();
         assert_eq!(renderer.source_count(), 1, "Should have 1 source registered");
         assert_eq!(renderer.presenter_count(), 1, "Should have 1 presenter registered");
+    }
+
+    #[test]
+    fn test_vim_init_fails_on_duplicate_option() {
+        let ctx = ModuleContext::default();
+
+        // Pre-register one of our options to trigger a conflict
+        let _ = ctx.kernel.options.register(OptionSpec::new(
+            "scrolloff",
+            "Already taken",
+            OptionValue::int(1),
+        ));
+
+        let mut module = VimModule::new();
+        let result = module.init(&ctx);
+        assert!(matches!(result, ProbeResult::Failed(_)), "init should fail on duplicate option");
     }
 
     // ========================================================================
