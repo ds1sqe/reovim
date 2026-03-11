@@ -323,12 +323,12 @@ Your review MUST include:
 
 **Countdown (plan review):**
 ```
-tmp/{ISSUE}/countdown/round-{N}/telemetry.md
+tmp/{ISSUE}/{P}/countdown/round-{N}/telemetry.md
 ```
 
 **Reentry (landing review):**
 ```
-tmp/{ISSUE}/landing/round-{N}/telemetry.md
+tmp/{ISSUE}/{P}/landing/round-{N}/telemetry.md
 ```
 
 You are the guardian of code quality through testing. Your review ensures that the test suite provides genuine confidence in the implementation, not just a false sense of security.

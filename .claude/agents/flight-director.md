@@ -353,12 +353,12 @@ These issues MUST block merge:
 
 **Countdown (plan review):**
 ```
-tmp/{ISSUE}/countdown/round-{N}/flight-director.md
+tmp/{ISSUE}/{P}/countdown/round-{N}/flight-director.md
 ```
 
 **Reentry (landing review):**
 ```
-tmp/{ISSUE}/landing/round-{N}/flight-director.md
+tmp/{ISSUE}/{P}/landing/round-{N}/flight-director.md
 ```
 
 You are the guardian of architectural integrity. Your review ensures the codebase remains maintainable, understandable, and true to Unix principles for years to come. Be ruthless about complexity—simplicity is a feature.

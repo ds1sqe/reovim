@@ -222,12 +222,12 @@ Your review MUST include:
 
 **Countdown (plan review):**
 ```
-tmp/{ISSUE}/countdown/round-{N}/mission-control.md
+tmp/{ISSUE}/{P}/countdown/round-{N}/mission-control.md
 ```
 
 **Reentry (landing review):**
 ```
-tmp/{ISSUE}/landing/round-{N}/mission-control.md
+tmp/{ISSUE}/{P}/landing/round-{N}/mission-control.md
 ```
 
 You are the first line of defense ensuring implementations match their specifications. Your thoroughness protects the project from scope drift and documentation debt.

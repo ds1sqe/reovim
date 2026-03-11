@@ -394,6 +394,29 @@ Issues often span multiple Claude Code sessions (flights). Use flight logs to ma
 - **"Next" section** only on the latest flight — tells next session exactly where to pick up
 - **Decisions recorded** — prevents re-debating things already decided
 
+### Stop Protocol (MANDATORY)
+
+**NEVER end a work session without running `/stop` or following this protocol manually.**
+
+Claude sessions end for many reasons — context limits, user interruption, getting stuck. Regardless of the reason, you MUST hand off cleanly so the next session can resume without lost context.
+
+**Before stopping, you MUST:**
+1. Update `~/.claude/plans/reovim/{ISSUE}/flight-log.md` with what was done, decisions made, and exact resume point
+2. Generate `tmp/commit.sh` if there are uncommitted changes
+3. Report status to the user (what's done, what's left, where to resume)
+
+**Red Flags (unprofessional):**
+- Ending with "I'll stop here for now" without updating the flight log
+- Leaving uncommitted work with no commit script
+- Vague resume instructions like "continue from where we left off"
+
+**Green Flags (professional):**
+- Flight log updated with file paths and line numbers
+- `tmp/commit.sh` ready for user to review and run
+- Next session can start immediately from the flight log alone
+
+**When context is getting large:** Proactively run `/stop` BEFORE compaction erases your progress. If you notice the conversation is very long, do the handoff early rather than risk losing context.
+
 ## Build Commands
 
 ```bash
@@ -566,7 +589,7 @@ When creating PRs with `gh pr create`, do NOT add promotional footers like "Gene
    - Plan must be **self-contained** (works after context compact/clear)
 
 4. **Countdown - Go Poll Round 1**:
-   - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode with `model: {model}`
+   - Launch review agents (mission-control, telemetry, flight-director) in `countdown` mode via Agent tool with `subagent_type`
    - Each agent reviews plan for enhancements and missing details
    - Incorporate all feedback into plan
 
@@ -608,7 +631,7 @@ Use `/final-approach [issue]` or run manually:
    Flight Director checks: Mechanism vs Policy, Do one thing well, Composability, Separation of concerns, API purity, Simplicity
 
    **Grading:** A+ (exceeds, skip next round) / A (go for landing) / B (minor fixes) / C (significant) / F (no-go)
-   - Each agent writes to `tmp/{ISSUE}/landing/round-{N}/{agent}.md`
+   - Each agent writes to `tmp/{ISSUE}/{P}/landing/round-{N}/{agent}.md`
    - **Must achieve GO (A or A+) from ALL THREE agents**
    - If ANY agent reports NO-GO (B or below) → fix issues → go back to Step 1
    - Loop until all agents report GO
@@ -629,7 +652,12 @@ Use `/final-approach [issue]` or run manually:
 
 4. **Update CHANGELOG.md** with correct phase number (match issue title)
 
-5. **(Optional) Generate performance report** for version releases:
+5. **Generate `tmp/commit.sh`** — executable script with:
+   - `git add` for all relevant files (explicit list, no `git add -A`)
+   - `git commit` with the proposed message
+   - NO `git push` (user decides when to push)
+
+6. **(Optional) Generate performance report** for version releases:
    ```bash
    cargo run -p perf-report -- bench -v X.Y.Z
    ```
@@ -697,8 +725,9 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
-| `countdown` | `/countdown [issue]` | Pre-implementation validation with oracle (Opus) + Go Poll  |
-| `final-approach` | `/final-approach [issue]` | Landing sequence with Go Poll (3 agents in reentry mode) |
+| `countdown` | `/countdown [issue] [plan]` | Pre-implementation validation with oracle (Opus) + Go Poll  |
+| `final-approach` | `/final-approach [issue] [plan]` | Landing sequence with Go Poll, landing doc, and commit script |
+| `stop` | `/stop [issue]` | Clean session handoff with flight log update and commit script |
 
 ### Agent Files
 
@@ -713,26 +742,32 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 └── skills/
     ├── countdown/
     │   └── SKILL.md             # /countdown command
-    └── final-approach/
-        └── SKILL.md             # /final-approach command
+    ├── final-approach/
+    │   └── SKILL.md             # /final-approach command
+    └── stop/
+        └── SKILL.md             # /stop command
 ```
 
 ### Output Structure
 
 ```
 tmp/{ISSUE}/
-├── audit/               # Phase-by-phase verification (optional)
-│   └── voyager-phase{N}.md
-├── countdown/           # Plan review (before coding)
-│   └── round-{N}/
-│       ├── mission-control.md
-│       ├── telemetry.md
-│       └── flight-director.md
-└── landing/             # Landing review (before merge)
-    └── round-{N}/
-        ├── mission-control.md
-        ├── telemetry.md
-        └── flight-director.md
+├── {P}/                         # Plan number (01, 02, ...)
+│   ├── countdown/               # Plan review (before coding)
+│   │   └── round-{N}/
+│   │       ├── mission-control.md
+│   │       ├── telemetry.md
+│   │       └── flight-director.md
+│   └── landing/                 # Landing review (before merge)
+│       └── round-{N}/
+│           ├── mission-control.md
+│           ├── telemetry.md
+│           └── flight-director.md
+├── landing.md                   # Issue-level landing document
+└── audit/                       # Phase-by-phase verification (optional)
+    └── voyager-phase{N}.md
+
+tmp/commit.sh                    # Executable commit script
 ```
 
 ## Detailed Documentation
