@@ -155,28 +155,17 @@ mod tests {
         super::*,
         reovim_driver_command::CommandContext,
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
         },
-        reovim_kernel::api::v1::{
-            CommandId as KernelCommandId, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack,
-            ModuleId, RegisterBank,
+        reovim_kernel::{
+            api::v1::{
+                HistoryRing, KernelContext, MarkBank,
+                ModeStack, RegisterBank,
+            },
+            testing::test_mode,
         },
     };
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
-
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
 
     #[test]
     fn test_enter_delete_operator_id_and_desc() {

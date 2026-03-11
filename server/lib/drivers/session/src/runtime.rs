@@ -1803,13 +1803,9 @@ impl CompositorApi for SessionRuntime<'_> {
 mod tests {
     use {
         super::*,
-        crate::types::ClientId,
-        reovim_kernel::api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank},
+        crate::{testing::StubExecutor, types::ClientId},
+        reovim_kernel::{api::v1::{HistoryRing, MarkBank, ModuleId, RegisterBank}, testing::test_mode},
     };
-
-    fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
 
     fn test_mode_2() -> ModeId {
         ModeId::with_discriminant(ModuleId::new("test"), "insert", 1)
@@ -1818,15 +1814,6 @@ mod tests {
     use std::sync::Arc;
 
     use crate::api::CommandHandle;
-
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &CommandId) -> Option<Arc<dyn CommandHandle>> {
-            None
-        }
-    }
 
     #[test]
     fn test_mode_api() {

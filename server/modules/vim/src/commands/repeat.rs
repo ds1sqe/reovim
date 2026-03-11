@@ -15,7 +15,8 @@
 
 use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
-    reovim_driver_session::{BufferApi, SessionRuntime, api::ExtensionApi},
+    reovim_driver_session::{
+            BufferApi, SessionRuntime, api::ExtensionApi},
     reovim_kernel::api::v1::{CommandId, Position},
 };
 
@@ -113,105 +114,26 @@ impl DotRepeat {
 #[allow(clippy::uninlined_format_args)]
 mod tests {
     use {
+        reovim_kernel::testing::{create_test_context, setup_buffer},
         super::*,
         crate::session_state::{LastChange, OperatorType},
         reovim_driver_command::ArgValue,
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, Window, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
+            api::{CommandExecutor},
         },
         reovim_kernel::api::{
-            ModeStack, ServiceRegistry,
+            ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine,
-                OptionRegistry, RegisterBank, RwLock, TextObjectEngine,
+                BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, RegisterBank,
             },
         },
-        std::{collections::HashMap, sync::Arc},
     };
 
-    /// Test buffer manager that stores buffers.
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    /// Stub command executor for tests.
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
 
     fn test_mode() -> ModeId {
         ModeId::new(ModuleId::new("vim"), "normal")
-    }
-
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
-    }
-
-    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
-        let buffer = Buffer::from_string(content);
-        ctx.buffers.register(buffer)
     }
 
     // =========================================================================

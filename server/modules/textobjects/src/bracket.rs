@@ -15,7 +15,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{
-        OperatorPendingState, SessionRuntime, TextObjRange,
+            OperatorPendingState, SessionRuntime, TextObjRange,
         api::{ExtensionApi, ModeApi, Selection, SelectionMode},
     },
     reovim_kernel::api::v1::{CommandId, Position, TextObject, TextObjectEngine},
@@ -365,91 +365,26 @@ pub fn all_commands() -> Vec<Box<dyn CommandHandler>> {
 #[cfg(test)]
 mod tests {
     use {
+        reovim_kernel::testing::{create_test_context, setup_buffer, test_mode},
         super::*,
         crate::TEXTOBJECTS_MODULE,
         reovim_driver_command::ArgValue,
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, OperatorPendingState, Session, Window, WindowLayout,
-            api::{CommandExecutor, CommandHandle, SelectionMode},
+            api::{CommandExecutor, SelectionMode},
         },
         reovim_kernel::api::{
-            ModeStack, ServiceRegistry,
+            ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
-                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, MotionEngine,
-                OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
+                BufferId, HistoryRing, KernelContext, MarkBank, ModeId, ModuleId, Position, RegisterBank,
             },
         },
-        std::{collections::HashMap, sync::Arc},
     };
 
     // =========================================================================
     // Test Infrastructure (mirrors word.rs pattern)
     // =========================================================================
-
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
-
-    fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
 
     fn visual_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "visual")
@@ -465,23 +400,6 @@ mod tests {
 
     fn operator_pending_mode() -> ModeId {
         ModeId::new(ModuleId::new("test"), "delete")
-    }
-
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
-    }
-
-    fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
-        let buffer = Buffer::from_string(content);
-        ctx.buffers.register(buffer)
     }
 
     struct TestState {

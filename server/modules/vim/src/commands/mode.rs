@@ -21,7 +21,7 @@ use {
     reovim_driver_command::{Command, CommandContext, CommandHandler, CommandResult},
     reovim_driver_search::Direction,
     reovim_driver_session::{
-        BufferApi, SessionRuntime, TransitionContext,
+            BufferApi, SessionRuntime, TransitionContext,
         api::{ChangeTracker, ExtensionApi, ModeApi, SearchState},
     },
     reovim_driver_undo::{UndoKey, UndoProviderRegistry},
@@ -849,18 +849,19 @@ impl CommandHandler for EnterSearchBackward {
 #[allow(clippy::significant_drop_tightening, clippy::uninlined_format_args)]
 mod tests {
     use {
+        reovim_kernel::testing::create_test_context,
         super::*,
         reovim_driver_command::Command,
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, WindowLayout,
             api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
-                KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank, RwLock,
-                ServiceRegistry, TextObjectEngine,
+                Buffer, BufferId, CommandId, HistoryRing,
+                KernelContext, MarkBank, RegisterBank, RwLock,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -871,67 +872,6 @@ mod tests {
     // ========================================================================
     // Test infrastructure
     // ========================================================================
-
-    /// Test buffer manager that actually stores buffers.
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
 
     /// Test executor that wraps `CommandHandler` instances for name-based dispatch tests.
     struct TestExecutor {
@@ -1043,18 +983,6 @@ mod tests {
                 executor,
             )
         }
-    }
-
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
     }
 
     // ========================================================================
@@ -1747,21 +1675,11 @@ mod tests {
     }
 
     fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
-        let services = Arc::new(ServiceRegistry::new());
+        let ctx = create_test_context();
         let mock_undo = Arc::new(MockUndoProvider::new());
         let undo_registry = Arc::new(UndoProviderRegistry::new());
         undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
-        services.register(undo_registry);
-
-        let ctx = KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        );
+        ctx.services.register(undo_registry);
         (ctx, mock_undo)
     }
 
@@ -2170,20 +2088,11 @@ mod tests {
     }
 
     fn create_test_context_with_search(provider: Arc<dyn SearchProvider>) -> KernelContext {
-        let services = Arc::new(ServiceRegistry::new());
+        let ctx = create_test_context();
         let search_registry = Arc::new(SearchProviderRegistry::new());
         search_registry.register(SearchKey::Regex, provider);
-        services.register(search_registry);
-
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        )
+        ctx.services.register(search_registry);
+        ctx
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2452,18 +2361,9 @@ mod tests {
     }
 
     fn create_test_context_with_name_index(name_index: CommandNameIndex) -> KernelContext {
-        let services = Arc::new(ServiceRegistry::new());
-        services.register(Arc::new(name_index));
-
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        )
+        let ctx = create_test_context();
+        ctx.services.register(Arc::new(name_index));
+        ctx
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -2708,20 +2608,10 @@ mod tests {
     #[test]
     fn test_exit_commandline_search_no_search_provider_for_key() {
         // Register an empty SearchProviderRegistry (no Regex key)
-        let services = Arc::new(ServiceRegistry::new());
+        let ctx = create_test_context();
         let search_registry = Arc::new(SearchProviderRegistry::new());
         // Don't register any provider
-        services.register(search_registry);
-
-        let ctx = KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        );
+        ctx.services.register(search_registry);
 
         let buffer = Buffer::from_string("hello world");
         let buffer_id = ctx.buffers.register(buffer);

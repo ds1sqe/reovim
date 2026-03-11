@@ -142,7 +142,7 @@ mod tests {
     // Note: System clipboard tests are skipped in CI as they require a display
     // Run locally with: cargo test -p reovim-module-clipboard -- --ignored
     #[test]
-    #[ignore = "requires display for clipboard access"]
+    #[ignore = "requires display for clipboard access (#576)"]
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_system_clipboard() {
         let service = ClipboardService::new();

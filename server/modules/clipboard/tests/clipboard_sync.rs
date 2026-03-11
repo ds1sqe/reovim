@@ -90,7 +90,7 @@ fn get_os_clipboard() -> Option<String> {
 
 /// Pasting from `"+` reads the OS clipboard into the buffer.
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_paste_from_os_clipboard() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");
@@ -118,7 +118,7 @@ async fn test_paste_from_os_clipboard() {
 
 /// Yanking to `"+` syncs text to the OS clipboard.
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_yank_to_os_clipboard() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");
@@ -147,7 +147,7 @@ async fn test_yank_to_os_clipboard() {
 
 /// Yanking a full line to `"+` syncs to the OS clipboard.
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_yank_line_to_os_clipboard() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");
@@ -178,7 +178,7 @@ async fn test_yank_line_to_os_clipboard() {
 
 /// Yank to `"+`, then paste from `"+` in a new context should use OS clipboard.
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_clipboard_roundtrip() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");
@@ -205,7 +205,7 @@ async fn test_clipboard_roundtrip() {
 
 /// Deleting with `"+dw` syncs deleted text to OS clipboard.
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_delete_to_os_clipboard() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");
@@ -241,7 +241,7 @@ async fn test_delete_to_os_clipboard() {
 /// to clipboard) instead, which uses the same code path as normal mode
 /// `"+dw` (already verified above).
 #[tokio::test]
-#[ignore = "requires display and clipboard tool for clipboard access"]
+#[ignore = "requires display and clipboard tool for clipboard access (#576)"]
 async fn test_visual_delete_to_os_clipboard() {
     if !clipboard_available() {
         eprintln!("Skipping: no clipboard available");

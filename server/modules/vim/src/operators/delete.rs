@@ -262,21 +262,22 @@ impl Operator for DeleteOperator {
 )]
 mod tests {
     use {
+        reovim_kernel::testing::create_test_context,
         super::*,
         reovim_driver_command::{CommandContext, CommandHandler, CommandResult},
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
-                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
-                Register, RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferId, CommandId, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, Position,
+                Register, RegisterBank, RwLock,
             },
         },
-        std::{collections::HashMap, sync::Arc},
+        std::sync::Arc,
     };
 
     fn run_command<C: CommandHandler>(
@@ -284,13 +285,6 @@ mod tests {
         ctx: &KernelContext,
         args: &CommandContext,
     ) -> CommandResult {
-        struct StubExecutor;
-        #[cfg_attr(coverage_nightly, coverage(off))]
-        impl CommandExecutor for StubExecutor {
-            fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-                None
-            }
-        }
         let home_mode = ModeId::new(ModuleId::new("test"), "normal");
         let mut session = Session::new(ClientId::new(1), home_mode.clone()); // #491
         let executor = StubExecutor;
@@ -322,71 +316,6 @@ mod tests {
             &executor,
         );
         cmd.execute(&mut runtime, args)
-    }
-
-    /// Test buffer manager that actually stores buffers.
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    /// Create a `KernelContext` with a real buffer manager for testing.
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
     }
 
     #[test]
@@ -1080,21 +1009,11 @@ mod tests {
     }
 
     fn create_test_context_with_undo() -> (KernelContext, Arc<MockUndoProvider>) {
-        let services = Arc::new(ServiceRegistry::new());
+        let ctx = create_test_context();
         let mock_undo = Arc::new(MockUndoProvider::new());
         let undo_registry = Arc::new(UndoProviderRegistry::new());
         undo_registry.register(UndoKey::Buffer, mock_undo.clone() as Arc<dyn UndoProvider>);
-        services.register(undo_registry);
-
-        let ctx = KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        );
+        ctx.services.register(undo_registry);
         (ctx, mock_undo)
     }
 

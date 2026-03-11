@@ -98,34 +98,25 @@ pub fn visual_commands() -> Vec<Box<dyn CommandHandler>> {
 #[allow(clippy::significant_drop_tightening)]
 mod tests {
     use {
+        reovim_kernel::testing::create_test_context,
         super::*,
         reovim_driver_command::{Command, CommandContext, CommandResult},
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, SessionRuntime, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
         },
         reovim_kernel::api::{
             ModeStack,
             v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
-                KernelContext, MarkBank, ModeId, ModuleId, MotionEngine, OptionRegistry, Position,
-                RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
+                Buffer, BufferId, HistoryRing,
+                KernelContext, MarkBank, ModeId, ModuleId, Position,
+                RegisterBank,
             },
         },
-        std::{collections::HashMap, sync::Arc},
     };
 
     use crate::modes::VIM_MODULE;
 
-    /// Stub command executor for tests.
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &CommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
 
     /// Test state holder for per-client state (#471 borrow checker fix).
     struct TestState {
@@ -271,71 +262,6 @@ mod tests {
         let result = cmd.execute(&mut runtime, args);
         drop(runtime);
         (result, state.windows)
-    }
-
-    /// Test buffer manager that actually stores buffers.
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    /// Create a `KernelContext` with a real buffer manager for testing.
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
     }
 
     // =========================================================================
@@ -562,7 +488,8 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_char_switches_from_line() {
-        use reovim_driver_session::{SelectionMode, api::Selection};
+        use reovim_driver_session::{
+            SelectionMode, api::Selection};
 
         let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
@@ -608,7 +535,8 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_block_switches_mode() {
-        use reovim_driver_session::{SelectionMode, api::Selection};
+        use reovim_driver_session::{
+            SelectionMode, api::Selection};
 
         let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");
@@ -1047,7 +975,8 @@ mod tests {
 
     #[test]
     fn test_toggle_visual_line_from_char_keeps_selection() {
-        use reovim_driver_session::{SelectionMode, api::Selection};
+        use reovim_driver_session::{
+            SelectionMode, api::Selection};
 
         let ctx = create_test_context();
         let buffer = Buffer::from_string("hello world");

@@ -24,23 +24,134 @@ cargo test buffer
 
 ## Test Organization
 
-Tests are organized as inline module tests within source files:
+### File Layout Rules
+
+Tests should be separated from implementation files. Three rules based on module
+structure and test size:
+
+**Rule 1 -- Single file module: `{name}_tests.rs` sibling**
 
 ```
-server/lib/kernel/src/
-├── mm/                    # Memory management tests
-├── ipc/                   # IPC tests
-├── core/                  # Core type tests
-└── api/                   # API tests
-
-server/lib/drivers/input/src/
-├── resolver.rs            # Key resolution tests
-└── parser.rs              # Key parsing tests
-
-server/modules/vim/src/
-├── resolvers/             # Mode-specific resolver tests
-└── session_state.rs       # Session state tests
+src/
+├── word.rs
+├── word_tests.rs          # tests for word.rs
+├── bracket.rs
+└── bracket_tests.rs       # tests for bracket.rs
 ```
+
+Included via `#[cfg(test)] mod word_tests;` in the parent `mod.rs` or `lib.rs`.
+
+**Rule 2 -- Directory module, total tests < 500 lines: single `tests.rs`**
+
+```
+src/
+├── operators/
+│   ├── mod.rs
+│   ├── delete.rs
+│   ├── change.rs
+│   └── tests.rs           # tests for all operators
+```
+
+Included via `#[cfg(test)] mod tests;` in `mod.rs`.
+
+**Rule 3 -- Directory module, total tests >= 500 lines: `tests/` subdirectory**
+
+```
+src/
+├── operators/
+│   ├── mod.rs
+│   ├── delete.rs
+│   ├── change.rs
+│   └── tests/
+│       ├── mod.rs
+│       ├── delete.rs       # tests for delete only
+│       ├── change.rs       # tests for change only
+│       └── yank.rs         # tests for yank only
+```
+
+Included via `#[cfg(test)] mod tests;` in `mod.rs`, with `tests/mod.rs`
+re-exporting submodules.
+
+| Situation | Layout | Inclusion |
+|-----------|--------|-----------|
+| Single file, any test size | `{name}_tests.rs` sibling | `#[cfg(test)] mod {name}_tests;` in parent mod |
+| Directory, tests < 500 lines | `tests.rs` inside dir | `#[cfg(test)] mod tests;` in `mod.rs` |
+| Directory, tests >= 500 lines | `tests/` subdir mirroring source | `#[cfg(test)] mod tests;` in `mod.rs` |
+| E2E / cross-module | Cargo `tests/` directory | Automatic by Cargo |
+
+> **Note:** Migration from inline tests to separated files is in progress.
+> Existing inline tests will be migrated module-by-module in future PRs.
+
+### Shared Test Helpers
+
+**`reovim_kernel::testing`** provides kernel-level test utilities:
+
+```rust
+use reovim_kernel::testing::{create_test_context, setup_buffer, TestBufferManager};
+
+// Standard test context with real in-memory buffer manager
+let ctx = create_test_context();
+
+// Create a buffer with content
+let id = setup_buffer(&ctx, "hello\nworld");
+```
+
+- `create_test_context()` -- `KernelContext` with a real `TestBufferManager`
+  (stores and retrieves buffers, unlike `KernelContext::default()` which uses a
+  stub)
+- `setup_buffer(ctx, content)` -- convenience for `Buffer::from_string()` +
+  `ctx.buffers.register()`
+- `TestBufferManager` -- in-memory `BufferManager` implementation
+
+For tests that need services (undo, search, etc.), create a context then
+register services:
+
+```rust
+let ctx = create_test_context();
+let undo_registry = Arc::new(UndoProviderRegistry::new());
+undo_registry.register(UndoKey::Buffer, mock_undo.clone());
+ctx.services.register(undo_registry);
+```
+
+**`reovim_driver_session::testing`** provides session-level test utilities:
+
+```rust
+use reovim_driver_session::testing::TestSessionRuntime;
+
+let mut test = TestSessionRuntime::new();
+test.with_runtime(|runtime| { /* use runtime */ });
+test.assert_mode_name("normal");
+test.assert_cursor(0, 0);
+```
+
+Use `reovim_kernel::testing` for pure kernel-level tests (motions, text objects,
+operators). Use `TestSessionRuntime` for tests that need session state (mode
+transitions, window management, command execution).
+
+### Test Naming Convention
+
+```
+test_{action}_{scenario}[_{expected_outcome}]
+```
+
+Examples:
+- `test_delete_word_at_line_start`
+- `test_cursor_move_past_eof_clamps`
+- `test_yank_register_stores_linewise`
+- `test_visual_select_empty_line`
+
+### Ignored Test Policy
+
+Every `#[ignore]` must reference a tracking issue:
+
+```rust
+#[ignore = "Dot repeat not fully implemented (#NNN)"]
+```
+
+Process for deferring tests:
+1. Create a deferral draft at `tmp/deferral-draft-{topic}.md`
+2. Continue working
+3. After user approval, create the issue and update the `#[ignore]` annotation
 
 ## Integration Testing
 

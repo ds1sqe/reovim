@@ -14,7 +14,7 @@ use {
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult,
     },
     reovim_driver_session::{
-        SessionRuntime,
+            SessionRuntime,
         api::{BufferApi, UndoApi},
     },
     reovim_kernel::api::v1::CommandId,
@@ -141,102 +141,21 @@ impl CommandHandler for RedoCommand {
 #[cfg(test)]
 mod tests {
     use {
+        reovim_kernel::testing::{create_test_context, test_mode},
         super::*,
         reovim_driver_command::{ArgKind, ArgValue, CommandContext},
         reovim_driver_session::{
+            testing::StubExecutor,
             ClientId, ExtensionMap, Session, SessionRuntime, Window, WindowLayout,
-            api::{CommandExecutor, CommandHandle},
+            api::CommandExecutor,
         },
         reovim_driver_undo::{UndoKey, UndoProviderRegistry},
-        reovim_kernel::api::{
-            ServiceRegistry,
-            v1::{
-                Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId, Edit,
-                EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
-                MotionEngine, OptionRegistry, Position, RegisterBank, RwLock, TextObjectEngine,
+        reovim_kernel::api::v1::{
+                Buffer, BufferId, Edit, HistoryRing, KernelContext, MarkBank, ModeStack, Position, RegisterBank,
                 UndoResult,
             },
-        },
-        std::{collections::HashMap, sync::Arc},
+        std::sync::Arc,
     };
-
-    struct TestBufferManager {
-        buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-    }
-
-    impl TestBufferManager {
-        fn new() -> Self {
-            Self {
-                buffers: RwLock::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl BufferManager for TestBufferManager {
-        fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-            self.buffers.read().get(&id).cloned()
-        }
-
-        fn create(&self) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(Buffer::new()));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn register(&self, buffer: Buffer) -> BufferId {
-            let id = BufferId::new();
-            let buffer = Arc::new(RwLock::new(buffer));
-            self.buffers.write().insert(id, buffer);
-            id
-        }
-
-        fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-            self.buffers
-                .write()
-                .remove(&id)
-                .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                    Arc::try_unwrap(arc_buffer)
-                        .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-                })
-        }
-
-        fn list(&self) -> Vec<BufferId> {
-            self.buffers.read().keys().copied().collect()
-        }
-
-        fn count(&self) -> usize {
-            self.buffers.read().len()
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
-
-    struct StubExecutor;
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    impl CommandExecutor for StubExecutor {
-        fn get_handle(&self, _id: &KernelCommandId) -> Option<std::sync::Arc<dyn CommandHandle>> {
-            None
-        }
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn create_test_context() -> KernelContext {
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            Arc::new(ServiceRegistry::new()),
-        )
-    }
 
     struct TestState {
         session: Session,
@@ -744,19 +663,11 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context_with_undo() -> KernelContext {
-        let services = Arc::new(ServiceRegistry::new());
+        let ctx = create_test_context();
         let undo_registry = UndoProviderRegistry::new();
         undo_registry.register(UndoKey::Buffer, Arc::new(MockUndoProvider));
-        services.register(Arc::new(undo_registry));
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
-            services,
-        )
+        ctx.services.register(Arc::new(undo_registry));
+        ctx
     }
 
     // =========================================================================

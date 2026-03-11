@@ -400,7 +400,7 @@ async fn test_visual_line_delete() {
 
 /// Test `.` repeats last change.
 #[tokio::test]
-#[ignore = "Dot repeat not fully implemented"]
+#[ignore = "Dot repeat not fully implemented (#577)"]
 async fn test_dot_repeats_change() {
     let result = IntegrationTest::new()
         .await
@@ -413,7 +413,7 @@ async fn test_dot_repeats_change() {
 
 /// Test `.` repeats delete.
 #[tokio::test]
-#[ignore = "Dot repeat not fully implemented"]
+#[ignore = "Dot repeat not fully implemented (#577)"]
 async fn test_dot_repeats_delete() {
     let result = IntegrationTest::new()
         .await

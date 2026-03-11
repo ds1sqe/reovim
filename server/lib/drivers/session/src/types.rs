@@ -914,12 +914,8 @@ mod tests {
         reovim_driver_display::layout::{
             CompositeResult, Layer, LayerConfig, LayerId, RootCompositor, WindowLayerCompositor,
         },
-        reovim_kernel::api::v1::ModuleId,
+        reovim_kernel::testing::test_mode,
     };
-
-    fn test_mode() -> ModeId {
-        ModeId::new(ModuleId::new("test"), "normal")
-    }
 
     #[test]
     fn test_client_id() {

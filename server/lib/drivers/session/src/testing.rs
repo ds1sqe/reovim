@@ -33,12 +33,11 @@ use {
         extension::ExtensionMap,
         runtime::SessionRuntime,
     },
-    reovim_arch::sync::RwLock,
     reovim_kernel::api::v1::{
-        Buffer, BufferError, BufferId, BufferManager, CommandId, HistoryRing, KernelContext,
+        Buffer, BufferId, CommandId, HistoryRing, KernelContext,
         MarkBank, ModeId, ModeStack, ModuleId, Position, RegisterBank,
     },
-    std::{collections::HashMap, sync::Arc},
+    std::sync::Arc,
 };
 
 /// Test helper for commands using `SessionRuntime`.
@@ -115,19 +114,7 @@ impl Default for TestSessionRuntime {
 impl TestSessionRuntime {
     /// Create a `KernelContext` that uses a real buffer manager for testing.
     fn make_test_kernel() -> KernelContext {
-        use reovim_kernel::api::v1::{
-            EventBus, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
-        };
-
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::new()),
-            Arc::new(ServiceRegistry::new()),
-        )
+        reovim_kernel::testing::create_test_context()
     }
 
     /// Create a new test runtime with default normal mode.
@@ -190,6 +177,34 @@ impl TestSessionRuntime {
         // Set the active buffer (per-client state)
         test.active_buffer = Some(buffer_id);
 
+        test
+    }
+
+    /// Create a test runtime with buffer content and a specific home mode.
+    ///
+    /// Use for mode-sensitive tests (e.g., textobjects that behave differently
+    /// in visual vs normal mode).
+    #[must_use]
+    pub fn with_buffer_and_mode(content: &str, mode: ModeId) -> Self {
+        let mut test = Self::with_home_mode(mode);
+        let buffer = Buffer::from_string(content);
+        let buffer_id = test.kernel.buffers.register(buffer);
+        let mut window = crate::Window::new();
+        window.buffer_id = Some(buffer_id);
+        test.windows.add(window);
+        test.active_buffer = Some(buffer_id);
+        test
+    }
+
+    /// Create a test runtime with a pre-configured window and mode.
+    ///
+    /// Use when tests need specific cursor position or window configuration
+    /// before executing a command.
+    #[must_use]
+    pub fn with_window(window: crate::Window, mode: ModeId) -> Self {
+        let mut test = Self::with_home_mode(mode);
+        test.active_buffer = window.buffer_id;
+        test.windows.add(window);
         test
     }
 
@@ -440,65 +455,11 @@ impl TestSessionRuntime {
     }
 }
 
-/// Test buffer manager that actually stores buffers.
-///
-/// Unlike the kernel's `StubBufferManager`, this implementation properly stores
-/// and retrieves buffers for testing.
-struct TestBufferManager {
-    buffers: RwLock<HashMap<BufferId, Arc<RwLock<Buffer>>>>,
-}
-
-impl TestBufferManager {
-    fn new() -> Self {
-        Self {
-            buffers: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl BufferManager for TestBufferManager {
-    fn get(&self, id: BufferId) -> Option<Arc<RwLock<Buffer>>> {
-        self.buffers.read().get(&id).cloned()
-    }
-
-    fn create(&self) -> BufferId {
-        let id = BufferId::new();
-        let buffer = Arc::new(RwLock::new(Buffer::new()));
-        self.buffers.write().insert(id, buffer);
-        id
-    }
-
-    fn register(&self, buffer: Buffer) -> BufferId {
-        let id = BufferId::new();
-        let buffer = Arc::new(RwLock::new(buffer));
-        self.buffers.write().insert(id, buffer);
-        id
-    }
-
-    fn unregister(&self, id: BufferId) -> Result<Buffer, BufferError> {
-        self.buffers
-            .write()
-            .remove(&id)
-            .map_or(Err(BufferError::NotFound(id)), |arc_buffer| {
-                Arc::try_unwrap(arc_buffer)
-                    .map_or_else(|arc| Ok(arc.read().clone()), |rwlock| Ok(rwlock.into_inner()))
-            })
-    }
-
-    fn list(&self) -> Vec<BufferId> {
-        self.buffers.read().keys().copied().collect()
-    }
-
-    fn count(&self) -> usize {
-        self.buffers.read().len()
-    }
-}
 
 /// Stub command executor for testing.
 ///
 /// Returns `None` (command not found) for all lookups.
-struct StubExecutor;
+pub struct StubExecutor;
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandExecutor for StubExecutor {
@@ -842,7 +803,7 @@ mod tests {
     }
 
     // =========================================================================
-    // TestBufferManager tests
+    // Buffer manager integration tests
     // =========================================================================
 
     #[test]
