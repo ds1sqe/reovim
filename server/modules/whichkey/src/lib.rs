@@ -1,3 +1,4 @@
+#![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Which-key popup module - POLICY layer.
 //!
