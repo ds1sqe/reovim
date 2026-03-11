@@ -35,7 +35,10 @@
 
 use {
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_kernel::api::v1::{
+        Module, ModuleContext, ModuleError, ModuleId, OptionConstraint, OptionScope, OptionSpec,
+        OptionValue, ProbeResult, Version,
+    },
 };
 
 pub mod command;
@@ -89,6 +92,15 @@ impl Module for EditorModule {
             command_store.add(handler);
         }
 
+        // Epic #570: Register editor options (#573)
+        for spec in editor_option_specs() {
+            if let Err(e) = ctx.kernel.options.register(spec) {
+                return ProbeResult::Failed(ModuleError::InitFailed(format!(
+                    "Failed to register editor option: {e}"
+                )));
+            }
+        }
+
         ProbeResult::Success
     }
 
@@ -101,6 +113,42 @@ impl CommandProvider for EditorModule {
     fn command_handlers(&self) -> Vec<Box<dyn CommandHandler>> {
         command::all_commands()
     }
+}
+
+// ============================================================================
+// Option specifications (#573)
+// ============================================================================
+
+/// Editor option specifications.
+///
+/// These are standard editing options for indentation, tab behavior, and text width.
+/// Registered during `EditorModule::init()`.
+fn editor_option_specs() -> Vec<OptionSpec> {
+    vec![
+        OptionSpec::new("tabstop", "Number of spaces per tab", OptionValue::int(4))
+            .with_short("ts")
+            .with_scope(OptionScope::Buffer)
+            .with_constraint(OptionConstraint::range(1, 32))
+            .with_owner(EDITOR_MODULE),
+        OptionSpec::new("shiftwidth", "Spaces for auto-indent", OptionValue::int(4))
+            .with_short("sw")
+            .with_scope(OptionScope::Buffer)
+            .with_constraint(OptionConstraint::range(1, 32))
+            .with_owner(EDITOR_MODULE),
+        OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::bool(true))
+            .with_short("et")
+            .with_scope(OptionScope::Buffer)
+            .with_owner(EDITOR_MODULE),
+        OptionSpec::new("autoindent", "Auto indent new lines", OptionValue::bool(true))
+            .with_short("ai")
+            .with_scope(OptionScope::Buffer)
+            .with_owner(EDITOR_MODULE),
+        OptionSpec::new("textwidth", "Maximum text width (0 = no limit)", OptionValue::int(0))
+            .with_short("tw")
+            .with_scope(OptionScope::Buffer)
+            .with_constraint(OptionConstraint::min(0))
+            .with_owner(EDITOR_MODULE),
+    ]
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)
@@ -184,5 +232,91 @@ mod tests {
         );
         let result = module.init(&ctx);
         assert_eq!(result, ProbeResult::Success);
+    }
+
+    // ========================================================================
+    // Epic #570: Editor options (#573)
+    // ========================================================================
+
+    #[test]
+    fn test_editor_option_specs_count() {
+        let specs = editor_option_specs();
+        assert_eq!(specs.len(), 5);
+    }
+
+    #[test]
+    fn test_editor_options_registered_after_init() {
+        let mut module = EditorModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let expected = [
+            "tabstop",
+            "shiftwidth",
+            "expandtab",
+            "autoindent",
+            "textwidth",
+        ];
+        for name in &expected {
+            assert!(ctx.kernel.options.contains(name), "'{name}' should be registered");
+        }
+    }
+
+    #[test]
+    fn test_editor_options_aliases() {
+        let mut module = EditorModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let aliases = [
+            ("ts", "tabstop"),
+            ("sw", "shiftwidth"),
+            ("et", "expandtab"),
+            ("ai", "autoindent"),
+            ("tw", "textwidth"),
+        ];
+        for (short, full) in &aliases {
+            assert_eq!(
+                ctx.kernel.options.resolve_name(short),
+                Some(full.to_string()),
+                "'{short}' should resolve to '{full}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_editor_options_defaults() {
+        let mut module = EditorModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        assert_eq!(ctx.kernel.options.get_global("tabstop"), Some(OptionValue::int(4)));
+        assert_eq!(ctx.kernel.options.get_global("shiftwidth"), Some(OptionValue::int(4)));
+        assert_eq!(ctx.kernel.options.get_global("expandtab"), Some(OptionValue::bool(true)));
+        assert_eq!(ctx.kernel.options.get_global("autoindent"), Some(OptionValue::bool(true)));
+        assert_eq!(ctx.kernel.options.get_global("textwidth"), Some(OptionValue::int(0)));
+    }
+
+    #[test]
+    fn test_editor_options_ownership() {
+        let mut module = EditorModule::new();
+        let ctx = ModuleContext::default();
+        module.init(&ctx);
+
+        let editor_options = ctx.kernel.options.list_by_module(&EDITOR_MODULE);
+        assert_eq!(editor_options.len(), 5);
+    }
+
+    #[test]
+    fn test_editor_options_scopes() {
+        let specs = editor_option_specs();
+        for spec in &specs {
+            assert_eq!(
+                spec.scope,
+                OptionScope::Buffer,
+                "'{name}' should have Buffer scope",
+                name = spec.name
+            );
+        }
     }
 }

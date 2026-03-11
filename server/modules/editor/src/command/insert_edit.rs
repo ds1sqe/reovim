@@ -17,7 +17,7 @@ use crate::ids;
 /// Returns a string slice containing only the leading whitespace characters.
 /// This preserves the exact mix of tabs and spaces.
 #[must_use]
-fn get_line_indent(line: &str) -> &str {
+pub fn get_line_indent(line: &str) -> &str {
     let non_ws_pos = line
         .char_indices()
         .find(|(_, c)| !c.is_whitespace())
@@ -166,8 +166,7 @@ mod tests {
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId as KernelCommandId,
                 EventBus, HistoryRing, KernelContext, MarkBank, ModeId, ModeStack, ModuleId,
-                MotionEngine, OptionRegistry, OptionScope, OptionSpec, OptionValue, RegisterBank,
-                RwLock, TextObjectEngine,
+                MotionEngine, OptionRegistry, OptionValue, RegisterBank, RwLock, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -240,13 +239,18 @@ mod tests {
 
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
+        let options = Arc::new(OptionRegistry::default());
+        for spec in crate::editor_option_specs() {
+            let _ = options.register(spec);
+        }
+
         KernelContext::new(
             Arc::new(EventBus::new()),
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
             Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
+            options,
             Arc::new(ServiceRegistry::new()),
         )
     }
@@ -504,20 +508,8 @@ mod tests {
     #[test]
     fn test_insert_newline_with_autoindent() {
         let kernel = create_test_context();
-
-        // Register the option spec so set() can find it
-        let _ = kernel.options.register(
-            OptionSpec::new("autoindent", "Auto indent new lines", OptionValue::bool(true))
-                .with_scope(OptionScope::Buffer),
-        );
-
         let buffer = Buffer::from_string("    indented line");
         let buffer_id = kernel.buffers.register(buffer);
-
-        kernel
-            .options
-            .set("autoindent", OptionValue::bool(true), OptionScopeId::Buffer(buffer_id))
-            .expect("autoindent option should be settable");
 
         let mut state = TestState::with_window(buffer_id);
         if let Some(window) = state.windows.active_mut() {
@@ -547,13 +539,6 @@ mod tests {
     #[test]
     fn test_insert_newline_without_autoindent() {
         let kernel = create_test_context();
-
-        // Register the option spec so set() can find it
-        let _ = kernel.options.register(
-            OptionSpec::new("autoindent", "Auto indent new lines", OptionValue::bool(true))
-                .with_scope(OptionScope::Buffer),
-        );
-
         let buffer = Buffer::from_string("    indented line");
         let buffer_id = kernel.buffers.register(buffer);
 
@@ -683,28 +668,8 @@ mod tests {
     #[test]
     fn test_insert_tab_expandtab() {
         let kernel = create_test_context();
-
-        // Register the option specs so set() can find them
-        let _ = kernel.options.register(
-            OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::bool(true))
-                .with_scope(OptionScope::Buffer),
-        );
-        let _ = kernel.options.register(
-            OptionSpec::new("tabstop", "Number of spaces per tab", OptionValue::int(4))
-                .with_scope(OptionScope::Buffer),
-        );
-
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
-
-        kernel
-            .options
-            .set("expandtab", OptionValue::bool(true), OptionScopeId::Buffer(buffer_id))
-            .expect("expandtab option should be settable");
-        kernel
-            .options
-            .set("tabstop", OptionValue::int(4), OptionScopeId::Buffer(buffer_id))
-            .expect("tabstop option should be settable");
 
         let mut state = TestState::with_window(buffer_id);
         let executor = StubExecutor;
@@ -727,13 +692,6 @@ mod tests {
     #[test]
     fn test_insert_tab_noexpandtab() {
         let kernel = create_test_context();
-
-        // Register the option spec so set() can find it
-        let _ = kernel.options.register(
-            OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::bool(true))
-                .with_scope(OptionScope::Buffer),
-        );
-
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
 
@@ -799,23 +757,9 @@ mod tests {
     #[test]
     fn test_insert_tab_expandtab_custom_tabstop() {
         let kernel = create_test_context();
-
-        let _ = kernel.options.register(
-            OptionSpec::new("expandtab", "Use spaces instead of tabs", OptionValue::bool(true))
-                .with_scope(OptionScope::Buffer),
-        );
-        let _ = kernel.options.register(
-            OptionSpec::new("tabstop", "Number of spaces per tab", OptionValue::int(4))
-                .with_scope(OptionScope::Buffer),
-        );
-
         let buffer = Buffer::from_string("hello");
         let buffer_id = kernel.buffers.register(buffer);
 
-        kernel
-            .options
-            .set("expandtab", OptionValue::bool(true), OptionScopeId::Buffer(buffer_id))
-            .expect("expandtab option should be settable");
         kernel
             .options
             .set("tabstop", OptionValue::int(2), OptionScopeId::Buffer(buffer_id))

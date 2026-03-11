@@ -12,6 +12,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   type-safe value parsing, constraint validation. Emits `OptionChanged`/`OptionReset`
   via EventBus for module notification and records `StateChanges` for client notification.
 
+- **Standard vim/editor options (#573)**: Register 12 standard options with proper ownership,
+  scope, and constraints. Vim module: `scrolloff`, `sidescrolloff`, `ignorecase`, `smartcase`,
+  `hlsearch`, `incsearch`, `wrapscan` (7 Global options). Editor module: `tabstop`,
+  `shiftwidth`, `expandtab`, `autoindent`, `textwidth` (5 Buffer-scoped options). Test helpers
+  consolidated to use module-level option specs instead of per-test inline registrations.
+
 ### Changed
 
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to

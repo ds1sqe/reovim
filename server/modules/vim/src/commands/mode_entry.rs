@@ -19,6 +19,7 @@ use {
 };
 
 use crate::{ids, modes::VimMode};
+use reovim_module_editor::command::get_line_indent;
 
 /// Helper to get cursor position from the active window.
 fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
@@ -43,19 +44,6 @@ fn begin_insert_batch(runtime: &SessionRuntime<'_>, buffer_id: BufferId) {
     {
         undo_provider.begin_batch(buffer_id, pos);
     }
-}
-
-/// Extract the leading whitespace (indent) from a line.
-///
-/// Returns a string slice containing only the leading whitespace characters.
-/// This preserves the exact mix of tabs and spaces.
-#[must_use]
-fn get_line_indent(line: &str) -> &str {
-    let non_ws_pos = line
-        .char_indices()
-        .find(|(_, c)| !c.is_whitespace())
-        .map_or(line.len(), |(i, _)| i);
-    &line[..non_ws_pos]
 }
 
 /// Enter insert mode at first non-blank character (I).
@@ -424,8 +412,8 @@ mod tests {
             ModeStack,
             v1::{
                 Buffer, BufferError, BufferId, BufferManager, CommandId, EventBus, HistoryRing,
-                KernelContext, MarkBank, MotionEngine, OptionRegistry, RegisterBank, RwLock,
-                ServiceRegistry, TextObjectEngine,
+                KernelContext, MarkBank, MotionEngine, OptionRegistry, OptionScope, OptionSpec,
+                OptionValue, RegisterBank, RwLock, ServiceRegistry, TextObjectEngine,
             },
         },
         std::{collections::HashMap, sync::Arc},
@@ -558,14 +546,21 @@ mod tests {
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn create_test_context() -> KernelContext {
+        let options = Arc::new(OptionRegistry::default());
+        let _ = options.register(
+            OptionSpec::new("autoindent", "Auto indent new lines", OptionValue::bool(true))
+                .with_scope(OptionScope::Buffer),
+        );
+
         KernelContext::new(
             Arc::new(EventBus::new()),
             Arc::new(TestBufferManager::new()),
             Arc::new(MotionEngine),
             Arc::new(TextObjectEngine),
             Arc::new(RwLock::new(MarkBank::new())),
-            Arc::new(OptionRegistry::default()),
+            options,
             Arc::new(ServiceRegistry::new()),
         )
     }
@@ -1036,7 +1031,7 @@ mod tests {
     use {
         reovim_driver_undo::{UndoKey, UndoPersistError, UndoProvider, UndoProviderRegistry},
         reovim_driver_vfs::VfsDriver,
-        reovim_kernel::api::v1::{Edit, OptionSpec, OptionValue, UndoResult, UndoTree},
+        reovim_kernel::api::v1::{Edit, UndoResult, UndoTree},
     };
 
     struct MockUndoProvider {
@@ -1188,32 +1183,16 @@ mod tests {
     // Autoindent disabled tests
     // ========================================================================
 
-    fn create_test_context_autoindent_disabled() -> KernelContext {
-        let options = Arc::new(OptionRegistry::default());
-        // Register the autoindent option
-        let _ = options.register(OptionSpec::new(
-            "autoindent",
-            "Enable auto-indentation",
-            OptionValue::Bool(false),
-        ));
-
-        KernelContext::new(
-            Arc::new(EventBus::new()),
-            Arc::new(TestBufferManager::new()),
-            Arc::new(MotionEngine),
-            Arc::new(TextObjectEngine),
-            Arc::new(RwLock::new(MarkBank::new())),
-            options,
-            Arc::new(ServiceRegistry::new()),
-        )
-    }
-
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_below_autoindent_disabled() {
-        let ctx = create_test_context_autoindent_disabled();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("    hello");
         let buffer_id = ctx.buffers.register(buffer);
+
+        ctx.options
+            .set("autoindent", OptionValue::bool(false), OptionScopeId::Buffer(buffer_id))
+            .expect("autoindent option should be settable");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
@@ -1232,9 +1211,13 @@ mod tests {
     #[cfg_attr(coverage_nightly, coverage(off))]
     #[test]
     fn test_open_line_above_autoindent_disabled() {
-        let ctx = create_test_context_autoindent_disabled();
+        let ctx = create_test_context();
         let buffer = Buffer::from_string("    hello");
         let buffer_id = ctx.buffers.register(buffer);
+
+        ctx.options
+            .set("autoindent", OptionValue::bool(false), OptionScopeId::Buffer(buffer_id))
+            .expect("autoindent option should be settable");
 
         let mut args = CommandContext::new();
         args.set_buffer_id(buffer_id);
