@@ -2610,7 +2610,18 @@ mod tests {
         let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
 
         render_line_content(
-            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
         );
 
         // "## " concealed to "H ", so display is "H Hello"
@@ -2646,14 +2657,23 @@ mod tests {
             ],
         );
 
-        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
-            "markup.raw.delimiter",
-            RenderBehavior::Hide,
-        )]));
+        let ext: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup.raw.delimiter", RenderBehavior::Hide)]));
         let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
 
         render_line_content(
-            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
         );
 
         // Backticks hidden, display should be "code"
@@ -2689,7 +2709,18 @@ mod tests {
         let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
 
         render_line_content(
-            &mut fb, 0, 0, 10, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+            &mut fb,
+            0,
+            0,
+            10,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
         );
 
         // "---" replaced with repeated '─' filling width
@@ -2715,14 +2746,23 @@ mod tests {
             }],
         );
 
-        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
-            "markup.raw.block",
-            RenderBehavior::Background,
-        )]));
+        let ext: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup.raw.block", RenderBehavior::Background)]));
         let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
 
         render_line_content(
-            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            false,
+            &extensions,
         );
 
         // Background should be applied — cell content should still be correct
@@ -2763,7 +2803,18 @@ mod tests {
 
         // skip_conceals=true: raw text should be rendered
         render_line_content(
-            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, true, &extensions,
+            &mut fb,
+            0,
+            0,
+            20,
+            content,
+            1.0,
+            Some(1),
+            0,
+            &tc,
+            &tm,
+            true,
+            &extensions,
         );
 
         // "## Hello" rendered raw (no conceal)
@@ -2775,14 +2826,10 @@ mod tests {
 
     #[test]
     fn test_classify_with_extensions_first_some_wins() {
-        let ext1: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
-            "markup",
-            RenderBehavior::Hide,
-        )]));
-        let ext2: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
-            "markup",
-            RenderBehavior::Background,
-        )]));
+        let ext1: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup", RenderBehavior::Hide)]));
+        let ext2: Box<dyn TuiExtension> =
+            Box::new(MockExtension::new(vec![("markup", RenderBehavior::Background)]));
         let extensions: Vec<Box<dyn TuiExtension>> = vec![ext1, ext2];
 
         // First extension wins
