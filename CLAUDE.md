@@ -417,6 +417,8 @@ Claude sessions end for many reasons — context limits, user interruption, gett
 
 **When context is getting large:** Proactively run `/stop` BEFORE compaction erases your progress. If you notice the conversation is very long, do the handoff early rather than risk losing context.
 
+**System enforcement:** A `Stop` hook (`.claude/hooks/stop-check.sh`) blocks Claude from ending a session when tracked files have uncommitted changes. The hook forces Claude to run `/stop` first. On the second attempt (`stop_hook_active=true`), it allows through to prevent infinite loops.
+
 ## Build Commands
 
 ```bash
@@ -739,6 +741,9 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 │   ├── mission-control.md       # Plan compliance review - Haiku (blue)
 │   ├── telemetry.md             # Test coverage review - Haiku (green)
 │   └── flight-director.md       # Code quality review - Sonnet (yellow)
+├── hooks/
+│   └── stop-check.sh            # Stop hook - blocks stop with uncommitted work
+├── settings.json                # Project-level settings (hooks config)
 └── skills/
     ├── countdown/
     │   └── SKILL.md             # /countdown command
