@@ -1208,6 +1208,7 @@ mod tests {
         crate::{CursorPosition, RemoteClient},
         reovim_driver_display::{BuiltinTheme, FrameBuffer, TokenSpan},
         reovim_protocol::v2::WindowInfo,
+        std::borrow::Cow,
     };
 
     /// Helper: create default token cache and theme for tests.
@@ -2538,5 +2539,254 @@ mod tests {
         assert_eq!(buffer_to_screen_row_vl(1, 0, &vls), 2);
         // Line 2: still 1 virtual line (at line 1) → screen 3
         assert_eq!(buffer_to_screen_row_vl(2, 0, &vls), 3);
+    }
+
+    // =========================================================================
+    // Mock extension for render_line_content coverage
+    // =========================================================================
+
+    /// Mock extension that classifies tokens by category prefix.
+    struct MockExtension {
+        rules: Vec<(&'static str, RenderBehavior)>,
+    }
+
+    impl MockExtension {
+        fn new(rules: Vec<(&'static str, RenderBehavior)>) -> Self {
+            Self { rules }
+        }
+    }
+
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    impl TuiExtension for MockExtension {
+        fn kind(&self) -> &'static str {
+            "mock"
+        }
+
+        fn is_active(&self) -> bool {
+            true
+        }
+
+        fn apply_notification(&mut self, _data: &str) {}
+
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+
+        fn classify_token(&self, category: &str) -> Option<RenderBehavior> {
+            self.rules
+                .iter()
+                .find(|(prefix, _)| category.starts_with(prefix))
+                .map(|(_, behavior)| behavior.clone())
+        }
+    }
+
+    // =========================================================================
+    // render_line_content with extension behaviors
+    // =========================================================================
+
+    #[test]
+    fn test_render_line_content_conceal_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "## Hello" — "## " (bytes 0..3) should be concealed to icon
+        let content = "## Hello";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
+                category: "markup.heading".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.heading",
+            RenderBehavior::Conceal {
+                replacement: Cow::Borrowed("H "),
+            },
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+        );
+
+        // "## " concealed to "H ", so display is "H Hello"
+        assert_eq!(fb.get(0, 0).unwrap().char, 'H');
+        assert_eq!(fb.get(1, 0).unwrap().char, ' ');
+        assert_eq!(fb.get(2, 0).unwrap().char, 'H');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'e');
+    }
+
+    #[test]
+    fn test_render_line_content_hide_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "`code`" — backticks hidden, "code" rendered
+        let content = "`code`";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[
+                TokenSpan {
+                    start_byte: 0,
+                    end_byte: 1,
+                    category: "markup.raw.delimiter".to_string(),
+                },
+                TokenSpan {
+                    start_byte: 5,
+                    end_byte: 6,
+                    category: "markup.raw.delimiter".to_string(),
+                },
+            ],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.raw.delimiter",
+            RenderBehavior::Hide,
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+        );
+
+        // Backticks hidden, display should be "code"
+        assert_eq!(fb.get(0, 0).unwrap().char, 'c');
+        assert_eq!(fb.get(1, 0).unwrap().char, 'o');
+        assert_eq!(fb.get(2, 0).unwrap().char, 'd');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'e');
+    }
+
+    #[test]
+    fn test_render_line_content_full_width_line_via_extension() {
+        let mut fb = FrameBuffer::new(10, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        // "---" → full width line of dashes
+        let content = "---";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
+                category: "markup.hrule".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.hrule",
+            RenderBehavior::FullWidthLine { ch: '\u{2500}' },
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb, 0, 0, 10, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+        );
+
+        // "---" replaced with repeated '─' filling width
+        assert_eq!(fb.get(0, 0).unwrap().char, '\u{2500}');
+        assert_eq!(fb.get(5, 0).unwrap().char, '\u{2500}');
+    }
+
+    #[test]
+    fn test_render_line_content_background_via_extension() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "let x = 1;";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 10,
+                category: "markup.raw.block".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.raw.block",
+            RenderBehavior::Background,
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        render_line_content(
+            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, false, &extensions,
+        );
+
+        // Background should be applied — cell content should still be correct
+        assert_eq!(fb.get(0, 0).unwrap().char, 'l');
+        assert_eq!(fb.get(1, 0).unwrap().char, 'e');
+        // Background from theme should be applied
+        let bg_style = tm.get_style("markup.raw.block");
+        if bg_style.bg.is_some() {
+            assert_eq!(fb.get(0, 0).unwrap().style.bg, bg_style.bg);
+        }
+    }
+
+    #[test]
+    fn test_render_line_content_conceal_skipped_in_insert_mode() {
+        let mut fb = FrameBuffer::new(20, 1);
+        let mut tc = AnnotationCacheManager::new();
+        let tm = ThemeManager::new(BuiltinTheme::Dark.load());
+
+        let content = "## Hello";
+        populate_tokens(
+            &mut tc,
+            1,
+            content,
+            &[TokenSpan {
+                start_byte: 0,
+                end_byte: 3,
+                category: "markup.heading".to_string(),
+            }],
+        );
+
+        let ext: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup.heading",
+            RenderBehavior::Conceal {
+                replacement: Cow::Borrowed("H "),
+            },
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext];
+
+        // skip_conceals=true: raw text should be rendered
+        render_line_content(
+            &mut fb, 0, 0, 20, content, 1.0, Some(1), 0, &tc, &tm, true, &extensions,
+        );
+
+        // "## Hello" rendered raw (no conceal)
+        assert_eq!(fb.get(0, 0).unwrap().char, '#');
+        assert_eq!(fb.get(1, 0).unwrap().char, '#');
+        assert_eq!(fb.get(2, 0).unwrap().char, ' ');
+        assert_eq!(fb.get(3, 0).unwrap().char, 'H');
+    }
+
+    #[test]
+    fn test_classify_with_extensions_first_some_wins() {
+        let ext1: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup",
+            RenderBehavior::Hide,
+        )]));
+        let ext2: Box<dyn TuiExtension> = Box::new(MockExtension::new(vec![(
+            "markup",
+            RenderBehavior::Background,
+        )]));
+        let extensions: Vec<Box<dyn TuiExtension>> = vec![ext1, ext2];
+
+        // First extension wins
+        let result = classify_with_extensions(&extensions, "markup.heading");
+        assert!(matches!(result, RenderBehavior::Hide));
     }
 }

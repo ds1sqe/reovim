@@ -264,6 +264,18 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_single_tilde_preserved() {
+        assert_eq!(strip_inline_markdown("~not~"), "~not~");
+    }
+
+    #[test]
+    fn test_is_delimiter_row_pipes_only_no_dash() {
+        // Valid chars but no dash — not a delimiter
+        assert!(!is_delimiter_row("| | |"));
+        assert!(!is_delimiter_row("|::|::|"));
+    }
+
+    #[test]
     fn test_detect_tables_has_borders() {
         let lines = vec![
             "| A | B |".to_string(),

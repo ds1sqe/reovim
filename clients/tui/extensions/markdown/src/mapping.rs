@@ -40,7 +40,7 @@ pub fn map_to_visual(buf_col: usize, orig_pipes: &[usize], visual_pipes: &[u16])
         .iter()
         .position(|&p| p > buf_col)
         .unwrap_or(orig_pipes.len());
-    if seg == 0 || seg > orig_pipes.len() {
+    if seg == 0 || seg >= orig_pipes.len() {
         return buf_col as u16;
     }
     let buf_cell_start = orig_pipes[seg - 1] + 1;
@@ -107,5 +107,24 @@ mod tests {
         let orig_pipes = vec![2, 6];
         let visual_pipes = vec![0, 8];
         assert_eq!(map_to_visual(0, &orig_pipes, &visual_pipes), 0);
+    }
+
+    #[test]
+    fn test_map_to_visual_middle_cell_content() {
+        // Three pipes: 0, 4, 8 — middle cell spans buf cols 5..7
+        let orig_pipes = vec![0, 4, 8];
+        let visual_pipes = vec![0, 6, 12];
+        // buf_col=5 is in second cell (seg=2, between pipes[1]=4 and pipes[2]=8)
+        let result = map_to_visual(5, &orig_pipes, &visual_pipes);
+        assert!(result > 6); // after visual pipe at 6
+        assert!(result < 12); // before visual pipe at 12
+    }
+
+    #[test]
+    fn test_map_to_visual_after_last_pipe() {
+        let orig_pipes = vec![0, 4];
+        let visual_pipes = vec![0, 6];
+        // buf_col=5 is after the last pipe — seg=orig_pipes.len()=2, triggers seg > len guard
+        assert_eq!(map_to_visual(5, &orig_pipes, &visual_pipes), 5);
     }
 }
