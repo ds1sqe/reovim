@@ -214,7 +214,8 @@ impl Module for VimModule {
         if let Err(e) = ctx.kernel.options.register(
             OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
                 .with_short("nu")
-                .with_scope(OptionScope::Window),
+                .with_scope(OptionScope::Window)
+                .with_owner(VIM_MODULE),
         ) {
             return ProbeResult::Failed(ModuleError::InitFailed(format!(
                 "Failed to register 'number' option: {e}"
@@ -227,7 +228,8 @@ impl Module for VimModule {
                 OptionValue::bool(false),
             )
             .with_short("rnu")
-            .with_scope(OptionScope::Window),
+            .with_scope(OptionScope::Window)
+            .with_owner(VIM_MODULE),
         ) {
             return ProbeResult::Failed(ModuleError::InitFailed(format!(
                 "Failed to register 'relativenumber' option: {e}"

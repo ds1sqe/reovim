@@ -59,7 +59,10 @@ use std::collections::HashMap;
 
 use reovim_arch::sync::RwLock;
 
-use crate::mm::{BufferId, WindowId};
+use crate::{
+    api::ModuleId,
+    mm::{BufferId, WindowId},
+};
 
 // ============================================================================
 // OptionRegistry - Thread-safe option storage
@@ -150,6 +153,58 @@ impl OptionRegistry {
         // Finally insert the spec
         self.specs.write().insert(name, spec);
         Ok(())
+    }
+
+    /// Unregister all options owned by a module.
+    ///
+    /// Removes all option specs with matching owner, their aliases,
+    /// and any stored values (global, buffer-local, window-local).
+    pub fn unregister_by_module(&self, module_id: &ModuleId) {
+        // Collect names to remove
+        let names_to_remove: Vec<String> = self
+            .specs
+            .read()
+            .iter()
+            .filter(|(_, spec)| spec.owner.as_ref() == Some(module_id))
+            .map(|(name, _)| name.clone())
+            .collect();
+
+        if names_to_remove.is_empty() {
+            return;
+        }
+
+        // Remove aliases pointing to these options
+        let mut aliases = self.aliases.write();
+        aliases.retain(|_, full_name| !names_to_remove.contains(full_name));
+        drop(aliases);
+
+        // Remove stored values
+        let mut global_values = self.global_values.write();
+        global_values.retain(|name, _| !names_to_remove.contains(name));
+        drop(global_values);
+
+        let mut buffer_values = self.buffer_values.write();
+        buffer_values.retain(|(_, name), _| !names_to_remove.contains(name));
+        drop(buffer_values);
+
+        let mut window_values = self.window_values.write();
+        window_values.retain(|(_, name), _| !names_to_remove.contains(name));
+        drop(window_values);
+
+        // Remove specs
+        let mut specs = self.specs.write();
+        specs.retain(|name, _| !names_to_remove.contains(name));
+    }
+
+    /// List all options owned by a module.
+    #[must_use]
+    pub fn list_by_module(&self, module_id: &ModuleId) -> Vec<OptionSpec> {
+        let specs = self.specs.read();
+        specs
+            .values()
+            .filter(|s| s.owner.as_ref() == Some(module_id))
+            .cloned()
+            .collect()
     }
 
     // ========================================================================
@@ -1292,5 +1347,173 @@ mod tests {
         // get() with Global scope must return the global override (TRUE branch at ~229)
         let value = registry.get("tabstop", OptionScopeId::Global);
         assert_eq!(value, Some(OptionValue::int(8)));
+    }
+
+    // === Module ownership: unregister_by_module ===
+
+    #[test]
+    fn test_unregister_by_module_removes_specs_and_aliases() {
+        let registry = OptionRegistry::new();
+        let vim = ModuleId::new("vim");
+
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_short("nu")
+                        .with_scope(OptionScope::Window)
+                        .with_owner(vim.clone()),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("relativenumber", "desc", OptionValue::bool(false))
+                        .with_short("rnu")
+                        .with_scope(OptionScope::Window)
+                        .with_owner(vim.clone()),
+                )
+                .is_ok()
+        );
+        // Unowned option should survive
+        assert!(
+            registry
+                .register(OptionSpec::new("tabwidth", "desc", OptionValue::int(4)))
+                .is_ok()
+        );
+
+        assert_eq!(registry.len(), 3);
+        registry.unregister_by_module(&vim);
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.contains("number"));
+        assert!(!registry.contains("nu"));
+        assert!(!registry.contains("relativenumber"));
+        assert!(!registry.contains("rnu"));
+        assert!(registry.contains("tabwidth"));
+    }
+
+    #[test]
+    fn test_unregister_by_module_cleans_stored_values() {
+        let registry = OptionRegistry::new();
+        let vim = ModuleId::new("vim");
+
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_scope(OptionScope::Window)
+                        .with_owner(vim.clone()),
+                )
+                .is_ok()
+        );
+
+        // Set values at all scope levels
+        assert!(
+            registry
+                .set("number", OptionValue::bool(true), OptionScopeId::Global)
+                .is_ok()
+        );
+        let window = WindowId::new();
+        assert!(
+            registry
+                .set_for_window("number", OptionValue::bool(true), window)
+                .is_ok()
+        );
+
+        registry.unregister_by_module(&vim);
+
+        // Option should be completely gone
+        assert!(registry.get("number", OptionScopeId::Global).is_none());
+    }
+
+    #[test]
+    fn test_unregister_by_module_noop_for_unknown() {
+        let registry = OptionRegistry::new();
+        assert!(
+            registry
+                .register(OptionSpec::new("number", "desc", OptionValue::bool(false)))
+                .is_ok()
+        );
+
+        let unknown = ModuleId::new("unknown");
+        registry.unregister_by_module(&unknown);
+        assert_eq!(registry.len(), 1);
+    }
+
+    #[test]
+    fn test_unregister_by_module_cleans_buffer_values() {
+        let registry = OptionRegistry::new();
+        let editor = ModuleId::new("editor");
+
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("tabwidth", "desc", OptionValue::int(4))
+                        .with_scope(OptionScope::Buffer)
+                        .with_owner(editor.clone()),
+                )
+                .is_ok()
+        );
+
+        let buffer = BufferId::new();
+        assert!(
+            registry
+                .set_for_buffer("tabwidth", OptionValue::int(8), buffer)
+                .is_ok()
+        );
+
+        registry.unregister_by_module(&editor);
+        assert!(registry.get_for_buffer("tabwidth", buffer).is_none());
+    }
+
+    // === Module ownership: list_by_module ===
+
+    #[test]
+    fn test_list_by_module() {
+        let registry = OptionRegistry::new();
+        let vim = ModuleId::new("vim");
+        let editor = ModuleId::new("editor");
+
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("number", "desc", OptionValue::bool(false))
+                        .with_owner(vim.clone()),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("relativenumber", "desc", OptionValue::bool(false))
+                        .with_owner(vim.clone()),
+                )
+                .is_ok()
+        );
+        assert!(
+            registry
+                .register(
+                    OptionSpec::new("tabwidth", "desc", OptionValue::int(4))
+                        .with_owner(editor.clone()),
+                )
+                .is_ok()
+        );
+        // Unowned option
+        assert!(
+            registry
+                .register(OptionSpec::new("wrap", "desc", OptionValue::bool(true)))
+                .is_ok()
+        );
+
+        let vim_opts = registry.list_by_module(&vim);
+        assert_eq!(vim_opts.len(), 2);
+
+        let editor_opts = registry.list_by_module(&editor);
+        assert_eq!(editor_opts.len(), 1);
+        assert_eq!(editor_opts[0].name, "tabwidth");
+
+        let unknown = ModuleId::new("unknown");
+        assert!(registry.list_by_module(&unknown).is_empty());
     }
 }

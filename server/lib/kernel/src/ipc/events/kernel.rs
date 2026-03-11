@@ -39,7 +39,10 @@
 //! bus.emit(BufferCreated { buffer_id: 1 });
 //! ```
 
-use crate::{core::ModeId, ipc::Event};
+use crate::{
+    core::{ModeId, OptionScopeId},
+    ipc::Event,
+};
 
 /// Priority constants for event handlers.
 ///
@@ -486,6 +489,11 @@ pub struct OptionChanged {
     pub new_value: String,
     /// Source of the change.
     pub source: ChangeSource,
+    /// Runtime scope where the change was applied (which specific buffer or window).
+    ///
+    /// This is the runtime context, NOT the option's static scope declaration
+    /// (see `OptionSpec::scope` for the capability declaration).
+    pub scope: OptionScopeId,
 }
 
 impl Event for OptionChanged {}
@@ -501,6 +509,11 @@ pub struct OptionReset {
     pub old_value: String,
     /// Default value (after reset).
     pub default_value: String,
+    /// Runtime scope where the reset was applied (which specific buffer or window).
+    ///
+    /// This is the runtime context, NOT the option's static scope declaration
+    /// (see `OptionSpec::scope` for the capability declaration).
+    pub scope: OptionScopeId,
 }
 
 impl Event for OptionReset {}

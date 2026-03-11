@@ -4,6 +4,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Changed
+
+- **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
+  `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
+  `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and
+  `list_by_module()` for introspection. `OptionChanged`/`OptionReset` events extended
+  with `scope: OptionScopeId` for runtime context. Vim module options now carry ownership.
+
 ### Removed
 
 - **Orphaned OptionsModule (#575)**: Remove unused `reovim-module-options` crate. It was

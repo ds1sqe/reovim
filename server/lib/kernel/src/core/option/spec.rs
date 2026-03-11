@@ -2,8 +2,11 @@
 
 use std::borrow::Cow;
 
-use super::{
-    constraint::OptionConstraint, error::OptionError, scope::OptionScope, value::OptionValue,
+use {
+    super::{
+        constraint::OptionConstraint, error::OptionError, scope::OptionScope, value::OptionValue,
+    },
+    crate::api::ModuleId,
 };
 
 /// Complete specification for an editor option.
@@ -35,6 +38,8 @@ pub struct OptionSpec {
     pub constraint: OptionConstraint,
     /// Scope (global, buffer-local, window-local).
     pub scope: OptionScope,
+    /// Module that registered this option (for lifecycle cleanup).
+    pub owner: Option<ModuleId>,
 }
 
 impl OptionSpec {
@@ -52,6 +57,7 @@ impl OptionSpec {
             short_form: None,
             constraint: OptionConstraint::none(),
             scope: OptionScope::default(),
+            owner: None,
         }
     }
 
@@ -74,6 +80,19 @@ impl OptionSpec {
     pub const fn with_scope(mut self, scope: OptionScope) -> Self {
         self.scope = scope;
         self
+    }
+
+    /// Set the owning module.
+    #[must_use]
+    pub fn with_owner(mut self, owner: ModuleId) -> Self {
+        self.owner = Some(owner);
+        self
+    }
+
+    /// Get the owning module, if set.
+    #[must_use]
+    pub const fn owner(&self) -> Option<&ModuleId> {
+        self.owner.as_ref()
     }
 
     /// Check if this option matches a name (full name or alias).
@@ -133,6 +152,21 @@ mod tests {
         assert!(spec.matches_name("number"));
         assert!(spec.matches_name("nu"));
         assert!(!spec.matches_name("other"));
+    }
+
+    #[test]
+    fn test_option_spec_with_owner() {
+        let module = crate::api::ModuleId::new("vim");
+        let spec = OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
+            .with_owner(module.clone());
+
+        assert_eq!(spec.owner(), Some(&module));
+    }
+
+    #[test]
+    fn test_option_spec_default_no_owner() {
+        let spec = OptionSpec::new("number", "Show line numbers", OptionValue::bool(false));
+        assert_eq!(spec.owner(), None);
     }
 
     #[test]
