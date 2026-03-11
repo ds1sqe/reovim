@@ -58,6 +58,24 @@ fn window_to_leaf(window: &reovim_driver_session::Window) -> WindowLeaf {
     }
 }
 
+/// Convert a kernel `OptionValue` to a proto `OptionValue`.
+fn kernel_to_proto_option(
+    value: &reovim_kernel::api::v1::OptionValue,
+) -> reovim_protocol::v2::OptionValue {
+    use reovim_protocol::v2::option_value::Value;
+
+    let proto_value = match value {
+        reovim_kernel::api::v1::OptionValue::Bool(b) => Some(Value::BoolValue(*b)),
+        reovim_kernel::api::v1::OptionValue::Integer(i) => Some(Value::IntValue(*i)),
+        reovim_kernel::api::v1::OptionValue::String(s) => Some(Value::StringValue(s.clone())),
+        reovim_kernel::api::v1::OptionValue::Choice { value, .. } => {
+            Some(Value::StringValue(value.clone()))
+        }
+    };
+
+    reovim_protocol::v2::OptionValue { value: proto_value }
+}
+
 /// gRPC `StateService` implementation.
 ///
 /// Bridges v2 protocol state queries to the session system.
@@ -186,12 +204,45 @@ impl StateService for StateServiceImpl {
 
     /// Get editor options.
     ///
-    /// Not yet implemented - requires option registry integration.
+    /// Returns the current values of requested options. If `names` is empty,
+    /// returns all registered options. Values are resolved at global scope.
+    ///
+    /// # Errors
+    ///
+    /// - `NotFound`: No active session
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_options(
         &self,
-        _request: Request<GetOptionsRequest>,
+        request: Request<GetOptionsRequest>,
     ) -> Result<Response<GetOptionsResponse>, Status> {
-        Err(Status::unimplemented("GetOptions not yet implemented"))
+        let req = request.into_inner();
+        let session = self.get_session()?;
+
+        let options = session
+            .with_state(|state| {
+                use reovim_kernel::api::v1::OptionScopeId;
+
+                let registry = &state.app.kernel.options;
+                let names: Vec<String> = if req.names.is_empty() {
+                    registry.list_all()
+                } else {
+                    req.names
+                        .iter()
+                        .filter_map(|n| registry.resolve_name(n))
+                        .collect()
+                };
+
+                let mut map = std::collections::HashMap::new();
+                for name in &names {
+                    if let Some(value) = registry.get(name, OptionScopeId::Global) {
+                        map.insert(name.clone(), kernel_to_proto_option(&value));
+                    }
+                }
+                map
+            })
+            .await;
+
+        Ok(Response::new(GetOptionsResponse { options }))
     }
 
     /// Get window layout tree.
@@ -779,15 +830,108 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_options_unimplemented() {
+    async fn test_get_options_empty_registry() {
         let registry = test_registry();
         let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
         let request = Request::new(GetOptionsRequest { names: vec![] });
         let response = service.get_options(request).await;
 
-        assert!(response.is_err());
-        assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.options.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_options_with_registered_options() {
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        // Register options in the kernel
+        session
+            .with_state(|state| {
+                use reovim_kernel::api::v1::{OptionSpec, OptionValue as KernelOptionValue};
+
+                state
+                    .app
+                    .kernel
+                    .options
+                    .register(OptionSpec::new(
+                        "number",
+                        "Show line numbers",
+                        KernelOptionValue::bool(false),
+                    ))
+                    .unwrap();
+            })
+            .await;
+
+        // Query all options
+        let request = Request::new(GetOptionsRequest { names: vec![] });
+        let response = service.get_options(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.options.len(), 1);
+        assert!(resp.options.contains_key("number"));
+
+        let val = resp.options.get("number").unwrap();
+        assert_eq!(val.value, Some(reovim_protocol::v2::option_value::Value::BoolValue(false)));
+    }
+
+    #[tokio::test]
+    async fn test_get_options_by_name() {
+        let (registry, session) = test_registry_with_session();
+        let service = StateServiceImpl::new(Arc::clone(&registry), SessionId::new("test"));
+
+        session
+            .with_state(|state| {
+                use reovim_kernel::api::v1::{OptionSpec, OptionValue as KernelOptionValue};
+
+                state
+                    .app
+                    .kernel
+                    .options
+                    .register(OptionSpec::new(
+                        "number",
+                        "Show line numbers",
+                        KernelOptionValue::bool(false),
+                    ))
+                    .unwrap();
+                state
+                    .app
+                    .kernel
+                    .options
+                    .register(OptionSpec::new("tabstop", "Tab width", KernelOptionValue::int(8)))
+                    .unwrap();
+            })
+            .await;
+
+        // Query only "number"
+        let request = Request::new(GetOptionsRequest {
+            names: vec!["number".to_string()],
+        });
+        let response = service.get_options(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert_eq!(resp.options.len(), 1);
+        assert!(resp.options.contains_key("number"));
+        assert!(!resp.options.contains_key("tabstop"));
+    }
+
+    #[tokio::test]
+    async fn test_get_options_unknown_name_ignored() {
+        let registry = test_registry();
+        let service = StateServiceImpl::new(registry, SessionId::new("test"));
+
+        let request = Request::new(GetOptionsRequest {
+            names: vec!["nonexistent".to_string()],
+        });
+        let response = service.get_options(request).await;
+
+        assert!(response.is_ok());
+        let resp = response.unwrap().into_inner();
+        assert!(resp.options.is_empty());
     }
 
     #[tokio::test]
