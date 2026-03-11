@@ -109,6 +109,10 @@ impl Module for MicroscopeModule {
         Ok(())
     }
 
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::MICROSCOPE]
+    }
+
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Microscope mode: navigation

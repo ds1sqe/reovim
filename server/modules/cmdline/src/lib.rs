@@ -73,6 +73,10 @@ impl Module for CmdlineModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::CMDLINE]
+    }
 }
 
 #[cfg(feature = "dynamic")]

@@ -34,4 +34,7 @@ export interface WebExtension {
 
   /** Called during shutdown in reverse dependency order. */
   exit?(): void;
+
+  /** Server extension kinds this extension expects (default: [this.kind()]). */
+  serverKinds?(): string[];
 }

@@ -201,6 +201,10 @@ impl Module for LspModule {
         pr_info!("LSP module exiting");
         Ok(())
     }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::DIAGNOSTICS]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

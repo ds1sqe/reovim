@@ -156,6 +156,24 @@ pub trait Module: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// Extension kinds pushed by this module via `ExtensionStateBridge` (#584).
+    ///
+    /// Returns the extension kind identifiers that this module registers
+    /// bridges for. Used by server startup validation to detect orphaned
+    /// bridges (bridge registered but no module claims to push that kind).
+    ///
+    /// Modules that register bridges in `init()` should override this to
+    /// declare the kinds they push. Use constants from `reovim-extension-kinds`.
+    ///
+    /// # Kernel Purity
+    ///
+    /// The kernel defines this method with a generic `&[&'static str]` return
+    /// type. The kernel MUST NOT depend on `reovim-extension-kinds`. Only
+    /// module implementations (in `server/modules/`) import the constants.
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[]
+    }
+
     // ========================================================================
     // Lifecycle (Linux: module_init / module_exit)
     // ========================================================================
@@ -361,3 +379,7 @@ pub trait Module: Send + Sync + 'static {
         Err(ModuleError::InitFailed("hot reload not supported".into()))
     }
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

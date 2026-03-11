@@ -78,6 +78,33 @@ pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
     extensions
 }
 
+/// Validate client extensions against server-declared extension kinds (#584).
+///
+/// For each loaded extension, checks if the server has a matching kind
+/// in `server_available_kinds`. Logs warnings for unmatched extensions.
+/// Non-fatal — extensions still load but won't receive server notifications.
+pub fn validate_extensions(
+    extensions: &[Box<dyn TuiExtension>],
+    server_available_kinds: &[String],
+) {
+    for ext in extensions {
+        for kind in ext.server_kinds() {
+            if !server_available_kinds.iter().any(|sk| sk == kind) {
+                tracing::warn!(
+                    extension = ext.kind(),
+                    server_kind = kind,
+                    "Client extension expects server kind not available on server"
+                );
+            }
+        }
+    }
+    tracing::info!(
+        extensions = extensions.len(),
+        server_kinds = server_available_kinds.len(),
+        "Client extension validation complete"
+    );
+}
+
 /// Shutdown all extensions in reverse dependency order (#583).
 ///
 /// Calls `exit()` on each extension in reverse order (dependents first,

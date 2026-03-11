@@ -97,6 +97,10 @@ impl Module for ExplorerModule {
         Ok(())
     }
 
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::EXPLORER]
+    }
+
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Browse mode: toggle off

@@ -183,6 +183,8 @@ pub trait ExtensionStateBridge: Send + Sync + 'static {
 /// Created once at server startup and shared via `Arc<BridgeRegistry>`.
 pub struct BridgeRegistry {
     bridges: HashMap<&'static str, Box<dyn ExtensionStateBridge>>,
+    /// Extension kinds declared by loaded server modules (#584).
+    available_kinds: Vec<&'static str>,
 }
 
 impl BridgeRegistry {
@@ -191,6 +193,7 @@ impl BridgeRegistry {
     pub fn new() -> Self {
         Self {
             bridges: HashMap::new(),
+            available_kinds: Vec::new(),
         }
     }
 
@@ -226,6 +229,19 @@ impl BridgeRegistry {
     pub fn values(&self) -> impl Iterator<Item = &dyn ExtensionStateBridge> {
         self.bridges.values().map(AsRef::as_ref)
     }
+
+    /// Set the extension kinds declared by loaded server modules (#584).
+    pub fn set_available_kinds(&mut self, kinds: Vec<&'static str>) {
+        self.available_kinds = kinds;
+    }
+
+    /// Extension kinds declared by loaded server modules (#584).
+    ///
+    /// Used by gRPC service to expose available kinds to clients.
+    #[must_use]
+    pub fn available_kinds(&self) -> &[&'static str] {
+        &self.available_kinds
+    }
 }
 
 impl Default for BridgeRegistry {
@@ -239,6 +255,7 @@ impl std::fmt::Debug for BridgeRegistry {
         f.debug_struct("BridgeRegistry")
             .field("count", &self.bridges.len())
             .field("kinds", &self.kinds())
+            .field("available_kinds", &self.available_kinds)
             .finish()
     }
 }

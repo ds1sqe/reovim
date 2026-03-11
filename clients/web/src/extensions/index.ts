@@ -51,6 +51,23 @@ export function createExtensions(): WebExtension[] {
   return sorted;
 }
 
+/** Validate extensions against server-available kinds (#584). */
+export function validateExtensions(
+  extensions: WebExtension[],
+  serverAvailableKinds: string[],
+): void {
+  for (const ext of extensions) {
+    const needed = ext.serverKinds?.() ?? [ext.kind()];
+    for (const kind of needed) {
+      if (!serverAvailableKinds.includes(kind)) {
+        console.warn(
+          `[reovim] Extension "${ext.kind()}" expects server kind "${kind}" but server does not provide it`,
+        );
+      }
+    }
+  }
+}
+
 /** Shutdown all extensions in reverse dependency order (#583). */
 export function shutdownExtensions(extensions: WebExtension[]): void {
   for (let i = extensions.length - 1; i >= 0; i--) {

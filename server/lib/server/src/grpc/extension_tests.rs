@@ -145,3 +145,20 @@ async fn test_list_extensions_empty() {
 
     assert!(response.extensions.is_empty());
 }
+
+#[tokio::test]
+async fn test_list_extensions_includes_available_kinds() {
+    let mut bridges = BridgeRegistry::new();
+    bridges.register(TestBridge {
+        kind_str: "cmdline",
+        bridge_scope: ExtensionScope::Client,
+    });
+    bridges.set_available_kinds(vec!["cmdline", "whichkey", "completion"]);
+    let (service, _) = make_service(bridges);
+
+    let request = Request::new(ListExtensionsRequest {});
+    let response = service.list_extensions(request).await.unwrap().into_inner();
+
+    assert_eq!(response.extensions.len(), 1);
+    assert_eq!(response.available_kinds, vec!["cmdline", "whichkey", "completion"]);
+}

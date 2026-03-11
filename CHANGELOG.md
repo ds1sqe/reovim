@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Cross-boundary extension contracts (#584)**: Server modules declare `extension_kinds()` on the
+  `Module` trait (kernel-pure `&[&'static str]`). TUI extensions declare `server_kinds()`, web
+  extensions declare `serverKinds()`. Server startup validates bridge-module contracts and logs
+  warnings for orphaned bridges or module kinds (non-fatal, graceful degradation). `ListExtensions`
+  RPC response includes `available_kinds` for client-side validation. TUI `validate_extensions()`
+  and web `validateExtensions()` compare client extensions against server-declared kinds.
+  Documentation at `docs/architecture/modules/extension-contracts.md`.
+
 - **Client extension lifecycle and shared kinds (#583)**: Add `dependencies()`, `init()`, `exit()`
   lifecycle methods to `TuiExtension` trait and `WebExtension` interface. Both TUI and web clients
   topologically sort extensions via Kahn's algorithm before initialization. `shutdown_extensions()`

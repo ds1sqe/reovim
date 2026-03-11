@@ -100,6 +100,10 @@ impl Module for TetrominoModule {
         Ok(())
     }
 
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::POLYBLOCKS]
+    }
+
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Menu mode

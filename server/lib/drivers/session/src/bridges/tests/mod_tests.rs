@@ -374,3 +374,38 @@ fn test_snapshot_with_context_override_uses_context() {
     assert_eq!(opponents_arr[0]["id"], 2);
     assert_eq!(opponents_arr[0]["score"], 999);
 }
+
+// ========================================================================
+// available_kinds tests (#584)
+// ========================================================================
+
+#[test]
+fn test_registry_available_kinds_default_empty() {
+    let reg = BridgeRegistry::new();
+    assert!(reg.available_kinds().is_empty());
+}
+
+#[test]
+fn test_registry_set_and_get_available_kinds() {
+    let mut reg = BridgeRegistry::new();
+    reg.set_available_kinds(vec!["cmdline", "whichkey", "completion"]);
+    assert_eq!(reg.available_kinds(), &["cmdline", "whichkey", "completion"]);
+}
+
+#[test]
+fn test_registry_available_kinds_independent_of_bridges() {
+    let mut reg = BridgeRegistry::new();
+    reg.register(DummyBridge::new("alpha"));
+    reg.set_available_kinds(vec!["beta", "gamma"]);
+    // Bridge kinds and available kinds are independent
+    assert_eq!(reg.kinds(), vec!["alpha"]);
+    assert_eq!(reg.available_kinds(), &["beta", "gamma"]);
+}
+
+#[test]
+fn test_registry_available_kinds_overwrite() {
+    let mut reg = BridgeRegistry::new();
+    reg.set_available_kinds(vec!["old"]);
+    reg.set_available_kinds(vec!["new1", "new2"]);
+    assert_eq!(reg.available_kinds(), &["new1", "new2"]);
+}

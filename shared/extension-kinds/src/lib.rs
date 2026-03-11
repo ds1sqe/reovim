@@ -79,12 +79,7 @@ mod tests {
     #[test]
     fn test_all_sorted() {
         for window in ALL.windows(2) {
-            assert!(
-                window[0] < window[1],
-                "ALL is not sorted: {:?} >= {:?}",
-                window[0],
-                window[1]
-            );
+            assert!(window[0] < window[1], "ALL is not sorted: {:?} >= {:?}", window[0], window[1]);
         }
     }
 

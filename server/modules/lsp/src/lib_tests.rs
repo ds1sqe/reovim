@@ -609,3 +609,9 @@ fn test_file_opened_no_extension() {
         path: "/tmp/Makefile".to_string(),
     });
 }
+
+#[test]
+fn test_extension_kinds() {
+    let module = LspModule::new();
+    assert_eq!(module.extension_kinds(), &["diagnostics"]);
+}

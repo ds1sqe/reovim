@@ -408,6 +408,16 @@ pub trait TuiExtension: Send + Sync {
     ///
     /// Default: no-op.
     fn exit(&mut self) {}
+
+    /// Server extension kinds this extension expects to receive data from (#584).
+    ///
+    /// Used by client startup validation to check if the server has matching
+    /// modules loaded. Logs warnings for unmatched kinds (graceful degradation).
+    ///
+    /// Default: `vec![self.kind()]` (1:1 mapping for most extensions).
+    fn server_kinds(&self) -> Vec<&'static str> {
+        vec![self.kind()]
+    }
 }
 
 #[cfg(test)]

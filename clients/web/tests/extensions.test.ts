@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createExtensions,
   shutdownExtensions,
+  validateExtensions,
   CmdlineExtension,
   WhichKeyExtension,
   NotificationExtension,
@@ -1783,5 +1784,70 @@ describe("createExtensions lifecycle", () => {
     ];
     // Should not throw
     shutdownExtensions(mockExts);
+  });
+});
+
+// ============ validateExtensions Tests (#584) ============
+
+describe("validateExtensions", () => {
+  it("no warnings when all kinds matched", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const exts: WebExtension[] = [
+      {
+        kind: () => "cmdline",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+      },
+    ];
+    validateExtensions(exts, ["cmdline", "whichkey"]);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("warns for unmatched server kind", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const exts: WebExtension[] = [
+      {
+        kind: () => "cmdline",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+      },
+    ];
+    validateExtensions(exts, ["whichkey"]); // cmdline not in server kinds
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("cmdline");
+    warnSpy.mockRestore();
+  });
+
+  it("uses serverKinds() override when present", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const exts: WebExtension[] = [
+      {
+        kind: () => "multi",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+        serverKinds: () => ["alpha", "beta"],
+      },
+    ];
+    validateExtensions(exts, ["alpha"]); // beta missing
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0][0]).toContain("beta");
+    warnSpy.mockRestore();
+  });
+
+  it("empty extensions and empty server kinds produces no warnings", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    validateExtensions([], []);
+    expect(warnSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

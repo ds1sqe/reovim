@@ -123,3 +123,9 @@ fn test_module_context(
         std::path::PathBuf::from("/tmp"),
     )
 }
+
+#[test]
+fn test_extension_kinds() {
+    let module = RangeFinderModule::new();
+    assert_eq!(module.extension_kinds(), &["range-finder-jump", "range-finder-fold"]);
+}

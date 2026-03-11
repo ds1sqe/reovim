@@ -74,3 +74,9 @@ fn test_module_context(services: Arc<reovim_kernel::api::v1::ServiceRegistry>) -
         PathBuf::from("/tmp"),
     )
 }
+
+#[test]
+fn test_extension_kinds() {
+    let module = LspNavigationModule::new();
+    assert_eq!(module.extension_kinds(), &["hover", "signature-help"]);
+}

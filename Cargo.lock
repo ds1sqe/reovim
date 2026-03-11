@@ -2849,6 +2849,7 @@ dependencies = [
  "reovim-tui-ext-signature-help",
  "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
+ "tracing",
 ]
 
 [[package]]

@@ -71,6 +71,10 @@ impl Module for WhichKeyModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::WHICHKEY]
+    }
 }
 
 #[cfg(feature = "dynamic")]

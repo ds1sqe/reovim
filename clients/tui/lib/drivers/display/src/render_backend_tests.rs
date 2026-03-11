@@ -478,3 +478,12 @@ fn test_viewport_aware_extension_scrolled() {
     // Line 0 is above viewport, nothing rendered
     assert_eq!(fb.get(5, 0).unwrap().char, ' ');
 }
+
+#[test]
+fn test_extension_default_server_kinds_returns_own_kind() {
+    let ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    assert_eq!(ext.server_kinds(), vec!["mock"]);
+}

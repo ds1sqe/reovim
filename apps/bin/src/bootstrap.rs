@@ -77,7 +77,7 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let module_ctx = create_module_context(kernel, Arc::clone(&services));
-    let _tracked = initialize_modules(&module_ctx);
+    let tracked = initialize_modules(&module_ctx);
 
     let mut registry = BridgeRegistry::new();
     if let Some(provider) = services.get::<BridgeProvider>() {
@@ -85,6 +85,11 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
             registry.register_boxed(bridge);
         }
     }
+
+    // Collect module-declared extension kinds and validate contracts (#584)
+    let available_kinds = collect_available_kinds(&tracked);
+    validate_extension_contracts(&tracked, &registry);
+    registry.set_available_kinds(available_kinds);
 
     registry
 }
@@ -579,6 +584,73 @@ fn log_shadow_comparison(
             }
         }
     }
+}
+
+/// Collect the union of all `extension_kinds()` from running modules (#584).
+///
+/// Returns a sorted, deduplicated list of extension kind identifiers
+/// declared by loaded server modules. Used to populate `BridgeRegistry`
+/// and expose to clients via the `ListExtensions` RPC.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn collect_available_kinds(modules: &[TrackedModule]) -> Vec<&'static str> {
+    use std::collections::BTreeSet;
+
+    let kinds: BTreeSet<&'static str> = modules
+        .iter()
+        .filter(|tm| tm.state == ModuleState::Running)
+        .flat_map(|tm| tm.module.extension_kinds().iter().copied())
+        .collect();
+
+    kinds.into_iter().collect()
+}
+
+/// Validate that bridge registry kinds match module `extension_kinds()` declarations (#584).
+///
+/// Logs warnings for:
+/// - Orphaned bridges: bridge kind registered but no module declares it
+/// - Orphaned module kinds: module declares a kind but no bridge matches
+///
+/// This is non-fatal — the system continues with graceful degradation.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn validate_extension_contracts(
+    modules: &[TrackedModule],
+    bridge_registry: &reovim_driver_session::bridges::BridgeRegistry,
+) {
+    use std::collections::HashSet;
+
+    let module_kinds: HashSet<&str> = modules
+        .iter()
+        .filter(|tm| tm.state == ModuleState::Running)
+        .flat_map(|tm| tm.module.extension_kinds().iter().copied())
+        .collect();
+
+    let bridge_kinds: HashSet<&str> = bridge_registry.kinds().into_iter().collect();
+
+    for kind in &bridge_kinds {
+        if !module_kinds.contains(kind) {
+            tracing::warn!(
+                kind,
+                "Orphaned bridge: registered but no module declares this extension_kind"
+            );
+        }
+    }
+
+    for kind in &module_kinds {
+        if !bridge_kinds.contains(kind) {
+            tracing::warn!(
+                kind,
+                "Orphaned module kind: declared in extension_kinds() but no bridge registered"
+            );
+        }
+    }
+
+    let matched = module_kinds.intersection(&bridge_kinds).count();
+    tracing::info!(
+        matched,
+        module_kinds = module_kinds.len(),
+        bridge_kinds = bridge_kinds.len(),
+        "Extension contract validation complete"
+    );
 }
 
 /// Create an extra module by name.

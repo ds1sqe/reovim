@@ -116,6 +116,13 @@ impl Module for RangeFinderModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[
+            reovim_extension_kinds::RANGE_FINDER_JUMP,
+            reovim_extension_kinds::RANGE_FINDER_FOLD,
+        ]
+    }
 }
 
 #[cfg(feature = "dynamic")]

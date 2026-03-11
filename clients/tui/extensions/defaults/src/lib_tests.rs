@@ -134,3 +134,45 @@ fn test_toposort_reorders_with_declared_deps() {
     assert_eq!(sorted[0].kind(), "mock-a");
     assert_eq!(sorted[1].kind(), "mock-b");
 }
+
+#[test]
+fn test_validate_extensions_all_matched() {
+    let exts = create_extensions();
+    // Provide all kinds that extensions need
+    let server_kinds: Vec<String> = exts
+        .iter()
+        .flat_map(|e| e.server_kinds())
+        .map(String::from)
+        .collect();
+    // Should not warn — all matched
+    validate_extensions(&exts, &server_kinds);
+}
+
+#[test]
+fn test_validate_extensions_warns_unmatched() {
+    use reovim_driver_display::render_backend::RenderBackend;
+
+    struct UnmatchedExt;
+    impl TuiExtension for UnmatchedExt {
+        fn kind(&self) -> &'static str {
+            "unmatched"
+        }
+        fn is_active(&self) -> bool {
+            false
+        }
+        fn apply_notification(&mut self, _data: &str) {}
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+    }
+
+    let exts: Vec<Box<dyn TuiExtension>> = vec![Box::new(UnmatchedExt)];
+    let server_kinds: Vec<String> = vec!["other".into()];
+    // Should warn but not panic
+    validate_extensions(&exts, &server_kinds);
+}
+
+#[test]
+fn test_validate_extensions_empty() {
+    let exts: Vec<Box<dyn TuiExtension>> = vec![];
+    let server_kinds: Vec<String> = vec![];
+    validate_extensions(&exts, &server_kinds);
+}

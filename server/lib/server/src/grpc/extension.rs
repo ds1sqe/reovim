@@ -119,7 +119,17 @@ impl ExtensionService for ExtensionServiceImpl {
             })
             .collect();
 
-        Ok(Response::new(ListExtensionsResponse { extensions }))
+        let available_kinds = self
+            .bridges
+            .available_kinds()
+            .iter()
+            .map(|k| (*k).to_string())
+            .collect();
+
+        Ok(Response::new(ListExtensionsResponse {
+            extensions,
+            available_kinds,
+        }))
     }
 }
 
