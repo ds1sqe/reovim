@@ -322,6 +322,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         assert!(picker.items(&ctx, &services()).is_empty());
     }
@@ -461,6 +462,7 @@ mod tests {
             query: "unique_grep_test_marker".to_owned(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         let items = picker.items(&ctx, &services());
         // rg may or may not be installed; if it is, we get results.

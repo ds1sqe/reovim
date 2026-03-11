@@ -155,6 +155,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         }
     }
 
@@ -203,6 +204,7 @@ mod tests {
                 },
             ],
             commands: vec![],
+            options: vec![],
         };
 
         let items = picker.items(&ctx, &services());

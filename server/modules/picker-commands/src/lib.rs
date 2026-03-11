@@ -152,6 +152,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         }
     }
 
@@ -198,6 +199,7 @@ mod tests {
                     description: "Quit the editor".to_owned(),
                 },
             ],
+            options: vec![],
         };
 
         let items = picker.items(&ctx, &services());

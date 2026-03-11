@@ -11,6 +11,8 @@ pub struct PickerContext {
     pub buffers: Vec<BufferInfo>,
     /// Available commands (for command palette).
     pub commands: Vec<CommandInfo>,
+    /// Available options (for option picker).
+    pub options: Vec<OptionInfo>,
 }
 
 /// Information about an open buffer.
@@ -33,6 +35,31 @@ pub struct CommandInfo {
     pub description: String,
 }
 
+/// Information about a registered option.
+#[derive(Debug, Clone)]
+pub struct OptionInfo {
+    /// Option name (e.g. "number", "`picker_height`").
+    pub name: String,
+    /// Short alias if any (e.g. "nu" for "number").
+    pub short_form: Option<String>,
+    /// Human-readable description.
+    pub description: String,
+    /// Type name: "bool", "integer", "string", or "choice".
+    pub type_name: String,
+    /// Display string of the current value.
+    pub current_value: String,
+    /// Display string of the default value.
+    pub default_value: String,
+    /// Human-readable constraint description (e.g. "3..50").
+    pub constraint: Option<String>,
+    /// Scope: "global", "buffer", or "window".
+    pub scope: String,
+    /// Owning module ID (e.g. "microscope").
+    pub owner: Option<String>,
+    /// Available choices for choice-type options.
+    pub choices: Option<Vec<String>>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,6 +71,7 @@ mod tests {
             query: "main".to_owned(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         assert_eq!(ctx.cwd, PathBuf::from("/home/user/project"));
         assert_eq!(ctx.query, "main");
@@ -69,6 +97,7 @@ mod tests {
                 },
             ],
             commands: vec![],
+            options: vec![],
         };
         assert_eq!(ctx.buffers.len(), 2);
         assert_eq!(ctx.buffers[0].name, "main.rs");
@@ -86,6 +115,7 @@ mod tests {
                 qualified_name: "editor:save".to_owned(),
                 description: "Save file".to_owned(),
             }],
+            options: vec![],
         };
         assert_eq!(ctx.commands.len(), 1);
         assert_eq!(ctx.commands[0].qualified_name, "editor:save");
@@ -102,6 +132,7 @@ mod tests {
                 modified: false,
             }],
             commands: vec![],
+            options: vec![],
         };
         #[allow(clippy::redundant_clone)]
         let cloned = ctx.clone();
@@ -116,6 +147,7 @@ mod tests {
             query: String::new(),
             buffers: vec![],
             commands: vec![],
+            options: vec![],
         };
         let debug = format!("{ctx:?}");
         assert!(debug.contains("PickerContext"));
@@ -144,5 +176,50 @@ mod tests {
         assert_eq!(cloned.qualified_name, "vim:delete");
         let debug = format!("{info:?}");
         assert!(debug.contains("CommandInfo"));
+    }
+
+    #[test]
+    fn option_info_debug_clone() {
+        let info = OptionInfo {
+            name: "number".to_owned(),
+            short_form: Some("nu".to_owned()),
+            description: "Show line numbers".to_owned(),
+            type_name: "bool".to_owned(),
+            current_value: "false".to_owned(),
+            default_value: "false".to_owned(),
+            constraint: None,
+            scope: "window".to_owned(),
+            owner: Some("options".to_owned()),
+            choices: None,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.name, "number");
+        assert_eq!(cloned.short_form.as_deref(), Some("nu"));
+        let debug = format!("{info:?}");
+        assert!(debug.contains("OptionInfo"));
+    }
+
+    #[test]
+    fn context_with_options() {
+        let ctx = PickerContext {
+            cwd: PathBuf::from("."),
+            query: String::new(),
+            buffers: vec![],
+            commands: vec![],
+            options: vec![OptionInfo {
+                name: "number".to_owned(),
+                short_form: None,
+                description: "Line numbers".to_owned(),
+                type_name: "bool".to_owned(),
+                current_value: "true".to_owned(),
+                default_value: "false".to_owned(),
+                constraint: None,
+                scope: "window".to_owned(),
+                owner: None,
+                choices: None,
+            }],
+        };
+        assert_eq!(ctx.options.len(), 1);
+        assert_eq!(ctx.options[0].name, "number");
     }
 }

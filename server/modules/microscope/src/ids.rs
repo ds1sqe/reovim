@@ -29,6 +29,9 @@ pub const NEXT_ITEM: CommandId = CommandId::new(MODULE, "next-item");
 /// Move selection to the previous item.
 pub const PREV_ITEM: CommandId = CommandId::new(MODULE, "prev-item");
 
+/// Open the option picker.
+pub const OPEN_OPTIONS: CommandId = CommandId::new(MODULE, "open-options");
+
 /// Delete the character before the cursor in the query.
 pub const BACKSPACE: CommandId = CommandId::new(MODULE, "backspace");
 
@@ -48,6 +51,7 @@ mod tests {
             OPEN_BUFFERS,
             OPEN_GREP,
             OPEN_COMMANDS,
+            OPEN_OPTIONS,
             SELECT_ITEM,
             CLOSE,
             NEXT_ITEM,
@@ -66,6 +70,7 @@ mod tests {
             OPEN_BUFFERS.name(),
             OPEN_GREP.name(),
             OPEN_COMMANDS.name(),
+            OPEN_OPTIONS.name(),
             SELECT_ITEM.name(),
             CLOSE.name(),
             NEXT_ITEM.name(),

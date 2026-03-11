@@ -2292,6 +2292,7 @@ dependencies = [
  "reovim-picker-commands",
  "reovim-picker-files",
  "reovim-picker-grep",
+ "reovim-picker-options",
 ]
 
 [[package]]
@@ -2714,6 +2715,16 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "tempfile",
+]
+
+[[package]]
+name = "reovim-picker-options"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]

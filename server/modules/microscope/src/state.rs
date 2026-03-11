@@ -143,6 +143,7 @@ impl MicroscopeState {
                 query: self.query.clone(),
                 buffers: Vec::new(),
                 commands: Vec::new(),
+                options: Vec::new(),
             };
             let items = picker.items(&ctx, services);
             self.engine.restart();
@@ -177,6 +178,24 @@ impl MicroscopeState {
             self.selected = 0;
         } else {
             self.selected = self.selected.min(self.matched_count as usize - 1);
+        }
+
+        self.update_preview();
+    }
+
+    /// Fetch preview content for the currently selected item.
+    ///
+    /// Called after selection changes (next/prev) and after engine refresh
+    /// to keep the preview panel in sync with the highlighted item.
+    pub fn update_preview(&mut self) {
+        if let Some(services) = &self.services
+            && let Some(registry) = services.get::<PickerRegistry>()
+            && let Some(picker) = registry.get(&self.picker_name)
+            && self.selected < self.full_items.len()
+        {
+            self.preview = picker.preview(&self.full_items[self.selected], services);
+        } else {
+            self.preview = None;
         }
     }
 }

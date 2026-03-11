@@ -39,6 +39,7 @@ reovim-picker-files = { workspace = true }
 reovim-picker-buffers = { workspace = true }
 reovim-picker-commands = { workspace = true }
 reovim-picker-grep = { workspace = true }
+reovim-picker-options = { workspace = true }
 reovim-module-microscope = { workspace = true }
 
 # Explorer module

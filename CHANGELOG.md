@@ -23,6 +23,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `shiftwidth`, `expandtab`, `autoindent`, `textwidth` (5 Buffer-scoped options). Test helpers
   consolidated to use module-level option specs instead of per-test inline registrations.
 
+- **Option picker with detail panel (#599)**: New `picker-options` module provides a fuzzy finder
+  for editor options (`<Space>o`). Shows `[module] option_name` display with type/value detail.
+  Preview panel shows full metadata: type, current value, default, constraint, scope, owner module,
+  description, and available choices. Also fixes: command picker now shows qualified names with
+  module prefix (e.g., `editor:save` instead of `save`), and preview panel now refreshes on
+  navigation for all pickers.
+
 ### Changed
 
 - **Parallel check.sh (#588)**: Rewrite `scripts/check.sh` with parallel execution

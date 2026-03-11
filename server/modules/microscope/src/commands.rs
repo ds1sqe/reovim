@@ -7,7 +7,7 @@ use {
     reovim_driver_command_types::{CommandContext, CommandResult},
     reovim_driver_picker::{PickerAction, PickerContext, PickerRegistry, push_items},
     reovim_driver_session::{BufferApi, ExtensionApi, ModeApi, SessionRuntime, TransitionContext},
-    reovim_kernel::api::v1::CommandId,
+    reovim_kernel::api::v1::{CommandId, OptionScopeId},
 };
 
 use crate::{ids, modes::MicroscopeMode, state::MicroscopeState};
@@ -79,6 +79,27 @@ impl CommandHandler for OpenGrep {
     }
 }
 
+/// Open the option picker.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OpenOptions;
+
+impl reovim_driver_command::Command for OpenOptions {
+    fn id(&self) -> CommandId {
+        ids::OPEN_OPTIONS
+    }
+
+    fn description(&self) -> &'static str {
+        "Open option picker"
+    }
+}
+
+impl CommandHandler for OpenOptions {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        open_picker(runtime, "options", "Options", "> ")
+    }
+}
+
 /// Open the command picker.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenCommands;
@@ -127,6 +148,7 @@ impl CommandHandler for NextItem {
         }
         if state.matched_count > 0 {
             state.selected = (state.selected + 1) % state.matched_count as usize;
+            state.update_preview();
         }
         CommandResult::Success
     }
@@ -156,6 +178,7 @@ impl CommandHandler for PrevItem {
         if state.matched_count > 0 {
             let count = state.matched_count as usize;
             state.selected = (state.selected + count - 1) % count;
+            state.update_preview();
         }
         CommandResult::Success
     }
@@ -308,11 +331,45 @@ fn open_picker(
             svc.list_all()
                 .iter()
                 .map(|c| reovim_driver_picker::CommandInfo {
-                    qualified_name: c.id.name().to_string(),
+                    qualified_name: c.id.to_string(),
                     description: c.description.clone(),
                 })
                 .collect()
         });
+
+    // Collect option info from OptionRegistry (needed by option picker).
+    let options: Vec<_> = {
+        let registry = &runtime.kernel().options;
+        registry
+            .list_all()
+            .iter()
+            .filter_map(|name| {
+                let spec = registry.get_spec(name)?;
+                let current = registry
+                    .get(name, OptionScopeId::Global)
+                    .unwrap_or_else(|| spec.default.clone());
+                Some(reovim_driver_picker::OptionInfo {
+                    name: name.clone(),
+                    short_form: spec.short_form.as_ref().map(ToString::to_string),
+                    description: spec.description.to_string(),
+                    type_name: current.type_name().to_string(),
+                    current_value: current.to_string(),
+                    default_value: spec.default.to_string(),
+                    constraint: format_constraint(&spec.constraint),
+                    scope: spec.scope.display_name().to_string(),
+                    owner: spec.owner().map(|m| m.as_str().to_string()),
+                    choices: if let reovim_kernel::api::v1::OptionValue::Choice {
+                        choices, ..
+                    } = &spec.default
+                    {
+                        Some(choices.clone())
+                    } else {
+                        None
+                    },
+                })
+            })
+            .collect()
+    };
 
     // Fetch items from the picker.
     let items = services
@@ -325,6 +382,7 @@ fn open_picker(
                     query: String::new(),
                     buffers,
                     commands,
+                    options,
                 };
                 picker.items(&ctx, &services)
             } else {
@@ -356,6 +414,21 @@ fn open_picker(
     CommandResult::Success
 }
 
+/// Format an `OptionConstraint` as a human-readable string.
+///
+/// Returns `None` for unconstrained options.
+fn format_constraint(c: &reovim_kernel::api::v1::OptionConstraint) -> Option<String> {
+    match (c.min, c.max, c.min_length, c.max_length) {
+        (Some(min), Some(max), _, _) => Some(format!("{min}..{max}")),
+        (Some(min), None, _, _) => Some(format!(">={min}")),
+        (None, Some(max), _, _) => Some(format!("<={max}")),
+        (_, _, Some(min_len), Some(max_len)) => Some(format!("len {min_len}..{max_len}")),
+        (_, _, Some(min_len), None) => Some(format!("len >={min_len}")),
+        (_, _, None, Some(max_len)) => Some(format!("len <={max_len}")),
+        _ => None,
+    }
+}
+
 /// Close the picker and return to the previous mode via pop.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn close_picker(runtime: &mut SessionRuntime<'_>) {
@@ -377,6 +450,7 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(OpenBuffers),
         Box::new(OpenGrep),
         Box::new(OpenCommands),
+        Box::new(OpenOptions),
         Box::new(NextItem),
         Box::new(PrevItem),
         Box::new(SelectItem),
@@ -418,6 +492,13 @@ mod tests {
     }
 
     #[test]
+    fn open_options_metadata() {
+        let cmd = OpenOptions;
+        assert_eq!(cmd.id(), ids::OPEN_OPTIONS);
+        assert!(!cmd.description().is_empty());
+    }
+
+    #[test]
     fn next_item_metadata() {
         let cmd = NextItem;
         assert_eq!(cmd.id(), ids::NEXT_ITEM);
@@ -455,7 +536,7 @@ mod tests {
     #[test]
     fn command_handlers_not_empty() {
         let handlers = command_handlers();
-        assert_eq!(handlers.len(), 9);
+        assert_eq!(handlers.len(), 10);
     }
 
     #[test]
@@ -466,5 +547,35 @@ mod tests {
         deduped.sort_by_key(CommandId::name);
         deduped.dedup_by_key(|id| id.name());
         assert_eq!(ids.len(), deduped.len());
+    }
+
+    #[test]
+    fn format_constraint_range() {
+        let c = reovim_kernel::api::v1::OptionConstraint::range(3, 50);
+        assert_eq!(format_constraint(&c), Some("3..50".to_owned()));
+    }
+
+    #[test]
+    fn format_constraint_min() {
+        let c = reovim_kernel::api::v1::OptionConstraint::min(0);
+        assert_eq!(format_constraint(&c), Some(">=0".to_owned()));
+    }
+
+    #[test]
+    fn format_constraint_max() {
+        let c = reovim_kernel::api::v1::OptionConstraint::max(100);
+        assert_eq!(format_constraint(&c), Some("<=100".to_owned()));
+    }
+
+    #[test]
+    fn format_constraint_string_length() {
+        let c = reovim_kernel::api::v1::OptionConstraint::string_length(0, 10);
+        assert_eq!(format_constraint(&c), Some("len 0..10".to_owned()));
+    }
+
+    #[test]
+    fn format_constraint_none() {
+        let c = reovim_kernel::api::v1::OptionConstraint::none();
+        assert_eq!(format_constraint(&c), None);
     }
 }
