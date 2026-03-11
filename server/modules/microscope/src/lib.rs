@@ -350,6 +350,25 @@ mod tests {
         assert_eq!(owned.len(), 5);
     }
 
+    #[test]
+    fn microscope_init_fails_on_duplicate_option() {
+        let ctx = ModuleContext::default();
+
+        // Pre-register one of our options to trigger a conflict
+        let _ = ctx.kernel.options.register(OptionSpec::new(
+            "picker_height",
+            "Already taken",
+            OptionValue::int(1),
+        ));
+
+        let mut module = MicroscopeModule::new();
+        let result = module.init(&ctx);
+        assert!(
+            matches!(result, ProbeResult::Failed(_)),
+            "init should fail on duplicate option"
+        );
+    }
+
     #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_module_context(
         services: std::sync::Arc<reovim_kernel::api::v1::ServiceRegistry>,

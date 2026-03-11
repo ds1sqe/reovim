@@ -613,6 +613,25 @@ mod tests {
         assert_eq!(renderer.presenter_count(), 1, "Should have 1 presenter registered");
     }
 
+    #[test]
+    fn test_vim_init_fails_on_duplicate_option() {
+        let ctx = ModuleContext::default();
+
+        // Pre-register one of our options to trigger a conflict
+        let _ = ctx.kernel.options.register(OptionSpec::new(
+            "scrolloff",
+            "Already taken",
+            OptionValue::int(1),
+        ));
+
+        let mut module = VimModule::new();
+        let result = module.init(&ctx);
+        assert!(
+            matches!(result, ProbeResult::Failed(_)),
+            "init should fail on duplicate option"
+        );
+    }
+
     // ========================================================================
     // VimModule Default and exit tests
     // ========================================================================

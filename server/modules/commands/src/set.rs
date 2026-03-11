@@ -203,6 +203,7 @@ fn execute_list_changed(runtime: &SessionRuntime<'_>, scope: OptionScopeId) -> C
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     if lines.is_empty() {
         tracing::info!("No changed options");
     } else {
@@ -225,6 +226,7 @@ fn execute_list_all(runtime: &SessionRuntime<'_>, scope: OptionScopeId) -> Comma
         }
     }
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     if lines.is_empty() {
         tracing::info!("No options registered");
     } else {
@@ -247,6 +249,7 @@ fn execute_show(runtime: &SessionRuntime<'_>, name: &str, scope: OptionScopeId) 
         return CommandResult::Error(format!("Unknown option: {name}"));
     };
 
+    #[cfg_attr(coverage_nightly, coverage(off))]
     tracing::info!("  {full_name}={value}");
     CommandResult::Success
 }
