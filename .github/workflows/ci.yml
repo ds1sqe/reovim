@@ -69,8 +69,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build workspace + tests + bins (instrumented)
         run: |
-          eval "$(RUSTFLAGS='${{ env.MCDC_RUSTFLAGS }}' \
-            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
           cargo +${{ env.NIGHTLY }} build --workspace --tests --bins \
             --exclude reovim-module-macros \
             --exclude reovim-driver-ffi-python \
@@ -79,8 +79,8 @@ jobs:
             --exclude reovim-server
       - name: Build FFI modules (instrumented)
         run: |
-          eval "$(RUSTFLAGS='${{ env.MCDC_RUSTFLAGS }}' \
-            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
           cargo +${{ env.NIGHTLY }} build -p reovim-module-defaults --features dynamic
       - name: Save build cache
         uses: actions/cache/save@v4
@@ -108,8 +108,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build server + app binary + tests (instrumented)
         run: |
-          eval "$(RUSTFLAGS='${{ env.SERVER_RUSTFLAGS }}' \
-            cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
           cargo +${{ env.NIGHTLY }} build -p reovim-server -p reovim-app --tests --bins
       - name: Save build cache
         uses: actions/cache/save@v4
