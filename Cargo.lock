@@ -2028,6 +2028,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-input"
 version = "0.10.0-dev"
 dependencies = [
@@ -2330,6 +2337,16 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+]
+
+[[package]]
+name = "reovim-module-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tracing",
 ]
 
 [[package]]
