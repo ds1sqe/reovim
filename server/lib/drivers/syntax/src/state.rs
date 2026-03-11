@@ -258,7 +258,7 @@ mod tests {
 
         fn highlights(&self, byte_range: Range<usize>) -> Vec<Annotation> {
             if self.parsed {
-                vec![Annotation::highlight(
+                vec![Annotation::new(
                     byte_range.start,
                     byte_range.end,
                     HighlightCategory::new("comment"),

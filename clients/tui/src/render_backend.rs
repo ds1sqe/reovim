@@ -24,7 +24,10 @@
 //! ```
 
 // Re-export the trait, extension, and viewport context from display crate
-pub use reovim_driver_display::render_backend::{RenderBackend, TuiExtension, ViewportContext};
+pub use reovim_driver_display::render_backend::{
+    RenderBackend, RenderBehavior, TransformedLine, TuiExtension, ViewportContext, VirtualLine,
+    VirtualLinePosition,
+};
 
 use reovim_driver_display::{FrameBuffer, Style};
 

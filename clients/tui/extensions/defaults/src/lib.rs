@@ -31,6 +31,7 @@ pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
         Box::new(reovim_tui_ext_hover::HoverExtension::new()),
         Box::new(reovim_tui_ext_signature_help::SignatureHelpExtension::new()),
         Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
+        Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
     ]
 }
 
@@ -41,7 +42,7 @@ mod tests {
     #[test]
     fn test_create_extensions_count() {
         let exts = create_extensions();
-        assert_eq!(exts.len(), 12);
+        assert_eq!(exts.len(), 13);
     }
 
     #[test]
@@ -60,12 +61,18 @@ mod tests {
         assert!(kinds.contains(&"hover"));
         assert!(kinds.contains(&"signature-help"));
         assert!(kinds.contains(&"diagnostics"));
+        assert!(kinds.contains(&"markdown"));
     }
 
     #[test]
     fn test_all_extensions_initially_inactive() {
         let exts = create_extensions();
         for ext in &exts {
+            // Markdown is always active (lightweight, no-op when no tables)
+            if ext.kind() == "markdown" {
+                assert!(ext.is_active());
+                continue;
+            }
             assert!(!ext.is_active(), "Extension '{}' should start inactive", ext.kind());
         }
     }
@@ -85,7 +92,8 @@ mod tests {
 
         // With the default 500ms show-delay, whichkey is not yet visible
         // (server_active=true but visible=false until tick() after delay)
+        // Markdown is always active (lightweight), so count = 1
         let active_count = exts.iter().filter(|e| e.is_active()).count();
-        assert_eq!(active_count, 0);
+        assert_eq!(active_count, 1);
     }
 }

@@ -1,6 +1,6 @@
 ; Markdown inline decoration queries
 ;
-; These captures are mapped to AnnotationKind via DecorationRule.
+; These captures are mapped to semantic categories via DecorationRule.
 ; Runs on tree_sitter_md::INLINE_LANGUAGE grammar.
 
 ; Code span delimiters (backticks) — concealed

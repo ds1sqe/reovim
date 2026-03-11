@@ -286,6 +286,4 @@ pub use overlay_content::{
 // Converts byte offsets to positions and provides efficient line queries.
 // ============================================================================
 
-pub use syntax::{
-    AnnotationCacheManager, CachedAnnotationKind, CachedToken, LayeredTokenCache, TokenSpan,
-};
+pub use syntax::{AnnotationCacheManager, CachedToken, LayeredTokenCache, TokenSpan};

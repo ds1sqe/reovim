@@ -49,43 +49,15 @@ message GetTokensResponse {
 // - "comment", "comment.doc"
 // - "type", "type.builtin"
 // - "operator", "punctuation", "punctuation.bracket"
+//
+// Note: Field 4 (AnnotationKind kind) was retired in #551.
+// Never reuse field number 4. Clients that receive old messages
+// with field 4 will safely ignore it (proto3 unknown field behavior).
 message TokenSpan {
   uint32 start_byte = 1;
   uint32 end_byte = 2;
   string category = 3;            // e.g., "keyword", "function", "string"
-  optional AnnotationKind kind = 4;  // Default: Highlight
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// AnnotationKind - What an annotation does visually
-// ─────────────────────────────────────────────────────────────────────
-
-// Annotation kind describes the visual effect of a token span.
-// When absent (None), clients should treat it as a Highlight.
-message AnnotationKind {
-  oneof kind {
-    HighlightKind highlight = 1;
-    ConcealKind conceal = 2;
-    BackgroundKind background = 3;
-    VirtualTextKind virtual_text = 4;
-  }
-}
-
-// Style overlay (the common case for syntax highlighting).
-// Client resolves category -> Style via theme.
-message HighlightKind {}
-
-// Conceal the text range, optionally replacing with different text.
-message ConcealKind {
-  optional string replacement = 1;
-}
-
-// Background highlight (independent of text style).
-message BackgroundKind {}
-
-// Virtual text inserted at this position (not in buffer).
-message VirtualTextKind {
-  string text = 1;
+  // Field 4 retired: was `optional AnnotationKind kind = 4`
 }
 
 // ─────────────────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ use {
     tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
 };
 
-use crate::InjectionManager;
+use crate::{InjectionManager, provider::DecorationProvider};
 
 /// Tree-sitter based syntax driver.
 ///
@@ -102,6 +102,9 @@ pub struct TreeSitterDriver {
     /// Inline decoration rules
     inline_decoration_rules: Vec<DecorationRule>,
 
+    /// Imperative decoration providers (table rendering, list bullets, etc.)
+    decoration_providers: Vec<Box<dyn DecorationProvider>>,
+
     /// Reusable query cursor (Mutex for thread safety)
     query_cursor: Mutex<QueryCursor>,
 
@@ -148,6 +151,7 @@ impl TreeSitterDriver {
             inline_tree: RwLock::new(None),
             inline_decoration_query: None,
             inline_decoration_rules: Vec::new(),
+            decoration_providers: Vec::new(),
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
@@ -196,6 +200,7 @@ impl TreeSitterDriver {
             inline_tree: RwLock::new(None),
             inline_decoration_query: None,
             inline_decoration_rules: Vec::new(),
+            decoration_providers: Vec::new(),
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
@@ -503,7 +508,7 @@ impl SyntaxDriver for TreeSitterDriver {
 
                     let node = capture.node;
 
-                    parent_highlights.push(Annotation::highlight(
+                    parent_highlights.push(Annotation::new(
                         node.start_byte(),
                         node.end_byte(),
                         HighlightCategory::new(*capture_name),
@@ -808,7 +813,7 @@ impl SyntaxDriver for TreeSitterDriver {
             if let Some(inline_tree) = inline_tree_guard.as_ref() {
                 let content = self.content.read();
                 let mut cursor = QueryCursor::new();
-                cursor.set_byte_range(byte_range);
+                cursor.set_byte_range(byte_range.clone());
 
                 let capture_names = inline_query.capture_names();
                 let mut captures = Vec::new();
@@ -829,6 +834,18 @@ impl SyntaxDriver for TreeSitterDriver {
 
                 result.extend(apply_rules(&captures, &self.inline_decoration_rules));
             }
+        }
+
+        // 3. Imperative providers (tables, list bullets, etc.)
+        if !self.decoration_providers.is_empty()
+            && let Some(provider_decos) = self.with_tree(|tree, content| {
+                self.decoration_providers
+                    .iter()
+                    .flat_map(|p| p.decorations(tree, content, byte_range.clone()))
+                    .collect::<Vec<_>>()
+            })
+        {
+            result.extend(provider_decos);
         }
 
         result
@@ -859,6 +876,7 @@ pub struct TreeSitterDriverBuilder {
     inline_parser: Option<Mutex<Parser>>,
     inline_decoration_query: Option<Arc<Query>>,
     inline_decoration_rules: Vec<DecorationRule>,
+    decoration_providers: Vec<Box<dyn DecorationProvider>>,
 }
 
 impl TreeSitterDriverBuilder {
@@ -880,6 +898,7 @@ impl TreeSitterDriverBuilder {
             inline_parser: None,
             inline_decoration_query: None,
             inline_decoration_rules: Vec::new(),
+            decoration_providers: Vec::new(),
         }
     }
 
@@ -941,6 +960,16 @@ impl TreeSitterDriverBuilder {
         self
     }
 
+    /// Add an imperative decoration provider.
+    ///
+    /// Providers run after declarative rules during `decorations()`.
+    /// Multiple providers can be added and will be called in order.
+    #[must_use]
+    pub fn decoration_provider(mut self, provider: Box<dyn DecorationProvider>) -> Self {
+        self.decoration_providers.push(provider);
+        self
+    }
+
     /// Build the `TreeSitterDriver`.
     ///
     /// Returns `None` if the parser cannot be configured for the language.
@@ -970,6 +999,7 @@ impl TreeSitterDriverBuilder {
             inline_tree: RwLock::new(None),
             inline_decoration_query: self.inline_decoration_query,
             inline_decoration_rules: self.inline_decoration_rules,
+            decoration_providers: self.decoration_providers,
             query_cursor: Mutex::new(QueryCursor::new()),
             version: AtomicU64::new(0),
             parse_error: RwLock::new(None),
@@ -1573,15 +1603,12 @@ mod tests {
 
     #[test]
     fn test_builder_with_decoration() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "fn_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("test.background"),
         }];
 
@@ -1634,15 +1661,12 @@ mod tests {
 
     #[test]
     fn test_decorations_empty_before_parse() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "fn_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("test"),
         }];
 
@@ -1658,8 +1682,6 @@ mod tests {
 
     #[test]
     fn test_decorations_returns_annotations_after_parse() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         // Capture function_item nodes as background decorations
@@ -1667,7 +1689,6 @@ mod tests {
 
         let rules = vec![DecorationRule {
             capture_name: "fn_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("test.fn_bg"),
         }];
 
@@ -1680,15 +1701,12 @@ mod tests {
         let decorations = driver.decorations(0..100);
 
         assert_eq!(decorations.len(), 1, "Should have one decoration for fn main");
-        assert_eq!(decorations[0].kind, AnnotationKind::Background);
         assert_eq!(decorations[0].category.as_str(), "test.fn_bg");
         assert_eq!(decorations[0].start_byte, 0);
     }
 
     #[test]
     fn test_decorations_skips_unmatched_captures() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         // Query captures identifiers, but rule only matches "fn_block"
@@ -1696,7 +1714,6 @@ mod tests {
 
         let rules = vec![DecorationRule {
             capture_name: "fn_block".into(), // won't match "ident"
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("test"),
         }];
 
@@ -1713,17 +1730,12 @@ mod tests {
 
     #[test]
     fn test_decorations_respects_byte_range() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         let deco_query = Arc::new(Query::new(&language, "(identifier) @ident").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "ident".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("*".into()),
-            },
             category: HighlightCategory::new("test"),
         }];
 
@@ -1750,15 +1762,12 @@ mod tests {
 
     #[test]
     fn test_decorations_alongside_highlights() {
-        use reovim_driver_syntax::AnnotationKind;
-
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         let deco_query = Arc::new(Query::new(&language, "(function_item) @fn_block").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "fn_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("test.bg"),
         }];
 
@@ -1776,30 +1785,24 @@ mod tests {
         assert!(!highlights.is_empty(), "Should have highlights");
         assert!(!decorations.is_empty(), "Should have decorations");
 
-        // Highlights should all be Highlight kind
+        // Highlights have syntax categories
         for h in &highlights {
-            assert_eq!(h.kind, AnnotationKind::Highlight);
+            assert!(!h.category.as_str().is_empty());
         }
-        // Decorations should all be Background kind (as configured)
+        // Decorations have the configured category
         for d in &decorations {
-            assert_eq!(d.kind, AnnotationKind::Background);
+            assert_eq!(d.category.as_str(), "test.bg");
         }
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn test_decorations_conceal_with_replacement() {
-        use reovim_driver_syntax::AnnotationKind;
-
+    fn test_decorations_conceal_category() {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
         let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         let deco_query = Arc::new(Query::new(&language, "(let_declaration \"let\" @kw)").unwrap());
 
         let rules = vec![DecorationRule {
             capture_name: "kw".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("LET".into()),
-            },
             category: HighlightCategory::new("keyword.conceal"),
         }];
 
@@ -1812,10 +1815,7 @@ mod tests {
         let decorations = driver.decorations(0..100);
 
         assert_eq!(decorations.len(), 1);
-        assert!(matches!(
-            &decorations[0].kind,
-            AnnotationKind::Conceal { replacement: Some(r) } if r == "LET"
-        ));
+        assert_eq!(decorations[0].category.as_str(), "keyword.conceal");
         assert_eq!(decorations[0].start_byte, 0);
         assert_eq!(decorations[0].end_byte, 3); // "let" is 3 bytes
     }

@@ -127,46 +127,68 @@ pub async fn handle_notification<C: NotificationContext>(
 
     match payload {
         Payload::ModeChanged(mode) => {
-            let state = ctx.state_mut();
-            let is_local = mode.client_id == state.my_client_id;
-
+            let is_insert = mode.is_insert;
+            let (is_local, mode_display) = {
+                let state = ctx.state_mut();
+                let local = mode.client_id == state.my_client_id;
+                if local {
+                    state.mode_name = mode.name;
+                    state.mode_display = mode.display;
+                    state.set_insert_mode(is_insert);
+                    (true, state.mode_display.clone())
+                } else {
+                    if let Some(remote) = state.other_clients.get_mut(&mode.client_id) {
+                        remote.mode.clone_from(&mode.display);
+                    }
+                    (false, String::new())
+                }
+            };
+            // Notify extensions of mode change (after dropping state borrow)
             if is_local {
-                state.mode_name = mode.name;
-                state.mode_display = mode.display;
-                state.set_insert_mode(mode.is_insert);
-            } else {
-                // Remote mode update
-                if let Some(remote) = state.other_clients.get_mut(&mode.client_id) {
-                    remote.mode.clone_from(&mode.display);
+                for ext in ctx.extensions_mut() {
+                    ext.on_mode_change(&mode_display, is_insert);
                 }
             }
             Ok(NotificationResult::Redraw)
         }
 
         Payload::CursorMoved(cursor) => {
-            let state = ctx.state_mut();
-            let is_local = cursor.client_id == state.my_client_id;
+            let (is_local, buffer_id, cursor_line, cursor_col) = {
+                let state = ctx.state_mut();
+                let local = cursor.client_id == state.my_client_id;
 
-            // Debug: trace cursor notifications to diagnose position bugs
-            tracing::debug!(
-                notif_client_id = cursor.client_id,
-                my_client_id = state.my_client_id,
-                is_local,
-                window_id = cursor.window_id,
-                position = ?cursor.position,
-                "CursorMoved notification"
-            );
+                // Debug: trace cursor notifications to diagnose position bugs
+                tracing::debug!(
+                    notif_client_id = cursor.client_id,
+                    my_client_id = state.my_client_id,
+                    is_local = local,
+                    window_id = cursor.window_id,
+                    position = ?cursor.position,
+                    "CursorMoved notification"
+                );
 
-            if let Some(pos) = cursor.position {
-                if is_local {
-                    // Use focused_window_id as storage key: when per-client compositor
-                    // is active (#474) the IDs match, but this also handles edge cases
-                    // where cursor.window_id differs from focused_window_id (e.g., when
-                    // no compositor is loaded).
-                    let key = state.focused_window_id;
-                    state.update_local_cursor(key, pos.line, pos.column);
+                if let Some(pos) = cursor.position {
+                    if local {
+                        // Use focused_window_id as storage key: when per-client compositor
+                        // is active (#474) the IDs match, but this also handles edge cases
+                        // where cursor.window_id differs from focused_window_id (e.g., when
+                        // no compositor is loaded).
+                        let key = state.focused_window_id;
+                        state.update_local_cursor(key, pos.line, pos.column);
+                    } else {
+                        state.update_remote_cursor(cursor.client_id, pos.line, pos.column);
+                    }
+                    let bid = state.get_focused_buffer_id().unwrap_or(0);
+                    #[allow(clippy::cast_possible_truncation)]
+                    (local, bid, pos.line as usize, pos.column as usize)
                 } else {
-                    state.update_remote_cursor(cursor.client_id, pos.line, pos.column);
+                    (local, 0, 0, 0)
+                }
+            };
+            // Notify extensions of cursor update (after dropping state borrow)
+            if is_local {
+                for ext in ctx.extensions_mut() {
+                    ext.on_cursor_update(buffer_id, cursor_line, cursor_col);
                 }
             }
             Ok(NotificationResult::Redraw)
@@ -189,6 +211,14 @@ pub async fn handle_notification<C: NotificationContext>(
                 }
                 Err(e) => {
                     tracing::warn!(buffer_id, error = %e, "Failed to refetch buffer");
+                }
+            }
+
+            // Notify extensions of buffer content change
+            let lines = ctx.state_mut().buffer_cache.get(&buffer_id).cloned();
+            if let Some(lines) = &lines {
+                for ext in ctx.extensions_mut() {
+                    ext.on_buffer_update(buffer_id, lines);
                 }
             }
 
@@ -230,6 +260,7 @@ pub async fn handle_notification<C: NotificationContext>(
                     .filter(|id| !state.buffer_cache.contains_key(id))
                     .collect()
             };
+            let mut fetched = Vec::new();
             for buf_id in missing {
                 match ctx
                     .client_mut()
@@ -238,6 +269,7 @@ pub async fn handle_notification<C: NotificationContext>(
                 {
                     Ok(content) => {
                         ctx.state_mut().buffer_cache.insert(buf_id, content.lines);
+                        fetched.push(buf_id);
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -245,6 +277,16 @@ pub async fn handle_notification<C: NotificationContext>(
                             error = %e,
                             "Failed to fetch buffer after layout change"
                         );
+                    }
+                }
+            }
+
+            // Notify extensions about newly fetched buffer content
+            for buf_id in fetched {
+                let lines = ctx.state_mut().buffer_cache.get(&buf_id).cloned();
+                if let Some(lines) = &lines {
+                    for ext in ctx.extensions_mut() {
+                        ext.on_buffer_update(buf_id, lines);
                     }
                 }
             }

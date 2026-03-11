@@ -39,12 +39,15 @@
 //! assert!(!highlights.is_empty());
 //! ```
 
+mod list;
+mod table;
+
 use std::sync::Arc;
 
 use {
     reovim_driver_syntax::{
-        AnnotationKind, DecorationRule, HighlightCategory, LanguageInfo, LanguageInfoStore,
-        SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
+        DecorationRule, HighlightCategory, LanguageInfo, LanguageInfoStore, SyntaxDriver,
+        SyntaxDriverFactory, SyntaxFactoryStore,
     },
     reovim_driver_syntax_treesitter::{
         InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
@@ -84,6 +87,10 @@ pub struct MarkdownSyntaxFactory {
     inline_decoration_query: Arc<Query>,
     /// Inline decoration rules
     inline_decoration_rules: Vec<DecorationRule>,
+    /// Pre-compiled table query for `TableDecorationProvider`
+    table_query: Arc<Query>,
+    /// Pre-compiled list marker query for `ListDecorationProvider`
+    list_query: Arc<Query>,
 }
 
 impl MarkdownSyntaxFactory {
@@ -113,6 +120,15 @@ impl MarkdownSyntaxFactory {
             Query::new(&inline_language, MARKDOWN_INLINE_DECORATIONS_QUERY)
                 .expect("Failed to compile Markdown inline decorations query");
 
+        let table_query = Query::new(&language, "(pipe_table) @table")
+            .expect("Failed to compile Markdown table query");
+
+        let list_query = Query::new(
+            &language,
+            "(list_marker_minus) @marker (list_marker_plus) @marker (list_marker_star) @marker",
+        )
+        .expect("Failed to compile Markdown list query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             injections_query: Arc::new(injections_query),
@@ -121,6 +137,8 @@ impl MarkdownSyntaxFactory {
             inline_language,
             inline_decoration_query: Arc::new(inline_decoration_query),
             inline_decoration_rules: markdown_inline_decoration_rules(),
+            table_query: Arc::new(table_query),
+            list_query: Arc::new(list_query),
         }
     }
 }
@@ -148,6 +166,12 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
                 self.inline_decoration_query.clone(),
                 self.inline_decoration_rules.clone(),
             )
+            .decoration_provider(Box::new(table::TableDecorationProvider::new(
+                self.table_query.clone(),
+            )))
+            .decoration_provider(Box::new(list::ListDecorationProvider::new(
+                self.list_query.clone(),
+            )))
             .build()
             .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
@@ -178,97 +202,58 @@ impl InjectionLayerFactory for MarkdownSyntaxFactory {
 
 /// Build the declarative decoration rules for Markdown.
 ///
-/// Each rule maps a capture name from `decorations.scm` to an `AnnotationKind`
-/// and a `HighlightCategory` for theming.
+/// Each rule maps a capture name from `decorations.scm` to a semantic
+/// `HighlightCategory`. No rendering concerns — the client decides visuals.
 fn markdown_decoration_rules() -> Vec<DecorationRule> {
     vec![
-        // Heading markers → Conceal with level-specific icons (Nerd Font)
+        // Heading markers
         DecorationRule {
             capture_name: "heading.1.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f0965} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.1"),
         },
         DecorationRule {
             capture_name: "heading.2.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f096c} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.2"),
         },
         DecorationRule {
             capture_name: "heading.3.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f096d} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.3"),
         },
         DecorationRule {
             capture_name: "heading.4.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f096e} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.4"),
         },
         DecorationRule {
             capture_name: "heading.5.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f096f} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.5"),
         },
         DecorationRule {
             capture_name: "heading.6.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{f0970} ".into()),
-            },
             category: HighlightCategory::new("markup.heading.6"),
-        },
-        // List bullets → Conceal with unicode bullet
-        DecorationRule {
-            capture_name: "list.bullet".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{2022} ".into()),
-            },
-            category: HighlightCategory::new("markup.list"),
         },
         // Checkboxes
         DecorationRule {
             capture_name: "checkbox.unchecked".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{2610} ".into()),
-            },
             category: HighlightCategory::new("markup.list.checkbox"),
         },
         DecorationRule {
             capture_name: "checkbox.checked".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{2713} ".into()),
-            },
             category: HighlightCategory::new("markup.list.checkbox.checked"),
         },
-        // Code blocks → Background
+        // Code blocks
         DecorationRule {
             capture_name: "code_block".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.block"),
         },
-        // Blockquote markers → Conceal with bar
+        // Blockquote markers
         DecorationRule {
             capture_name: "blockquote.marker".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{2502} ".into()),
-            },
             category: HighlightCategory::new("markup.quote.marker"),
         },
-        // Horizontal rules → Conceal with line
+        // Horizontal rules
         DecorationRule {
             capture_name: "horizontal_rule".into(),
-            kind: AnnotationKind::Conceal {
-                replacement: Some("\u{2500}".repeat(40)),
-            },
-            category: HighlightCategory::new("punctuation.special"),
+            category: HighlightCategory::new("markup.horizontal_rule"),
         },
     ]
 }
@@ -279,40 +264,34 @@ fn markdown_decoration_rules() -> Vec<DecorationRule> {
 /// bold, code spans, strikethrough, and links.
 fn markdown_inline_decoration_rules() -> Vec<DecorationRule> {
     vec![
-        // Code span delimiters (backticks) → Conceal (hide)
+        // Code span delimiters (backticks)
         DecorationRule {
             capture_name: "code_span.delimiter".into(),
-            kind: AnnotationKind::Conceal { replacement: None },
-            category: HighlightCategory::new("markup.raw.inline"),
+            category: HighlightCategory::new("markup.raw.delimiter"),
         },
-        // Code span content → Background
+        // Code span content
         DecorationRule {
             capture_name: "code_span".into(),
-            kind: AnnotationKind::Background,
             category: HighlightCategory::new("markup.raw.inline"),
         },
-        // Emphasis → Highlight (styled by client as italic)
+        // Emphasis (styled by client as italic)
         DecorationRule {
             capture_name: "emphasis".into(),
-            kind: AnnotationKind::Highlight,
             category: HighlightCategory::new("markup.italic"),
         },
-        // Strong emphasis → Highlight (styled by client as bold)
+        // Strong emphasis (styled by client as bold)
         DecorationRule {
             capture_name: "strong".into(),
-            kind: AnnotationKind::Highlight,
             category: HighlightCategory::new("markup.bold"),
         },
-        // Strikethrough → Highlight (styled by client as strikethrough)
+        // Strikethrough (styled by client as strikethrough)
         DecorationRule {
             capture_name: "strikethrough".into(),
-            kind: AnnotationKind::Highlight,
             category: HighlightCategory::new("markup.strikethrough"),
         },
-        // Link destination (URL) → Conceal (hide the URL)
+        // Link destination (URL)
         DecorationRule {
             capture_name: "link.destination".into(),
-            kind: AnnotationKind::Conceal { replacement: None },
             category: HighlightCategory::new("markup.link.url"),
         },
     ]
@@ -926,7 +905,6 @@ MIT
     // ========================================================================
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_heading_markers() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -934,27 +912,23 @@ MIT
         driver.parse("# H1\n\n## H2\n\n### H3\n");
         let decos = driver.decorations(0..200);
 
-        // Should have Conceal annotations for heading markers
-        let conceals: Vec<_> = decos
+        // Should have heading category annotations
+        let headings: Vec<_> = decos
             .iter()
-            .filter(|a| matches!(a.kind, AnnotationKind::Conceal { .. }))
+            .filter(|a| a.category.as_str().starts_with("markup.heading."))
             .collect();
 
         assert!(
-            conceals.len() >= 3,
-            "Expected at least 3 heading marker conceals, got {}: {conceals:?}",
-            conceals.len()
+            headings.len() >= 3,
+            "Expected at least 3 heading marker annotations, got {}: {headings:?}",
+            headings.len()
         );
 
-        // Verify the h1 marker is concealed with the correct icon
+        // Verify the h1 marker has correct category
         let h1 = decos
             .iter()
             .find(|a| a.category.as_str() == "markup.heading.1");
         assert!(h1.is_some(), "Expected markup.heading.1 decoration");
-        assert!(
-            matches!(&h1.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{f0965}')),
-            "H1 marker should conceal with Nerd Font icon"
-        );
     }
 
     #[test]
@@ -973,7 +947,6 @@ MIT
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_list_bullets() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -983,15 +956,13 @@ MIT
 
         let bullets: Vec<_> = decos
             .iter()
-            .filter(|a| a.category.as_str() == "markup.list")
+            .filter(|a| a.category.as_str().starts_with("markup.list.bullet."))
             .collect();
 
         assert_eq!(bullets.len(), 2, "Expected 2 bullet decorations, got: {bullets:?}");
+        // Top-level bullets should be depth 0
         for b in &bullets {
-            assert!(
-                matches!(&b.kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{2022}')),
-                "Bullet should conceal with unicode bullet character"
-            );
+            assert_eq!(b.category.as_str(), "markup.list.bullet.0");
         }
     }
 
@@ -1005,14 +976,13 @@ MIT
 
         let bullet_count = decos
             .iter()
-            .filter(|a| a.category.as_str() == "markup.list")
+            .filter(|a| a.category.as_str().starts_with("markup.list.bullet."))
             .count();
 
         assert_eq!(bullet_count, 3, "Expected 3 bullet decorations for -, +, *");
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_checkboxes() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1024,19 +994,11 @@ MIT
             .iter()
             .find(|a| a.category.as_str() == "markup.list.checkbox");
         assert!(unchecked.is_some(), "Expected unchecked checkbox decoration");
-        assert!(
-            matches!(&unchecked.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{2610}')),
-            "Unchecked checkbox should conceal with ballot box"
-        );
 
         let checked = decos
             .iter()
             .find(|a| a.category.as_str() == "markup.list.checkbox.checked");
         assert!(checked.is_some(), "Expected checked checkbox decoration");
-        assert!(
-            matches!(&checked.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{2713}')),
-            "Checked checkbox should conceal with check mark"
-        );
     }
 
     #[test]
@@ -1050,15 +1012,13 @@ MIT
         let code_bg = decos
             .iter()
             .find(|a| a.category.as_str() == "markup.raw.block");
-        assert!(code_bg.is_some(), "Expected code block background decoration");
         assert!(
-            matches!(code_bg.unwrap().kind, AnnotationKind::Background),
-            "Code block should use Background annotation kind"
+            code_bg.is_some(),
+            "Expected code block decoration with markup.raw.block category"
         );
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_blockquote_marker() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1070,14 +1030,9 @@ MIT
             .iter()
             .find(|a| a.category.as_str() == "markup.quote.marker");
         assert!(bq.is_some(), "Expected blockquote marker decoration");
-        assert!(
-            matches!(&bq.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{2502}')),
-            "Blockquote marker should conceal with box drawing character"
-        );
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_decorations_horizontal_rule() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1087,12 +1042,8 @@ MIT
 
         let hr = decos
             .iter()
-            .find(|a| a.category.as_str() == "punctuation.special");
+            .find(|a| a.category.as_str() == "markup.horizontal_rule");
         assert!(hr.is_some(), "Expected horizontal rule decoration");
-        assert!(
-            matches!(&hr.unwrap().kind, AnnotationKind::Conceal { replacement: Some(r) } if r.contains('\u{2500}')),
-            "Horizontal rule should conceal with box drawing line"
-        );
     }
 
     #[test]
@@ -1142,12 +1093,12 @@ MIT
         assert!(!highlights.is_empty(), "Should have highlights");
         assert!(!decos.is_empty(), "Should have decorations");
 
-        // Decorations should have different kinds than plain Highlight
+        // Decorations should have semantic categories (markup.*)
         assert!(
             decos
                 .iter()
-                .all(|a| !matches!(a.kind, AnnotationKind::Highlight)),
-            "Decorations should not use Highlight kind (that's what highlights() returns)"
+                .any(|a| a.category.as_str().starts_with("markup.")),
+            "Decorations should have markup.* categories"
         );
     }
 
@@ -1156,8 +1107,8 @@ MIT
         let rules = markdown_decoration_rules();
         assert_eq!(
             rules.len(),
-            12,
-            "Expected 12 decoration rules (6 headings + bullet + 2 checkboxes + code_block + blockquote + hr)"
+            11,
+            "Expected 11 decoration rules (6 headings + 2 checkboxes + code_block + blockquote + hr)"
         );
     }
 
@@ -1211,7 +1162,6 @@ MIT
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_inline_decorations_code_span() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1219,19 +1169,17 @@ MIT
         driver.parse("Use `code` here\n");
         let decos = driver.decorations(0..200);
 
-        // Should have Background for code span
-        let code_bg = decos.iter().find(|a| {
-            a.category.as_str() == "markup.raw.inline"
-                && matches!(a.kind, AnnotationKind::Background)
-        });
-        assert!(code_bg.is_some(), "Expected background decoration for `code`");
+        // Should have code span content annotation
+        let code_bg = decos
+            .iter()
+            .find(|a| a.category.as_str() == "markup.raw.inline");
+        assert!(code_bg.is_some(), "Expected inline code decoration");
 
-        // Should have Conceal for backtick delimiters
-        let code_delim = decos.iter().find(|a| {
-            a.category.as_str() == "markup.raw.inline"
-                && matches!(a.kind, AnnotationKind::Conceal { .. })
-        });
-        assert!(code_delim.is_some(), "Expected concealed backtick delimiters");
+        // Should have delimiter annotation
+        let code_delim = decos
+            .iter()
+            .find(|a| a.category.as_str() == "markup.raw.delimiter");
+        assert!(code_delim.is_some(), "Expected code span delimiter decoration");
     }
 
     #[test]
@@ -1249,7 +1197,6 @@ MIT
     }
 
     #[test]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn test_inline_decorations_link() {
         let factory = MarkdownSyntaxFactory::new();
         let mut driver = factory.create("markdown").unwrap();
@@ -1257,11 +1204,10 @@ MIT
         driver.parse("[click here](https://example.com)\n");
         let decos = driver.decorations(0..200);
 
-        let link_url = decos.iter().find(|a| {
-            a.category.as_str() == "markup.link.url"
-                && matches!(a.kind, AnnotationKind::Conceal { replacement: None })
-        });
-        assert!(link_url.is_some(), "Expected concealed link destination for URL");
+        let link_url = decos
+            .iter()
+            .find(|a| a.category.as_str() == "markup.link.url");
+        assert!(link_url.is_some(), "Expected link URL decoration");
     }
 
     #[test]
@@ -1283,7 +1229,9 @@ MIT
         assert!(emphasis, "Should have inline emphasis decoration");
 
         // Block decoration: bullet
-        let bullet = decos.iter().any(|a| a.category.as_str() == "markup.list");
+        let bullet = decos
+            .iter()
+            .any(|a| a.category.as_str().starts_with("markup.list.bullet."));
         assert!(bullet, "Should have block-level bullet decoration");
     }
 

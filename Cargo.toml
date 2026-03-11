@@ -85,6 +85,7 @@ members = [
     "clients/tui/extensions/hover",
     "clients/tui/extensions/signature-help",
     "clients/tui/extensions/diagnostics",
+    "clients/tui/extensions/markdown",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
