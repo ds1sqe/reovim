@@ -19,6 +19,9 @@ reovim-driver-display = { workspace = true }
 # Platform abstraction (Color)
 reovim-arch = { workspace = true }
 
+# Shared extension kind constants (#583)
+reovim-extension-kinds = { workspace = true }
+
 # Typed JSON deserialization
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

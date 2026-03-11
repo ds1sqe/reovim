@@ -117,7 +117,7 @@ impl Default for HoverExtension {
 
 impl TuiExtension for HoverExtension {
     fn kind(&self) -> &'static str {
-        "hover"
+        reovim_extension_kinds::HOVER
     }
 
     fn is_active(&self) -> bool {

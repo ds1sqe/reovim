@@ -20,6 +20,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-module-macros = { workspace = true }
+reovim-extension-kinds = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 

@@ -232,7 +232,7 @@ impl Default for WhichKeyExtension {
 
 impl TuiExtension for WhichKeyExtension {
     fn kind(&self) -> &'static str {
-        "whichkey"
+        reovim_extension_kinds::WHICHKEY
     }
 
     fn is_active(&self) -> bool {

@@ -82,7 +82,7 @@ impl Default for ExplorerExtension {
 
 impl TuiExtension for ExplorerExtension {
     fn kind(&self) -> &'static str {
-        "explorer"
+        reovim_extension_kinds::EXPLORER
     }
 
     fn is_active(&self) -> bool {

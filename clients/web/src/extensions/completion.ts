@@ -13,6 +13,7 @@
  * ```
  */
 
+import { COMPLETION } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 /** Maximum visible items in the popup (matches TUI constant). */
@@ -59,7 +60,7 @@ export class CompletionExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "completion";
+    return COMPLETION;
   }
 
   isActive(): boolean {

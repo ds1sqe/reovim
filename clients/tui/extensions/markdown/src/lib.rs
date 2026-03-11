@@ -109,7 +109,7 @@ impl Default for MarkdownRenderExtension {
 
 impl TuiExtension for MarkdownRenderExtension {
     fn kind(&self) -> &'static str {
-        "markdown"
+        reovim_extension_kinds::MARKDOWN
     }
 
     fn is_active(&self) -> bool {

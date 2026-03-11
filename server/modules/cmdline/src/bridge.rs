@@ -17,7 +17,7 @@ pub struct CmdlineBridge;
 
 impl ExtensionStateBridge for CmdlineBridge {
     fn kind(&self) -> &'static str {
-        "cmdline"
+        reovim_extension_kinds::CMDLINE
     }
 
     fn scope(&self) -> ExtensionScope {

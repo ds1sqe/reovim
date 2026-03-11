@@ -25,4 +25,13 @@ export interface WebExtension {
 
   /** Return parsed state for headless testing (no DOM needed). */
   getState(): Record<string, unknown> | null;
+
+  /** Extension kinds this extension depends on (default: empty). */
+  dependencies?(): string[];
+
+  /** Called after all extensions are created and sorted. */
+  init?(): void;
+
+  /** Called during shutdown in reverse dependency order. */
+  exit?(): void;
 }

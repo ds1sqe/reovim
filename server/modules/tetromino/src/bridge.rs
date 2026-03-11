@@ -21,7 +21,7 @@ pub struct TetrominoBridge;
 
 impl ExtensionStateBridge for TetrominoBridge {
     fn kind(&self) -> &'static str {
-        "polyblocks"
+        reovim_extension_kinds::POLYBLOCKS
     }
 
     fn scope(&self) -> ExtensionScope {

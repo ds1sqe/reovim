@@ -263,6 +263,54 @@ fn test_apply_notification_noop() {
 }
 
 #[test]
+fn test_transform_line_insert_mode_different_line() {
+    let mut ext = MarkdownRenderExtension::new();
+    let lines = vec![
+        "| A | B |".to_string(),
+        "|---|---|".to_string(),
+        "| 1 | 2 |".to_string(),
+    ];
+    ext.on_buffer_update(1, &lines);
+
+    // Insert mode ON, cursor on line 2 — line 0 should still transform
+    ext.on_mode_change("INSERT", true);
+    ext.on_cursor_update(1, 2, 0);
+
+    assert!(ext.transform_line(1, 0, "| A | B |").is_some());
+}
+
+#[test]
+fn test_map_cursor_column_insert_mode_different_line() {
+    let mut ext = MarkdownRenderExtension::new();
+    let lines = vec![
+        "| A | B |".to_string(),
+        "|---|---|".to_string(),
+        "| 1 | 2 |".to_string(),
+    ];
+    ext.on_buffer_update(1, &lines);
+
+    // Insert mode ON, cursor on line 2 — line 0 should still map
+    ext.on_mode_change("INSERT", true);
+    ext.on_cursor_update(1, 2, 0);
+
+    assert!(ext.map_cursor_column(1, 0, 0).is_some());
+}
+
+#[test]
+fn test_map_cursor_column_beyond_mapping() {
+    let mut ext = MarkdownRenderExtension::new();
+    let lines = vec![
+        "| A | B |".to_string(),
+        "|---|---|".to_string(),
+        "| 1 | 2 |".to_string(),
+    ];
+    ext.on_buffer_update(1, &lines);
+
+    // Column beyond the line length — should return None
+    assert!(ext.map_cursor_column(1, 0, 999).is_none());
+}
+
+#[test]
 fn test_multiple_buffers() {
     let mut ext = MarkdownRenderExtension::new();
 

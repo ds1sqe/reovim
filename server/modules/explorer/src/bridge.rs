@@ -22,7 +22,7 @@ pub struct ExplorerBridge;
 
 impl ExtensionStateBridge for ExplorerBridge {
     fn kind(&self) -> &'static str {
-        "explorer"
+        reovim_extension_kinds::EXPLORER
     }
 
     fn scope(&self) -> ExtensionScope {

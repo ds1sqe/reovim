@@ -147,7 +147,7 @@ impl Default for NotificationExtension {
 
 impl TuiExtension for NotificationExtension {
     fn kind(&self) -> &'static str {
-        "notification"
+        reovim_extension_kinds::NOTIFICATION
     }
 
     fn is_active(&self) -> bool {

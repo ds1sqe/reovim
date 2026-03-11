@@ -71,7 +71,7 @@ fn label_dim_style() -> Style {
 
 impl TuiExtension for RangeFinderJumpExtension {
     fn kind(&self) -> &'static str {
-        "range-finder-jump"
+        reovim_extension_kinds::RANGE_FINDER_JUMP
     }
 
     fn is_active(&self) -> bool {

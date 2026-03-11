@@ -6,6 +6,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Client extension lifecycle and shared kinds (#583)**: Add `dependencies()`, `init()`, `exit()`
+  lifecycle methods to `TuiExtension` trait and `WebExtension` interface. Both TUI and web clients
+  topologically sort extensions via Kahn's algorithm before initialization. `shutdown_extensions()`
+  calls `exit()` in reverse dependency order. New `shared/extension-kinds/` crate provides 13
+  shared kind constants (`WHICHKEY`, `CMDLINE`, etc.) as single source of truth, replacing 50+
+  magic string literals across 13 TUI extensions, 12 server bridges, TUI defaults, and 8 web
+  extensions. Web equivalent `extension-kinds.ts` for TypeScript client.
+
 - **Server module dependency resolution (#582)**: New `reovim-driver-depgraph` crate providing
   generic Kahn's topological sort for dependency resolution. 9 modules declare explicit
   `dependencies()` (vim, vim-microscope, vim-lsp, vim-completion, vim-explorer, vim-snippet,

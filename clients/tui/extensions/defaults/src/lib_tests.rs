@@ -57,3 +57,80 @@ fn test_extension_dispatch() {
     let active_count = exts.iter().filter(|e| e.is_active()).count();
     assert_eq!(active_count, 1);
 }
+
+#[test]
+fn test_create_extensions_sorted_by_depgraph() {
+    // All current extensions have empty deps, so order is valid (no panic)
+    let exts = create_extensions();
+    assert_eq!(exts.len(), 13);
+}
+
+#[test]
+fn test_shutdown_extensions_calls_exit() {
+    let mut exts = create_extensions();
+    // Should not panic — all extensions have no-op exit()
+    shutdown_extensions(&mut exts);
+}
+
+#[test]
+fn test_toposort_reorders_with_declared_deps() {
+    // Verify the mechanism actually reorders when deps are declared.
+    // Use mock extensions: B depends on A, so A must come first.
+    use reovim_driver_display::render_backend::RenderBackend;
+
+    struct MockA;
+    impl TuiExtension for MockA {
+        fn kind(&self) -> &'static str {
+            "mock-a"
+        }
+        fn is_active(&self) -> bool {
+            false
+        }
+        fn apply_notification(&mut self, _data: &str) {}
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+    }
+
+    struct MockB;
+    impl TuiExtension for MockB {
+        fn kind(&self) -> &'static str {
+            "mock-b"
+        }
+        fn is_active(&self) -> bool {
+            false
+        }
+        fn apply_notification(&mut self, _data: &str) {}
+        fn render(&self, _backend: &mut dyn RenderBackend) {}
+        fn dependencies(&self) -> &[&'static str] {
+            &["mock-a"]
+        }
+    }
+
+    // Create in wrong order: B first, then A
+    let extensions: Vec<Box<dyn TuiExtension>> =
+        vec![Box::new(MockB), Box::new(MockA)];
+
+    let entries: Vec<DepEntry<&'static str>> = extensions
+        .iter()
+        .map(|ext| DepEntry {
+            key: ext.kind(),
+            required: ext.dependencies().to_vec(),
+            optional: Vec::new(),
+        })
+        .collect();
+
+    let dep_order = resolve_dependencies(&entries).unwrap();
+
+    let mut by_kind: HashMap<&'static str, Box<dyn TuiExtension>> = extensions
+        .into_iter()
+        .map(|ext| (ext.kind(), ext))
+        .collect();
+    let sorted: Vec<Box<dyn TuiExtension>> = dep_order
+        .order
+        .iter()
+        .filter_map(|kind| by_kind.remove(kind))
+        .collect();
+
+    // A must come before B after toposort
+    assert_eq!(sorted[0].kind(), "mock-a");
+    assert_eq!(sorted[1].kind(), "mock-b");
+}

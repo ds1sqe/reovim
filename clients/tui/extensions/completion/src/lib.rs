@@ -65,7 +65,7 @@ impl Default for CompletionExtension {
 
 impl TuiExtension for CompletionExtension {
     fn kind(&self) -> &'static str {
-        "completion"
+        reovim_extension_kinds::COMPLETION
     }
 
     fn is_active(&self) -> bool {

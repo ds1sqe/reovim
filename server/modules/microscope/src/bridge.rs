@@ -18,7 +18,7 @@ pub struct MicroscopeBridge;
 
 impl ExtensionStateBridge for MicroscopeBridge {
     fn kind(&self) -> &'static str {
-        "microscope"
+        reovim_extension_kinds::MICROSCOPE
     }
 
     fn scope(&self) -> ExtensionScope {

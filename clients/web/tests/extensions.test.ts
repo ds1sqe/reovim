@@ -12,6 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   createExtensions,
+  shutdownExtensions,
   CmdlineExtension,
   WhichKeyExtension,
   NotificationExtension,
@@ -19,6 +20,8 @@ import {
   RangeFinderJumpExtension,
   RangeFinderFoldExtension,
 } from "../src/extensions/index.js";
+import { toposortExtensions } from "../src/extensions/toposort.js";
+import type { WebExtension } from "../src/extensions/interface.js";
 
 // ============ Test Fixtures ============
 
@@ -1651,5 +1654,134 @@ describe("RangeFinderFoldExtension", () => {
 
     const markers = container.querySelectorAll(".fold-marker");
     expect(markers).toHaveLength(3);
+  });
+});
+
+// ============ Toposort Tests (#583) ============
+
+describe("toposortExtensions", () => {
+  /** Minimal mock implementing the required interface. */
+  function mockExt(
+    k: string,
+    deps?: string[],
+  ): { kind(): string; dependencies?(): string[] } {
+    return {
+      kind: () => k,
+      ...(deps ? { dependencies: () => deps } : {}),
+    };
+  }
+
+  it("preserves order when no dependencies declared", () => {
+    const exts = [mockExt("a"), mockExt("b"), mockExt("c")];
+    const sorted = toposortExtensions(exts);
+    expect(sorted.map((e) => e.kind())).toEqual(["a", "b", "c"]);
+  });
+
+  it("reorders when dependency requires earlier position", () => {
+    // B depends on A, but B is listed first
+    const exts = [mockExt("b", ["a"]), mockExt("a")];
+    const sorted = toposortExtensions(exts);
+    const kinds = sorted.map((e) => e.kind());
+    expect(kinds.indexOf("a")).toBeLessThan(kinds.indexOf("b"));
+  });
+
+  it("handles transitive dependencies", () => {
+    // C -> B -> A
+    const exts = [
+      mockExt("c", ["b"]),
+      mockExt("b", ["a"]),
+      mockExt("a"),
+    ];
+    const sorted = toposortExtensions(exts);
+    const kinds = sorted.map((e) => e.kind());
+    expect(kinds.indexOf("a")).toBeLessThan(kinds.indexOf("b"));
+    expect(kinds.indexOf("b")).toBeLessThan(kinds.indexOf("c"));
+  });
+
+  it("skips missing dependencies silently", () => {
+    const exts = [mockExt("a", ["nonexistent"]), mockExt("b")];
+    const sorted = toposortExtensions(exts);
+    expect(sorted).toHaveLength(2);
+  });
+
+  it("throws on dependency cycle", () => {
+    const exts = [mockExt("a", ["b"]), mockExt("b", ["a"])];
+    expect(() => toposortExtensions(exts)).toThrow(
+      /dependency cycle detected/,
+    );
+  });
+
+  it("handles empty array", () => {
+    const sorted = toposortExtensions([]);
+    expect(sorted).toEqual([]);
+  });
+
+  it("handles single extension with no deps", () => {
+    const sorted = toposortExtensions([mockExt("solo")]);
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0].kind()).toBe("solo");
+  });
+});
+
+// ============ Extension Lifecycle Tests (#583) ============
+
+describe("createExtensions lifecycle", () => {
+  it("returns sorted extensions with init called", () => {
+    const exts = createExtensions();
+    expect(exts.length).toBe(8);
+    // All extensions should have unique kinds
+    const kinds = exts.map((e) => e.kind());
+    expect(new Set(kinds).size).toBe(8);
+  });
+
+  it("shutdownExtensions calls exit in reverse order", () => {
+    const order: string[] = [];
+    const mockExts: WebExtension[] = [
+      {
+        kind: () => "first",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+        exit: () => order.push("first"),
+      },
+      {
+        kind: () => "second",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+        exit: () => order.push("second"),
+      },
+      {
+        kind: () => "third",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+        exit: () => order.push("third"),
+      },
+    ];
+
+    shutdownExtensions(mockExts);
+    expect(order).toEqual(["third", "second", "first"]);
+  });
+
+  it("shutdownExtensions handles extensions without exit", () => {
+    const mockExts: WebExtension[] = [
+      {
+        kind: () => "no-exit",
+        isActive: () => false,
+        applyNotification: () => {},
+        render: () => {},
+        hide: () => {},
+        getState: () => null,
+      },
+    ];
+    // Should not throw
+    shutdownExtensions(mockExts);
   });
 });

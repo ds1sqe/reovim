@@ -15,6 +15,7 @@
  * ```
  */
 
+import { WHICHKEY } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 interface WhichKeyHint {
@@ -61,7 +62,7 @@ export class WhichKeyExtension implements WebExtension {
   }
 
   kind(): string {
-    return "whichkey";
+    return WHICHKEY;
   }
 
   isActive(): boolean {

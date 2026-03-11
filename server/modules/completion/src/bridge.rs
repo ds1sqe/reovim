@@ -18,7 +18,7 @@ pub struct CompletionBridge;
 
 impl ExtensionStateBridge for CompletionBridge {
     fn kind(&self) -> &'static str {
-        "completion"
+        reovim_extension_kinds::COMPLETION
     }
 
     fn scope(&self) -> ExtensionScope {

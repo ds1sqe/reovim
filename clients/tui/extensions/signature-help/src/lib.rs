@@ -78,7 +78,7 @@ impl Default for SignatureHelpExtension {
 
 impl TuiExtension for SignatureHelpExtension {
     fn kind(&self) -> &'static str {
-        "signature-help"
+        reovim_extension_kinds::SIGNATURE_HELP
     }
 
     fn is_active(&self) -> bool {

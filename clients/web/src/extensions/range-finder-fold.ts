@@ -10,6 +10,7 @@
  * ```
  */
 
+import { RANGE_FINDER_FOLD } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 interface CollapsedFold {
@@ -27,7 +28,7 @@ export class RangeFinderFoldExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "range-finder-fold";
+    return RANGE_FINDER_FOLD;
   }
 
   isActive(): boolean {

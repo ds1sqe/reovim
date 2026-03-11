@@ -161,6 +161,35 @@ fn test_extension_default_tick() {
 }
 
 #[test]
+fn test_extension_default_dependencies_empty() {
+    let ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    assert!(ext.dependencies().is_empty());
+}
+
+#[test]
+fn test_extension_default_init_noop() {
+    let mut ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    // Should not panic
+    ext.init();
+}
+
+#[test]
+fn test_extension_default_exit_noop() {
+    let mut ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    // Should not panic
+    ext.exit();
+}
+
+#[test]
 fn test_extension_trait_object() {
     let ext: Box<dyn TuiExtension> = Box::new(MockExtension {
         active: true,

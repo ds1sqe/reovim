@@ -57,7 +57,7 @@ impl Default for CmdlineExtension {
 
 impl TuiExtension for CmdlineExtension {
     fn kind(&self) -> &'static str {
-        "cmdline"
+        reovim_extension_kinds::CMDLINE
     }
 
     fn is_active(&self) -> bool {

@@ -15,6 +15,7 @@
  * ```
  */
 
+import { MICROSCOPE } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 /** Maximum visible items in the results list. */
@@ -68,7 +69,7 @@ export class MicroscopeExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "microscope";
+    return MICROSCOPE;
   }
 
   isActive(): boolean {

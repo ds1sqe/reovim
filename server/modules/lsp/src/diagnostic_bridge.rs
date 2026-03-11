@@ -93,7 +93,7 @@ pub struct DiagnosticBridge;
 
 impl ExtensionStateBridge for DiagnosticBridge {
     fn kind(&self) -> &'static str {
-        "diagnostics"
+        reovim_extension_kinds::DIAGNOSTICS
     }
 
     fn scope(&self) -> ExtensionScope {

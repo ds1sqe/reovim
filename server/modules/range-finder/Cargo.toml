@@ -21,6 +21,7 @@ reovim-driver-input = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-syntax = { workspace = true }
 reovim-module-macros = { workspace = true }
+reovim-extension-kinds = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

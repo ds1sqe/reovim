@@ -16,6 +16,14 @@ workspace = true
 # Extension trait
 reovim-driver-display = { workspace = true }
 
+# Dependency resolution for extension sort order (#583)
+# NOTE: This crate lives in server/lib/drivers/ but is a pure stdlib-only
+# generic algorithm with zero server content. Used here for toposort.
+reovim-driver-depgraph = { workspace = true }
+
+# Shared extension kind constants (#583)
+reovim-extension-kinds = { workspace = true }
+
 # Concrete extensions
 reovim-tui-ext-whichkey = { path = "../which-key" }
 reovim-tui-ext-cmdline = { path = "../cmdline" }

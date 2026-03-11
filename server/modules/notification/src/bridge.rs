@@ -30,7 +30,7 @@ pub struct NotificationBridge;
 
 impl ExtensionStateBridge for NotificationBridge {
     fn kind(&self) -> &'static str {
-        "notification"
+        reovim_extension_kinds::NOTIFICATION
     }
 
     fn scope(&self) -> ExtensionScope {

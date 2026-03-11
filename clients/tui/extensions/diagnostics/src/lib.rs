@@ -101,7 +101,7 @@ fn severity_prefix(severity: &str) -> &'static str {
 
 impl TuiExtension for DiagnosticsExtension {
     fn kind(&self) -> &'static str {
-        "diagnostics"
+        reovim_extension_kinds::DIAGNOSTICS
     }
 
     fn is_active(&self) -> bool {

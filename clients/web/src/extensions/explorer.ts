@@ -16,6 +16,7 @@
  * ```
  */
 
+import { EXPLORER } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 interface NodeData {
@@ -96,7 +97,7 @@ export class ExplorerExtension implements WebExtension {
   private sidebarElement: HTMLElement | null = null;
 
   kind(): string {
-    return "explorer";
+    return EXPLORER;
   }
 
   isActive(): boolean {

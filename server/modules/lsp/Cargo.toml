@@ -29,6 +29,9 @@ reovim-module-macros = { workspace = true }
 # Session driver (PendingNotificationQueue, BridgeProvider, ExtensionMap)
 reovim-driver-session = { workspace = true }
 
+# Shared extension kind constants (#583)
+reovim-extension-kinds = { workspace = true }
+
 # Async runtime
 tokio = { workspace = true }
 

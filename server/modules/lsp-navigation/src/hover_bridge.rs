@@ -18,7 +18,7 @@ pub struct HoverBridge;
 
 impl ExtensionStateBridge for HoverBridge {
     fn kind(&self) -> &'static str {
-        "hover"
+        reovim_extension_kinds::HOVER
     }
 
     fn scope(&self) -> ExtensionScope {

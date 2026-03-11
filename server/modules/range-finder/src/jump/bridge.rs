@@ -17,7 +17,7 @@ pub struct JumpBridge;
 
 impl ExtensionStateBridge for JumpBridge {
     fn kind(&self) -> &'static str {
-        "range-finder-jump"
+        reovim_extension_kinds::RANGE_FINDER_JUMP
     }
 
     fn scope(&self) -> ExtensionScope {

@@ -88,7 +88,7 @@ fn fold_marker_style() -> Style {
 
 impl TuiExtension for RangeFinderFoldExtension {
     fn kind(&self) -> &'static str {
-        "range-finder-fold"
+        reovim_extension_kinds::RANGE_FINDER_FOLD
     }
 
     fn is_active(&self) -> bool {

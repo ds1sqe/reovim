@@ -12,6 +12,7 @@
  * ```
  */
 
+import { NOTIFICATION } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
 
 /** Default auto-dismiss timeout in milliseconds. */
@@ -41,7 +42,7 @@ export class NotificationExtension implements WebExtension {
   }
 
   kind(): string {
-    return "notification";
+    return NOTIFICATION;
   }
 
   isActive(): boolean {

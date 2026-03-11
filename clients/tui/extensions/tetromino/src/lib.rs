@@ -272,7 +272,7 @@ fn parse_board_json(json: &serde_json::Value) -> Vec<Vec<String>> {
 
 impl TuiExtension for TetrominoExtension {
     fn kind(&self) -> &'static str {
-        "polyblocks"
+        reovim_extension_kinds::POLYBLOCKS
     }
 
     fn is_active(&self) -> bool {

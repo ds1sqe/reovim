@@ -32,7 +32,7 @@ pub struct WhichKeyBridge;
 
 impl ExtensionStateBridge for WhichKeyBridge {
     fn kind(&self) -> &'static str {
-        "whichkey"
+        reovim_extension_kinds::WHICHKEY
     }
 
     fn scope(&self) -> ExtensionScope {

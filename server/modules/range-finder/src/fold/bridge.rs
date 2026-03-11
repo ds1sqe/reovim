@@ -18,7 +18,7 @@ pub struct FoldBridge;
 
 impl ExtensionStateBridge for FoldBridge {
     fn kind(&self) -> &'static str {
-        "range-finder-fold"
+        reovim_extension_kinds::RANGE_FINDER_FOLD
     }
 
     fn scope(&self) -> ExtensionScope {

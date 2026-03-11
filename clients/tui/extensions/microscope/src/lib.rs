@@ -80,7 +80,7 @@ impl Default for MicroscopeExtension {
 
 impl TuiExtension for MicroscopeExtension {
     fn kind(&self) -> &'static str {
-        "microscope"
+        reovim_extension_kinds::MICROSCOPE
     }
 
     fn is_active(&self) -> bool {

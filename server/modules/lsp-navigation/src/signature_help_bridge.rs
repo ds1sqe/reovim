@@ -17,7 +17,7 @@ pub struct SignatureHelpBridge;
 
 impl ExtensionStateBridge for SignatureHelpBridge {
     fn kind(&self) -> &'static str {
-        "signature-help"
+        reovim_extension_kinds::SIGNATURE_HELP
     }
 
     fn scope(&self) -> ExtensionScope {
