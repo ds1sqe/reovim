@@ -69,6 +69,10 @@ reovim-module-vim-range-finder = { workspace = true }
 reovim-module-vim-snippet = { workspace = true }
 # Tetromino game module (#537)
 reovim-module-tetromino = { workspace = true }
+# Configuration profiles (#593)
+reovim-module-profiles = { workspace = true }
+# Health-check diagnostic command (#594)
+reovim-module-health-check = { workspace = true }
 
 # Note: Client-side modules (layout, pair, statusline, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)

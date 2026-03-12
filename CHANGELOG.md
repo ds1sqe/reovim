@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Configuration profiles module (#593)**: New `reovim-module-profiles` crate implementing
+  `:profile-save`, `:profile-load`, `:profile-list` commands for named option snapshots.
+  Profiles are stored as versioned TOML files with explicit type tags. Save captures
+  non-default option overrides from the registry; load applies them with warnings for
+  unknown/invalid options. Includes profile name validation (alphanumeric + hyphen/underscore,
+  max 64 chars) and VFS-based I/O for testability. Integrated into the defaults module bundle.
+
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
   `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,
@@ -29,6 +36,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   description, and available choices. Also fixes: command picker now shows qualified names with
   module prefix (e.g., `editor:save` instead of `save`), and preview panel now refreshes on
   navigation for all pickers.
+
+- **Health-check diagnostic command (#594)**: New `:checkhealth` ex-command that opens a
+  read-only scratch buffer with system diagnostics. Reports: reovim/API version and platform,
+  registered LSP providers with active status, syntax highlighting factories, clipboard
+  availability, and option registry state. Gracefully handles missing services. Part of
+  Editor Customization Epic (#527).
+
+- **Startup landing screen (#595)**: New TUI and web client extension that displays a centered
+  overlay with ASCII art logo, version info, and quick-action hints on startup. Dismissed on
+  any user interaction (cursor move, mode change, or buffer update). 16 unit tests. Part of
+  Editor Customization Epic (#527).
 
 ### Changed
 

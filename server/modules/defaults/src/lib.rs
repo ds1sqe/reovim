@@ -46,12 +46,14 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
-    reovim_module_explorer as explorer, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
+    reovim_module_explorer as explorer, reovim_module_health_check as health_check,
+    reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
     reovim_module_motions as motions, reovim_module_notification as notification,
-    reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_snippet as snippet,
-    reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_profiles as profiles, reovim_module_range_finder as range_finder,
+    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
+    reovim_module_snippet as snippet, reovim_module_tetromino as tetromino,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
     reovim_module_vim_completion as vim_completion, reovim_module_vim_explorer as vim_explorer,
@@ -150,6 +152,10 @@ impl DefaultsModule {
             Box::new(vim_explorer::VimExplorerModule::new()),
             // Tetromino game (#537)
             Box::new(tetromino::TetrominoModule::new()),
+            // Configuration profiles (#593)
+            Box::new(profiles::ProfilesModule::new()),
+            // Health-check diagnostic command (#594)
+            Box::new(health_check::HealthCheckModule::new()),
         ]
     }
 }
@@ -227,6 +233,10 @@ impl Module for DefaultsModule {
             ModuleId::new("vim-microscope"),
             // Tetromino game (#537)
             ModuleId::new("tetromino"),
+            // Configuration profiles (#593)
+            ModuleId::new("profiles"),
+            // Health-check diagnostic command (#594)
+            ModuleId::new("health-check"),
         ]
     }
 

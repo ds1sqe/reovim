@@ -30,8 +30,10 @@ fn test_defaults_has_dependencies() {
     // Explorer (1): explorer
     // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
-    // Total: 35 modules
-    assert_eq!(deps.len(), 35);
+    // Profiles (1): profiles
+    // Health-check (1): health-check
+    // Total: 37 modules
+    assert_eq!(deps.len(), 37);
 }
 
 #[test]
@@ -45,14 +47,16 @@ fn test_create_modules() {
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
-    // Snippet (1): snippet
-    // Range-finder (1): range-finder
-    // Completion (1): completion
-    // Explorer (1): explorer
-    // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
+    // Snippet (2): snippet, vim-snippet
+    // Range-finder (2): range-finder, vim-range-finder
+    // Completion (2): completion, vim-completion
+    // Explorer (2): explorer, vim-explorer
+    // Vim adapter modules (1): vim-microscope
     // Tetromino (1): tetromino
-    // Total: 35 modules
-    assert_eq!(modules.len(), 35);
+    // Profiles (1): profiles
+    // Health-check (1): health-check
+    // Total: 37 modules
+    assert_eq!(modules.len(), 37);
 }
 
 #[test]
