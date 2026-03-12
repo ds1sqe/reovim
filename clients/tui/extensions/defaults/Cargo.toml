@@ -29,3 +29,4 @@ reovim-tui-ext-hover = { path = "../hover" }
 reovim-tui-ext-signature-help = { path = "../signature-help" }
 reovim-tui-ext-diagnostics = { path = "../diagnostics" }
 reovim-tui-ext-markdown = { path = "../markdown" }
+reovim-tui-ext-landing = { path = "../landing" }

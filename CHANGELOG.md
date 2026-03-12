@@ -43,6 +43,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   availability, and option registry state. Gracefully handles missing services. Part of
   Editor Customization Epic (#527).
 
+- **Startup landing screen (#595)**: New TUI and web client extension that displays a centered
+  overlay with ASCII art logo, version info, and quick-action hints on startup. Dismissed on
+  any user interaction (cursor move, mode change, or buffer update). 16 unit tests. Part of
+  Editor Customization Epic (#527).
+
 ### Changed
 
 - **Test helper deduplication (#569)**: Create `reovim_kernel::testing` module with

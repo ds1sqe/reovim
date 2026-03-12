@@ -2264,6 +2264,7 @@ dependencies = [
  "reovim-module-completion",
  "reovim-module-editor",
  "reovim-module-explorer",
+ "reovim-module-health-check",
  "reovim-module-keymap",
  "reovim-module-lsp",
  "reovim-module-lsp-navigation",
@@ -2328,6 +2329,20 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+]
+
+[[package]]
+name = "reovim-module-health-check"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-clipboard",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2835,6 +2850,7 @@ dependencies = [
  "reovim-tui-ext-diagnostics",
  "reovim-tui-ext-explorer",
  "reovim-tui-ext-hover",
+ "reovim-tui-ext-landing",
  "reovim-tui-ext-markdown",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
@@ -2871,6 +2887,14 @@ dependencies = [
  "reovim-driver-display",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-landing"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
 ]
 
 [[package]]

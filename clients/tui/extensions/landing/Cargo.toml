@@ -1,0 +1,20 @@
+[package]
+name = "reovim-tui-ext-landing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Startup landing screen TUI extension for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Display driver (RenderBackend, TuiExtension, Style)
+reovim-driver-display = { workspace = true }
+
+# Platform abstraction (Color)
+reovim-arch = { workspace = true }

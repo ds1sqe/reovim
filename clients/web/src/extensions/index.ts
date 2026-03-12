@@ -14,6 +14,7 @@ export { CompletionExtension } from "./completion.js";
 export { ExplorerExtension } from "./explorer.js";
 export { RangeFinderJumpExtension } from "./range-finder-jump.js";
 export { RangeFinderFoldExtension } from "./range-finder-fold.js";
+export { LandingExtension } from "./landing.js";
 
 import type { WebExtension } from "./interface.js";
 import { CmdlineExtension } from "./cmdline.js";
@@ -24,7 +25,8 @@ import { CompletionExtension } from "./completion.js";
 import { ExplorerExtension } from "./explorer.js";
 import { RangeFinderJumpExtension } from "./range-finder-jump.js";
 import { RangeFinderFoldExtension } from "./range-finder-fold.js";
+import { LandingExtension } from "./landing.js";
 
 export function createExtensions(): WebExtension[] {
-  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension(), new CompletionExtension(), new ExplorerExtension(), new RangeFinderJumpExtension(), new RangeFinderFoldExtension()];
+  return [new CmdlineExtension(), new WhichKeyExtension(), new NotificationExtension(), new MicroscopeExtension(), new CompletionExtension(), new ExplorerExtension(), new RangeFinderJumpExtension(), new RangeFinderFoldExtension(), new LandingExtension()];
 }
