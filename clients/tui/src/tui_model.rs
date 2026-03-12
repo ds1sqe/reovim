@@ -204,11 +204,5 @@ pub enum CursorStyleHint {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_cursor_style_hint_default() {
-        assert_eq!(CursorStyleHint::default(), CursorStyleHint::Block);
-    }
-}
+#[path = "tui_model_tests.rs"]
+mod tests;

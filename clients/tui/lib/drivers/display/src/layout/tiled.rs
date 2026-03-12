@@ -183,12 +183,5 @@ pub const MIN_WINDOW_WIDTH: u16 = 10;
 pub const MIN_WINDOW_HEIGHT: u16 = 3;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_min_dimensions() {
-        const { assert!(MIN_WINDOW_WIDTH >= 1) };
-        const { assert!(MIN_WINDOW_HEIGHT >= 1) };
-    }
-}
+#[path = "tiled_tests.rs"]
+mod tests;

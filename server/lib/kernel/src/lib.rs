@@ -44,6 +44,9 @@
 pub mod api;
 pub mod testing;
 
+#[cfg(test)]
+mod testing_tests;
+
 // ============================================================================
 // Internal modules - NOT accessible from outside
 // ============================================================================

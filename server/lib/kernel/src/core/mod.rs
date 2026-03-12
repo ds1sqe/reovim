@@ -84,3 +84,6 @@ pub use config::{Config, ConfigError, ConfigPaths, ConfigValue};
 
 // Re-export mode types
 pub use mode::{CommandId, CursorStyle, Mode, ModeId, ModeStack};
+
+#[cfg(test)]
+mod tests;

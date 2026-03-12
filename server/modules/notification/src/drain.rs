@@ -46,12 +46,5 @@ impl NotificationDrain for NotificationDrainImpl {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn drain_impl_implements_trait() {
-        let drain = NotificationDrainImpl;
-        let _: &dyn NotificationDrain = &drain;
-    }
-}
+#[path = "drain_tests.rs"]
+mod tests;

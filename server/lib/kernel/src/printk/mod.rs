@@ -136,3 +136,6 @@ pub use record::{Record, RecordBuilder};
 
 // Re-export logger types and functions
 pub use logger::{__log, Logger, NopLogger, SetLoggerError, flush, logger, set_logger};
+
+#[cfg(test)]
+mod tests;

@@ -130,3 +130,40 @@ pub use pending::PendingBindings;
 
 // Re-export binding metadata (#459 - Which-Key filter refinement)
 pub use binding_info::BindingInfo;
+
+#[cfg(test)]
+mod binding_info_tests;
+#[cfg(test)]
+mod convert_tests;
+#[cfg(test)]
+mod error_tests;
+#[cfg(test)]
+mod fallback_tests;
+#[cfg(test)]
+mod key_tests;
+#[cfg(test)]
+mod keybinding_store_tests;
+#[cfg(test)]
+mod lifecycle_tests;
+#[cfg(test)]
+mod lookup_tests;
+#[cfg(test)]
+mod mode_key_tests;
+#[cfg(test)]
+mod mode_registry_tests;
+#[cfg(test)]
+mod mode_store_tests;
+#[cfg(test)]
+mod mode_tests;
+#[cfg(test)]
+mod mouse_tests;
+#[cfg(test)]
+mod pending_tests;
+#[cfg(test)]
+mod provider_tests;
+#[cfg(test)]
+mod resolver_registry_tests;
+#[cfg(test)]
+mod resolver_tests;
+#[cfg(test)]
+mod traits_tests;

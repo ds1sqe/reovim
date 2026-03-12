@@ -129,6 +129,5 @@ impl TuiOutput for TerminalOutput {
 }
 
 #[cfg(test)]
-mod tests {
-    // Tests require a real terminal, skip in CI
-}
+#[path = "terminal_tests.rs"]
+mod tests;

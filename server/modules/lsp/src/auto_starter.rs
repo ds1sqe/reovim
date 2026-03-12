@@ -105,12 +105,5 @@ impl LspLifecycle for LspAutoStarter {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn auto_starter_implements_lifecycle() {
-        let starter = LspAutoStarter;
-        let _: &dyn LspLifecycle = &starter;
-    }
-}
+#[path = "auto_starter_tests.rs"]
+mod tests;

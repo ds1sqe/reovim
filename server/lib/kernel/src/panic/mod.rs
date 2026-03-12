@@ -77,3 +77,6 @@ pub use recovery::{
 // Re-export report types
 #[allow(unused_imports)]
 pub use report::{CrashReport, generate_crash_report};
+
+#[cfg(test)]
+mod tests;
