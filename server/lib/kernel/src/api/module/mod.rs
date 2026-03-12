@@ -174,6 +174,39 @@ pub trait Module: Send + Sync + 'static {
         &[]
     }
 
+    /// Capabilities provided by this module (#618).
+    ///
+    /// Returns capability identifiers that this module provides (e.g.,
+    /// `"syntax-highlighting"`, `"undo-provider"`). Used for abstract
+    /// dependency matching: a module that `requires` a capability is
+    /// satisfied by any module that `provides` it.
+    ///
+    /// Use constants from `reovim-capabilities`.
+    ///
+    /// # Kernel Purity
+    ///
+    /// Same as `extension_kinds()`: the kernel defines the method with
+    /// `&[&'static str]` return type. Capability constants live in
+    /// `shared/capabilities/`, not in the kernel.
+    fn provides(&self) -> &[&'static str] {
+        &[]
+    }
+
+    /// Capabilities required by this module (#618).
+    ///
+    /// Returns capability identifiers that this module requires (e.g.,
+    /// `"lsp-provider"`). During dependency resolution, the depgraph
+    /// resolver matches these against `provides()` from other modules
+    /// and adds implicit ordering edges.
+    ///
+    /// If no module provides a required capability, the module may fail
+    /// to initialize or operate in degraded mode.
+    ///
+    /// Use constants from `reovim-capabilities`.
+    fn requires(&self) -> &[&'static str] {
+        &[]
+    }
+
     // ========================================================================
     // Lifecycle (Linux: module_init / module_exit)
     // ========================================================================

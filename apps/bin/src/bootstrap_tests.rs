@@ -109,6 +109,8 @@ fn test_all_module_deps_resolve() {
             key: m.id(),
             required: m.dependencies(),
             optional: m.optional_dependencies(),
+            provides_caps: m.provides().to_vec(),
+            requires_caps: m.requires().to_vec(),
         })
         .collect();
     let result = resolve_dependencies(&entries);
@@ -127,6 +129,8 @@ fn test_tier_ordering() {
             key: m.id(),
             required: m.dependencies(),
             optional: m.optional_dependencies(),
+            provides_caps: m.provides().to_vec(),
+            requires_caps: m.requires().to_vec(),
         })
         .collect();
     let order = resolve_dependencies(&entries).unwrap();

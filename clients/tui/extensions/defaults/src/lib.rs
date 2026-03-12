@@ -65,6 +65,8 @@ pub fn create_extensions_filtered<S: std::hash::BuildHasher>(
             key: ext.kind(),
             required: ext.dependencies().to_vec(),
             optional: Vec::new(),
+            provides_caps: vec![],
+            requires_caps: vec![],
         })
         .collect();
 

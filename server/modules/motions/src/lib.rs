@@ -85,6 +85,10 @@ impl Module for MotionsModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::MOTION_COMMANDS]
+    }
 }
 
 impl CommandProvider for MotionsModule {

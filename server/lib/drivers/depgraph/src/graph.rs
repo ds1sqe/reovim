@@ -8,9 +8,13 @@ use std::{
 
 /// Input entry for dependency resolution.
 ///
-/// Each entry declares its key, required dependencies, and optional dependencies.
+/// Each entry declares its key, required dependencies, optional dependencies,
+/// and abstract capabilities (#618).
+///
 /// Required dependencies must exist in the entry set; missing ones produce an error.
 /// Optional dependencies are ordered (if present) but silently skipped if absent.
+/// Capabilities enable abstract matching: a module that `requires_caps` a capability
+/// is satisfied by any module that `provides_caps` it (implicit ordering edge).
 #[derive(Debug, Clone)]
 pub struct DepEntry<K> {
     /// Unique identifier for this entry.
@@ -19,6 +23,10 @@ pub struct DepEntry<K> {
     pub required: Vec<K>,
     /// Optional dependencies — ordered if present, skipped if absent.
     pub optional: Vec<K>,
+    /// Capabilities this entry provides (#618).
+    pub provides_caps: Vec<&'static str>,
+    /// Capabilities this entry requires (#618).
+    pub requires_caps: Vec<&'static str>,
 }
 
 /// Result of successful dependency resolution.
@@ -40,6 +48,9 @@ pub enum DepgraphError<K> {
     Cycle(Vec<K>),
     /// Required dependencies are missing. Each pair is `(dependent, missing_dep)`.
     Missing(Vec<(K, K)>),
+    /// Required capabilities have no provider (#618).
+    /// Each pair is `(dependent_key, capability_name)`.
+    UnsatisfiedCapability(Vec<(K, String)>),
 }
 
 impl<K: fmt::Debug> fmt::Display for DepgraphError<K> {
@@ -54,6 +65,16 @@ impl<K: fmt::Debug> fmt::Display for DepgraphError<K> {
                         write!(f, ", ")?;
                     }
                     write!(f, "{dep:?} requires {missing:?}")?;
+                }
+                Ok(())
+            }
+            Self::UnsatisfiedCapability(pairs) => {
+                write!(f, "unsatisfied capabilities: ")?;
+                for (i, (key, cap)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{key:?} requires capability {cap:?}")?;
                 }
                 Ok(())
             }
@@ -88,6 +109,7 @@ impl<K: fmt::Debug> std::error::Error for DepgraphError<K> {}
 /// 4. Run Kahn's BFS: start from in-degree 0, process iteratively
 /// 5. Detect cycles (any remaining nodes with in-degree > 0)
 /// 6. Build reverse dependency map for shutdown ordering
+#[allow(clippy::too_many_lines)]
 pub fn resolve_dependencies<K>(
     entries: &[DepEntry<K>],
 ) -> Result<DependencyOrder<K>, DepgraphError<K>>
@@ -124,6 +146,28 @@ where
         return Err(DepgraphError::Missing(missing));
     }
 
+    // Build capability provider map (#618): capability -> first provider key
+    let mut cap_providers: HashMap<&str, &K> = HashMap::new();
+    for entry in entries {
+        for cap in &entry.provides_caps {
+            // First-registered wins (deterministic)
+            cap_providers.entry(cap).or_insert(&entry.key);
+        }
+    }
+
+    // Check for unsatisfied capability requirements (#618)
+    let mut unsatisfied = Vec::new();
+    for entry in entries {
+        for cap in &entry.requires_caps {
+            if !cap_providers.contains_key(cap) {
+                unsatisfied.push((entry.key.clone(), (*cap).to_string()));
+            }
+        }
+    }
+    if !unsatisfied.is_empty() {
+        return Err(DepgraphError::UnsatisfiedCapability(unsatisfied));
+    }
+
     // Build in-degree map and adjacency list
     let mut in_degree: HashMap<&K, usize> = HashMap::new();
     let mut adjacency: HashMap<&K, Vec<&K>> = HashMap::new();
@@ -145,6 +189,17 @@ where
             if key_set.contains(dep) {
                 *in_degree.entry(&entry.key).or_insert(0) += 1;
                 adjacency.entry(dep).or_default().push(&entry.key);
+            }
+        }
+
+        // Capability-based implicit edges (#618): requires_caps -> provider
+        for cap in &entry.requires_caps {
+            if let Some(&provider) = cap_providers.get(cap)
+                && provider != &entry.key
+            {
+                // Skip self-edges (module provides and requires same cap)
+                *in_degree.entry(&entry.key).or_insert(0) += 1;
+                adjacency.entry(provider).or_default().push(&entry.key);
             }
         }
     }
@@ -196,6 +251,17 @@ where
             if key_set.contains(dep) {
                 dependents
                     .entry(dep.clone())
+                    .or_default()
+                    .insert(entry.key.clone());
+            }
+        }
+        // Capability-based reverse deps (#618)
+        for cap in &entry.requires_caps {
+            if let Some(&provider) = cap_providers.get(cap)
+                && provider != &entry.key
+            {
+                dependents
+                    .entry(provider.clone())
                     .or_default()
                     .insert(entry.key.clone());
             }

@@ -78,6 +78,10 @@ impl Module for UndoModule {
         pr_info!("Undo module exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::UNDO_PROVIDER]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

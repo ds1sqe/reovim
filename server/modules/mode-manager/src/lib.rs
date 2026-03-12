@@ -93,6 +93,10 @@ impl Module for ModeManager {
         pr_info!("ModeManager module exiting, cleared {} subscriptions", count);
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::MODE_MANAGEMENT]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

@@ -505,6 +505,8 @@ fn initialize_modules(
             key: m.id(),
             required: m.dependencies(),
             optional: m.optional_dependencies(),
+            provides_caps: m.provides().to_vec(),
+            requires_caps: m.requires().to_vec(),
         })
         .collect();
 
@@ -517,6 +519,8 @@ fn initialize_modules(
                     key: handle.id().clone(),
                     required: handle.dependencies(),
                     optional: handle.optional_dependencies(),
+                    provides_caps: handle.provides().to_vec(),
+                    requires_caps: handle.requires().to_vec(),
                 });
             }
         }

@@ -115,6 +115,10 @@ impl Module for CompletionModule {
         Ok(())
     }
 
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::COMPLETION_PROVIDER]
+    }
+
     fn extension_kinds(&self) -> &[&'static str] {
         &[reovim_extension_kinds::COMPLETION]
     }

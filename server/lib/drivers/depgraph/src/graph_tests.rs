@@ -5,6 +5,8 @@ fn entry(key: &'static str) -> DepEntry<&'static str> {
         key,
         required: vec![],
         optional: vec![],
+        provides_caps: vec![],
+        requires_caps: vec![],
     }
 }
 
@@ -13,6 +15,8 @@ fn entry_with_deps(key: &'static str, deps: &[&'static str]) -> DepEntry<&'stati
         key,
         required: deps.to_vec(),
         optional: vec![],
+        provides_caps: vec![],
+        requires_caps: vec![],
     }
 }
 
@@ -25,6 +29,8 @@ fn entry_with_opt(
         key,
         required: deps.to_vec(),
         optional: opt.to_vec(),
+        provides_caps: vec![],
+        requires_caps: vec![],
     }
 }
 
@@ -138,6 +144,8 @@ fn test_self_referential() {
         key: "a",
         required: vec!["a"],
         optional: vec![],
+        provides_caps: vec![],
+        requires_caps: vec![],
     }];
     let err = resolve_dependencies(&entries).unwrap_err();
     assert!(matches!(err, DepgraphError::SelfReferential("a")));
@@ -149,6 +157,8 @@ fn test_self_referential_optional() {
         key: "a",
         required: vec![],
         optional: vec!["a"],
+        provides_caps: vec![],
+        requires_caps: vec![],
     }];
     let err = resolve_dependencies(&entries).unwrap_err();
     assert!(matches!(err, DepgraphError::SelfReferential("a")));
@@ -302,11 +312,15 @@ fn test_with_custom_key_type() {
             key: ModId(1),
             required: vec![],
             optional: vec![],
+            provides_caps: vec![],
+            requires_caps: vec![],
         },
         DepEntry {
             key: ModId(2),
             required: vec![ModId(1)],
             optional: vec![],
+            provides_caps: vec![],
+            requires_caps: vec![],
         },
     ];
     let result = resolve_dependencies(&entries).unwrap();
@@ -327,12 +341,16 @@ fn test_large_graph() {
                     key: i,
                     required: vec![],
                     optional: vec![],
+                    provides_caps: vec![],
+                    requires_caps: vec![],
                 }
             } else {
                 DepEntry {
                     key: i,
                     required: vec![i - 1],
                     optional: vec![],
+                    provides_caps: vec![],
+                    requires_caps: vec![],
                 }
             }
         })
@@ -347,4 +365,125 @@ fn test_large_graph() {
         let curr_pos = result.order.iter().position(|&k| k == i).unwrap();
         assert!(prev_pos < curr_pos, "Entry {i} should come after {}", i - 1);
     }
+}
+
+// =========================================================================
+// Capability-based resolution (#618)
+// =========================================================================
+
+fn entry_with_caps(
+    key: &'static str,
+    provides: &[&'static str],
+    requires: &[&'static str],
+) -> DepEntry<&'static str> {
+    DepEntry {
+        key,
+        required: vec![],
+        optional: vec![],
+        provides_caps: provides.to_vec(),
+        requires_caps: requires.to_vec(),
+    }
+}
+
+#[test]
+fn test_capability_single_provider() {
+    let entries = vec![
+        entry_with_caps("provider", &["buffer-manager"], &[]),
+        entry_with_caps("consumer", &[], &["buffer-manager"]),
+    ];
+    let result = resolve_dependencies(&entries).unwrap();
+    assert_eq!(result.order, vec!["provider", "consumer"]);
+    // Consumer depends on provider via capability
+    assert!(result.dependents["provider"].contains("consumer"));
+}
+
+#[test]
+fn test_capability_multiple_providers() {
+    // First registered provider wins
+    let entries = vec![
+        entry_with_caps("provider-a", &["syntax"], &[]),
+        entry_with_caps("provider-b", &["syntax"], &[]),
+        entry_with_caps("consumer", &[], &["syntax"]),
+    ];
+    let result = resolve_dependencies(&entries).unwrap();
+    // consumer must come after provider-a (first provider)
+    let pos_a = pos(&result.order, "provider-a");
+    let pos_c = pos(&result.order, "consumer");
+    assert!(pos_a < pos_c, "consumer must come after first provider");
+}
+
+#[test]
+fn test_capability_unsatisfied() {
+    let entries = vec![entry_with_caps("consumer", &[], &["missing-cap"])];
+    let result = resolve_dependencies(&entries);
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        DepgraphError::UnsatisfiedCapability(pairs) => {
+            assert_eq!(pairs.len(), 1);
+            assert_eq!(pairs[0].0, "consumer");
+            assert_eq!(pairs[0].1, "missing-cap");
+        }
+        other => panic!("Expected UnsatisfiedCapability, got {other:?}"),
+    }
+}
+
+#[test]
+fn test_capability_self_provide_and_require() {
+    // A module that provides and requires the same cap should not create a self-edge
+    let entries = vec![entry_with_caps("self-sufficient", &["cap-x"], &["cap-x"])];
+    let result = resolve_dependencies(&entries).unwrap();
+    assert_eq!(result.order, vec!["self-sufficient"]);
+}
+
+#[test]
+fn test_capability_combined_with_explicit_deps() {
+    // Explicit deps + capability deps coexist
+    let entries = vec![
+        DepEntry {
+            key: "base",
+            required: vec![],
+            optional: vec![],
+            provides_caps: vec!["undo"],
+            requires_caps: vec![],
+        },
+        DepEntry {
+            key: "middle",
+            required: vec!["base"],
+            optional: vec![],
+            provides_caps: vec!["search"],
+            requires_caps: vec![],
+        },
+        DepEntry {
+            key: "top",
+            required: vec![],
+            optional: vec![],
+            provides_caps: vec![],
+            requires_caps: vec!["undo", "search"],
+        },
+    ];
+    let result = resolve_dependencies(&entries).unwrap();
+    let pos_base = pos(&result.order, "base");
+    let pos_mid = pos(&result.order, "middle");
+    let pos_top = pos(&result.order, "top");
+    assert!(pos_base < pos_mid, "base before middle (explicit dep)");
+    assert!(pos_base < pos_top, "base before top (cap: undo)");
+    assert!(pos_mid < pos_top, "middle before top (cap: search)");
+}
+
+#[test]
+fn test_capability_error_display() {
+    let err: DepgraphError<&str> =
+        DepgraphError::UnsatisfiedCapability(vec![("mod-a", "cap-x".into())]);
+    let msg = format!("{err}");
+    assert!(msg.contains("unsatisfied capabilities"));
+    assert!(msg.contains("mod-a"));
+    assert!(msg.contains("cap-x"));
+}
+
+#[test]
+fn test_capability_no_caps_no_change() {
+    // Entries with empty caps behave exactly like before
+    let entries = vec![entry_with_deps("a", &[]), entry_with_deps("b", &["a"])];
+    let result = resolve_dependencies(&entries).unwrap();
+    assert_eq!(result.order, vec!["a", "b"]);
 }

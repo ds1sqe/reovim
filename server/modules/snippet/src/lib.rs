@@ -212,6 +212,10 @@ impl Module for SnippetModule {
         Ok(())
     }
 
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::SNIPPET_PROVIDER]
+    }
+
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         vec![
             // Snippet navigating mode: tab stop navigation

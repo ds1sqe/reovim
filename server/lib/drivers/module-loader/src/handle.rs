@@ -325,6 +325,22 @@ impl ModuleHandle {
             .map_or(&[] as &[&str], |module| module.extension_kinds())
     }
 
+    /// Get capabilities provided by this module (#618).
+    #[must_use]
+    pub fn provides(&self) -> &[&'static str] {
+        self.static_module
+            .as_ref()
+            .map_or(&[] as &[&'static str], |module| module.provides())
+    }
+
+    /// Get capabilities required by this module (#618).
+    #[must_use]
+    pub fn requires(&self) -> &[&'static str] {
+        self.static_module
+            .as_ref()
+            .map_or(&[] as &[&'static str], |module| module.requires())
+    }
+
     /// Check if module supports hot reload.
     #[must_use]
     #[allow(unsafe_code)]

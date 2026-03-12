@@ -118,6 +118,8 @@ fn test_toposort_reorders_with_declared_deps() {
             key: ext.kind(),
             required: ext.dependencies().to_vec(),
             optional: Vec::new(),
+            provides_caps: vec![],
+            requires_caps: vec![],
         })
         .collect();
 

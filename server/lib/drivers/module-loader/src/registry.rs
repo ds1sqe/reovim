@@ -153,6 +153,8 @@ impl ModuleRegistry {
                 key: h.id().clone(),
                 required: h.dependencies(),
                 optional: h.optional_dependencies(),
+                provides_caps: h.provides().to_vec(),
+                requires_caps: h.requires().to_vec(),
             })
             .collect();
 

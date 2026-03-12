@@ -19,6 +19,7 @@ dynamic = []  # Enable FFI entry points for standalone dynamic loading
 [dependencies]
 # Kernel layer
 reovim-kernel = { workspace = true }
+reovim-capabilities = { workspace = true }
 
 # LSP driver (types, client, transport)
 reovim-driver-lsp = { workspace = true }

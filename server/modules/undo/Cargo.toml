@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 # Kernel types
 reovim-kernel = { workspace = true }
+reovim-capabilities = { workspace = true }
 
 # Driver for UndoProvider trait
 reovim-driver-undo = { workspace = true }

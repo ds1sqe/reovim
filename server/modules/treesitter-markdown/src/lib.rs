@@ -364,6 +364,10 @@ impl Module for TreesitterMarkdownModule {
         tracing::info!("TreesitterMarkdownModule: exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::SYNTAX_HIGHLIGHTING]
+    }
 }
 
 #[cfg(test)]

@@ -237,6 +237,10 @@ impl Module for TreesitterRustModule {
         tracing::info!("TreesitterRustModule: exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::SYNTAX_HIGHLIGHTING]
+    }
 }
 
 #[cfg(test)]

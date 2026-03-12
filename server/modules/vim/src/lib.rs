@@ -261,6 +261,10 @@ impl Module for VimModule {
         Ok(())
     }
 
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::MODE_MANAGEMENT]
+    }
+
     fn keybindings(&self) -> Vec<KeybindingRegistration> {
         bindings::all()
     }

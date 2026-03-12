@@ -66,6 +66,10 @@ impl Module for GitModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::GIT_PROVIDER]
+    }
 }
 
 #[cfg(feature = "dynamic")]

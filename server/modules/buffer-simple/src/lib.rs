@@ -145,6 +145,10 @@ impl Module for BufferSimpleModule {
         pr_info!("Buffer simple module exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::BUFFER_MANAGER]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

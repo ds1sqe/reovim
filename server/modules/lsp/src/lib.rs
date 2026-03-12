@@ -206,6 +206,10 @@ impl Module for LspModule {
         Ok(())
     }
 
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::LSP_PROVIDER]
+    }
+
     fn extension_kinds(&self) -> &[&'static str] {
         &[reovim_extension_kinds::DIAGNOSTICS]
     }

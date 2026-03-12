@@ -9,9 +9,9 @@
 //! use reovim_driver_depgraph::{DepEntry, resolve_dependencies};
 //!
 //! let entries = vec![
-//!     DepEntry { key: "a", required: vec![], optional: vec![] },
-//!     DepEntry { key: "b", required: vec!["a"], optional: vec![] },
-//!     DepEntry { key: "c", required: vec!["b"], optional: vec![] },
+//!     DepEntry { key: "a", required: vec![], optional: vec![], provides_caps: vec![], requires_caps: vec![] },
+//!     DepEntry { key: "b", required: vec!["a"], optional: vec![], provides_caps: vec![], requires_caps: vec![] },
+//!     DepEntry { key: "c", required: vec!["b"], optional: vec![], provides_caps: vec![], requires_caps: vec![] },
 //! ];
 //!
 //! let order = resolve_dependencies(&entries).unwrap();

@@ -77,6 +77,10 @@ impl Module for ClipboardModule {
         ProbeResult::Success
     }
 
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::CLIPBOARD_PROVIDER]
+    }
+
     fn exit(&mut self) -> Result<(), ModuleError> {
         pr_info!("Clipboard module exiting");
         Ok(())

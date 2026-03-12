@@ -1,0 +1,16 @@
+[package]
+name = "reovim-capabilities"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Shared module capability identifiers for abstract provides/requires matching"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# None — pure constants crate, zero dependencies.
