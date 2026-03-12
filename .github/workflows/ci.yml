@@ -36,9 +36,9 @@ jobs:
           cargo +${{ env.NIGHTLY }} clippy
           --all-targets --all-features --workspace -- -D warnings
 
-  # ─── MSRV Check (non-blocking, parallel) ───
-  msrv:
-    name: MSRV Check
+  # ─── Stable Checks (MSRV + doc tests, non-blocking) ───
+  stable-checks:
+    name: Stable Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -51,22 +51,19 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: MSRV check (key crates)
         run: cargo +1.92 check -p reovim-app -p reovim-kernel -p reovim-server
+      - name: Doc tests
+        run: cargo +1.92 test --doc --workspace
 
-  # ─── Build: MC/DC variant ───
+  # ─── Build: MC/DC variant (starts immediately, no lint gate) ───
   build-mcdc:
     name: Build (MC/DC)
     runs-on: ubuntu-latest
-    needs: [lint]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/setup-coverage
         with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          nightly: ${{ env.NIGHTLY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build workspace + tests + bins (instrumented)
         run: |
           export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
@@ -91,21 +88,16 @@ jobs:
             ~/.cargo/git
           key: mcdc-${{ hashFiles('Cargo.lock') }}
 
-  # ─── Build: Server variant ───
+  # ─── Build: Server variant (starts immediately, no lint gate) ───
   build-server:
     name: Build (Server)
     runs-on: ubuntu-latest
-    needs: [lint]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/setup-coverage
         with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          nightly: ${{ env.NIGHTLY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build server + app binary + tests (instrumented)
         run: |
           export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
@@ -124,18 +116,14 @@ jobs:
   test-mcdc-unit:
     name: MC/DC Unit
     runs-on: ubuntu-latest
-    needs: [build-mcdc]
+    needs: [lint, build-mcdc]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/setup-coverage
         with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          nightly: ${{ env.NIGHTLY }}
+          install-nextest: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -177,18 +165,14 @@ jobs:
   test-mcdc-integration:
     name: MC/DC Integration
     runs-on: ubuntu-latest
-    needs: [build-mcdc]
+    needs: [lint, build-mcdc]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/setup-coverage
         with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          nightly: ${{ env.NIGHTLY }}
+          install-nextest: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -230,18 +214,14 @@ jobs:
   test-server:
     name: Server Coverage
     runs-on: ubuntu-latest
-    needs: [build-server]
+    needs: [lint, build-server]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: ./.github/actions/setup-coverage
         with:
-          toolchain: ${{ env.NIGHTLY }}
-          components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          nightly: ${{ env.NIGHTLY }}
+          install-nextest: "true"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore build cache
         uses: actions/cache/restore@v4
         with:
@@ -265,23 +245,6 @@ jobs:
         with:
           name: server-lcov
           path: server-lcov.info
-
-  # ─── Doc Tests ───
-  doc-tests:
-    name: Doc Tests
-    runs-on: ubuntu-latest
-    needs: [lint]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.92"
-      - uses: Swatinem/rust-cache@v2
-      - uses: arduino/setup-protoc@v3
-        with:
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run doc tests
-        run: cargo test --doc --workspace
 
   # ─── Upload: Merge + Codecov ───
   coverage-upload:

@@ -39,6 +39,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `arduino/setup-protoc@v3`. Merge fmt into lint job, split MSRV to non-blocking
   parallel job checking key crates only (`reovim-app`, `reovim-kernel`, `reovim-server`).
 
+- **CI pipeline parallelism (#588)**: Remove lint gate from build jobs so builds
+  start immediately in parallel with lint (~70s critical path savings). Merge
+  doc-tests into stable-checks job (shares MSRV toolchain, saves one runner).
+  Extract `setup-coverage` composite action for DRY nightly+llvm-cov+protoc setup
+  across 5 coverage jobs. Test jobs still require lint to pass before running.
+
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
   `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and

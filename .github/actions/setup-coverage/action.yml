@@ -1,0 +1,27 @@
+name: Setup Coverage Toolchain
+description: Install nightly Rust with llvm-tools, cargo-llvm-cov, and protoc
+
+inputs:
+  nightly:
+    description: Nightly toolchain version
+    required: true
+  install-nextest:
+    description: Also install cargo-nextest
+    default: "false"
+  github-token:
+    description: GitHub token for protoc download
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@nightly
+      with:
+        toolchain: ${{ inputs.nightly }}
+        components: llvm-tools-preview
+    - uses: taiki-e/install-action@cargo-llvm-cov
+    - if: inputs.install-nextest == 'true'
+      uses: taiki-e/install-action@nextest
+    - uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ inputs.github-token }}
