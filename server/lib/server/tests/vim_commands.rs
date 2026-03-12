@@ -5,18 +5,13 @@
 //!
 //! # Status
 //!
-//! - 28 of 30 tests are enabled and passing
-//! - 2 tests are ignored pending dot repeat implementation
+//! - All 30 tests are enabled and passing
 //! - Text object tests moved to `reovim-module-textobjects` (tests/e2e.rs)
 //!
 //! # Running Tests
 //!
 //! ```bash
-//! # Run enabled tests
 //! cargo test -p reovim-server --test vim_commands
-//!
-//! # Run ignored tests (text objects, dot repeat)
-//! cargo test -p reovim-server --test vim_commands -- --ignored
 //! ```
 //!
 //! # Log Files
@@ -400,7 +395,6 @@ async fn test_visual_line_delete() {
 
 /// Test `.` repeats last change.
 #[tokio::test]
-#[ignore = "Dot repeat not fully implemented (#577)"]
 async fn test_dot_repeats_change() {
     let result = IntegrationTest::new()
         .await
@@ -413,7 +407,6 @@ async fn test_dot_repeats_change() {
 
 /// Test `.` repeats delete.
 #[tokio::test]
-#[ignore = "Dot repeat not fully implemented (#577)"]
 async fn test_dot_repeats_delete() {
     let result = IntegrationTest::new()
         .await

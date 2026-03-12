@@ -211,6 +211,11 @@ impl ModeKeyResolver for VimDeleteResolver {
     ) -> ResolveResult {
         tracing::debug!(key = ?key, "delete resolver: resolve_with_session");
 
+        // #577: Record key for dot repeat
+        if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
+            vim.record_repeat_key(*key);
+        }
+
         // Escape cancels the operator
         if is_escape(key) {
             self.clear_state();
@@ -265,6 +270,20 @@ impl ModeKeyResolver for VimDeleteResolver {
                     (start, end)
                 },
             );
+
+            // #577: Finish dot repeat recording for dd (line operator shortcut)
+            if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
+                vim.last_change = Some(LastChange {
+                    change_type: ChangeType::OperatorMotion {
+                        operator: SessionOperatorType::Delete,
+                        linewise: true,
+                    },
+                    count,
+                    register,
+                    keys: Vec::new(),
+                });
+                vim.finish_repeat_recording();
+            }
 
             return ResolveResult::ModeTransition(ModeTransition::Pop {
                 result: Some(build_operator_execute(
@@ -395,7 +414,9 @@ impl ModeKeyResolver for VimDeleteResolver {
                     },
                     count,
                     register,
+                    keys: Vec::new(),
                 });
+                vim.finish_repeat_recording();
             }
 
             // Clear state for next operation
@@ -451,7 +472,9 @@ impl ModeKeyResolver for VimDeleteResolver {
                 },
                 count,
                 register,
+                keys: Vec::new(),
             });
+            vim.finish_repeat_recording();
         }
 
         // Clear state for next operation

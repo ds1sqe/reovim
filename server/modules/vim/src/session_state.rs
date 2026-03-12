@@ -133,6 +133,22 @@ pub struct VimSessionState {
     /// Incremented when a macro starts playing, decremented when it finishes.
     /// Playback is blocked when depth reaches `MAX_MACRO_DEPTH` (16).
     pub macro_playback_depth: usize,
+
+    // =========================================================================
+    // Dot Repeat Key Recording (#577)
+    // =========================================================================
+    /// Whether we are currently recording keys for dot repeat.
+    ///
+    /// Set when an operator or insert-entry command starts, cleared when
+    /// the change completes. Independent from macro recording — both can
+    /// be active simultaneously.
+    pub recording_repeat: bool,
+
+    /// Accumulated key sequence during the current change.
+    ///
+    /// Cleared when recording starts, saved into `last_change.keys` when
+    /// recording finishes. Used by `.` to replay the exact key sequence.
+    pub repeat_keys: Vec<KeyEvent>,
 }
 
 impl SessionExtension for VimSessionState {
@@ -247,6 +263,41 @@ impl VimSessionState {
         if self.is_recording() {
             self.recording_keys.push(key);
         }
+    }
+
+    // =========================================================================
+    // Dot Repeat Key Recording (#577)
+    // =========================================================================
+
+    /// Start recording keys for dot repeat.
+    ///
+    /// Called when an operator or insert-entry command begins a change.
+    /// Clears any previously accumulated keys and sets the recording flag.
+    pub fn start_repeat_recording(&mut self) {
+        self.recording_repeat = true;
+        self.repeat_keys.clear();
+    }
+
+    /// Record a key for dot repeat.
+    ///
+    /// Does nothing if not currently recording for repeat.
+    pub fn record_repeat_key(&mut self, key: KeyEvent) {
+        if self.recording_repeat {
+            self.repeat_keys.push(key);
+        }
+    }
+
+    /// Finish recording and save keys into `last_change`.
+    ///
+    /// Copies the accumulated `repeat_keys` into `last_change.keys` and
+    /// clears the recording flag. If `last_change` is `None`, does nothing
+    /// (the caller should have set `last_change` before calling this).
+    pub fn finish_repeat_recording(&mut self) {
+        self.recording_repeat = false;
+        if let Some(ref mut lc) = self.last_change {
+            lc.keys.clone_from(&self.repeat_keys);
+        }
+        self.repeat_keys.clear();
     }
 
     /// Enter macro playback (increment depth counter).
@@ -450,4 +501,10 @@ pub struct LastChange {
     pub count: Option<usize>,
     /// Register used with the original command.
     pub register: Option<char>,
+    /// Recorded key sequence for replay via `InjectKeys` (#577).
+    ///
+    /// When non-empty, `.` replays these keys instead of using the
+    /// metadata-based approach. This handles all cases including
+    /// operator+motion, operator+textobj, and change+insert.
+    pub keys: Vec<KeyEvent>,
 }

@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Dot repeat command (#577)**: Implement the `.` (dot) command for replaying operator
+  changes. Records the actual key sequence during operator+motion and operator+insert
+  operations (e.g., `dw`, `dd`, `cwbar<Esc>`, `ccnew<Esc>`), then replays via `InjectKeys`
+  on `.` press. Supports delete operators (`dw..`, `dd..`), change+insert operators
+  (`cwbar<Esc>w.w.`, `ccnew<Esc>j.`), and standalone insert (`ihello<Esc>.`). Also fixes
+  `cw` at end of buffer incorrectly deleting only the first character of the last word.
+
 - **Configuration profiles module (#593)**: New `reovim-module-profiles` crate implementing
   `:profile-save`, `:profile-load`, `:profile-list` commands for named option snapshots.
   Profiles are stored as versioned TOML files with explicit type tags. Save captures
@@ -102,6 +109,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Split monolithic test+report steps for timing visibility. Set
   `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
   cache.
+
+- **Enable notification integration tests (#578)**: Remove `#[ignore]` from 4
+  notification E2E tests in `reovim-server`. Tests verify server connectivity,
+  mode changes, buffer modification, and cursor movement via gRPC. CI already
+  builds the server binary in `build-server` step so tests run automatically.
+
+- **Mock clipboard provider (#576)**: Add `MockClipboardProvider` to
+  `reovim-driver-clipboard` for headless CI testing. In-memory `ClipboardProvider`
+  implementation using `RwLock<String>` that works without a display server.
+  8 new driver tests, 5 new module-level mock tests. Display-dependent tests
+  (1 unit, 6 integration) remain `#[ignore]` with tracking reference.
 
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.

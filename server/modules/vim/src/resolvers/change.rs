@@ -192,6 +192,11 @@ impl ModeKeyResolver for VimChangeResolver {
     ) -> ResolveResult {
         tracing::debug!(key = ?key, "change resolver: resolve_with_session");
 
+        // #577: Record key for dot repeat
+        if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
+            vim.record_repeat_key(*key);
+        }
+
         if is_escape(key) {
             self.clear_state();
             return ResolveResult::ModeTransition(build_cancelled());
@@ -244,6 +249,20 @@ impl ModeKeyResolver for VimChangeResolver {
                     (start, end)
                 },
             );
+
+            // #577: Set last_change for cc (line operator shortcut)
+            // Don't finish recording — insert mode continues it
+            if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
+                vim.last_change = Some(LastChange {
+                    change_type: ChangeType::OperatorMotion {
+                        operator: SessionOperatorType::Change,
+                        linewise: true,
+                    },
+                    count,
+                    register,
+                    keys: Vec::new(),
+                });
+            }
 
             return ResolveResult::ModeTransition(ModeTransition::Pop {
                 result: Some(build_operator_execute(
@@ -352,7 +371,7 @@ impl ModeKeyResolver for VimChangeResolver {
             );
 
             // Record for dot repeat (Epic #465)
-            // Note: The inserted text will be recorded when insert mode exits
+            // Note: Don't finish repeat recording — insert mode continues it (#577)
             if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
                 vim.last_change = Some(LastChange {
                     change_type: ChangeType::OperatorTextObject {
@@ -361,6 +380,7 @@ impl ModeKeyResolver for VimChangeResolver {
                     },
                     count,
                     register,
+                    keys: Vec::new(),
                 });
             }
 
@@ -414,15 +434,37 @@ impl ModeKeyResolver for VimChangeResolver {
                 // The motion puts cursor at start of next word (col 6 for "hello world"),
                 // but we only want to change "hello" (cols 0-4), so end should be col 5.
                 //
+                // Exception: at end of buffer, `w` clamps to the last character of
+                // the line instead of advancing to the next word. In this case the
+                // end position is ON the last char of the current word, so we must
+                // ADD 1 to make the range exclusive-end (include that character).
+                //
+                // Detection: end is at the last char of the line AND there is no
+                // whitespace between start and end (they are in the same word).
+                //
                 // This is documented Vim behavior (`:help cw`).
-                (start, Position::new(end.line, end.column.saturating_sub(1)))
+                let w_clamped_to_word_end = session.active_buffer().is_some_and(|buf| {
+                    let at_line_end = session
+                        .buffer_line_len(buf, end.line)
+                        .is_some_and(|len| end.column + 1 >= len);
+                    at_line_end
+                        && session
+                            .buffer_text_range(buf, start, Position::new(end.line, end.column + 1))
+                            .is_some_and(|text| !text.chars().any(char::is_whitespace))
+                });
+
+                if w_clamped_to_word_end {
+                    (start, Position::new(end.line, end.column + 1))
+                } else {
+                    (start, Position::new(end.line, end.column.saturating_sub(1)))
+                }
             } else {
                 (start, end)
             }
         };
 
         // Record for dot repeat (Epic #465)
-        // Note: The inserted text will be recorded when insert mode exits
+        // Note: Don't finish repeat recording — insert mode continues it (#577)
         if let Some(vim) = client_extensions.get_mut::<crate::VimSessionState>() {
             vim.last_change = Some(LastChange {
                 change_type: ChangeType::OperatorMotion {
@@ -431,6 +473,7 @@ impl ModeKeyResolver for VimChangeResolver {
                 },
                 count,
                 register,
+                keys: Vec::new(),
             });
         }
 

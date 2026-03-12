@@ -10,15 +10,6 @@
 //! - Clients receive notifications via `NotificationService.Subscribe`
 //! - This enables the push model (no polling)
 //!
-//! # Status
-//!
-//! These tests require the gRPC client to support notification streaming,
-//! which is implemented in `TuiGrpcClient` but not `GrpcClient` (CLI client).
-//!
-//! For now, notification tests are deferred until:
-//! 1. `GrpcClient` gains `subscribe()` method, or
-//! 2. Tests use `TuiGrpcClient` directly
-//!
 //! # Running Tests
 //!
 //! ```bash
@@ -48,7 +39,6 @@ async fn connect_with_retry(addr: &str) -> GrpcClient {
 ///
 /// This is a basic connectivity test to verify the test infrastructure works.
 #[tokio::test]
-#[ignore = "Requires server binary (#578)"]
 #[allow(clippy::significant_drop_tightening)]
 async fn test_server_accepts_connection() {
     let harness = TestServerHarness::spawn()
@@ -66,7 +56,6 @@ async fn test_server_accepts_connection() {
 /// While this doesn't test notifications directly, it verifies that
 /// mode changes work end-to-end and can be queried.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded (#578)"]
 #[allow(clippy::significant_drop_tightening)]
 async fn test_mode_change_reflected_in_state() {
     let harness = TestServerHarness::spawn()
@@ -117,7 +106,6 @@ async fn test_mode_change_reflected_in_state() {
 
 /// Test that buffer modifications are reflected in content queries.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded (#578)"]
 #[allow(clippy::significant_drop_tightening)]
 async fn test_buffer_modification_reflected_in_content() {
     let harness = TestServerHarness::spawn()
@@ -148,7 +136,6 @@ async fn test_buffer_modification_reflected_in_content() {
 
 /// Test that cursor position updates are reflected in queries.
 #[tokio::test]
-#[ignore = "Requires server binary with modules loaded (#578)"]
 #[allow(clippy::significant_drop_tightening)]
 async fn test_cursor_move_reflected_in_position() {
     let harness = TestServerHarness::spawn()
