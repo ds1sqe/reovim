@@ -156,13 +156,11 @@ jobs:
             --exclude reovim-bench \
             --exclude perf-report \
             --exclude reovim-server
+          # Remove server objects before report — LLVM #119558 SIGSEGV on
+          # MC/DC data from async trait impls in grpc service files.
+          # Server coverage is handled separately in the test-server job.
+          find target -name '*reovim_server*' -delete 2>/dev/null || true
           cargo +${{ env.NIGHTLY }} llvm-cov report \
-            --workspace \
-            --exclude reovim-module-macros \
-            --exclude reovim-driver-ffi-python \
-            --exclude reovim-bench \
-            --exclude perf-report \
-            --exclude reovim-server \
             --lcov --output-path mcdc-unit.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh mcdc-unit.info
@@ -207,13 +205,11 @@ jobs:
             --exclude reovim-bench \
             --exclude perf-report \
             --exclude reovim-server
+          # Remove server objects before report — LLVM #119558 SIGSEGV on
+          # MC/DC data from async trait impls in grpc service files.
+          # Server coverage is handled separately in the test-server job.
+          find target -name '*reovim_server*' -delete 2>/dev/null || true
           cargo +${{ env.NIGHTLY }} llvm-cov report \
-            --workspace \
-            --exclude reovim-module-macros \
-            --exclude reovim-driver-ffi-python \
-            --exclude reovim-bench \
-            --exclude perf-report \
-            --exclude reovim-server \
             --lcov --output-path mcdc-integration.info
       - name: Filter test code
         run: ./scripts/lcov-filter-tests.sh mcdc-integration.info
