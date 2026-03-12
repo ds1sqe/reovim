@@ -1,7 +1,4 @@
-use {
-    super::*,
-    reovim_driver_clipboard::MockClipboardProvider,
-};
+use {super::*, reovim_driver_clipboard::MockClipboardProvider};
 
 // ============================================================================
 // Mock-based tests (run in CI without display)
@@ -36,10 +33,7 @@ fn mock_clipboard_overwrite() {
     let provider = MockClipboardProvider::new();
     provider.copy_to_clipboard("first").unwrap();
     provider.copy_to_clipboard("second").unwrap();
-    assert_eq!(
-        provider.paste_from_clipboard().unwrap(),
-        Some("second".to_string())
-    );
+    assert_eq!(provider.paste_from_clipboard().unwrap(), Some("second".to_string()));
 }
 
 #[test]
@@ -53,10 +47,7 @@ fn mock_clipboard_register_and_use() {
     let provider = registry.get(&ClipboardKey::Default).unwrap();
     assert!(provider.clipboard_available());
     provider.copy_to_clipboard("via registry").unwrap();
-    assert_eq!(
-        provider.paste_from_clipboard().unwrap(),
-        Some("via registry".to_string())
-    );
+    assert_eq!(provider.paste_from_clipboard().unwrap(), Some("via registry".to_string()));
 }
 
 // ============================================================================

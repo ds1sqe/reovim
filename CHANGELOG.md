@@ -110,6 +110,11 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
   cache.
 
+- **Enable notification integration tests (#578)**: Remove `#[ignore]` from 4
+  notification E2E tests in `reovim-server`. Tests verify server connectivity,
+  mode changes, buffer modification, and cursor movement via gRPC. CI already
+  builds the server binary in `build-server` step so tests run automatically.
+
 - **Mock clipboard provider (#576)**: Add `MockClipboardProvider` to
   `reovim-driver-clipboard` for headless CI testing. In-memory `ClipboardProvider`
   implementation using `RwLock<String>` that works without a display server.

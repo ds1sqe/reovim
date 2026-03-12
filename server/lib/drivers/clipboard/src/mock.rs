@@ -57,7 +57,11 @@ impl ClipboardProvider for MockClipboardProvider {
 
     fn paste_from_clipboard(&self) -> Result<Option<String>, ClipboardError> {
         let text = self.clipboard.read().expect("lock poisoned").clone();
-        if text.is_empty() { Ok(None) } else { Ok(Some(text)) }
+        if text.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(text))
+        }
     }
 
     fn selection_available(&self) -> bool {
@@ -71,7 +75,11 @@ impl ClipboardProvider for MockClipboardProvider {
 
     fn paste_from_selection(&self) -> Result<Option<String>, ClipboardError> {
         let text = self.selection.read().expect("lock poisoned").clone();
-        if text.is_empty() { Ok(None) } else { Ok(Some(text)) }
+        if text.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(text))
+        }
     }
 }
 
