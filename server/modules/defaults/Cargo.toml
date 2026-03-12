@@ -78,6 +78,8 @@ reovim-module-tetromino = { workspace = true }
 reovim-module-profiles = { workspace = true }
 # Health-check diagnostic command (#594)
 reovim-module-health-check = { workspace = true }
+# Module manager command (#622)
+reovim-module-module-manager = { workspace = true }
 
 # Note: Client-side modules (layout, pair, statusline, undotree)
 # removed - will be reimplemented as client-side plugins (Epic #465)

@@ -14,9 +14,13 @@ name = "reovim"
 path = "src/main.rs"
 
 [features]
-default = ["grpc-web"]
+default = ["grpc-web", "static-modules"]
 grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui"]
 grpc-web = ["grpc", "reovim-server/grpc-web"]
+# Static module linking: compile all 39 modules into the binary (#620).
+# When disabled, modules are loaded as .so files from builtins.toml manifest.
+# Currently always-on; dynamic-only mode will be wired in Phase 10.
+static-modules = []
 
 [dependencies]
 # Server crate
@@ -31,6 +35,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-session = { workspace = true }
 
 # Module bundle (provides DefaultsModule::create_modules)
+# Will become optional when static-modules feature is fully wired (#620)
 reovim-module-defaults = { workspace = true }
 
 # Vim module (for VimLookupPolicy - #542 mechanism/policy separation)

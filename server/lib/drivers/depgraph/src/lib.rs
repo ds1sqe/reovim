@@ -25,5 +25,11 @@
 //! (`ModuleId`), client extensions (`&str`), or any other dependency graph.
 
 mod graph;
+mod version;
 
-pub use graph::{DepEntry, DependencyOrder, DepgraphError, resolve_dependencies};
+pub use {
+    graph::{DepEntry, DependencyOrder, DepgraphError, resolve_dependencies},
+    version::{
+        ConstraintViolation, SemVer, VersionConstraint, VersionRange, check_version_constraints,
+    },
+};

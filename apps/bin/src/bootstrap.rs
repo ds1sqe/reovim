@@ -27,7 +27,9 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
-    reovim_driver_depgraph::{DepEntry, DependencyOrder, resolve_dependencies},
+    reovim_driver_depgraph::{
+        DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies,
+    },
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
@@ -549,6 +551,9 @@ fn initialize_modules(
     // Shadow-mode: compare relative ordering of dependent pairs (#582)
     log_shadow_comparison(&hardcoded_order, &dep_order.order, &entries);
 
+    // Check version constraints (#619)
+    check_module_version_constraints(&all_modules, &external);
+
     // Index modules by ID for O(1) lookup during ordered init
     let mut module_map: HashMap<ModuleId, Box<dyn Module>> = all_modules
         .into_iter()
@@ -749,6 +754,60 @@ fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId])
 }
 
 /// Compare relative ordering of dependent pairs between hardcoded and
+/// Check version constraints across all modules (#619).
+///
+/// Collects `version_constraints()` from each module and validates them
+/// against actual module versions. Violations are logged as warnings.
+/// Non-fatal — modules still load but constraints are surfaced.
+fn check_module_version_constraints(builtins: &[Box<dyn Module>], external: &ModuleLoader) {
+    // Build version map: module_id -> (major, minor, patch)
+    let mut versions: Vec<(ModuleId, (u32, u32, u32))> = builtins
+        .iter()
+        .map(|m| {
+            let v = m.version();
+            (m.id(), (v.major, v.minor, v.patch))
+        })
+        .collect();
+
+    let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+    for id in &ext_ids {
+        if let Some(handle) = external.get(id) {
+            let v = handle.version();
+            versions.push((handle.id().clone(), (v.major, v.minor, v.patch)));
+        }
+    }
+
+    // Collect all constraints: (source_id, target_id, range_str)
+    let mut constraints: Vec<(ModuleId, ModuleId, &str)> = Vec::new();
+    for m in builtins {
+        for (target, range_str) in m.version_constraints() {
+            constraints.push((m.id(), target, range_str));
+        }
+    }
+
+    if constraints.is_empty() {
+        return;
+    }
+
+    let violations = check_version_constraints(&constraints, &versions);
+    for v in &violations {
+        tracing::warn!(
+            source = %v.source,
+            target = %v.target,
+            required = %v.required,
+            actual = format_args!("{}.{}.{}", v.actual.0, v.actual.1, v.actual.2),
+            "Version constraint violation"
+        );
+    }
+
+    if !violations.is_empty() {
+        tracing::warn!(
+            count = violations.len(),
+            "Version constraint violations detected — modules may not work correctly"
+        );
+    }
+}
+
 /// computed orderings (#582 shadow-mode).
 ///
 /// Only logs violations — does NOT compare absolute positions (which

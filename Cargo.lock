@@ -2189,6 +2189,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-extension-loader"
+version = "0.10.0-dev"
+dependencies = [
+ "libloading",
+ "reovim-driver-display",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-driver-ffi"
 version = "0.10.0-dev"
 dependencies = [
@@ -2286,6 +2295,18 @@ dependencies = [
  "serde",
  "sha2",
  "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-driver-module-registry"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "serde",
+ "serde_json",
+ "tempfile",
  "toml 0.8.23",
  "tracing",
 ]
@@ -2513,6 +2534,7 @@ dependencies = [
  "reovim-module-lsp-navigation",
  "reovim-module-macros",
  "reovim-module-microscope",
+ "reovim-module-module-manager",
  "reovim-module-motions",
  "reovim-module-notification",
  "reovim-module-profiles",
@@ -2551,6 +2573,16 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-module-emacs"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-kernel",
+ "reovim-module-editor",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2709,6 +2741,18 @@ name = "reovim-module-mode-manager"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-module-manager"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-module-loader",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]

@@ -53,11 +53,11 @@ use {
     reovim_module_git_statusline as git_statusline, reovim_module_health_check as health_check,
     reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
-    reovim_module_motions as motions, reovim_module_notification as notification,
-    reovim_module_profiles as profiles, reovim_module_range_finder as range_finder,
-    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
-    reovim_module_snippet as snippet, reovim_module_tetromino as tetromino,
-    reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_module_manager as module_manager, reovim_module_motions as motions,
+    reovim_module_notification as notification, reovim_module_profiles as profiles,
+    reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
+    reovim_module_search as search, reovim_module_snippet as snippet,
+    reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
@@ -164,6 +164,8 @@ impl DefaultsModule {
             Box::new(profiles::ProfilesModule::new()),
             // Health-check diagnostic command (#594)
             Box::new(health_check::HealthCheckModule::new()),
+            // Module manager command (#622)
+            Box::new(module_manager::ModuleManagerModule::new()),
         ]
     }
 
@@ -238,6 +240,8 @@ impl DefaultsModule {
         map.insert("profiles", || Box::new(profiles::ProfilesModule::new()));
         // Health-check diagnostic command (#594)
         map.insert("health-check", || Box::new(health_check::HealthCheckModule::new()));
+        // Module manager command (#622)
+        map.insert("module-manager", || Box::new(module_manager::ModuleManagerModule::new()));
         map
     }
 
@@ -306,6 +310,8 @@ impl DefaultsModule {
             "profiles",
             // Health-check diagnostic command (#594)
             "health-check",
+            // Module manager command (#622)
+            "module-manager",
         ]
     }
 
@@ -407,6 +413,8 @@ impl Module for DefaultsModule {
             ModuleId::new("profiles"),
             // Health-check diagnostic command (#594)
             ModuleId::new("health-check"),
+            // Module manager command (#622)
+            ModuleId::new("module-manager"),
         ]
     }
 

@@ -431,6 +431,91 @@ impl fmt::Debug for ModuleConfigStore {
     }
 }
 
+// ============================================================================
+// Builtin Module Manifest (#620)
+// ============================================================================
+
+/// Entry in the builtin module manifest (`builtins.toml`).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct BuiltinEntry {
+    /// Module identifier (matches `Module::id()`).
+    pub id: String,
+    /// Initialization tier (1 = service, 2 = utility, 3 = policy, 4 = feature).
+    pub tier: u8,
+    /// Shared library name (without `lib` prefix or `.so`/`.dylib` suffix).
+    pub library: String,
+}
+
+/// Parsed builtin module manifest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuiltinManifest {
+    /// Module entries in declaration order.
+    pub modules: Vec<BuiltinEntry>,
+}
+
+/// Intermediate TOML structure for deserialization.
+#[derive(Deserialize)]
+struct BuiltinManifestToml {
+    modules: Vec<BuiltinEntry>,
+}
+
+impl BuiltinManifest {
+    /// Parse a builtin manifest from a TOML string.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModuleConfigError::Parse`] if the TOML is invalid.
+    pub fn parse(toml_str: &str) -> Result<Self, ModuleConfigError> {
+        let raw: BuiltinManifestToml =
+            toml::from_str(toml_str).map_err(|e| ModuleConfigError::Parse(e.to_string()))?;
+        Ok(Self {
+            modules: raw.modules,
+        })
+    }
+
+    /// Load a builtin manifest from a file path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ModuleConfigError::Io`] for IO errors.
+    /// Returns [`ModuleConfigError::Parse`] for invalid TOML.
+    pub fn load(path: &Path) -> Result<Self, ModuleConfigError> {
+        let contents = std::fs::read_to_string(path).map_err(ModuleConfigError::Io)?;
+        Self::parse(&contents)
+    }
+
+    /// Get module IDs in declaration order.
+    #[must_use]
+    pub fn module_ids(&self) -> Vec<&str> {
+        self.modules.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    /// Get module IDs filtered by a predicate.
+    #[must_use]
+    pub fn module_ids_filtered<F>(&self, predicate: F) -> Vec<&str>
+    where
+        F: Fn(&str) -> bool,
+    {
+        self.modules
+            .iter()
+            .filter(|e| predicate(&e.id))
+            .map(|e| e.id.as_str())
+            .collect()
+    }
+
+    /// Look up a module entry by ID.
+    #[must_use]
+    pub fn get(&self, module_id: &str) -> Option<&BuiltinEntry> {
+        self.modules.iter().find(|e| e.id == module_id)
+    }
+
+    /// Get the library name for a module.
+    #[must_use]
+    pub fn library_name(&self, module_id: &str) -> Option<&str> {
+        self.get(module_id).map(|e| e.library.as_str())
+    }
+}
+
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;

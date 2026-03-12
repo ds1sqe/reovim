@@ -4,7 +4,7 @@ use {
     crate::diagnostics,
     reovim_driver_command::{Command, CommandHandler},
     reovim_driver_command_types::{CommandContext, CommandResult},
-    reovim_driver_session::{BufferApi, SessionRuntime},
+    reovim_driver_session::{BufferApi, SessionRuntime, WindowApi},
     reovim_kernel::api::v1::{CommandId, ModuleId},
 };
 
@@ -48,6 +48,10 @@ impl CommandHandler for CheckHealthCommand {
         let buf_id = runtime.create_buffer(Some("[checkhealth]"), &report);
         runtime.set_buffer_modified(buf_id, false);
         runtime.set_active_buffer(Some(buf_id));
+        // Switch the active window to display the new buffer so the TUI refreshes
+        if let Some(win) = runtime.active_window() {
+            let _ = runtime.set_window_buffer(win, buf_id);
+        }
         CommandResult::Success
     }
 }

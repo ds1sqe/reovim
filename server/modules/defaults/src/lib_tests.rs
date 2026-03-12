@@ -35,9 +35,9 @@ fn test_defaults_has_dependencies() {
     // Tetromino (1): tetromino
     // Profiles (1): profiles
     // Health-check (1): health-check
-    // Total: 39 modules
+    // Total: 40 modules
     // Note: vim adapter modules removed (#585) — personality manifests handle bridging
-    assert_eq!(deps.len(), 39);
+    assert_eq!(deps.len(), 40);
 }
 
 #[test]
@@ -60,9 +60,9 @@ fn test_create_modules() {
     // Tetromino (1): tetromino
     // Profiles (1): profiles
     // Health-check (1): health-check
-    // Total: 39 modules
+    // Total: 40 modules
     // Note: vim adapter modules removed (#585) — personality manifests handle bridging
-    assert_eq!(modules.len(), 39);
+    assert_eq!(modules.len(), 40);
 }
 
 #[test]
@@ -229,9 +229,9 @@ fn test_init_returns_success() {
 // ============================================================================
 
 #[test]
-fn builtin_registry_has_39_entries() {
+fn builtin_registry_has_40_entries() {
     let registry = DefaultsModule::builtin_registry();
-    assert_eq!(registry.len(), 39);
+    assert_eq!(registry.len(), 40);
 }
 
 #[test]
@@ -244,9 +244,9 @@ fn builtin_registry_keys_match_order() {
 }
 
 #[test]
-fn builtin_order_has_39_entries() {
+fn builtin_order_has_40_entries() {
     let order = DefaultsModule::builtin_order();
-    assert_eq!(order.len(), 39);
+    assert_eq!(order.len(), 40);
 }
 
 #[test]
@@ -287,7 +287,7 @@ fn builtin_registry_factories_produce_correct_ids() {
 #[test]
 fn create_modules_filtered_all_enabled() {
     let modules = DefaultsModule::create_modules_filtered(|_| true);
-    assert_eq!(modules.len(), 39);
+    assert_eq!(modules.len(), 40);
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn create_modules_filtered_preserves_order() {
 #[test]
 fn create_modules_filtered_disable_one() {
     let modules = DefaultsModule::create_modules_filtered(|id| id != "tetromino");
-    assert_eq!(modules.len(), 38);
+    assert_eq!(modules.len(), 39);
     assert!(modules.iter().all(|m| m.id().as_str() != "tetromino"));
 }
 

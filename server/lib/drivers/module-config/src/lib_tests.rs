@@ -827,3 +827,88 @@ fn parse_large_extensions_collection() {
     // Every 3rd extension (0, 3, 6, ..., 99) is disabled: ceil(100/3) = 34
     assert_eq!(disabled.len(), 34);
 }
+
+// ============================================================================
+// Builtin Manifest (#620)
+// ============================================================================
+
+const BUILTINS_TOML: &str = r#"
+[[modules]]
+id = "undo"
+tier = 1
+library = "reovim_module_undo"
+
+[[modules]]
+id = "vim"
+tier = 3
+library = "reovim_module_vim"
+
+[[modules]]
+id = "lsp"
+tier = 4
+library = "reovim_module_lsp"
+"#;
+
+#[test]
+fn test_builtin_manifest_parse() {
+    let manifest = BuiltinManifest::parse(BUILTINS_TOML).unwrap();
+    assert_eq!(manifest.modules.len(), 3);
+    assert_eq!(manifest.modules[0].id, "undo");
+    assert_eq!(manifest.modules[0].tier, 1);
+    assert_eq!(manifest.modules[0].library, "reovim_module_undo");
+}
+
+#[test]
+fn test_builtin_manifest_module_ids() {
+    let manifest = BuiltinManifest::parse(BUILTINS_TOML).unwrap();
+    assert_eq!(manifest.module_ids(), vec!["undo", "vim", "lsp"]);
+}
+
+#[test]
+fn test_builtin_manifest_filtered() {
+    let manifest = BuiltinManifest::parse(BUILTINS_TOML).unwrap();
+    let ids = manifest.module_ids_filtered(|id| id != "vim");
+    assert_eq!(ids, vec!["undo", "lsp"]);
+}
+
+#[test]
+fn test_builtin_manifest_get() {
+    let manifest = BuiltinManifest::parse(BUILTINS_TOML).unwrap();
+    let entry = manifest.get("vim").unwrap();
+    assert_eq!(entry.tier, 3);
+    assert_eq!(entry.library, "reovim_module_vim");
+    assert!(manifest.get("nonexistent").is_none());
+}
+
+#[test]
+fn test_builtin_manifest_library_name() {
+    let manifest = BuiltinManifest::parse(BUILTINS_TOML).unwrap();
+    assert_eq!(manifest.library_name("lsp"), Some("reovim_module_lsp"));
+    assert!(manifest.library_name("nonexistent").is_none());
+}
+
+#[test]
+fn test_builtin_manifest_parse_invalid() {
+    let result = BuiltinManifest::parse("not valid toml [[[]]]");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_builtin_manifest_load_real_file() {
+    // Test against the actual builtins.toml shipped with the project
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data/builtins.toml");
+    if path.exists() {
+        let manifest = BuiltinManifest::load(&path).unwrap();
+        assert!(manifest.modules.len() >= 39);
+        // Verify all entries have valid tiers
+        for entry in &manifest.modules {
+            assert!(
+                (1..=4).contains(&entry.tier),
+                "Invalid tier {} for module {}",
+                entry.tier,
+                entry.id
+            );
+            assert!(!entry.library.is_empty());
+        }
+    }
+}

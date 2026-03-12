@@ -6,6 +6,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Extension manager phases 10-12 (#562)**: Four new crates completing the extension manager
+  system. Phase 10 (#621): `reovim-driver-module-registry` with `ModuleManifest` parser for
+  third-party `module.toml` files, `ModuleSource` (Git/Path) enum for install provenance, and
+  `InstalledModules` JSON persistence for tracking installed modules. Phase 10.5 (#622):
+  `reovim-module-module-manager` providing `:Modules` ex-command with LazyVim-style output
+  showing loaded/disabled/failed modules and dependency issues via `ModuleLoadReport` from
+  `ServiceRegistry`. Phase 11 (#623): `reovim-module-emacs` skeleton personality module
+  providing `MODE_MANAGEMENT` capability and emacs keybindings (C-f/b/p/n/a/e) that reuse
+  `editor::ids` command constants, demonstrating personality = keybinding vocabulary. Phase 12
+  (#624): `reovim-driver-extension-loader` for TUI `.so` dynamic loading via `libloading` with
+  `probe_extension_kind()` and `load_extension()` APIs; `declare_extension!` proc macro in
+  `reovim-module-macros` generating FFI entry points with double-box fat-pointer pattern.
+  Also adds `BuiltinManifest` filtering to module-config, `ModuleLoadReport` type to kernel API,
+  and wires module-manager into the 40-module defaults bundle.
+
 - **Module/config/setting separation and integration (#610)**: Unifies three disconnected
   systems -- personality manifests (#585), user config (#586), and kernel OptionRegistry --
   into a coherent three-layer architecture (L1 loading, L2 config, L3 options). Phase 1

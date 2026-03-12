@@ -30,6 +30,7 @@ members = [
     "server/lib/drivers/module-config",
     "server/lib/drivers/module-loader",
     "server/lib/drivers/git",
+    "server/lib/drivers/module-registry",
 
     # Server modules
     "server/modules/vim",
@@ -76,11 +77,14 @@ members = [
     "server/modules/git-signs",
     "server/modules/git-statusline",
     "server/modules/git-blame",
+    "server/modules/module-manager",
+    "server/modules/emacs",
 
     # Client layer - TUI
     "clients/tui",
     "clients/tui/lib/drivers/tui",
     "clients/tui/lib/drivers/display",
+    "clients/tui/lib/drivers/extension-loader",
 
     # Client extensions - TUI
     "clients/tui/extensions/which-key",
@@ -218,10 +222,12 @@ reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.
 reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.10.0-dev" }
 reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.10.0-dev" }
 reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.10.0-dev" }
+reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }
 reovim-driver-display = { path = "./clients/tui/lib/drivers/display", version = "0.10.0-dev" }
+reovim-driver-extension-loader = { path = "./clients/tui/lib/drivers/extension-loader", version = "0.10.0-dev" }
 
 # Client crates
 reovim-client-tui = { path = "./clients/tui", version = "0.10.0-dev" }
@@ -281,6 +287,8 @@ reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version 
 reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.10.0-dev" }
 reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.10.0-dev" }
 reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10.0-dev" }
+reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.10.0-dev" }
+reovim-module-emacs = { path = "./server/modules/emacs", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

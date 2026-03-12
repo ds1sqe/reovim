@@ -207,6 +207,28 @@ pub trait Module: Send + Sync + 'static {
         &[]
     }
 
+    /// Version constraints on dependencies (#619).
+    ///
+    /// Returns `(module_id, version_range_string)` pairs declaring minimum
+    /// version requirements on specific dependencies. The version range
+    /// follows Cargo semver syntax:
+    ///
+    /// - `"^1.2.3"` — compatible (same major, `>=1.2.3, <2.0.0`)
+    /// - `"=1.2.3"` — exact match only
+    /// - `">=1.2.3"` — at least this version
+    /// - `"1.2.3"` — shorthand for `"^1.2.3"`
+    ///
+    /// Constraints are checked after dependency resolution but before init.
+    /// Violations are logged and the constrained module may be skipped.
+    ///
+    /// # Kernel Purity
+    ///
+    /// The kernel carries opaque `(ModuleId, &'static str)` pairs.
+    /// The depgraph driver parses and evaluates the version range strings.
+    fn version_constraints(&self) -> Vec<(ModuleId, &'static str)> {
+        Vec::new()
+    }
+
     // ========================================================================
     // Lifecycle (Linux: module_init / module_exit)
     // ========================================================================

@@ -341,6 +341,14 @@ impl ModuleHandle {
             .map_or(&[] as &[&'static str], |module| module.requires())
     }
 
+    /// Get version constraints on dependencies (#619).
+    #[must_use]
+    pub fn version_constraints(&self) -> Vec<(ModuleId, &'static str)> {
+        self.static_module
+            .as_ref()
+            .map_or_else(Vec::new, |module| module.version_constraints())
+    }
+
     /// Check if module supports hot reload.
     #[must_use]
     #[allow(unsafe_code)]
