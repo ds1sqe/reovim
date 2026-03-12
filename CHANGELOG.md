@@ -110,6 +110,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
   cache.
 
+- **Mock clipboard provider (#576)**: Add `MockClipboardProvider` to
+  `reovim-driver-clipboard` for headless CI testing. In-memory `ClipboardProvider`
+  implementation using `RwLock<String>` that works without a display server.
+  8 new driver tests, 5 new module-level mock tests. Display-dependent tests
+  (1 unit, 6 integration) remain `#[ignore]` with tracking reference.
+
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
   `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and

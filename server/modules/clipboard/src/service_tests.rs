@@ -1,4 +1,67 @@
-use super::*;
+use {
+    super::*,
+    reovim_driver_clipboard::MockClipboardProvider,
+};
+
+// ============================================================================
+// Mock-based tests (run in CI without display)
+// ============================================================================
+
+#[test]
+fn mock_clipboard_roundtrip() {
+    let provider = MockClipboardProvider::new();
+    let test_text = "reovim clipboard test";
+    provider.copy_to_clipboard(test_text).unwrap();
+    let pasted = provider.paste_from_clipboard().unwrap();
+    assert_eq!(pasted, Some(test_text.to_string()));
+}
+
+#[test]
+fn mock_clipboard_selection_roundtrip() {
+    let provider = MockClipboardProvider::new();
+    provider.copy_to_selection("selection text").unwrap();
+    let pasted = provider.paste_from_selection().unwrap();
+    assert_eq!(pasted, Some("selection text".to_string()));
+}
+
+#[test]
+fn mock_clipboard_empty_paste_returns_none() {
+    let provider = MockClipboardProvider::new();
+    assert!(provider.paste_from_clipboard().unwrap().is_none());
+    assert!(provider.paste_from_selection().unwrap().is_none());
+}
+
+#[test]
+fn mock_clipboard_overwrite() {
+    let provider = MockClipboardProvider::new();
+    provider.copy_to_clipboard("first").unwrap();
+    provider.copy_to_clipboard("second").unwrap();
+    assert_eq!(
+        provider.paste_from_clipboard().unwrap(),
+        Some("second".to_string())
+    );
+}
+
+#[test]
+fn mock_clipboard_register_and_use() {
+    use reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry};
+
+    let registry = ClipboardProviderRegistry::new();
+    let mock = std::sync::Arc::new(MockClipboardProvider::new());
+    registry.register(ClipboardKey::Default, mock);
+
+    let provider = registry.get(&ClipboardKey::Default).unwrap();
+    assert!(provider.clipboard_available());
+    provider.copy_to_clipboard("via registry").unwrap();
+    assert_eq!(
+        provider.paste_from_clipboard().unwrap(),
+        Some("via registry".to_string())
+    );
+}
+
+// ============================================================================
+// Real system clipboard test (display-dependent, ignored in CI)
+// ============================================================================
 
 // Note: System clipboard tests are skipped in CI as they require a display
 // Run locally with: cargo test -p reovim-module-clipboard -- --ignored
