@@ -416,3 +416,131 @@ async fn test_dot_repeats_delete() {
         .await;
     result.assert_buffer_eq("four");
 }
+
+// ============================================================================
+// Health Check Tests (#610)
+// ============================================================================
+
+/// Test `:checkhealth` shows all 8 diagnostic sections including new #610 ones.
+#[tokio::test]
+async fn test_checkhealth_has_all_sections() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    // All 8 sections from collect_all() (#610 added Modules, Dependencies, Configuration)
+    result.assert_buffer_contains("=== System ===");
+    result.assert_buffer_contains("=== Modules ===");
+    result.assert_buffer_contains("=== Dependencies ===");
+    result.assert_buffer_contains("=== Configuration ===");
+    result.assert_buffer_contains("=== Language Servers ===");
+    result.assert_buffer_contains("=== Syntax Highlighting ===");
+    result.assert_buffer_contains("=== Clipboard ===");
+    result.assert_buffer_contains("=== Options ===");
+}
+
+/// Test `:checkhealth` shows loaded modules from `ModuleLoadReport`.
+#[tokio::test]
+async fn test_checkhealth_shows_loaded_modules() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    // Key modules should show as loaded
+    result.assert_buffer_contains("[OK] vim: loaded");
+    result.assert_buffer_contains("[OK] editor: loaded");
+    result.assert_buffer_contains("[OK] completion: loaded");
+    result.assert_buffer_contains("[OK] health-check: loaded");
+}
+
+/// Test `:checkhealth` shows dependencies are satisfied.
+#[tokio::test]
+async fn test_checkhealth_dependencies_satisfied() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    result.assert_buffer_contains("all satisfied");
+}
+
+/// Test `:checkhealth` Configuration section shows config path when
+/// `REOVIM_CONFIG_DIR` env var is set and `modules.toml` exists.
+#[tokio::test]
+async fn test_checkhealth_config_path_with_env_override() {
+    // Create a temp config dir with a modules.toml
+    let config_dir = format!("/tmp/reovim-e2e-610-{}", std::process::id());
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(format!("{config_dir}/modules.toml"), "[modules.completion]\nenabled = true\n")
+        .unwrap();
+
+    let result = IntegrationTest::with_env(&[("REOVIM_CONFIG_DIR", &config_dir)])
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    // Configuration section should show the config file path
+    result.assert_buffer_contains("=== Configuration ===");
+    result.assert_buffer_contains("[OK] Config file");
+    result.assert_buffer_contains("modules.toml");
+
+    std::fs::remove_dir_all(&config_dir).ok();
+}
+
+/// Test that completion config consumer applies pumheight override from modules.toml.
+/// Verifies the full L2 -> L3 pipeline: config file -> `ModuleConfigStore` -> option override.
+#[tokio::test]
+async fn test_config_consumer_pumheight_override() {
+    // Create config with pumheight=25
+    let config_dir = format!("/tmp/reovim-e2e-610-ph-{}", std::process::id());
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        format!("{config_dir}/modules.toml"),
+        "[modules.completion]\nenabled = true\n\n[modules.completion.settings]\npumheight = 25\n",
+    )
+    .unwrap();
+
+    // Run :checkhealth which shows "Changed from defaults" if options were overridden
+    let result = IntegrationTest::with_env(&[("REOVIM_CONFIG_DIR", &config_dir)])
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    // Options section should show that defaults were changed (pumheight=25 vs default 10)
+    result.assert_buffer_contains("=== Options ===");
+    result.assert_buffer_contains("Changed from defaults");
+
+    std::fs::remove_dir_all(&config_dir).ok();
+}
+
+/// Test `:checkhealth` shows options count.
+#[tokio::test]
+async fn test_checkhealth_options_section() {
+    let result = IntegrationTest::new()
+        .await
+        .with_buffer("test")
+        .send_keys(":checkhealth<CR>")
+        .with_delay(200)
+        .run()
+        .await;
+
+    result.assert_buffer_contains("=== Options ===");
+    result.assert_buffer_contains("Options registered");
+}
