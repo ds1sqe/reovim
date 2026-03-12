@@ -52,3 +52,15 @@ mod store;
 pub mod types;
 
 pub use {provider::GitProvider, store::GitProviderStore};
+
+#[cfg(test)]
+#[path = "provider_tests.rs"]
+mod provider_tests;
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod store_tests;
+
+#[cfg(test)]
+#[path = "types_tests.rs"]
+mod types_tests;

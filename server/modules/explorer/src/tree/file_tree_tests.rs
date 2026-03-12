@@ -283,7 +283,7 @@ fn test_tree_clone() {
     let tree = FileTree::new(PathBuf::from("/root"), &vfs).unwrap();
     let cloned = tree.clone();
     assert_eq!(cloned.root_path(), tree.root_path());
-    assert_eq!(cloned.flatten(true).len(), tree.flatten(true, true).len());
+    assert_eq!(cloned.flatten(true, true).len(), tree.flatten(true, true).len());
 }
 
 #[test]
