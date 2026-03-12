@@ -72,6 +72,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `arduino/setup-protoc@v3`. Merge fmt into lint job, split MSRV to non-blocking
   parallel job checking key crates only (`reovim-app`, `reovim-kernel`, `reovim-server`).
 
+- **CI pipeline parallelism (#588)**: Remove lint gate from build jobs so builds
+  start immediately in parallel with lint (~70s critical path savings). Merge
+  doc-tests into stable-checks job (shares MSRV toolchain, saves one runner).
+  Extract `setup-coverage` composite action for DRY nightly+llvm-cov+protoc setup
+  across 5 coverage jobs. Test jobs still require lint to pass before running.
+
+- **CI test speed optimization (#588)**: Shard MC/DC unit tests across 2 runners
+  using nextest `--partition count:N/2`, reducing critical path by ~40s. Add
+  `.config/nextest.toml` with default and CI profiles (slow-timeout, fail-fast).
+  Split monolithic test+report steps for timing visibility. Set
+  `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
+  cache.
+
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
   `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and
