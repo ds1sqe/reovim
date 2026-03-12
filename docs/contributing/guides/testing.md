@@ -79,8 +79,8 @@ re-exporting submodules.
 | Directory, tests >= 500 lines | `tests/` subdir mirroring source | `#[cfg(test)] mod tests;` in `mod.rs` |
 | E2E / cross-module | Cargo `tests/` directory | Automatic by Cargo |
 
-> **Note:** Migration from inline tests to separated files is in progress.
-> Existing inline tests will be migrated module-by-module in future PRs.
+Enforced by `scripts/check-test-layout.sh` which detects inline test blocks.
+Run `./scripts/check-test-layout.sh --fix` for guidance on fixing violations.
 
 ### Shared Test Helpers
 

@@ -170,15 +170,14 @@ async fn test_get_cursor_with_buffer() {
 }
 
 #[tokio::test]
-async fn test_get_options_unimplemented() {
+async fn test_get_options_returns_ok() {
     let registry = test_registry();
     let service = StateServiceImpl::new(registry, SessionId::new("test"));
 
     let request = Request::new(GetOptionsRequest { names: vec![] });
     let response = service.get_options(request).await;
 
-    assert!(response.is_err());
-    assert_eq!(response.unwrap_err().code(), tonic::Code::Unimplemented);
+    assert!(response.is_ok());
 }
 
 #[tokio::test]
@@ -568,10 +567,8 @@ async fn test_get_selection_with_char_selection() {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Set selection for "hello" (0,0 to 0,5 exclusive)
-            window.selection = Some(Selection::character(
-                KernelPosition::new(0, 0),
-                KernelPosition::new(0, 5),
-            ));
+            window.selection =
+                Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
         }
     });
 
@@ -722,10 +719,8 @@ async fn test_get_selection_reverse() {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
             // Selection from column 2 to column 5 (already normalized)
-            window.selection = Some(Selection::character(
-                KernelPosition::new(0, 2),
-                KernelPosition::new(0, 5),
-            ));
+            window.selection =
+                Some(Selection::character(KernelPosition::new(0, 2), KernelPosition::new(0, 5)));
         }
     });
 
@@ -1579,10 +1574,8 @@ async fn test_selection_isolation_per_client() {
     session.update_client_state(client_a, |state| {
         if let Some(window) = state.windows.active_mut() {
             window.viewport = Viewport::new(80, 24);
-            window.selection = Some(Selection::character(
-                KernelPosition::new(0, 0),
-                KernelPosition::new(0, 5),
-            ));
+            window.selection =
+                Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
         }
     });
 

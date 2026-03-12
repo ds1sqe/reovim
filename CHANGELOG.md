@@ -51,6 +51,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   only implementation code. Uses `#[path]` technique for 7 files with private
   item access. All 2540 module tests pass.
 
+- **Test layout enforcement (#569)**: Add `scripts/check-test-layout.sh` to
+  detect inline `#[cfg(test)] mod tests { ... }` blocks that violate the test
+  organization standard. Integrated into `scripts/check.sh` as `test-layout`
+  step (runs after fmt, before clippy/tests). Migrated final 4 inline test
+  blocks from upstream code (bootstrap, main, set command, picker-options)
+  using `#[path]` technique. Zero violations across the workspace.
+
 - **Parallel check.sh (#588)**: Rewrite `scripts/check.sh` with parallel execution
   (clippy and tests run concurrently using separate CARGO_TARGET_DIR), CLI modes
   (`--quick`, `--sequential`, `--clean-cache`), structured report generation

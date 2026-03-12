@@ -66,7 +66,7 @@ fn backspace_metadata() {
 #[test]
 fn command_handlers_not_empty() {
     let handlers = command_handlers();
-    assert_eq!(handlers.len(), 9);
+    assert_eq!(handlers.len(), 10);
 }
 
 #[test]

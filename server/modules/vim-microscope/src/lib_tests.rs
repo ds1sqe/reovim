@@ -52,7 +52,7 @@ fn init_registers_keybindings() {
 #[test]
 fn keybindings_count() {
     let module = VimMicroscopeModule::new();
-    assert_eq!(module.keybindings().len(), 4);
+    assert_eq!(module.keybindings().len(), 5);
 }
 
 #[test]
@@ -90,9 +90,7 @@ fn keybindings_have_descriptions() {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn test_module_context(
-    services: Arc<reovim_kernel::api::v1::ServiceRegistry>,
-) -> ModuleContext {
+fn test_module_context(services: Arc<reovim_kernel::api::v1::ServiceRegistry>) -> ModuleContext {
     ModuleContext::new(
         reovim_kernel::api::v1::KernelContext::default(),
         services,

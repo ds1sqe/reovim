@@ -20,7 +20,7 @@ fn test_defaults_has_dependencies() {
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
-    // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+    // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -30,8 +30,8 @@ fn test_defaults_has_dependencies() {
     // Explorer (1): explorer
     // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
-    // Total: 34 modules
-    assert_eq!(deps.len(), 34);
+    // Total: 35 modules
+    assert_eq!(deps.len(), 35);
 }
 
 #[test]
@@ -41,7 +41,7 @@ fn test_create_modules() {
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
-    // Picker providers (4): picker-files, picker-buffers, picker-commands, picker-grep
+    // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -51,8 +51,8 @@ fn test_create_modules() {
     // Explorer (1): explorer
     // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
-    // Total: 33 modules
-    assert_eq!(modules.len(), 34);
+    // Total: 35 modules
+    assert_eq!(modules.len(), 35);
 }
 
 #[test]
