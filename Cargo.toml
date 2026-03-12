@@ -75,6 +75,9 @@ members = [
     "server/modules/picker-git-log",
     "server/modules/picker-git-status",
     "server/modules/picker-git-stash",
+    "server/modules/git-signs",
+    "server/modules/git-statusline",
+    "server/modules/git-blame",
 
     # Client layer - TUI
     "clients/tui",
@@ -271,6 +274,9 @@ reovim-picker-git-branches = { path = "./server/modules/picker-git-branches", ve
 reovim-picker-git-log = { path = "./server/modules/picker-git-log", version = "0.10.0-dev" }
 reovim-picker-git-status = { path = "./server/modules/picker-git-status", version = "0.10.0-dev" }
 reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version = "0.10.0-dev" }
+reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.10.0-dev" }
+reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.10.0-dev" }
+reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

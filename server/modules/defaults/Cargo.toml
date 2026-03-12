@@ -45,6 +45,18 @@ reovim-module-microscope = { workspace = true }
 # Explorer module
 reovim-module-explorer = { workspace = true }
 
+# Git provider and picker modules (#530)
+reovim-module-git = { workspace = true }
+reovim-picker-git-branches = { workspace = true }
+reovim-picker-git-log = { workspace = true }
+reovim-picker-git-stash = { workspace = true }
+reovim-picker-git-status = { workspace = true }
+
+# Git consumer modules (#530)
+reovim-module-git-signs = { workspace = true }
+reovim-module-git-statusline = { workspace = true }
+reovim-module-git-blame = { workspace = true }
+
 # Syntax highlighting modules
 reovim-module-treesitter-rust = { workspace = true }
 reovim-module-treesitter-markdown = { workspace = true }

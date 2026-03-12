@@ -16,11 +16,13 @@ fn test_defaults_module_name() {
 fn test_defaults_has_dependencies() {
     let module = DefaultsModule::new();
     let deps = module.dependencies();
+    // Git provider and consumers (4): git, git-signs, git-statusline, git-blame
     // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
+    // Git picker providers (4): picker-git-branches, picker-git-log, picker-git-stash, picker-git-status
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -32,18 +34,20 @@ fn test_defaults_has_dependencies() {
     // Tetromino (1): tetromino
     // Profiles (1): profiles
     // Health-check (1): health-check
-    // Total: 37 modules
-    assert_eq!(deps.len(), 37);
+    // Total: 45 modules
+    assert_eq!(deps.len(), 45);
 }
 
 #[test]
 fn test_create_modules() {
     let modules = DefaultsModule::create_modules();
+    // Git provider and consumers (4): git, git-signs, git-statusline, git-blame
     // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
+    // Git picker providers (4): picker-git-branches, picker-git-log, picker-git-stash, picker-git-status
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
@@ -55,8 +59,8 @@ fn test_create_modules() {
     // Tetromino (1): tetromino
     // Profiles (1): profiles
     // Health-check (1): health-check
-    // Total: 37 modules
-    assert_eq!(modules.len(), 37);
+    // Total: 45 modules
+    assert_eq!(modules.len(), 45);
 }
 
 #[test]
@@ -157,6 +161,22 @@ fn test_dependencies_contain_lsp_module() {
     assert!(dep_strs.contains(&"lsp"));
     assert!(dep_strs.contains(&"lsp-navigation"));
     assert!(dep_strs.contains(&"vim-lsp"));
+}
+
+#[test]
+fn test_dependencies_contain_git_modules() {
+    let module = DefaultsModule::new();
+    let deps = module.dependencies();
+    let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
+
+    assert!(dep_strs.contains(&"git"));
+    assert!(dep_strs.contains(&"git-signs"));
+    assert!(dep_strs.contains(&"git-statusline"));
+    assert!(dep_strs.contains(&"git-blame"));
+    assert!(dep_strs.contains(&"picker-git-branches"));
+    assert!(dep_strs.contains(&"picker-git-log"));
+    assert!(dep_strs.contains(&"picker-git-stash"));
+    assert!(dep_strs.contains(&"picker-git-status"));
 }
 
 #[test]

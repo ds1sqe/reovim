@@ -72,6 +72,21 @@ pub struct StashEntry {
     pub message: String,
 }
 
+/// A single blame entry for a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlameEntry {
+    /// Line number (1-indexed, as git outputs).
+    pub line: usize,
+    /// Abbreviated commit hash.
+    pub short_hash: String,
+    /// Author name.
+    pub author: String,
+    /// Commit date (ISO 8601 or relative).
+    pub date: String,
+    /// Commit summary (first line of message).
+    pub summary: String,
+}
+
 /// A single diff hunk header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiffHunk {

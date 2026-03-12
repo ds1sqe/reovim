@@ -21,14 +21,21 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   max 64 chars) and VFS-based I/O for testability. Integrated into the defaults module bundle.
 
 - **Git provider architecture (#530)**: Shared provider pattern for cross-cutting
-  git services. Phase A: `reovim-driver-git` crate defines `GitProvider` trait (6 methods:
-  `current_branch`, `branches`, `status`, `log`, `stash_list`, `diff_hunks`) with typed
-  data structs and `GitProviderStore` for `ServiceRegistry` integration.
+  git services. Phase A: `reovim-driver-git` crate defines `GitProvider` trait (7 methods:
+  `current_branch`, `branches`, `status`, `log`, `stash_list`, `diff_hunks`, `blame`) with
+  typed data structs and `GitProviderStore` for `ServiceRegistry` integration.
   `reovim-module-git` provides `SubprocessGitProvider` implementation via `git` CLI.
   Phase B: 4 picker modules consuming `GitProvider` -- `picker-git-branches` (static,
   lists branches with current marker), `picker-git-log` (dynamic, query-filters commits),
   `picker-git-status` (static, opens changed files), `picker-git-stash` (static, lists
-  stash entries). 53 tests across Phase B modules.
+  stash entries). Phase C: 3 consumer modules -- `git-signs` (gutter annotations for
+  add/change/delete diff hunks), `git-statusline` (branch name statusline component),
+  `git-blame` (on-demand blame annotations with toggle and per-path caching).
+  `GutterRenderer` changed to interior mutability (`RwLock`) for multi-module registration.
+  `AnnotationContext` extended with `file_path` for git-aware sources.
+  Phase D: `CachedGitProvider` TTL-based caching wrapper (2s default) for
+  `current_branch`, `status`, `diff_hunks`, and `blame`; pass-through for `branches`,
+  `log`, `stash_list`.
 
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,

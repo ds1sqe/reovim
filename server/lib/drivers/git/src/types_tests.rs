@@ -82,6 +82,22 @@ fn stash_entry_debug_clone_eq() {
 }
 
 #[test]
+fn blame_entry_debug_clone_eq() {
+    let entry = BlameEntry {
+        line: 1,
+        short_hash: "abc1234".to_owned(),
+        author: "Alice".to_owned(),
+        date: "2025-01-15".to_owned(),
+        summary: "feat: add feature".to_owned(),
+    };
+    let cloned = entry.clone();
+    assert_eq!(entry, cloned);
+    let debug = format!("{entry:?}");
+    assert!(debug.contains("Alice"));
+    assert!(debug.contains("abc1234"));
+}
+
+#[test]
 fn diff_hunk_debug_copy_eq() {
     let hunk = DiffHunk {
         old_start: 10,

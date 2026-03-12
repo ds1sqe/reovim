@@ -12,12 +12,14 @@
 //! This module owns the HOW (subprocess `git` CLI). The driver crate
 //! (`reovim-driver-git`) owns the WHAT (trait + typed data structs).
 
+mod cache;
 pub mod subprocess;
 
 use {
+    cache::CachedGitProvider,
     reovim_driver_git::GitProviderStore,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
-    std::sync::Arc,
+    std::{sync::Arc, time::Duration},
     subprocess::SubprocessGitProvider,
 };
 
@@ -56,7 +58,8 @@ impl Module for GitModule {
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let store = ctx.services.get_or_create::<GitProviderStore>();
-        store.register(Arc::new(SubprocessGitProvider::new()));
+        let provider = CachedGitProvider::new(SubprocessGitProvider::new(), Duration::from_secs(2));
+        store.register(Arc::new(provider));
         ProbeResult::Success
     }
 

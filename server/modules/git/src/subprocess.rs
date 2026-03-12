@@ -7,7 +7,7 @@
 use {
     reovim_driver_git::{
         GitProvider,
-        types::{BranchInfo, DiffHunk, FileStatus, LogEntry, StashEntry, StatusEntry},
+        types::{BlameEntry, BranchInfo, DiffHunk, FileStatus, LogEntry, StashEntry, StatusEntry},
     },
     std::{
         path::{Path, PathBuf},
@@ -151,6 +151,17 @@ impl GitProvider for SubprocessGitProvider {
             .collect()
     }
 
+    fn blame(&self, path: &Path) -> Vec<BlameEntry> {
+        let path_str = path.to_string_lossy();
+        let cwd = path.parent().unwrap_or_else(|| Path::new("."));
+
+        let Some(output) = run_git(cwd, &["blame", "--porcelain", &path_str]) else {
+            return vec![];
+        };
+
+        parse_porcelain_blame(&output)
+    }
+
     fn diff_hunks(&self, path: &Path) -> Vec<DiffHunk> {
         let path_str = path.to_string_lossy();
         let cwd = path.parent().unwrap_or_else(|| Path::new("."));
@@ -171,7 +182,11 @@ impl GitProvider for SubprocessGitProvider {
 /// Returns `None` if the output is empty (e.g. bare repo).
 pub(crate) fn parse_branch_name(output: &str) -> Option<String> {
     let branch = output.trim().to_owned();
-    if branch.is_empty() { None } else { Some(branch) }
+    if branch.is_empty() {
+        None
+    } else {
+        Some(branch)
+    }
 }
 
 /// Run a git command and return stdout on success.
@@ -223,6 +238,55 @@ pub(crate) fn parse_hunk_header(line: &str) -> Option<DiffHunk> {
         new_start,
         new_count,
     })
+}
+
+/// Parse `git blame --porcelain` output into `BlameEntry` list.
+///
+/// Porcelain format groups: header line (hash, orig line, final line, count),
+/// followed by key-value metadata lines, then a tab-prefixed content line.
+pub(crate) fn parse_porcelain_blame(output: &str) -> Vec<BlameEntry> {
+    let mut entries = Vec::new();
+    let mut current_hash = String::new();
+    let mut current_line: usize = 0;
+    let mut author = String::new();
+    let mut date = String::new();
+    let mut summary = String::new();
+
+    for line in output.lines() {
+        if line.starts_with('\t') {
+            // Content line — marks end of this entry
+            let short_hash = if current_hash.len() >= 7 {
+                current_hash[..7].to_owned()
+            } else {
+                current_hash.clone()
+            };
+            entries.push(BlameEntry {
+                line: current_line,
+                short_hash,
+                author: std::mem::take(&mut author),
+                date: std::mem::take(&mut date),
+                summary: std::mem::take(&mut summary),
+            });
+        } else if let Some(rest) = line.strip_prefix("author ") {
+            rest.clone_into(&mut author);
+        } else if let Some(rest) = line.strip_prefix("author-time ") {
+            rest.clone_into(&mut date);
+        } else if let Some(rest) = line.strip_prefix("summary ") {
+            rest.clone_into(&mut summary);
+        } else {
+            // Try parsing as header: <hash> <orig-line> <final-line> [<count>]
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 3
+                && parts[0].len() >= 7
+                && parts[0].chars().all(|c| c.is_ascii_hexdigit())
+            {
+                parts[0].clone_into(&mut current_hash);
+                current_line = parts[2].parse().unwrap_or(0);
+            }
+        }
+    }
+
+    entries
 }
 
 /// Parse a range like "10,3" or "10" (count defaults to 1).

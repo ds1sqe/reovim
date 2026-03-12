@@ -1,10 +1,7 @@
 use super::subprocess::*;
 
 use {
-    reovim_driver_git::{
-        GitProvider,
-        types::FileStatus,
-    },
+    reovim_driver_git::{GitProvider, types::FileStatus},
     std::{
         path::{Path, PathBuf},
         process::Command,
@@ -254,4 +251,66 @@ fn parse_branch_name_nonempty() {
 fn parse_branch_name_empty() {
     assert!(parse_branch_name("").is_none());
     assert!(parse_branch_name("  \n").is_none());
+}
+
+// ===== Blame parsing tests =====
+
+#[test]
+fn parse_porcelain_blame_single_entry() {
+    let output = "\
+abc1234567890abcdef1234567890abcdef12345678 1 1 1\n\
+author Alice\n\
+author-mail <alice@example.com>\n\
+author-time 1700000000\n\
+author-tz +0000\n\
+committer Alice\n\
+committer-mail <alice@example.com>\n\
+committer-time 1700000000\n\
+committer-tz +0000\n\
+summary feat: initial commit\n\
+filename src/main.rs\n\
+\tlet x = 42;\n";
+    let entries = parse_porcelain_blame(output);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].line, 1);
+    assert_eq!(entries[0].short_hash, "abc1234");
+    assert_eq!(entries[0].author, "Alice");
+    assert_eq!(entries[0].date, "1700000000");
+    assert_eq!(entries[0].summary, "feat: initial commit");
+}
+
+#[test]
+fn parse_porcelain_blame_multiple_entries() {
+    let output = "\
+aaaaaaa000000000000000000000000000000000000 1 1 1\n\
+author Alice\n\
+author-time 1700000000\n\
+summary first line\n\
+filename f.rs\n\
+\tline one\n\
+bbbbbbb111111111111111111111111111111111111 1 2 1\n\
+author Bob\n\
+author-time 1700001000\n\
+summary second line\n\
+filename f.rs\n\
+\tline two\n";
+    let entries = parse_porcelain_blame(output);
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].author, "Alice");
+    assert_eq!(entries[0].line, 1);
+    assert_eq!(entries[1].author, "Bob");
+    assert_eq!(entries[1].line, 2);
+}
+
+#[test]
+fn parse_porcelain_blame_empty_output() {
+    let entries = parse_porcelain_blame("");
+    assert!(entries.is_empty());
+}
+
+#[test]
+fn blame_nonexistent_file() {
+    let provider = SubprocessGitProvider::new();
+    let result = provider.blame(Path::new("/nonexistent/path/file.rs"));
+    assert!(result.is_empty());
 }

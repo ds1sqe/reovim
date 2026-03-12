@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use crate::types::{BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry};
+use crate::types::{BlameEntry, BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry};
 
 /// Trait contract for git data access.
 ///
@@ -34,4 +34,12 @@ pub trait GitProvider: Send + Sync {
 
     /// Get diff hunks for a specific file against HEAD.
     fn diff_hunks(&self, path: &Path) -> Vec<DiffHunk>;
+
+    /// Get blame information for a file.
+    ///
+    /// Returns blame entries for each line in the file.
+    /// Returns empty vec if not in a git repo or file is untracked.
+    fn blame(&self, _path: &Path) -> Vec<BlameEntry> {
+        vec![]
+    }
 }
