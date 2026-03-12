@@ -75,37 +75,46 @@ impl CommandHandler for EditCommand {
             }
         };
 
-        // Get buffer and set content
-        let kernel = runtime.kernel();
-        let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
-            return CommandResult::Error(format!(
-                "execution failed: Buffer {} not found",
-                buffer_id.as_usize()
-            ));
-        };
-
-        // Update buffer content
+        // Get buffer and set content, then emit events.
+        // Scope the immutable `runtime.kernel()` borrow so we can call
+        // `record_buffer_modified` (which needs `&mut self`) afterwards.
         {
-            let mut buffer = buffer_arc.write();
-            buffer.set_content(&content);
-            buffer.set_file_path(Some(filename.to_string()));
-            buffer.set_modified(false);
-        }
+            let kernel = runtime.kernel();
+            let Some(buffer_arc) = kernel.buffers.get(buffer_id) else {
+                return CommandResult::Error(format!(
+                    "execution failed: Buffer {} not found",
+                    buffer_id.as_usize()
+                ));
+            };
 
-        // Emit FileOpened event for subscribers (LSP, syntax, etc.)
-        let buffer_id_raw = buffer_id.as_usize() as u64;
-        kernel.event_bus.emit(FileOpened {
-            buffer_id: buffer_id_raw,
-            path: filename.to_string(),
-        });
+            // Update buffer content
+            {
+                let mut buffer = buffer_arc.write();
+                buffer.set_content(&content);
+                buffer.set_file_path(Some(filename.to_string()));
+                buffer.set_modified(false);
+            }
 
-        // Emit FileTypeChanged if we can detect the language from the extension
-        if let Some(file_type) = file_type_from_extension(filename) {
-            kernel.event_bus.emit(FileTypeChanged {
+            // Emit FileOpened event for subscribers (LSP, syntax, etc.)
+            let buffer_id_raw = buffer_id.as_usize() as u64;
+            kernel.event_bus.emit(FileOpened {
                 buffer_id: buffer_id_raw,
-                file_type: file_type.to_string(),
+                path: filename.to_string(),
             });
+
+            // Emit FileTypeChanged if we can detect the language from the extension
+            if let Some(file_type) = file_type_from_extension(filename) {
+                kernel.event_bus.emit(FileTypeChanged {
+                    buffer_id: buffer_id_raw,
+                    file_type: file_type.to_string(),
+                });
+            }
         }
+
+        // Record buffer modification so the notification pipeline emits
+        // BufferModified to TUI clients, triggering a buffer cache refresh
+        // and viewport redraw.
+        runtime.record_buffer_modified(buffer_id);
 
         CommandResult::Success
     }
