@@ -6,6 +6,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **User module enable/disable and settings configuration (#586)**: New
+  `reovim-driver-module-config` crate provides TOML parsing for
+  `~/.config/reovim/modules.toml`. Controls which server modules and TUI extensions are loaded.
+  Config file optional — missing file uses "official" preset (all enabled). Per-module settings
+  accessible via `ModuleConfigStore` service in `ServiceRegistry`. `DefaultsModule` gains
+  `builtin_registry()` factory map (29 modules), `builtin_order()` canonical ordering, and
+  `create_modules_filtered()` predicate-based creation. Bootstrap wires config loading, store
+  registration, and filtered initialization. Disabled modules do not register extension kinds.
+  TUI extensions filtered consistently via `create_extensions_filtered()`. Full backwards
+  compatibility: existing `create_modules()` and `create_extensions()` APIs unchanged.
+
 - **Personality manifests replace vim adapter crates (#585)**: Introduce TOML-based personality
   manifests that declare keybinding tables and mode bridges as data, collapsing the O(N x M) adapter
   problem to O(M). New `reovim-driver-manifest` crate provides TOML parser, `ModeBridgeStore`, and

@@ -1859,6 +1859,7 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
+ "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-driver-vfs",
@@ -2070,6 +2071,15 @@ dependencies = [
 
 [[package]]
 name = "reovim-driver-manifest"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-driver-module-config"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-kernel",

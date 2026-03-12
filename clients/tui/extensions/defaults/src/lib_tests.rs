@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 #[test]
@@ -174,4 +176,62 @@ fn test_validate_extensions_empty() {
     let exts: Vec<Box<dyn TuiExtension>> = vec![];
     let server_kinds: Vec<String> = vec![];
     validate_extensions(&exts, &server_kinds);
+}
+
+// ============================================================================
+// Filtered extension creation (#586)
+// ============================================================================
+
+#[test]
+fn test_create_extensions_filtered_empty_set_returns_all() {
+    let exts = create_extensions_filtered(&HashSet::new());
+    assert_eq!(exts.len(), 13);
+}
+
+#[test]
+fn test_create_extensions_filtered_disable_one() {
+    let disabled: HashSet<String> = ["polyblocks".to_string()].into();
+    let exts = create_extensions_filtered(&disabled);
+    assert_eq!(exts.len(), 12);
+    assert!(exts.iter().all(|e| e.kind() != "polyblocks"));
+}
+
+#[test]
+fn test_create_extensions_filtered_disable_multiple() {
+    let disabled: HashSet<String> = [
+        "polyblocks".to_string(),
+        "completion".to_string(),
+        "hover".to_string(),
+    ]
+    .into();
+    let exts = create_extensions_filtered(&disabled);
+    assert_eq!(exts.len(), 10);
+    for ext in &exts {
+        assert!(!disabled.contains(ext.kind()));
+    }
+}
+
+#[test]
+fn test_create_extensions_filtered_unknown_kinds_ignored() {
+    let disabled: HashSet<String> = ["nonexistent".to_string()].into();
+    let exts = create_extensions_filtered(&disabled);
+    assert_eq!(exts.len(), 13);
+}
+
+#[test]
+fn test_create_extensions_filtered_all_disabled() {
+    let all = create_extensions();
+    let disabled: HashSet<String> = all.iter().map(|e| e.kind().to_string()).collect();
+    let exts = create_extensions_filtered(&disabled);
+    assert!(exts.is_empty());
+}
+
+#[test]
+fn test_create_extensions_matches_filtered_empty() {
+    let unfiltered = create_extensions();
+    let filtered = create_extensions_filtered(&HashSet::new());
+    assert_eq!(unfiltered.len(), filtered.len());
+    let unfiltered_kinds: HashSet<&str> = unfiltered.iter().map(|e| e.kind()).collect();
+    let filtered_kinds: HashSet<&str> = filtered.iter().map(|e| e.kind()).collect();
+    assert_eq!(unfiltered_kinds, filtered_kinds);
 }

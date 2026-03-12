@@ -10,10 +10,11 @@
 //! 3. Add `Box::new(YourExtension::new())` to `create_extensions()`
 //! 4. Done — engine picks it up automatically
 
+use std::collections::{HashMap, HashSet};
+
 use {
     reovim_driver_depgraph::{DepEntry, resolve_dependencies},
     reovim_driver_display::render_backend::TuiExtension,
-    std::collections::HashMap,
 };
 
 /// Create all default TUI extensions, sorted by dependency order (#583).
@@ -29,21 +30,33 @@ use {
 /// unresolvable dependency — this is a programming error.
 #[must_use]
 pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
-    let mut extensions: Vec<Box<dyn TuiExtension>> = vec![
-        Box::new(reovim_tui_ext_whichkey::WhichKeyExtension::new()),
-        Box::new(reovim_tui_ext_cmdline::CmdlineExtension::new()),
-        Box::new(reovim_tui_ext_notification::NotificationExtension::new()),
-        Box::new(reovim_tui_ext_microscope::MicroscopeExtension::new()),
-        Box::new(reovim_tui_ext_completion::CompletionExtension::new()),
-        Box::new(reovim_tui_ext_explorer::ExplorerExtension::new()),
-        Box::new(reovim_tui_ext_tetromino::TetrominoExtension::new()),
-        Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
-        Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
-        Box::new(reovim_tui_ext_hover::HoverExtension::new()),
-        Box::new(reovim_tui_ext_signature_help::SignatureHelpExtension::new()),
-        Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
-        Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
-    ];
+    create_extensions_filtered(&HashSet::new())
+}
+
+/// Create TUI extensions, excluding those whose kind is in `disabled_kinds`.
+///
+/// `disabled_kinds` contains extension kind strings (e.g., `"polyblocks"`,
+/// `"completion"`) that should not be loaded. Extensions are filtered
+/// before dependency resolution and initialization.
+///
+/// # Panics
+///
+/// Panics if the filtered extension dependency graph contains a cycle or an
+/// unresolvable dependency — this is a programming error.
+#[must_use]
+pub fn create_extensions_filtered<S: std::hash::BuildHasher>(
+    disabled_kinds: &HashSet<String, S>,
+) -> Vec<Box<dyn TuiExtension>> {
+    let all: Vec<Box<dyn TuiExtension>> = all_extensions();
+
+    // Filter out disabled extensions before depgraph resolution
+    let mut extensions: Vec<Box<dyn TuiExtension>> = if disabled_kinds.is_empty() {
+        all
+    } else {
+        all.into_iter()
+            .filter(|ext| !disabled_kinds.contains(ext.kind()))
+            .collect()
+    };
 
     // Build dependency entries from extension declarations
     let entries: Vec<DepEntry<&'static str>> = extensions
@@ -76,6 +89,27 @@ pub fn create_extensions() -> Vec<Box<dyn TuiExtension>> {
     }
 
     extensions
+}
+
+/// Create all default TUI extension instances.
+///
+/// This is the canonical list. Filtering is applied by callers.
+fn all_extensions() -> Vec<Box<dyn TuiExtension>> {
+    vec![
+        Box::new(reovim_tui_ext_whichkey::WhichKeyExtension::new()),
+        Box::new(reovim_tui_ext_cmdline::CmdlineExtension::new()),
+        Box::new(reovim_tui_ext_notification::NotificationExtension::new()),
+        Box::new(reovim_tui_ext_microscope::MicroscopeExtension::new()),
+        Box::new(reovim_tui_ext_completion::CompletionExtension::new()),
+        Box::new(reovim_tui_ext_explorer::ExplorerExtension::new()),
+        Box::new(reovim_tui_ext_tetromino::TetrominoExtension::new()),
+        Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
+        Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
+        Box::new(reovim_tui_ext_hover::HoverExtension::new()),
+        Box::new(reovim_tui_ext_signature_help::SignatureHelpExtension::new()),
+        Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
+        Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
+    ]
 }
 
 /// Validate client extensions against server-declared extension kinds (#584).

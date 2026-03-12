@@ -1,3 +1,5 @@
+use reovim_driver_module_config::ModulesConfig;
+
 use super::*;
 
 #[test]
@@ -18,7 +20,7 @@ fn test_modules_register_services() {
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
 
-    let _tracked = initialize_modules(&ctx);
+    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
 
     // After module initialization, services should be registered
     // Check for ResolverRegistry (registered by VimModule)
@@ -36,7 +38,7 @@ fn test_resolve_mode_str_valid() {
         let services = Arc::new(ServiceRegistry::new());
         let kernel = create_kernel_context(Arc::clone(&services));
         let ctx = create_module_context(kernel, Arc::clone(&services));
-        let _tracked = initialize_modules(&ctx);
+        let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
         let (mode_registry, _, _, _) = extract_registries(&services);
         mode_registry
     };
@@ -150,7 +152,7 @@ fn test_on_all_loaded_wired() {
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
-    let mut tracked = initialize_modules(&ctx);
+    let mut tracked = initialize_modules(&ModulesConfig::official(), &ctx);
     // Should not panic — currently no-op for all modules
     call_on_all_loaded(&mut tracked, &ctx);
     // Verify all modules are in Running state

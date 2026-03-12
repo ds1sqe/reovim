@@ -31,14 +31,15 @@ use {
     reovim_driver_input::{
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
+    reovim_driver_module_config::ModulesConfig,
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, ModuleState,
-        MotionEngine, OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
+        ConfigPaths, EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId,
+        ModuleState, MotionEngine, OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
     },
     reovim_module_defaults::DefaultsModule,
     reovim_server::{
@@ -57,6 +58,86 @@ struct TrackedModule {
     state: ModuleState,
 }
 
+/// Load user module configuration from `~/.config/reovim/modules.toml`.
+///
+/// Returns the official preset (all enabled) if:
+/// - The config file does not exist (normal case)
+/// - The config directory cannot be determined
+/// - The config file has parse errors (logged as warning)
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn load_module_config() -> ModulesConfig {
+    let Ok(config_dir) = ConfigPaths::config_dir() else {
+        tracing::debug!("Cannot determine config directory, using official preset");
+        return ModulesConfig::official();
+    };
+    let config_path = config_dir.join("modules.toml");
+
+    match ModulesConfig::load(&config_path) {
+        Ok(config) => {
+            let disabled = config.disabled_modules();
+            if !disabled.is_empty() {
+                tracing::info!(?disabled, "User module config: disabled modules");
+            }
+            let disabled_ext = config.disabled_extensions();
+            if !disabled_ext.is_empty() {
+                tracing::info!(?disabled_ext, "User module config: disabled extensions");
+            }
+            // Validate against known builtin module IDs
+            let known: Vec<&str> = DefaultsModule::builtin_order().to_vec();
+            for warning in config.validate_modules(&known) {
+                tracing::warn!(%warning, "Module config validation");
+            }
+            config
+        }
+        Err(e) => {
+            tracing::warn!(%e, "Failed to load modules.toml, using official preset");
+            ModulesConfig::official()
+        }
+    }
+}
+
+/// Register `ModuleConfigStore` in `ServiceRegistry` from config settings.
+///
+/// Extracts per-module settings from `ModulesConfig` and registers them
+/// as a `ModuleConfigStore` service so modules can query their config
+/// during `init()`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_module_config_store(config: &ModulesConfig, services: &Arc<ServiceRegistry>) {
+    let store = config.build_config_store();
+    if !store.is_empty() {
+        tracing::info!("Registering ModuleConfigStore with per-module settings");
+        services.register(Arc::new(store));
+    }
+}
+
+/// Compute the set of extension kinds that should be disabled on the client.
+///
+/// For each disabled server module, looks up its `extension_kinds()` and
+/// collects them into a `HashSet`. This set is passed to the TUI so it
+/// can skip loading extensions for disabled server modules.
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
+    let config = load_module_config();
+    let mut disabled_kinds = std::collections::HashSet::new();
+
+    // Instantiate all modules to query their extension_kinds()
+    let registry = DefaultsModule::builtin_registry();
+    for (id, factory) in &registry {
+        if !config.is_module_enabled(id) {
+            let module = factory();
+            for kind in module.extension_kinds() {
+                disabled_kinds.insert((*kind).to_string());
+            }
+        }
+    }
+
+    if !disabled_kinds.is_empty() {
+        tracing::info!(?disabled_kinds, "Computed disabled extension kinds from module config");
+    }
+    disabled_kinds
+}
+
 /// Collect extension bridges from modules via `BridgeProvider`.
 ///
 /// Initializes modules in a temporary `ServiceRegistry` to collect bridges.
@@ -71,13 +152,17 @@ struct TrackedModule {
 pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
     use reovim_driver_session::bridges::{BridgeProvider, BridgeRegistry};
 
+    // Load user config to filter modules (#586)
+    let config = load_module_config();
+
     // Initialize modules in dependency order (#582).
     // This is a separate init pass (bridges are collected once globally,
     // sessions are created per-connection).
     let services = Arc::new(ServiceRegistry::new());
+    register_module_config_store(&config, &services);
     let kernel = create_kernel_context(Arc::clone(&services));
     let module_ctx = create_module_context(kernel, Arc::clone(&services));
-    let tracked = initialize_modules(&module_ctx);
+    let tracked = initialize_modules(&config, &module_ctx);
 
     let mut registry = BridgeRegistry::new();
     if let Some(provider) = services.get::<BridgeProvider>() {
@@ -116,8 +201,14 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub fn create_session_state() -> SessionState {
+    // Load user config (#586)
+    let config = load_module_config();
+
     // Create shared service registry
     let services = Arc::new(ServiceRegistry::new());
+
+    // Register per-module settings before module init (#586)
+    register_module_config_store(&config, &services);
 
     // Create kernel context with service registry
     let kernel = create_kernel_context(Arc::clone(&services));
@@ -125,8 +216,8 @@ pub fn create_session_state() -> SessionState {
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 
-    // Initialize all modules in dependency order (#582)
-    let mut tracked = initialize_modules(&module_ctx);
+    // Initialize enabled modules in dependency order (#582, #586)
+    let mut tracked = initialize_modules(&config, &module_ctx);
 
     // Wire on_all_loaded lifecycle hook (#582)
     call_on_all_loaded(&mut tracked, &module_ctx);
@@ -368,11 +459,11 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
     ModuleContext::new(kernel, services, data_dir, cache_dir)
 }
 
-/// Initialize all modules in dependency-resolved order (#582).
+/// Initialize enabled modules in dependency-resolved order (#582, #586).
 ///
-/// Collects default + extra modules, resolves dependencies via Kahn's
-/// topological sort, and initializes in dependency order. Returns tracked
-/// modules for the `on_all_loaded()` lifecycle hook.
+/// Collects default + extra modules (filtered by user config), resolves
+/// dependencies via Kahn's topological sort, and initializes in dependency
+/// order. Returns tracked modules for the `on_all_loaded()` lifecycle hook.
 ///
 /// Modules self-register their services during `init()`:
 /// - Resolvers → `ResolverRegistry`
@@ -380,8 +471,9 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_modules(ctx: &ModuleContext) -> Vec<TrackedModule> {
-    let mut all_modules = DefaultsModule::create_modules();
+fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<TrackedModule> {
+    let mut all_modules =
+        DefaultsModule::create_modules_filtered(|id| config.is_module_enabled(id));
     all_modules.extend(collect_extra_modules());
 
     tracing::info!(count = all_modules.len(), "Initializing modules");

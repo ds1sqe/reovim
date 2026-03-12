@@ -516,9 +516,13 @@ async fn run_headless_tui(addr: &str, width: u16, height: u16) -> std::io::Resul
 async fn run_interactive_tui(addr: &str) -> std::io::Result<()> {
     tracing::info!("Connecting interactive TUI to {addr}");
 
+    let disabled_kinds = bootstrap::compute_disabled_extension_kinds();
     let (mut app, _handle) = connect_interactive(addr, None, None)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+    if !disabled_kinds.is_empty() {
+        app.set_extensions(reovim_client_tui::create_extensions_filtered(&disabled_kinds));
+    }
 
     let result = app
         .run()
@@ -578,10 +582,14 @@ async fn run_integrated() -> std::io::Result<()> {
     let addr = format!("127.0.0.1:{port}");
     tracing::info!("Server listening on {addr}, connecting TUI...");
 
-    // Connect interactive TUI
+    // Connect interactive TUI with config-based extension filtering (#586)
+    let disabled_kinds = bootstrap::compute_disabled_extension_kinds();
     let (mut app, handle) = connect_interactive(&addr, None, None)
         .await
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::ConnectionRefused, e.to_string()))?;
+    if !disabled_kinds.is_empty() {
+        app.set_extensions(reovim_client_tui::create_extensions_filtered(&disabled_kinds));
+    }
 
     // Ctrl-C handler: gracefully stop TUI
     let ctrl_c_handle = handle.clone();

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::*;
 
 #[test]
@@ -198,4 +200,121 @@ fn test_init_returns_success() {
     let mut module = DefaultsModule::new();
     let result = module.init(&ctx);
     assert_eq!(result, ProbeResult::Success);
+}
+
+// ============================================================================
+// Builtin Registry
+// ============================================================================
+
+#[test]
+fn builtin_registry_has_29_entries() {
+    let registry = DefaultsModule::builtin_registry();
+    assert_eq!(registry.len(), 29);
+}
+
+#[test]
+fn builtin_registry_keys_match_order() {
+    let registry = DefaultsModule::builtin_registry();
+    let order = DefaultsModule::builtin_order();
+    let registry_keys: HashSet<&str> = registry.keys().copied().collect();
+    let order_keys: HashSet<&str> = order.iter().copied().collect();
+    assert_eq!(registry_keys, order_keys);
+}
+
+#[test]
+fn builtin_order_has_29_entries() {
+    let order = DefaultsModule::builtin_order();
+    assert_eq!(order.len(), 29);
+}
+
+#[test]
+fn builtin_order_has_no_duplicates() {
+    let order = DefaultsModule::builtin_order();
+    let unique: HashSet<&str> = order.iter().copied().collect();
+    assert_eq!(order.len(), unique.len());
+}
+
+#[test]
+fn builtin_order_matches_create_modules() {
+    let order = DefaultsModule::builtin_order();
+    let modules = DefaultsModule::create_modules();
+    assert_eq!(order.len(), modules.len());
+    for (id, module) in order.iter().zip(modules.iter()) {
+        assert_eq!(*id, module.id().as_str());
+    }
+}
+
+#[test]
+fn builtin_registry_factories_produce_correct_ids() {
+    let registry = DefaultsModule::builtin_registry();
+    for (id, factory) in &registry {
+        let module = factory();
+        assert_eq!(
+            *id,
+            module.id().as_str(),
+            "Factory for '{id}' produced module with id '{}'",
+            module.id().as_str()
+        );
+    }
+}
+
+// ============================================================================
+// Filtered Module Creation
+// ============================================================================
+
+#[test]
+fn create_modules_filtered_all_enabled() {
+    let modules = DefaultsModule::create_modules_filtered(|_| true);
+    assert_eq!(modules.len(), 29);
+}
+
+#[test]
+fn create_modules_filtered_all_disabled() {
+    let modules = DefaultsModule::create_modules_filtered(|_| false);
+    assert!(modules.is_empty());
+}
+
+#[test]
+fn create_modules_filtered_single_module() {
+    let modules = DefaultsModule::create_modules_filtered(|id| id == "vim");
+    assert_eq!(modules.len(), 1);
+    assert_eq!(modules[0].id().as_str(), "vim");
+}
+
+#[test]
+fn create_modules_filtered_preserves_order() {
+    let modules =
+        DefaultsModule::create_modules_filtered(|id| id == "undo" || id == "vim" || id == "lsp");
+    assert_eq!(modules.len(), 3);
+    assert_eq!(modules[0].id().as_str(), "undo");
+    assert_eq!(modules[1].id().as_str(), "vim");
+    assert_eq!(modules[2].id().as_str(), "lsp");
+}
+
+#[test]
+fn create_modules_filtered_disable_one() {
+    let modules = DefaultsModule::create_modules_filtered(|id| id != "tetromino");
+    assert_eq!(modules.len(), 28);
+    assert!(modules.iter().all(|m| m.id().as_str() != "tetromino"));
+}
+
+#[test]
+fn create_modules_filtered_has_unique_ids() {
+    let modules = DefaultsModule::create_modules_filtered(|_| true);
+    let ids: Vec<String> = modules
+        .iter()
+        .map(|m| m.id().as_str().to_string())
+        .collect();
+    let unique: HashSet<&str> = ids.iter().map(String::as_str).collect();
+    assert_eq!(ids.len(), unique.len());
+}
+
+#[test]
+fn create_modules_is_equivalent_to_filtered_all() {
+    let unfiltered = DefaultsModule::create_modules();
+    let filtered = DefaultsModule::create_modules_filtered(|_| true);
+    assert_eq!(unfiltered.len(), filtered.len());
+    for (a, b) in unfiltered.iter().zip(filtered.iter()) {
+        assert_eq!(a.id(), b.id());
+    }
 }

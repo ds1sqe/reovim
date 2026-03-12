@@ -27,6 +27,7 @@ members = [
     "server/lib/drivers/completion",
     "server/lib/drivers/depgraph",
     "server/lib/drivers/manifest",
+    "server/lib/drivers/module-config",
 
     # Server modules
     "server/modules/vim",
@@ -195,6 +196,7 @@ reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.10.0
 reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.10.0-dev" }
 reovim-driver-depgraph = { path = "./server/lib/drivers/depgraph", version = "0.10.0-dev" }
 reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.10.0-dev" }
+reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }

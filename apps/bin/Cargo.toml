@@ -42,6 +42,9 @@ reovim-module-textobjects = { workspace = true }
 # Dependency resolution for module init ordering (#582)
 reovim-driver-depgraph = { workspace = true }
 
+# Module configuration for user enable/disable and per-module settings (#586)
+reovim-driver-module-config = { workspace = true }
+
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
 

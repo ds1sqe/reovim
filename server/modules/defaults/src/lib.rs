@@ -30,6 +30,8 @@
 //! }
 //! ```
 
+use std::collections::HashMap;
+
 use reovim_kernel::api::v1::{
     KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
 };
@@ -58,6 +60,12 @@ use {
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
     reovim_picker_grep as picker_grep, reovim_picker_options as picker_options,
 };
+
+/// Type alias for module factory functions.
+///
+/// Each factory creates a boxed module instance. Used by [`DefaultsModule::builtin_registry`]
+/// to map module IDs to their constructors.
+pub type ModuleFactory = fn() -> Box<dyn Module>;
 
 /// Default modules bundle.
 ///
@@ -136,6 +144,130 @@ impl DefaultsModule {
             // Tetromino game (#537)
             Box::new(tetromino::TetrominoModule::new()),
         ]
+    }
+
+    /// Get the builtin module registry: a map from module ID to factory function.
+    ///
+    /// This is the canonical list of all builtin server modules. Bootstrap
+    /// iterates this registry and calls factories for enabled modules only.
+    #[must_use]
+    pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
+        let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(29);
+        // Service modules
+        map.insert("undo", || Box::new(undo::UndoModule::new()));
+        map.insert("buffer-simple", || Box::new(buffer_simple::BufferSimpleModule::new()));
+        map.insert("search", || Box::new(search::SearchModule::new()));
+        map.insert("scratch-buffer", || Box::new(scratch_buffer::ScratchBufferModule::new()));
+        map.insert("vfs-local", || Box::new(vfs_local::VfsLocalModule::new()));
+        map.insert("clipboard", || Box::new(clipboard::ClipboardModule::new()));
+        // Utility modules
+        map.insert("keymap", || Box::new(keymap::KeymapModule));
+        map.insert("commands", || Box::new(commands::CommandsModule));
+        // Policy modules
+        map.insert("editor", || Box::new(editor::EditorModule));
+        map.insert("motions", || Box::new(motions::MotionsModule));
+        map.insert("vim", || Box::new(vim::VimModule::new()));
+        // Extension bridge modules
+        map.insert("cmdline", || Box::new(cmdline::CmdlineModule::new()));
+        map.insert("whichkey", || Box::new(whichkey::WhichKeyModule::new()));
+        map.insert("notification", || Box::new(notification::NotificationModule::new()));
+        // Picker data providers
+        map.insert("picker-files", || Box::new(picker_files::PickerFilesModule::new()));
+        map.insert("picker-buffers", || Box::new(picker_buffers::PickerBuffersModule::new()));
+        map.insert("picker-commands", || Box::new(picker_commands::PickerCommandsModule::new()));
+        map.insert("picker-grep", || Box::new(picker_grep::PickerGrepModule::new()));
+        map.insert("picker-options", || Box::new(picker_options::PickerOptionsModule::new()));
+        // Picker orchestration
+        map.insert("microscope", || Box::new(microscope::MicroscopeModule::new()));
+        // Syntax highlighting modules
+        map.insert("treesitter-rust", || Box::new(treesitter_rust::TreesitterRustModule::new()));
+        map.insert("treesitter-markdown", || {
+            Box::new(treesitter_markdown::TreesitterMarkdownModule::new())
+        });
+        // Code intelligence modules
+        map.insert("lsp", || Box::new(lsp::LspModule::new()));
+        map.insert("lsp-navigation", || Box::new(lsp_navigation::LspNavigationModule::new()));
+        // Snippet expansion
+        map.insert("snippet", || Box::new(snippet::SnippetModule::new()));
+        // Jump navigation and code folding
+        map.insert("range-finder", || Box::new(range_finder::RangeFinderModule::new()));
+        // Completion engine
+        map.insert("completion", || Box::new(completion::CompletionModule::new()));
+        // File explorer
+        map.insert("explorer", || Box::new(explorer::ExplorerModule::new()));
+        // Tetromino game
+        map.insert("tetromino", || Box::new(tetromino::TetrominoModule::new()));
+        map
+    }
+
+    /// Get the ordered list of builtin module IDs.
+    ///
+    /// This preserves the canonical initialization order when no dependency
+    /// graph reordering is applied. Used as the key iteration order for
+    /// [`builtin_registry()`].
+    #[must_use]
+    pub const fn builtin_order() -> &'static [&'static str] {
+        &[
+            // Service modules
+            "undo",
+            "buffer-simple",
+            "search",
+            "scratch-buffer",
+            "vfs-local",
+            "clipboard",
+            // Utility modules
+            "keymap",
+            "commands",
+            // Policy modules
+            "editor",
+            "motions",
+            "vim",
+            // Extension bridge modules
+            "cmdline",
+            "whichkey",
+            "notification",
+            // Picker data providers
+            "picker-files",
+            "picker-buffers",
+            "picker-commands",
+            "picker-grep",
+            "picker-options",
+            // Picker orchestration
+            "microscope",
+            // Syntax highlighting modules
+            "treesitter-rust",
+            "treesitter-markdown",
+            // Code intelligence modules
+            "lsp",
+            "lsp-navigation",
+            // Snippet expansion
+            "snippet",
+            // Jump navigation and code folding
+            "range-finder",
+            // Completion engine
+            "completion",
+            // File explorer
+            "explorer",
+            // Tetromino game
+            "tetromino",
+        ]
+    }
+
+    /// Create modules filtered by a predicate.
+    ///
+    /// Instantiates only modules for which `is_enabled(module_id)` returns `true`.
+    /// Maintains canonical ordering from [`builtin_order()`].
+    #[must_use]
+    pub fn create_modules_filtered<F>(is_enabled: F) -> Vec<Box<dyn Module>>
+    where
+        F: Fn(&str) -> bool,
+    {
+        let registry = Self::builtin_registry();
+        Self::builtin_order()
+            .iter()
+            .filter(|id| is_enabled(id))
+            .filter_map(|id| registry.get(id).map(|factory| factory()))
+            .collect()
     }
 }
 

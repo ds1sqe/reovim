@@ -123,6 +123,9 @@ pub use {
 #[cfg(feature = "grpc")]
 pub use app::{TuiApp, TuiAppError, connect_headless, connect_interactive};
 
+/// Re-export extension creation for app-layer config wiring (#586).
+pub use reovim_tui_ext_defaults::create_extensions_filtered;
+
 // gRPC v2 client exports
 #[cfg(feature = "grpc")]
 pub use grpc_client::{TuiGrpcClient, TuiGrpcError};
