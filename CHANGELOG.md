@@ -45,6 +45,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Extract `setup-coverage` composite action for DRY nightly+llvm-cov+protoc setup
   across 5 coverage jobs. Test jobs still require lint to pass before running.
 
+- **CI test speed optimization (#588)**: Shard MC/DC unit tests across 2 runners
+  using nextest `--partition count:N/2`, reducing critical path by ~40s. Add
+  `.config/nextest.toml` with default and CI profiles (slow-timeout, fail-fast).
+  Split monolithic test+report steps for timing visibility. Set
+  `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
+  cache.
+
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.
   `OptionRegistry` gains `unregister_by_module()` for module lifecycle cleanup and
