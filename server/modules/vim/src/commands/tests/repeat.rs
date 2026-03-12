@@ -166,6 +166,7 @@ fn test_dot_repeat_insert_text() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -199,6 +200,7 @@ fn test_dot_repeat_insert_with_original_count() {
             },
             count: Some(3),
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -231,6 +233,7 @@ fn test_dot_repeat_count_overrides_original() {
             },
             count: Some(5),
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -261,6 +264,7 @@ fn test_last_change_stores_operator_motion() {
         },
         count: Some(3),
         register: Some('a'),
+        keys: Vec::new(),
     };
 
     assert!(matches!(last_change.change_type, ChangeType::OperatorMotion { .. }));
@@ -277,6 +281,7 @@ fn test_last_change_stores_operator_textobj() {
         },
         count: None,
         register: None,
+        keys: Vec::new(),
     };
 
     assert!(matches!(last_change.change_type, ChangeType::OperatorTextObject { .. }));
@@ -291,6 +296,7 @@ fn test_last_change_stores_insert() {
         },
         count: None,
         register: None,
+        keys: Vec::new(),
     };
 
     match &last_change.change_type {
@@ -348,6 +354,7 @@ fn test_dot_repeat_no_buffer_returns_error() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -397,6 +404,7 @@ fn test_dot_repeat_insert_empty_text() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -428,6 +436,7 @@ fn test_dot_repeat_insert_with_no_count() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -460,6 +469,7 @@ fn test_dot_repeat_operator_motion_stub() {
             },
             count: Some(1),
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -489,6 +499,7 @@ fn test_dot_repeat_operator_textobj_stub() {
             },
             count: None,
             register: Some('a'),
+            keys: Vec::new(),
         });
     }
 
@@ -516,6 +527,7 @@ fn test_dot_repeat_insert_with_newline() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -543,6 +555,7 @@ fn test_dot_repeat_count_overrides_none() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 
@@ -602,6 +615,7 @@ fn test_dot_repeat_insert_no_active_window() {
             },
             count: None,
             register: None,
+            keys: Vec::new(),
         });
     }
 

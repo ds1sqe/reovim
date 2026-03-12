@@ -6,6 +6,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Dot repeat command (#577)**: Implement the `.` (dot) command for replaying operator
+  changes. Records the actual key sequence during operator+motion and operator+insert
+  operations (e.g., `dw`, `dd`, `cwbar<Esc>`, `ccnew<Esc>`), then replays via `InjectKeys`
+  on `.` press. Supports delete operators (`dw..`, `dd..`), change+insert operators
+  (`cwbar<Esc>w.w.`, `ccnew<Esc>j.`), and standalone insert (`ihello<Esc>.`). Also fixes
+  `cw` at end of buffer incorrectly deleting only the first character of the last word.
+
 - **Configuration profiles module (#593)**: New `reovim-module-profiles` crate implementing
   `:profile-save`, `:profile-load`, `:profile-list` commands for named option snapshots.
   Profiles are stored as versioned TOML files with explicit type tags. Save captures

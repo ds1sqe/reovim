@@ -362,6 +362,7 @@ fn test_last_change_with_all_fields() {
         },
         count: Some(5),
         register: Some('a'),
+        keys: Vec::new(),
     };
     assert_eq!(lc.count, Some(5));
     assert_eq!(lc.register, Some('a'));
@@ -377,6 +378,7 @@ fn test_last_change_clone() {
         },
         count: Some(2),
         register: None,
+        keys: Vec::new(),
     };
     let cloned = lc.clone();
     assert_eq!(cloned.count, Some(2));
@@ -423,6 +425,7 @@ fn test_vim_session_state_clear_pending_preserves_last_change() {
         },
         count: None,
         register: None,
+        keys: Vec::new(),
     });
     state.pending_count = Some(5);
     state.pending_register = Some('a');
@@ -743,6 +746,7 @@ fn test_last_change_no_count_no_register() {
         },
         count: None,
         register: None,
+        keys: Vec::new(),
     };
     assert!(lc.count.is_none());
     assert!(lc.register.is_none());
@@ -757,6 +761,7 @@ fn test_last_change_debug() {
         },
         count: Some(1),
         register: Some('a'),
+        keys: Vec::new(),
     };
     let debug = format!("{lc:?}");
     assert!(debug.contains("LastChange"));
@@ -779,4 +784,174 @@ fn test_textobj_range_linewise_fields() {
     assert_eq!(range.start.line, 2);
     assert_eq!(range.end.line, 5);
     assert!(range.is_linewise);
+}
+
+// ========================================================================
+// Dot Repeat Recording Tests (#577)
+// ========================================================================
+
+#[test]
+fn test_dot_repeat_default_state() {
+    let state = VimSessionState::default();
+    assert!(!state.recording_repeat);
+    assert!(state.repeat_keys.is_empty());
+}
+
+#[test]
+fn test_start_repeat_recording() {
+    let mut state = VimSessionState::default();
+    state.repeat_keys.push(key('x')); // leftover from previous
+
+    state.start_repeat_recording();
+
+    assert!(state.recording_repeat);
+    assert!(state.repeat_keys.is_empty()); // cleared
+}
+
+#[test]
+fn test_record_repeat_key_when_recording() {
+    let mut state = VimSessionState::default();
+    state.start_repeat_recording();
+
+    state.record_repeat_key(key('c'));
+    state.record_repeat_key(key('w'));
+
+    assert_eq!(state.repeat_keys.len(), 2);
+    assert_eq!(state.repeat_keys[0].code, KeyCode::Char('c'));
+    assert_eq!(state.repeat_keys[1].code, KeyCode::Char('w'));
+}
+
+#[test]
+fn test_record_repeat_key_when_not_recording() {
+    let mut state = VimSessionState::default();
+    // Not recording — should be a no-op
+    state.record_repeat_key(key('d'));
+    assert!(state.repeat_keys.is_empty());
+}
+
+#[test]
+fn test_finish_repeat_recording_saves_to_last_change() {
+    let mut state = VimSessionState::default();
+    state.last_change = Some(LastChange {
+        change_type: ChangeType::OperatorMotion {
+            operator: OperatorType::Delete,
+            linewise: false,
+        },
+        count: None,
+        register: None,
+        keys: Vec::new(),
+    });
+
+    state.start_repeat_recording();
+    state.record_repeat_key(key('d'));
+    state.record_repeat_key(key('w'));
+    state.finish_repeat_recording();
+
+    assert!(!state.recording_repeat);
+    assert!(state.repeat_keys.is_empty());
+
+    let lc = state.last_change.as_ref().unwrap();
+    assert_eq!(lc.keys.len(), 2);
+    assert_eq!(lc.keys[0].code, KeyCode::Char('d'));
+    assert_eq!(lc.keys[1].code, KeyCode::Char('w'));
+}
+
+#[test]
+fn test_finish_repeat_recording_without_last_change() {
+    let mut state = VimSessionState::default();
+    // No last_change set
+
+    state.start_repeat_recording();
+    state.record_repeat_key(key('x'));
+    state.finish_repeat_recording();
+
+    assert!(!state.recording_repeat);
+    assert!(state.repeat_keys.is_empty());
+    assert!(state.last_change.is_none()); // still none
+}
+
+#[test]
+fn test_repeat_recording_full_lifecycle() {
+    let mut state = VimSessionState::default();
+
+    // Start recording for an operator
+    state.start_repeat_recording();
+    state.record_repeat_key(key('c'));
+    state.record_repeat_key(key('w'));
+
+    // Simulate entering insert mode and typing
+    state.record_repeat_key(key('b'));
+    state.record_repeat_key(key('a'));
+    state.record_repeat_key(key('r'));
+
+    // Simulate Esc
+    let esc = reovim_driver_input::KeyEvent::new(KeyCode::Escape);
+    state.record_repeat_key(esc);
+
+    // Set last_change before finishing
+    state.last_change = Some(LastChange {
+        change_type: ChangeType::OperatorMotion {
+            operator: OperatorType::Change,
+            linewise: false,
+        },
+        count: None,
+        register: None,
+        keys: Vec::new(),
+    });
+
+    state.finish_repeat_recording();
+
+    let lc = state.last_change.as_ref().unwrap();
+    assert_eq!(lc.keys.len(), 6); // c, w, b, a, r, Esc
+}
+
+#[test]
+fn test_repeat_and_macro_recording_independent() {
+    let mut state = VimSessionState::default();
+
+    // Start both recordings
+    state.start_repeat_recording();
+    state.start_recording('a');
+
+    // Record keys to both
+    state.record_repeat_key(key('d'));
+    state.record_key(key('d'));
+    state.record_repeat_key(key('w'));
+    state.record_key(key('w'));
+
+    // Both should have keys
+    assert_eq!(state.repeat_keys.len(), 2);
+    assert_eq!(state.recording_keys.len(), 2);
+
+    // Finish repeat recording
+    state.last_change = Some(LastChange {
+        change_type: ChangeType::OperatorMotion {
+            operator: OperatorType::Delete,
+            linewise: false,
+        },
+        count: None,
+        register: None,
+        keys: Vec::new(),
+    });
+    state.finish_repeat_recording();
+
+    // Repeat is done but macro still recording
+    assert!(!state.recording_repeat);
+    assert!(state.is_recording());
+    assert_eq!(state.recording_keys.len(), 2);
+}
+
+#[test]
+fn test_last_change_keys_field() {
+    let lc = LastChange {
+        change_type: ChangeType::OperatorMotion {
+            operator: OperatorType::Delete,
+            linewise: false,
+        },
+        count: None,
+        register: None,
+        keys: vec![key('d'), key('w')],
+    };
+    assert_eq!(lc.keys.len(), 2);
+    assert_eq!(lc.keys[0].code, KeyCode::Char('d'));
 }
