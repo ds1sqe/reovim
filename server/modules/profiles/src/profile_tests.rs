@@ -126,25 +126,13 @@ fn test_from_toml_wrong_version() {
 fn test_registry() -> OptionRegistry {
     let registry = OptionRegistry::new();
     registry
-        .register(OptionSpec::new(
-            "number",
-            "Show line numbers",
-            OptionValue::bool(false),
-        ))
+        .register(OptionSpec::new("number", "Show line numbers", OptionValue::bool(false)))
         .unwrap();
     registry
-        .register(OptionSpec::new(
-            "tabwidth",
-            "Tab width",
-            OptionValue::int(8),
-        ))
+        .register(OptionSpec::new("tabwidth", "Tab width", OptionValue::int(8)))
         .unwrap();
     registry
-        .register(OptionSpec::new(
-            "theme",
-            "Color theme",
-            OptionValue::string("default"),
-        ))
+        .register(OptionSpec::new("theme", "Color theme", OptionValue::string("default")))
         .unwrap();
     registry
 }
@@ -168,14 +156,8 @@ fn test_from_option_registry_with_overrides() {
 
     let profile = Profile::from_option_registry(&registry);
     assert_eq!(profile.options.len(), 2);
-    assert_eq!(
-        profile.options["number"],
-        ProfileOption::Bool { value: true }
-    );
-    assert_eq!(
-        profile.options["tabwidth"],
-        ProfileOption::Integer { value: 4 }
-    );
+    assert_eq!(profile.options["number"], ProfileOption::Bool { value: true });
+    assert_eq!(profile.options["tabwidth"], ProfileOption::Integer { value: 4 });
 }
 
 #[test]
@@ -202,10 +184,9 @@ fn test_apply_to_registry_unknown_option() {
     let registry = test_registry();
 
     let mut profile = Profile::new();
-    profile.options.insert(
-        "nonexistent".to_string(),
-        ProfileOption::Bool { value: true },
-    );
+    profile
+        .options
+        .insert("nonexistent".to_string(), ProfileOption::Bool { value: true });
 
     let warnings = profile.apply_to_registry(&registry);
     assert_eq!(warnings.len(), 1);
@@ -235,10 +216,9 @@ fn test_apply_to_registry_mixed_valid_and_invalid() {
     profile
         .options
         .insert("number".to_string(), ProfileOption::Bool { value: true });
-    profile.options.insert(
-        "nonexistent".to_string(),
-        ProfileOption::Bool { value: true },
-    );
+    profile
+        .options
+        .insert("nonexistent".to_string(), ProfileOption::Bool { value: true });
     // Type mismatch: tabwidth expects integer
     profile
         .options
@@ -269,12 +249,6 @@ fn test_full_save_load_roundtrip() {
     let registry2 = test_registry();
     let warnings = restored.apply_to_registry(&registry2);
     assert!(warnings.is_empty());
-    assert_eq!(
-        registry2.get_global("number"),
-        Some(OptionValue::bool(true))
-    );
-    assert_eq!(
-        registry2.get_global("tabwidth"),
-        Some(OptionValue::int(4))
-    );
+    assert_eq!(registry2.get_global("number"), Some(OptionValue::bool(true)));
+    assert_eq!(registry2.get_global("tabwidth"), Some(OptionValue::int(4)));
 }

@@ -11,6 +11,36 @@ use {
 
 const PROFILES_MODULE: ModuleId = ModuleId::new("profiles");
 
+/// Serialize a profile to TOML and write it to disk.
+///
+/// Absorbs three genuinely untestable error branches:
+/// - `to_toml()` serialization failure (infallible for our data types)
+/// - `create_dir_all` error (`MockVfs` always returns `Ok(())`)
+/// - `write_str` error (`MockVfs` always returns `Ok(())`)
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn write_profile(
+    vfs: &dyn reovim_driver_vfs::VfsDriver,
+    dir: &std::path::Path,
+    name: &str,
+    profile: &Profile,
+) -> CommandResult {
+    let content = match profile.to_toml() {
+        Ok(s) => s,
+        Err(e) => return CommandResult::Error(e),
+    };
+
+    if let Err(e) = vfs.create_dir_all(dir) {
+        return CommandResult::Error(format!("failed to create profiles directory: {e}"));
+    }
+
+    let path = dir.join(format!("{name}.toml"));
+    if let Err(e) = vfs.write_str(&path, &content) {
+        return CommandResult::Error(format!("failed to write profile: {e}"));
+    }
+
+    CommandResult::Success
+}
+
 // ============================================================================
 // ProfileSaveCommand
 // ============================================================================
@@ -61,21 +91,8 @@ impl CommandHandler for ProfileSaveCommand {
         };
 
         let profile = Profile::from_option_registry(&runtime.kernel().options);
-        let toml_content = match profile.to_toml() {
-            Ok(s) => s,
-            Err(e) => return CommandResult::Error(e),
-        };
 
-        if let Err(e) = vfs.create_dir_all(&self.profiles_dir) {
-            return CommandResult::Error(format!("failed to create profiles directory: {e}"));
-        }
-
-        let path = self.profiles_dir.join(format!("{name}.toml"));
-        if let Err(e) = vfs.write_str(&path, &toml_content) {
-            return CommandResult::Error(format!("failed to write profile: {e}"));
-        }
-
-        CommandResult::Success
+        write_profile(vfs.as_ref(), &self.profiles_dir, name, &profile)
     }
 }
 

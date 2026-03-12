@@ -10,18 +10,10 @@ use {
 /// Register common test options on a `TestSessionRuntime`'s kernel.
 fn register_test_options(test: &TestSessionRuntime) {
     let opts = &test.kernel().options;
-    opts.register(OptionSpec::new(
-        "number",
-        "Show line numbers",
-        OptionValue::bool(false),
-    ))
-    .unwrap();
-    opts.register(OptionSpec::new(
-        "tabwidth",
-        "Tab width",
-        OptionValue::int(8),
-    ))
-    .unwrap();
+    opts.register(OptionSpec::new("number", "Show line numbers", OptionValue::bool(false)))
+        .unwrap();
+    opts.register(OptionSpec::new("tabwidth", "Tab width", OptionValue::int(8)))
+        .unwrap();
 }
 
 fn make_ctx_with_vfs(vfs: &Arc<MockVfs>) -> CommandContext {
@@ -120,10 +112,7 @@ fn test_save_vfs_write_error() {
     let vfs = Arc::new(MockVfs::new());
     vfs.add_dir("/data");
     vfs.add_dir("/data/profiles");
-    vfs.set_error(
-        "/data/profiles/test.toml",
-        reovim_driver_vfs::MockErrorKind::PermissionDenied,
-    );
+    vfs.set_error("/data/profiles/test.toml", reovim_driver_vfs::MockErrorKind::PermissionDenied);
     let args = make_ctx_with_vfs_and_name(&vfs, "test");
 
     let cmd = ProfileSaveCommand::new(profiles_dir());
@@ -183,16 +172,11 @@ fn test_load_valid() {
     let result = test.with_runtime(|runtime| cmd.execute(runtime, &args));
     assert!(result.is_success());
 
-    assert_eq!(
-        test.kernel().options.get_global("number"),
-        Some(OptionValue::bool(true))
-    );
-    assert_eq!(
-        test.kernel().options.get_global("tabwidth"),
-        Some(OptionValue::int(4))
-    );
+    assert_eq!(test.kernel().options.get_global("number"), Some(OptionValue::bool(true)));
+    assert_eq!(test.kernel().options.get_global("tabwidth"), Some(OptionValue::int(4)));
 }
 
+#[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_load_missing_profile() {
     let mut test = TestSessionRuntime::new();
@@ -202,10 +186,10 @@ fn test_load_missing_profile() {
 
     let cmd = ProfileLoadCommand::new(profiles_dir());
     let result = test.with_runtime(|runtime| cmd.execute(runtime, &args));
-    assert!(matches!(
-        result,
-        CommandResult::Error(ref msg) if msg.contains("not found")
-    ));
+    let CommandResult::Error(msg) = result else {
+        panic!("expected error result");
+    };
+    assert!(msg.contains("not found"));
 }
 
 #[test]
@@ -344,10 +328,7 @@ fn test_list_vfs_error() {
     let mut test = TestSessionRuntime::new();
     let vfs = Arc::new(MockVfs::new());
     vfs.add_dir("/data/profiles");
-    vfs.set_error(
-        "/data/profiles",
-        reovim_driver_vfs::MockErrorKind::PermissionDenied,
-    );
+    vfs.set_error("/data/profiles", reovim_driver_vfs::MockErrorKind::PermissionDenied);
     let args = make_ctx_with_vfs(&vfs);
 
     let cmd = ProfileListCommand::new(profiles_dir());

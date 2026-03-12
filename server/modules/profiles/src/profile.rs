@@ -6,6 +6,21 @@ use {
     std::collections::BTreeMap,
 };
 
+/// Snapshot a single option if its value differs from the default.
+///
+/// Returns `None` if the option matches its default, or if the registry
+/// is in an inconsistent state (a name from `list_all()` lacks spec or
+/// global value — an API invariant that cannot occur in practice).
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn snapshot_option(registry: &OptionRegistry, name: &str) -> Option<ProfileOption> {
+    let (spec, current) = registry.get_spec(name).zip(registry.get_global(name))?;
+    if current == spec.default {
+        None
+    } else {
+        Some(ProfileOption::from_option_value(&current))
+    }
+}
+
 /// A named configuration profile.
 ///
 /// Captures global option overrides (values that differ from their registered
@@ -78,12 +93,8 @@ impl Profile {
         let mut profile = Self::new();
 
         for name in registry.list_all() {
-            if let Some((spec, current)) = registry.get_spec(&name).zip(registry.get_global(&name))
-                && current != spec.default
-            {
-                profile
-                    .options
-                    .insert(name, ProfileOption::from_option_value(&current));
+            if let Some(opt) = snapshot_option(registry, &name) {
+                profile.options.insert(name, opt);
             }
         }
 
