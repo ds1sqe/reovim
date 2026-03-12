@@ -52,8 +52,8 @@ use {
     },
     reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
-        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
-        OptionScope, OptionSpec, OptionValue, ProbeResult, Version, pr_info,
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+        pr_info,
     },
 };
 
@@ -229,42 +229,9 @@ impl Module for VimModule {
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
 
-        // #585: Load personality manifest (data-driven keybindings for adapter commands)
-        load_personality_manifest(ctx, &keybinding_store);
-
-        // Epic #445: Register line number options
-        if let Err(e) = ctx.kernel.options.register(
-            OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
-                .with_short("nu")
-                .with_scope(OptionScope::Window)
-                .with_owner(VIM_MODULE),
-        ) {
-            return ProbeResult::Failed(ModuleError::InitFailed(format!(
-                "Failed to register 'number' option: {e}"
-            )));
-        }
-        if let Err(e) = ctx.kernel.options.register(
-            OptionSpec::new(
-                "relativenumber",
-                "Show relative line numbers",
-                OptionValue::bool(false),
-            )
-            .with_short("rnu")
-            .with_scope(OptionScope::Window)
-            .with_owner(VIM_MODULE),
-        ) {
-            return ProbeResult::Failed(ModuleError::InitFailed(format!(
-                "Failed to register 'relativenumber' option: {e}"
-            )));
-        }
-
-        // Epic #570: Register vim behavior options (#573)
-        for spec in vim_option_specs() {
-            if let Err(e) = ctx.kernel.options.register(spec) {
-                return ProbeResult::Failed(ModuleError::InitFailed(format!(
-                    "Failed to register vim option: {e}"
-                )));
-            }
+        // #585/#610: Load personality manifest (keybindings, mode bridges, options)
+        if let Err(e) = load_personality_manifest(ctx, &keybinding_store) {
+            return ProbeResult::Failed(e);
         }
 
         // Epic #458: Register GutterRenderer with LineNumberSource and LineNumberPresenter
@@ -327,12 +294,15 @@ const VIM_MANIFEST_TOML: &str = include_str!("../data/vim.toml");
 /// - Detects key conflicts within the manifest (same key + same mode)
 /// - Logs non-fatal warnings — does not fail initialization
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn load_personality_manifest(ctx: &ModuleContext, keybinding_store: &KeybindingStore) {
+fn load_personality_manifest(
+    ctx: &ModuleContext,
+    keybinding_store: &KeybindingStore,
+) -> Result<(), ModuleError> {
     let manifest = match reovim_driver_manifest::PersonalityManifest::parse(VIM_MANIFEST_TOML) {
         Ok(m) => m,
         Err(e) => {
             tracing::error!("Failed to parse vim.toml personality manifest: {e}");
-            return;
+            return Ok(()); // Non-fatal parse failure
         }
     };
 
@@ -350,54 +320,22 @@ fn load_personality_manifest(ctx: &ModuleContext, keybinding_store: &KeybindingS
     keybinding_store.add_all(registrations);
     tracing::info!(count, "VimModule: loaded personality manifest keybindings");
 
+    // #610: Register manifest-driven options (before mode_bridges move)
+    let option_specs = manifest.to_option_specs(&VIM_MODULE);
+
     // Populate ModeBridgeStore for feature modules
     let bridge_store = ModeBridgeStore::new(manifest.mode_bridges);
     ctx.services.register(Arc::new(bridge_store));
     tracing::info!("VimModule: registered ModeBridgeStore");
-}
 
-// ============================================================================
-// Option specifications (#573)
-// ============================================================================
+    // #610: Register options (replaces hardcoded vim_option_specs)
+    for spec in option_specs {
+        ctx.kernel.options.register(spec).map_err(|e| {
+            ModuleError::InitFailed(format!("Failed to register manifest option: {e}"))
+        })?;
+    }
 
-/// Vim behavior option specifications.
-///
-/// These are standard vim options for search, scroll, and display behavior.
-/// Registered during `VimModule::init()`.
-fn vim_option_specs() -> Vec<OptionSpec> {
-    vec![
-        OptionSpec::new("scrolloff", "Minimum lines above/below cursor", OptionValue::int(0))
-            .with_short("so")
-            .with_constraint(OptionConstraint::min(0))
-            .with_owner(VIM_MODULE),
-        OptionSpec::new(
-            "sidescrolloff",
-            "Minimum columns left/right of cursor",
-            OptionValue::int(0),
-        )
-        .with_short("siso")
-        .with_constraint(OptionConstraint::min(0))
-        .with_owner(VIM_MODULE),
-        OptionSpec::new("ignorecase", "Ignore case in search patterns", OptionValue::bool(false))
-            .with_short("ic")
-            .with_owner(VIM_MODULE),
-        OptionSpec::new(
-            "smartcase",
-            "Override ignorecase if pattern has uppercase",
-            OptionValue::bool(false),
-        )
-        .with_short("scs")
-        .with_owner(VIM_MODULE),
-        OptionSpec::new("hlsearch", "Highlight search matches", OptionValue::bool(false))
-            .with_short("hls")
-            .with_owner(VIM_MODULE),
-        OptionSpec::new("incsearch", "Show search matches incrementally", OptionValue::bool(false))
-            .with_short("is")
-            .with_owner(VIM_MODULE),
-        OptionSpec::new("wrapscan", "Wrap search around end of file", OptionValue::bool(true))
-            .with_short("ws")
-            .with_owner(VIM_MODULE),
-    ]
+    Ok(())
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

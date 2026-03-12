@@ -245,7 +245,7 @@ impl DefaultsModule {
     ///
     /// This preserves the canonical initialization order when no dependency
     /// graph reordering is applied. Used as the key iteration order for
-    /// [`builtin_registry()`].
+    /// [`Self::builtin_registry()`].
     #[must_use]
     pub const fn builtin_order() -> &'static [&'static str] {
         &[
@@ -312,7 +312,7 @@ impl DefaultsModule {
     /// Create modules filtered by a predicate.
     ///
     /// Instantiates only modules for which `is_enabled(module_id)` returns `true`.
-    /// Maintains canonical ordering from [`builtin_order()`].
+    /// Maintains canonical ordering from [`Self::builtin_order()`].
     #[must_use]
     pub fn create_modules_filtered<F>(is_enabled: F) -> Vec<Box<dyn Module>>
     where

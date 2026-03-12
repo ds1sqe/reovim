@@ -88,3 +88,130 @@ fn test_extension_kinds() {
     let module = CompletionModule::new();
     assert_eq!(module.extension_kinds(), &["completion"]);
 }
+
+// ============================================================================
+// Config consumer (#610)
+// ============================================================================
+
+#[test]
+fn apply_config_no_store_is_noop() {
+    let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+    let ctx = test_module_context(services);
+
+    let mut module = CompletionModule::new();
+    let result = module.init(&ctx);
+    assert!(matches!(result, ProbeResult::Success));
+    // pumheight should still have its default (10)
+    let val = ctx
+        .kernel
+        .options
+        .get("pumheight", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(10));
+}
+
+#[test]
+fn apply_config_with_pumheight_override() {
+    use std::collections::HashMap;
+
+    let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+
+    // Register a ModuleConfigStore with pumheight=25
+    let settings: toml::Value = toml::from_str("pumheight = 25").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("completion".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = test_module_context(services);
+    let mut module = CompletionModule::new();
+    let result = module.init(&ctx);
+    assert!(matches!(result, ProbeResult::Success));
+
+    let val = ctx
+        .kernel
+        .options
+        .get("pumheight", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(25));
+}
+
+#[test]
+fn apply_config_with_pumwidth_override() {
+    use std::collections::HashMap;
+
+    let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+
+    let settings: toml::Value = toml::from_str("pumwidth = 30").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("completion".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = test_module_context(services);
+    let mut module = CompletionModule::new();
+    let result = module.init(&ctx);
+    assert!(matches!(result, ProbeResult::Success));
+
+    let val = ctx
+        .kernel
+        .options
+        .get("pumwidth", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(30));
+}
+
+#[test]
+fn apply_config_wrong_type_logs_warning_continues() {
+    use std::collections::HashMap;
+
+    let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+
+    // pumheight is a string instead of int — should log warning, keep default
+    let settings: toml::Value = toml::from_str(r#"pumheight = "big""#).unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("completion".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = test_module_context(services);
+    let mut module = CompletionModule::new();
+    let result = module.init(&ctx);
+    assert!(matches!(result, ProbeResult::Success));
+
+    // Default should remain
+    let val = ctx
+        .kernel
+        .options
+        .get("pumheight", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(10));
+}
+
+#[test]
+fn apply_config_missing_fields_uses_defaults() {
+    use std::collections::HashMap;
+
+    let services = Arc::new(reovim_kernel::api::v1::ServiceRegistry::new());
+
+    // Settings present but without pumheight/pumwidth
+    let settings: toml::Value = toml::from_str("some_other = true").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("completion".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = test_module_context(services);
+    let mut module = CompletionModule::new();
+    let result = module.init(&ctx);
+    assert!(matches!(result, ProbeResult::Success));
+
+    let val = ctx
+        .kernel
+        .options
+        .get("pumheight", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(10));
+    let val = ctx
+        .kernel
+        .options
+        .get("pumwidth", reovim_kernel::api::v1::OptionScopeId::Global)
+        .unwrap();
+    assert_eq!(val.as_int(), Some(15));
+}

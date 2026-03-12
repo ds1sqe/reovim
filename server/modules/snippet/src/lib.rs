@@ -28,7 +28,6 @@
 
 pub mod ast;
 pub mod command;
-pub mod config;
 pub mod engine;
 mod expander;
 pub mod ids;
@@ -42,8 +41,6 @@ pub mod resolver;
 pub mod state;
 pub mod transform;
 pub mod variables;
-
-pub use config::SnippetParentMode;
 
 use std::path::Path;
 
@@ -165,17 +162,10 @@ impl Module for SnippetModule {
         self.handle = Some(handle.clone());
         self.data_dir = Some(ctx.data_dir.clone());
 
-        // #585: Read parent mode from ModeBridgeStore (manifest-driven) or
-        // legacy SnippetParentMode (adapter-driven). Falls back to a default
-        // ModeId if no personality loaded.
+        // #585/#610: Read parent mode from ModeBridgeStore (manifest-driven).
+        // Falls back to snippet's own mode if no personality loaded.
         let modes = ctx.services.get_or_create::<ModeInfoStore>();
         let parent_insert = resolve_snippet_parent(ctx, &modes);
-
-        // Self-register SnippetParentMode if resolved from bridge store
-        if let Some(ref parent) = parent_insert {
-            ctx.services
-                .register(Arc::new(SnippetParentMode::new(parent.clone())));
-        }
 
         // Use resolved parent or fallback to snippet's own mode (reduced functionality)
         let effective_parent = parent_insert.unwrap_or(ids::NAVIGATING_MODE);
@@ -260,28 +250,24 @@ impl CommandProvider for SnippetModule {
     }
 }
 
-/// Resolve the parent mode for snippet:navigating from `ModeBridgeStore` or legacy `SnippetParentMode`.
+/// Resolve the parent mode for snippet:navigating from `ModeBridgeStore`.
+///
+/// Returns `None` if no personality module is loaded (reduced functionality).
 fn resolve_snippet_parent(
     ctx: &ModuleContext,
     modes: &ModeInfoStore,
 ) -> Option<reovim_kernel::api::v1::ModeId> {
     use reovim_driver_manifest::ModeBridgeStore;
 
-    // Try ModeBridgeStore first (manifest-driven)
-    if let Some(bridge_store) = ctx.services.get::<ModeBridgeStore>()
-        && let Some(parent_str) = bridge_store.find_parent("snippet:navigating")
-        && let Some((module, name)) = parent_str.split_once(':')
-    {
-        if let Some(mode_id) = modes.find_by_name(module, name) {
-            return Some(mode_id);
-        }
-        tracing::warn!("Mode bridge parent '{parent_str}' not found in ModeInfoStore");
-    }
+    let bridge_store = ctx.services.get::<ModeBridgeStore>()?;
+    let parent_str = bridge_store.find_parent("snippet:navigating")?;
+    let (module, name) = parent_str.split_once(':')?;
 
-    // Fallback: legacy SnippetParentMode from adapter
-    ctx.services
-        .get::<SnippetParentMode>()
-        .map(|p| p.mode().clone())
+    if let Some(mode_id) = modes.find_by_name(module, name) {
+        return Some(mode_id);
+    }
+    tracing::warn!("Mode bridge parent '{parent_str}' not found in ModeInfoStore");
+    None
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

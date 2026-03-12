@@ -91,10 +91,6 @@ fn test_module_init_with_bridge_store() {
     let handlers = command_store.take_handlers();
     assert_eq!(handlers.len(), 9);
 
-    // Verify JumpParentMode was self-registered
-    let jump_parent = services.get::<JumpParentMode>();
-    assert!(jump_parent.is_some());
-
     // Verify resolver was registered (#524)
     let resolvers = services.get::<ResolverRegistry>().unwrap();
     assert!(resolvers.get(&crate::jump::ids::JUMP_INPUT_MODE).is_some());
@@ -130,10 +126,6 @@ fn test_module_init_without_bridge_store() {
         .unwrap();
     let handlers = command_store.take_handlers();
     assert_eq!(handlers.len(), 8);
-
-    // No JumpParentMode registered
-    let jump_parent = services.get::<JumpParentMode>();
-    assert!(jump_parent.is_none());
 }
 
 #[test]

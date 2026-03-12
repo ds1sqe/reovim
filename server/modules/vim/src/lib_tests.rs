@@ -178,9 +178,12 @@ fn test_line_number_option_scope() {
 // ========================================================================
 
 #[test]
-fn test_vim_option_specs_count() {
-    let specs = crate::vim_option_specs();
-    assert_eq!(specs.len(), 7);
+fn test_vim_manifest_options_count() {
+    let manifest =
+        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+    // 9 options: number, relativenumber, scrolloff, sidescrolloff,
+    // ignorecase, smartcase, hlsearch, incsearch, wrapscan
+    assert_eq!(manifest.options.len(), 9);
 }
 
 #[test]

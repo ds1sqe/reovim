@@ -472,52 +472,86 @@ impl Config {
 ///
 /// Uses `reovim-arch::dirs` for platform-agnostic path resolution.
 /// Follows XDG Base Directory Specification on Unix.
+///
+/// # Environment Variable Overrides
+///
+/// All paths can be overridden via environment variables for worktree
+/// isolation and testing:
+///
+/// | Variable | Overrides | Purpose |
+/// |----------|-----------|---------|
+/// | `REOVIM_CONFIG_DIR` | `config_dir()` | User config (modules.toml, profiles) |
+/// | `REOVIM_DATA_DIR` | `data_dir()` | Runtime data (.so modules, lock files, logs) |
+/// | `REOVIM_CACHE_DIR` | `cache_dir()` | Cache (derived from data if unset) |
+///
+/// Resolution order: `$REOVIM_*_DIR` > XDG/platform default.
 pub struct ConfigPaths;
 
 impl ConfigPaths {
     /// Get the reovim config directory.
     ///
-    /// - Linux: `$XDG_CONFIG_HOME/reovim` or `~/.config/reovim`
-    /// - macOS: `~/Library/Application Support/reovim`
-    /// - Windows: `{FOLDERID_RoamingAppData}/reovim`
+    /// Resolution: `$REOVIM_CONFIG_DIR` > `$XDG_CONFIG_HOME/reovim` > `~/.config/reovim`
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::PathError` if the config directory cannot be determined.
+    /// Returns `ConfigError::PathError` if the config directory cannot be determined
+    /// and no env override is set.
     pub fn config_dir() -> Result<PathBuf, ConfigError> {
-        reovim_arch::dirs::config_dir()
-            .map(|p| p.join("reovim"))
-            .ok_or_else(|| ConfigError::PathError("cannot determine config directory".into()))
+        Self::resolve_dir(
+            std::env::var("REOVIM_CONFIG_DIR").ok(),
+            reovim_arch::dirs::config_dir(),
+            "config",
+        )
     }
 
     /// Get the reovim data directory.
     ///
-    /// - Linux: `$XDG_DATA_HOME/reovim` or `~/.local/share/reovim`
-    /// - macOS: `~/Library/Application Support/reovim`
-    /// - Windows: `{FOLDERID_LocalAppData}/reovim`
+    /// Resolution: `$REOVIM_DATA_DIR` > `$XDG_DATA_HOME/reovim` > `~/.local/share/reovim`
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::PathError` if the data directory cannot be determined.
+    /// Returns `ConfigError::PathError` if the data directory cannot be determined
+    /// and no env override is set.
     pub fn data_dir() -> Result<PathBuf, ConfigError> {
-        reovim_arch::dirs::data_local_dir()
-            .map(|p| p.join("reovim"))
-            .ok_or_else(|| ConfigError::PathError("cannot determine data directory".into()))
+        Self::resolve_dir(
+            std::env::var("REOVIM_DATA_DIR").ok(),
+            reovim_arch::dirs::data_local_dir(),
+            "data",
+        )
     }
 
     /// Get the reovim cache directory.
     ///
-    /// - Linux: `$XDG_CACHE_HOME/reovim` or `~/.cache/reovim`
-    /// - macOS: `~/Library/Caches/reovim`
-    /// - Windows: `{FOLDERID_LocalAppData}/reovim/cache`
+    /// Resolution: `$REOVIM_CACHE_DIR` > `$XDG_CACHE_HOME/reovim` > `~/.cache/reovim`
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::PathError` if the cache directory cannot be determined.
+    /// Returns `ConfigError::PathError` if the cache directory cannot be determined
+    /// and no env override is set.
     pub fn cache_dir() -> Result<PathBuf, ConfigError> {
-        reovim_arch::dirs::cache_dir()
+        Self::resolve_dir(
+            std::env::var("REOVIM_CACHE_DIR").ok(),
+            reovim_arch::dirs::cache_dir(),
+            "cache",
+        )
+    }
+
+    /// Resolve a directory path from env override or platform default.
+    ///
+    /// This is the pure testable core of the path resolution logic.
+    /// The env override takes priority; if absent, the platform default
+    /// is used with `/reovim` appended.
+    fn resolve_dir(
+        env_override: Option<String>,
+        platform_default: Option<PathBuf>,
+        kind: &str,
+    ) -> Result<PathBuf, ConfigError> {
+        if let Some(dir) = env_override {
+            return Ok(PathBuf::from(dir));
+        }
+        platform_default
             .map(|p| p.join("reovim"))
-            .ok_or_else(|| ConfigError::PathError("cannot determine cache directory".into()))
+            .ok_or_else(|| ConfigError::PathError(format!("cannot determine {kind} directory")))
     }
 
     /// Get the path to the main config file.
@@ -542,3 +576,7 @@ impl ConfigPaths {
         Self::config_dir().map(|p| p.join("profiles"))
     }
 }
+
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;

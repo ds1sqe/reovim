@@ -258,3 +258,205 @@ fn module_name_from_path_simple_name() {
     let path = std::path::Path::new(&filename);
     assert_eq!(module_name_from_path(path), Some("vim".to_string()));
 }
+
+// ============================================================================
+// Edge cases: Unicode module names
+// ============================================================================
+
+#[test]
+fn library_filename_unicode_name() {
+    // Module names with unicode characters get hyphens replaced with underscores
+    // just like ASCII names. The function does not reject them.
+    let name = library_filename("treesitter-\u{00e9}ditor");
+    assert!(name.contains("reovim_module_treesitter_\u{00e9}ditor"));
+}
+
+#[test]
+fn discover_ignores_unicode_named_non_matching_files() {
+    let dir = std::env::temp_dir().join(format!("reovim-discover-unicode-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let ext = library_extension();
+    // A file with unicode in the module name part — should still be discovered
+    let matching = dir.join(format!("libreovim_module_\u{00e9}ditor.{ext}"));
+    // A file with unicode but not matching the prefix
+    let non_matching = dir.join(format!("lib\u{00e9}diteur.{ext}"));
+
+    std::fs::write(&matching, b"fake").unwrap();
+    std::fs::write(&non_matching, b"fake").unwrap();
+
+    let found = discover_modules(std::slice::from_ref(&dir));
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0], matching);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn module_name_from_path_unicode_module() {
+    let path = std::path::Path::new("libreovim_module_\u{00e9}diteur.so");
+    assert_eq!(module_name_from_path(path), Some("\u{00e9}diteur".to_string()));
+}
+
+#[test]
+fn find_module_unicode_name() {
+    let dir = std::env::temp_dir().join(format!("reovim-find-unicode-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let filename = library_filename("caf\u{00e9}");
+    let file_path = dir.join(&filename);
+    std::fs::write(&file_path, b"fake").unwrap();
+
+    let found = find_module(std::slice::from_ref(&dir), "caf\u{00e9}");
+    assert_eq!(found, Some(file_path));
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+// ============================================================================
+// Edge cases: Very long path names
+// ============================================================================
+
+#[test]
+fn discover_with_very_long_directory_name() {
+    // Create a deeply nested directory with a long total path
+    let long_component = "a".repeat(200);
+    let dir = std::env::temp_dir()
+        .join(format!("reovim-longpath-{}", std::process::id()))
+        .join(&long_component);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let ext = library_extension();
+    let matching = dir.join(format!("libreovim_module_test.{ext}"));
+    std::fs::write(&matching, b"fake").unwrap();
+
+    let found = discover_modules(std::slice::from_ref(&dir));
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0], matching);
+
+    // Clean up from the top-level temp dir
+    let top = std::env::temp_dir().join(format!("reovim-longpath-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).unwrap();
+}
+
+#[test]
+fn find_module_in_long_path() {
+    let long_component = "b".repeat(200);
+    let dir = std::env::temp_dir()
+        .join(format!("reovim-findlong-{}", std::process::id()))
+        .join(&long_component);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let filename = library_filename("long-path-mod");
+    let file_path = dir.join(&filename);
+    std::fs::write(&file_path, b"fake").unwrap();
+
+    let found = find_module(std::slice::from_ref(&dir), "long-path-mod");
+    assert_eq!(found, Some(file_path));
+
+    let top = std::env::temp_dir().join(format!("reovim-findlong-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).unwrap();
+}
+
+#[test]
+fn library_filename_very_long_name() {
+    let long_name = "x".repeat(255);
+    let filename = library_filename(&long_name);
+    // Should contain the full name (no truncation in the function)
+    assert!(filename.contains(&format!("reovim_module_{long_name}")));
+}
+
+// ============================================================================
+// Edge cases: Symlink handling
+// ============================================================================
+
+#[cfg(unix)]
+#[test]
+fn discover_follows_symlinked_files() {
+    let dir = std::env::temp_dir().join(format!("reovim-symlink-{}", std::process::id()));
+    let real_dir = dir.join("real");
+    let link_dir = dir.join("links");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    std::fs::create_dir_all(&link_dir).unwrap();
+
+    let ext = library_extension();
+    let real_file = real_dir.join(format!("libreovim_module_sym.{ext}"));
+    std::fs::write(&real_file, b"fake").unwrap();
+
+    // Create a symlink to the real file inside the link directory
+    let link_file = link_dir.join(format!("libreovim_module_sym.{ext}"));
+    std::os::unix::fs::symlink(&real_file, &link_file).unwrap();
+
+    let found = discover_modules(std::slice::from_ref(&link_dir));
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0], link_file);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn discover_follows_symlinked_directory() {
+    let dir = std::env::temp_dir().join(format!("reovim-symdir-{}", std::process::id()));
+    let real_dir = dir.join("real_modules");
+    std::fs::create_dir_all(&real_dir).unwrap();
+
+    let ext = library_extension();
+    let module_file = real_dir.join(format!("libreovim_module_linked.{ext}"));
+    std::fs::write(&module_file, b"fake").unwrap();
+
+    // Create a symlink to the real directory
+    let link_dir = dir.join("linked_modules");
+    std::os::unix::fs::symlink(&real_dir, &link_dir).unwrap();
+
+    let found = discover_modules(std::slice::from_ref(&link_dir));
+    assert_eq!(found.len(), 1);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn find_module_through_symlink() {
+    let dir = std::env::temp_dir().join(format!("reovim-findsym-{}", std::process::id()));
+    let real_dir = dir.join("real");
+    let link_dir = dir.join("search");
+    std::fs::create_dir_all(&real_dir).unwrap();
+    std::fs::create_dir_all(&link_dir).unwrap();
+
+    let filename = library_filename("symmod");
+    let real_file = real_dir.join(&filename);
+    std::fs::write(&real_file, b"fake").unwrap();
+
+    let link_file = link_dir.join(&filename);
+    std::os::unix::fs::symlink(&real_file, &link_file).unwrap();
+
+    let found = find_module(std::slice::from_ref(&link_dir), "symmod");
+    assert_eq!(found, Some(link_file));
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn discover_handles_broken_symlink() {
+    let dir = std::env::temp_dir().join(format!("reovim-brokensym-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let ext = library_extension();
+    // Create a symlink pointing to a non-existent file
+    let broken_link = dir.join(format!("libreovim_module_broken.{ext}"));
+    std::os::unix::fs::symlink("/nonexistent/target", &broken_link).unwrap();
+
+    // Also create a valid file to ensure discovery still works
+    let valid_file = dir.join(format!("libreovim_module_valid.{ext}"));
+    std::fs::write(&valid_file, b"fake").unwrap();
+
+    let found = discover_modules(std::slice::from_ref(&dir));
+    // Broken symlinks may or may not appear depending on OS behavior with
+    // read_dir; the important thing is that discovery doesn't panic and
+    // still finds the valid file.
+    assert!(found.contains(&valid_file));
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}

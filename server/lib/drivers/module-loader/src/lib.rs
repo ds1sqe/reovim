@@ -20,6 +20,7 @@ pub mod handle;
 pub mod loader;
 pub mod lockfile;
 pub mod registry;
+pub mod report;
 
 #[cfg(feature = "hot-reload")]
 pub mod hot_reload;

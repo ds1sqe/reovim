@@ -6,6 +6,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Module/config/setting separation and integration (#610)**: Unifies three disconnected
+  systems -- personality manifests (#585), user config (#586), and kernel OptionRegistry --
+  into a coherent three-layer architecture (L1 loading, L2 config, L3 options). Phase 1
+  removes legacy `SnippetParentMode`/`JumpParentMode` fallback paths, making `ModeBridgeStore`
+  the sole cross-module mode parent mechanism. Phase 2 moves 9 vim options (scrolloff,
+  ignorecase, number, etc.) from hardcoded `vim_option_specs()` into `vim.toml` personality
+  manifest via new `ManifestOptionSpec` types in `reovim-driver-manifest`. Phase 3 adds typed
+  extraction helpers (`get_bool`/`get_int`/`get_str`) with verbose `ConfigFieldError`
+  diagnostics to `ModuleConfigStore`, and wires completion (pumheight/pumwidth overrides) and
+  LSP (auto_start toggle) modules as config consumers. Phase 4 adds `$REOVIM_CONFIG_DIR`,
+  `$REOVIM_DATA_DIR`, `$REOVIM_CACHE_DIR` environment variable overrides to `ConfigPaths`
+  for worktree isolation, and consolidates bootstrap path helpers. Phase 5 introduces
+  `ModuleLoadReport` service in `reovim-driver-module-loader` and three new `:checkhealth`
+  diagnostic sections (Modules, Dependencies, Configuration). Phase 6 adds extension kind
+  filtering to web client `createExtensions()`.
+
 - **Dynamic .so module loading with search paths and lock file (#587)**: New
   `reovim-driver-module-loader` crate provides safe dynamic loading of server modules from
   `.so` files. Search paths follow XDG conventions. Lock file prevents concurrent loading.

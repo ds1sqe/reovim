@@ -226,6 +226,9 @@ pub fn create_session_state() -> SessionState {
     // Check modules.lock staleness (#587) — warning only, missing lock is fine
     check_lockfile_staleness();
 
+    // #610: Construct and register ModuleLoadReport for health-check diagnostics
+    build_and_register_load_report(&config, &tracked, &services);
+
     // Modules are dropped here — exit() lifecycle requires a ManagedSession
     // wrapper (future work: no module currently overrides exit() meaningfully).
     drop(tracked);
@@ -913,44 +916,85 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
 
 /// Get the default data directory for modules.
 ///
-/// Returns `~/.local/share/reovim/modules/` on Unix,
-/// or equivalent on other platforms.
+/// Uses `ConfigPaths::data_dir()` with `/modules/` subdirectory.
+/// Respects `$REOVIM_DATA_DIR` override (#610).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn default_data_dir() -> std::path::PathBuf {
-    // Use XDG_DATA_HOME or fallback to ~/.local/share
-    std::env::var("XDG_DATA_HOME")
-        .map_or_else(
-            |_| {
-                std::env::var("HOME").map_or_else(
-                    |_| std::path::PathBuf::from("."),
-                    |h| std::path::PathBuf::from(h).join(".local").join("share"),
-                )
-            },
-            std::path::PathBuf::from,
-        )
-        .join("reovim")
+    ConfigPaths::data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from(".").join("reovim"))
         .join("modules")
 }
 
 /// Get the default cache directory for modules.
 ///
-/// Returns `~/.cache/reovim/modules/` on Unix,
-/// or equivalent on other platforms.
+/// Uses `ConfigPaths::cache_dir()` with `/modules/` subdirectory.
+/// Respects `$REOVIM_CACHE_DIR` override (#610).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn default_cache_dir() -> std::path::PathBuf {
-    // Use XDG_CACHE_HOME or fallback to ~/.cache
-    std::env::var("XDG_CACHE_HOME")
-        .map_or_else(
-            |_| {
-                std::env::var("HOME").map_or_else(
-                    |_| std::path::PathBuf::from("."),
-                    |h| std::path::PathBuf::from(h).join(".cache"),
-                )
-            },
-            std::path::PathBuf::from,
-        )
-        .join("reovim")
+    ConfigPaths::cache_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from(".").join("reovim"))
         .join("modules")
+}
+
+/// Build and register a `ModuleLoadReport` for health-check diagnostics (#610).
+///
+/// Populates the report from tracked module states and user config,
+/// then registers it in `ServiceRegistry` for `collect_modules()` etc.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn build_and_register_load_report(
+    config: &ModulesConfig,
+    tracked: &[TrackedModule],
+    services: &Arc<ServiceRegistry>,
+) {
+    use reovim_driver_module_loader::report::ModuleLoadReport;
+
+    let mut report = ModuleLoadReport::new();
+
+    for tm in tracked {
+        let id = tm.module.id();
+        match &tm.state {
+            ModuleState::Running => report.loaded.push(id),
+            ModuleState::Failed(reason) => report.failed.push((id, reason.clone())),
+            _ => {}
+        }
+    }
+
+    // Record disabled modules from config
+    for name in config.disabled_modules() {
+        report
+            .disabled
+            .push(ModuleId::from_string(name.to_string()));
+    }
+
+    // Check required deps: warn if a loaded module's required dep is not loaded
+    let loaded_ids: Vec<&str> = report.loaded.iter().map(ModuleId::as_str).collect();
+    for tm in tracked {
+        if tm.state != ModuleState::Running {
+            continue;
+        }
+        for dep in tm.module.dependencies() {
+            if !loaded_ids.contains(&dep.as_str()) {
+                report.missing_deps.push((tm.module.id(), dep));
+            }
+        }
+    }
+
+    // Record config path
+    if let Ok(config_dir) = ConfigPaths::config_dir() {
+        let config_path = config_dir.join("modules.toml");
+        if config_path.exists() {
+            report.config_path = Some(config_path);
+        }
+    }
+
+    // Record module search paths
+    report.search_paths = reovim_driver_module_loader::discovery::default_search_paths();
+
+    // Record isolation status
+    report.isolation_active =
+        std::env::var("REOVIM_DATA_DIR").is_ok() || std::env::var("REOVIM_CONFIG_DIR").is_ok();
+
+    services.register(Arc::new(report));
 }
 
 /// Check `modules.lock` staleness at startup (#587).

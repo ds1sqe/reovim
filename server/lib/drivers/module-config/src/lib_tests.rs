@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, fmt::Write as _};
 
 use super::*;
 
@@ -510,4 +510,320 @@ enabled = true
     let config = ModulesConfig::parse(toml).unwrap();
     let store = config.build_config_store();
     assert!(store.is_empty());
+}
+
+// ============================================================================
+// ConfigFieldError
+// ============================================================================
+
+#[test]
+fn config_field_error_display() {
+    let err = ConfigFieldError {
+        module_id: "lsp".to_string(),
+        field: "timeout".to_string(),
+        expected: "integer",
+        actual: r#""abc""#.to_string(),
+    };
+    assert_eq!(err.to_string(), r#"module 'lsp': field 'timeout' expected integer, got "abc""#);
+}
+
+#[test]
+fn config_field_error_debug() {
+    let err = ConfigFieldError {
+        module_id: "lsp".to_string(),
+        field: "timeout".to_string(),
+        expected: "integer",
+        actual: "true".to_string(),
+    };
+    let debug = format!("{err:?}");
+    assert!(debug.contains("ConfigFieldError"));
+    assert!(debug.contains("lsp"));
+}
+
+#[test]
+fn config_field_error_is_std_error() {
+    let err = ConfigFieldError {
+        module_id: "x".to_string(),
+        field: "y".to_string(),
+        expected: "bool",
+        actual: "42".to_string(),
+    };
+    let _: &dyn std::error::Error = &err;
+}
+
+#[test]
+fn config_field_error_equality() {
+    let a = ConfigFieldError {
+        module_id: "a".to_string(),
+        field: "b".to_string(),
+        expected: "bool",
+        actual: "42".to_string(),
+    };
+    let b = a.clone();
+    assert_eq!(a, b);
+}
+
+// ============================================================================
+// Typed getters: get_bool
+// ============================================================================
+
+fn store_with_lsp_settings() -> ModuleConfigStore {
+    let toml_str = r#"
+auto_start = true
+timeout = 30
+name = "rust-analyzer"
+count = 5.5
+"#;
+    let settings: toml::Value = toml::from_str(toml_str).unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    ModuleConfigStore::new(configs)
+}
+
+#[test]
+fn get_bool_returns_none_for_missing_module() {
+    let store = ModuleConfigStore::new(HashMap::new());
+    assert_eq!(store.get_bool("lsp", "auto_start").unwrap(), None);
+}
+
+#[test]
+fn get_bool_returns_none_for_missing_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_bool("lsp", "nonexistent").unwrap(), None);
+}
+
+#[test]
+fn get_bool_returns_value_for_bool_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_bool("lsp", "auto_start").unwrap(), Some(true));
+}
+
+#[test]
+fn get_bool_error_for_wrong_type() {
+    let store = store_with_lsp_settings();
+    let err = store.get_bool("lsp", "timeout").unwrap_err();
+    assert_eq!(err.module_id, "lsp");
+    assert_eq!(err.field, "timeout");
+    assert_eq!(err.expected, "bool");
+}
+
+// ============================================================================
+// Typed getters: get_int
+// ============================================================================
+
+#[test]
+fn get_int_returns_none_for_missing_module() {
+    let store = ModuleConfigStore::new(HashMap::new());
+    assert_eq!(store.get_int("lsp", "timeout").unwrap(), None);
+}
+
+#[test]
+fn get_int_returns_none_for_missing_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_int("lsp", "nonexistent").unwrap(), None);
+}
+
+#[test]
+fn get_int_returns_value_for_int_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_int("lsp", "timeout").unwrap(), Some(30));
+}
+
+#[test]
+fn get_int_error_for_wrong_type() {
+    let store = store_with_lsp_settings();
+    let err = store.get_int("lsp", "auto_start").unwrap_err();
+    assert_eq!(err.module_id, "lsp");
+    assert_eq!(err.field, "auto_start");
+    assert_eq!(err.expected, "integer");
+}
+
+// ============================================================================
+// Typed getters: get_str
+// ============================================================================
+
+#[test]
+fn get_str_returns_none_for_missing_module() {
+    let store = ModuleConfigStore::new(HashMap::new());
+    assert_eq!(store.get_str("lsp", "name").unwrap(), None);
+}
+
+#[test]
+fn get_str_returns_none_for_missing_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_str("lsp", "nonexistent").unwrap(), None);
+}
+
+#[test]
+fn get_str_returns_value_for_str_field() {
+    let store = store_with_lsp_settings();
+    assert_eq!(store.get_str("lsp", "name").unwrap(), Some("rust-analyzer".to_string()));
+}
+
+#[test]
+fn get_str_error_for_wrong_type() {
+    let store = store_with_lsp_settings();
+    let err = store.get_str("lsp", "timeout").unwrap_err();
+    assert_eq!(err.module_id, "lsp");
+    assert_eq!(err.field, "timeout");
+    assert_eq!(err.expected, "string");
+}
+
+// ============================================================================
+// Edge cases: Unicode values in settings
+// ============================================================================
+
+#[test]
+fn parse_unicode_string_in_settings() {
+    let toml = "
+[modules.editor]
+enabled = true
+[modules.editor.settings]
+greeting = \"\u{00e9}\u{00e8}\u{00ea}\u{00eb}\"
+locale = \"\u{65e5}\u{672c}\u{8a9e}\"
+emoji_name = \"\u{1f680} rocket\"
+";
+    let config = ModulesConfig::parse(toml).unwrap();
+    let settings = config.module_settings("editor").unwrap();
+    assert_eq!(
+        settings.get("greeting").unwrap().as_str(),
+        Some("\u{00e9}\u{00e8}\u{00ea}\u{00eb}")
+    );
+    assert_eq!(settings.get("locale").unwrap().as_str(), Some("\u{65e5}\u{672c}\u{8a9e}"));
+    assert_eq!(settings.get("emoji_name").unwrap().as_str(), Some("\u{1f680} rocket"));
+}
+
+#[test]
+fn get_str_returns_unicode_value() {
+    let toml_str = "
+greeting = \"\u{00e9}\u{00e8}\u{00ea}\u{00eb}\"
+locale = \"\u{65e5}\u{672c}\u{8a9e}\"
+";
+    let settings: toml::Value = toml::from_str(toml_str).unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("i18n".to_string(), settings);
+    let store = ModuleConfigStore::new(configs);
+
+    assert_eq!(
+        store.get_str("i18n", "greeting").unwrap(),
+        Some("\u{00e9}\u{00e8}\u{00ea}\u{00eb}".to_string())
+    );
+    assert_eq!(
+        store.get_str("i18n", "locale").unwrap(),
+        Some("\u{65e5}\u{672c}\u{8a9e}".to_string())
+    );
+}
+
+#[test]
+fn unicode_module_id_in_config() {
+    let toml = "
+[modules.\"\u{00e9}ditor\"]
+enabled = false
+";
+    let config = ModulesConfig::parse(toml).unwrap();
+    assert!(!config.is_module_enabled("\u{00e9}ditor"));
+    let disabled = config.disabled_modules();
+    assert!(disabled.contains(&"\u{00e9}ditor"));
+}
+
+#[test]
+fn validate_warns_on_unicode_unknown_module() {
+    let toml = "
+[modules.\"\u{00e9}ditor\"]
+enabled = true
+";
+    let config = ModulesConfig::parse(toml).unwrap();
+    let warnings = config.validate_modules(&["vim", "editor"]);
+    assert_eq!(warnings.len(), 1);
+    assert!(warnings.iter().any(|w| matches!(
+        w,
+        ModuleConfigWarning::UnknownModule { id } if id == "\u{00e9}ditor"
+    )));
+}
+
+// ============================================================================
+// Edge cases: Very large TOML collections
+// ============================================================================
+
+#[test]
+fn parse_large_number_of_modules() {
+    let mut toml = String::from("extends = \"official\"\n");
+    for i in 0..200 {
+        let _ = writeln!(toml, "\n[modules.\"module-{i}\"]\nenabled = {}", i % 2 == 0);
+    }
+    let config = ModulesConfig::parse(&toml).unwrap();
+    assert_eq!(config.modules.len(), 200);
+
+    // Verify enabled/disabled pattern
+    assert!(config.is_module_enabled("module-0"));
+    assert!(!config.is_module_enabled("module-1"));
+    assert!(config.is_module_enabled("module-198"));
+    assert!(!config.is_module_enabled("module-199"));
+
+    let disabled = config.disabled_modules();
+    assert_eq!(disabled.len(), 100);
+}
+
+#[test]
+fn parse_large_settings_table() {
+    let mut toml = String::from("[modules.big]\nenabled = true\n[modules.big.settings]\n");
+    for i in 0..500 {
+        let _ = writeln!(toml, "key_{i} = {i}");
+    }
+    let config = ModulesConfig::parse(&toml).unwrap();
+    let settings = config.module_settings("big").unwrap();
+
+    // Verify first and last entries
+    assert_eq!(settings.get("key_0").unwrap().as_integer(), Some(0));
+    assert_eq!(settings.get("key_499").unwrap().as_integer(), Some(499));
+}
+
+#[test]
+fn build_config_store_large_collection() {
+    let mut toml = String::new();
+    for i in 0..100 {
+        let _ = writeln!(
+            toml,
+            "[modules.\"mod-{i}\"]\nenabled = true\n[modules.\"mod-{i}\".settings]\nvalue = {i}\n"
+        );
+    }
+    let config = ModulesConfig::parse(&toml).unwrap();
+    let store = config.build_config_store();
+
+    // All 100 modules have settings
+    assert!(!store.is_empty());
+    for i in 0..100 {
+        let key = format!("mod-{i}");
+        let val = store.get(&key).unwrap();
+        assert_eq!(val.get("value").unwrap().as_integer(), Some(i64::from(i)));
+    }
+}
+
+#[test]
+fn validate_large_known_list() {
+    let mut toml = String::new();
+    for i in 0..50 {
+        let _ = writeln!(toml, "[modules.\"mod-{i}\"]\nenabled = true");
+    }
+    let config = ModulesConfig::parse(&toml).unwrap();
+
+    // Build a known list that covers all but 5 modules
+    let known: Vec<String> = (0..45).map(|i| format!("mod-{i}")).collect();
+    let known_refs: Vec<&str> = known.iter().map(String::as_str).collect();
+    let warnings = config.validate_modules(&known_refs);
+    assert_eq!(warnings.len(), 5);
+}
+
+#[test]
+fn parse_large_extensions_collection() {
+    let mut toml = String::new();
+    for i in 0..100 {
+        let _ = writeln!(toml, "[extensions.\"ext-{i}\"]\nenabled = {}", i % 3 != 0);
+    }
+    let config = ModulesConfig::parse(&toml).unwrap();
+    assert_eq!(config.extensions.len(), 100);
+
+    let disabled = config.disabled_extensions();
+    // Every 3rd extension (0, 3, 6, ..., 99) is disabled: ceil(100/3) = 34
+    assert_eq!(disabled.len(), 34);
 }

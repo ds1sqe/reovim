@@ -18,6 +18,7 @@ use {
         LspLifecycleRegistry, LspProviderRegistry, LspRequest, config_for_language,
         find_project_root, language_id_from_path, uri_from_path,
     },
+    reovim_driver_module_config::ModuleConfigStore,
     reovim_driver_session::{TickSchedulerHandle, bridges::BridgeProvider},
     reovim_kernel::api::v1::{
         BufferId, EventResult, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
@@ -100,8 +101,11 @@ impl Module for LspModule {
         let lifecycle_registry = ctx.services.get_or_create::<LspLifecycleRegistry>();
         lifecycle_registry.register(Arc::clone(&lifecycle));
 
+        // #610: Check user config for auto_start (default: true).
+        let auto_start = should_auto_start(ctx);
+
         // Subscribe to FileOpened events → auto-start LSP server (#564).
-        {
+        if auto_start {
             let services = Arc::clone(&ctx.services);
             let buffers = Arc::clone(&ctx.kernel.buffers);
             let file_opened_sub =
@@ -204,6 +208,25 @@ impl Module for LspModule {
 
     fn extension_kinds(&self) -> &[&'static str] {
         &[reovim_extension_kinds::DIAGNOSTICS]
+    }
+}
+
+/// Check if LSP auto-start is enabled via user config.
+///
+/// Reads `auto_start` from the LSP module's `modules.toml` settings section.
+/// Defaults to `true` if no config is present or the field is absent.
+/// Logs a warning if the field has the wrong type.
+fn should_auto_start(ctx: &ModuleContext) -> bool {
+    let Some(store) = ctx.services.get::<ModuleConfigStore>() else {
+        return true;
+    };
+    match store.get_bool("lsp", "auto_start") {
+        Ok(Some(v)) => v,
+        Ok(None) => true,
+        Err(e) => {
+            tracing::warn!("lsp config: {e}");
+            true
+        }
     }
 }
 

@@ -1,26 +1,29 @@
 #![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-//! Personality manifest driver for TOML-based keybinding and mode bridge declarations.
+//! Personality manifest driver for TOML-based keybinding, mode bridge, and option declarations.
 //!
 //! This driver provides the mechanism for parsing personality manifests (e.g., `vim.toml`)
-//! that declare keybinding tables and mode bridges. It converts manifest data into
-//! [`KeybindingRegistration`] values and provides a [`ModeBridgeStore`] for cross-module
-//! mode bridge resolution.
+//! that declare keybinding tables, mode bridges, and option specifications. It converts
+//! manifest data into kernel registration types.
 //!
 //! # Architecture
 //!
 //! This is a **driver** (mechanism layer). It provides:
 //! - TOML parsing for personality manifests
 //! - Conversion from manifest data to kernel registration types
+//! - Option spec conversion to kernel [`OptionSpec`] types (#610)
 //! - A shared `ModeBridgeStore` service for feature modules to query
 //!
-//! Policy decisions (which bindings, which modes) live in the personality module
-//! (e.g., `vim`) and its TOML data file.
+//! Policy decisions (which bindings, which modes, which options) live in the personality
+//! module (e.g., `vim`) and its TOML data file.
 
 use std::fmt;
 
 use {
-    reovim_kernel::api::v1::{CommandId, KeybindingRegistration, ModuleId, Service},
+    reovim_kernel::api::v1::{
+        CommandId, KeybindingRegistration, ModuleId, OptionConstraint, OptionScope, OptionSpec,
+        OptionValue, Service,
+    },
     serde::Deserialize,
 };
 
@@ -52,6 +55,132 @@ pub struct ManifestModeBridge {
     pub parent_mode: String,
 }
 
+/// Scope where a manifest option applies.
+///
+/// Defaults to `Global` if not specified in the manifest.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ManifestOptionScope {
+    /// Applies globally to the entire editor.
+    #[default]
+    Global,
+    /// Per-buffer setting (e.g., `filetype`, `tabwidth`).
+    Buffer,
+    /// Per-window setting (e.g., `number`, `relativenumber`).
+    Window,
+}
+
+/// Type-safe option value in a manifest.
+///
+/// Serde deserializes TOML values by type inference:
+/// - `true`/`false` → `Bool`
+/// - integers → `Integer`
+/// - strings → `String`
+/// - `{ value = "x", choices = ["x", "y"] }` → `Choice`
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum ManifestOptionValue {
+    /// Boolean option value.
+    Bool(bool),
+    /// Integer option value.
+    Integer(i64),
+    /// Choice option with predefined valid values.
+    Choice {
+        /// Current selected value.
+        value: String,
+        /// All valid choices.
+        choices: Vec<String>,
+    },
+    /// String option value.
+    String(String),
+}
+
+/// Constraint for a manifest option value.
+///
+/// Maps directly to kernel [`OptionConstraint`] fields.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct ManifestConstraint {
+    /// For Integer: minimum value (inclusive).
+    #[serde(default)]
+    pub min: Option<i64>,
+    /// For Integer: maximum value (inclusive).
+    #[serde(default)]
+    pub max: Option<i64>,
+    /// For String: minimum length.
+    #[serde(default)]
+    pub min_length: Option<usize>,
+    /// For String: maximum length.
+    #[serde(default)]
+    pub max_length: Option<usize>,
+}
+
+/// A single option specification declared in a personality manifest.
+///
+/// Format mirrors kernel [`OptionSpec`] exactly (#610): same fields for name,
+/// scope, default, alias, description, and constraint.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ManifestOptionSpec {
+    /// Full option name (e.g., `"scrolloff"`, `"number"`).
+    pub name: String,
+    /// Short alias (e.g., `"so"` for `"scrolloff"`).
+    #[serde(default)]
+    pub short: Option<String>,
+    /// Human-readable description.
+    pub description: String,
+    /// Scope (global, buffer, window). Defaults to global.
+    #[serde(default)]
+    pub scope: ManifestOptionScope,
+    /// Default value (also defines the type).
+    pub default: ManifestOptionValue,
+    /// Constraints for validation.
+    #[serde(default)]
+    pub constraint: ManifestConstraint,
+}
+
+impl ManifestOptionSpec {
+    /// Convert to a kernel [`OptionSpec`].
+    ///
+    /// String fields are leaked to `&'static str` (bounded startup cost).
+    #[must_use]
+    pub fn to_option_spec(&self, owner: &ModuleId) -> OptionSpec {
+        let name = leak_str(&self.name);
+        let description = leak_str(&self.description);
+
+        let default = match &self.default {
+            ManifestOptionValue::Bool(b) => OptionValue::bool(*b),
+            ManifestOptionValue::Integer(i) => OptionValue::int(*i),
+            ManifestOptionValue::String(s) => OptionValue::string(s.clone()),
+            ManifestOptionValue::Choice { value, choices } => {
+                OptionValue::choice(value.clone(), choices.clone())
+            }
+        };
+
+        let constraint = OptionConstraint {
+            min: self.constraint.min,
+            max: self.constraint.max,
+            min_length: self.constraint.min_length,
+            max_length: self.constraint.max_length,
+        };
+
+        let scope = match self.scope {
+            ManifestOptionScope::Global => OptionScope::Global,
+            ManifestOptionScope::Buffer => OptionScope::Buffer,
+            ManifestOptionScope::Window => OptionScope::Window,
+        };
+
+        let mut spec = OptionSpec::new(name, description, default)
+            .with_constraint(constraint)
+            .with_scope(scope)
+            .with_owner(owner.clone());
+
+        if let Some(ref short) = self.short {
+            spec = spec.with_short(leak_str(short));
+        }
+
+        spec
+    }
+}
+
 /// Personality manifest metadata.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PersonalityMeta {
@@ -74,6 +203,9 @@ pub struct PersonalityManifest {
     /// Mode bridge declarations.
     #[serde(default, rename = "mode-bridge")]
     pub mode_bridges: Vec<ManifestModeBridge>,
+    /// Option declarations (#610).
+    #[serde(default, rename = "option")]
+    pub options: Vec<ManifestOptionSpec>,
 }
 
 // ============================================================================
@@ -282,6 +414,18 @@ impl PersonalityManifest {
             }
         }
         warnings
+    }
+
+    /// Convert manifest option declarations into kernel [`OptionSpec`] values.
+    ///
+    /// All string fields are leaked to `&'static str` since [`OptionSpec`]
+    /// uses `Cow<'static, str>`. This is bounded startup cost (#610).
+    #[must_use]
+    pub fn to_option_specs(&self, owner: &ModuleId) -> Vec<OptionSpec> {
+        self.options
+            .iter()
+            .map(|opt| opt.to_option_spec(owner))
+            .collect()
     }
 
     /// Filter keybindings to only those whose command module is loaded.

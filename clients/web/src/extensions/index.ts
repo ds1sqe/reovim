@@ -31,9 +31,15 @@ import { RangeFinderFoldExtension } from "./range-finder-fold.js";
 import { LandingExtension } from "./landing.js";
 import { toposortExtensions } from "./toposort.js";
 
-/** Create all default web extensions, sorted by dependency order (#583). */
-export function createExtensions(): WebExtension[] {
-  const exts: WebExtension[] = [
+/**
+ * Create all default web extensions, sorted by dependency order (#583).
+ *
+ * @param disabledKinds - Optional set of extension kinds to exclude (#610).
+ *   Extensions whose `kind()` is in this set are filtered out before
+ *   initialization. If omitted, all extensions are loaded (existing behavior).
+ */
+export function createExtensions(disabledKinds?: Set<string>): WebExtension[] {
+  let exts: WebExtension[] = [
     new CmdlineExtension(),
     new WhichKeyExtension(),
     new NotificationExtension(),
@@ -44,6 +50,10 @@ export function createExtensions(): WebExtension[] {
     new RangeFinderFoldExtension(),
     new LandingExtension(),
   ];
+
+  if (disabledKinds && disabledKinds.size > 0) {
+    exts = exts.filter((ext) => !disabledKinds.has(ext.kind()));
+  }
 
   const sorted = toposortExtensions(exts);
 

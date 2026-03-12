@@ -484,3 +484,532 @@ parent_mode = "vim:normal"
     assert_eq!(manifest.mode_bridges[0].feature_mode, "range-finder:jump-input");
     assert_eq!(manifest.mode_bridges[0].parent_mode, "vim:normal");
 }
+
+// ========== Option parsing (#610) ==========
+
+const OPTIONS_TOML: &str = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "scrolloff"
+short = "so"
+description = "Minimum lines above/below cursor"
+default = 0
+constraint = { min = 0 }
+
+[[option]]
+name = "number"
+short = "nu"
+description = "Show line numbers"
+scope = "window"
+default = false
+
+[[option]]
+name = "wrapscan"
+short = "ws"
+description = "Wrap search around end of file"
+default = true
+"#;
+
+#[test]
+fn parse_options_count() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    assert_eq!(manifest.options.len(), 3);
+}
+
+#[test]
+fn parse_option_integer_fields() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(opt.name, "scrolloff");
+    assert_eq!(opt.short, Some("so".to_string()));
+    assert_eq!(opt.description, "Minimum lines above/below cursor");
+    assert_eq!(opt.scope, ManifestOptionScope::Global);
+    assert_eq!(opt.default, ManifestOptionValue::Integer(0));
+    assert_eq!(
+        opt.constraint,
+        ManifestConstraint {
+            min: Some(0),
+            max: None,
+            min_length: None,
+            max_length: None,
+        }
+    );
+}
+
+#[test]
+fn parse_option_bool_window_scope() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let opt = &manifest.options[1];
+    assert_eq!(opt.name, "number");
+    assert_eq!(opt.scope, ManifestOptionScope::Window);
+    assert_eq!(opt.default, ManifestOptionValue::Bool(false));
+}
+
+#[test]
+fn parse_option_bool_true_default() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let opt = &manifest.options[2];
+    assert_eq!(opt.name, "wrapscan");
+    assert_eq!(opt.default, ManifestOptionValue::Bool(true));
+}
+
+#[test]
+fn parse_option_string_default() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "theme"
+description = "Color theme"
+default = "monokai"
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(opt.default, ManifestOptionValue::String("monokai".to_string()));
+}
+
+#[test]
+fn parse_option_choice_default() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "virtualedit"
+description = "Allow cursor beyond end of line"
+default = { value = "none", choices = ["none", "all", "block"] }
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(
+        opt.default,
+        ManifestOptionValue::Choice {
+            value: "none".to_string(),
+            choices: vec!["none".to_string(), "all".to_string(), "block".to_string()],
+        }
+    );
+}
+
+#[test]
+fn parse_option_buffer_scope() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "filetype"
+description = "Buffer file type"
+scope = "buffer"
+default = ""
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(opt.scope, ManifestOptionScope::Buffer);
+}
+
+#[test]
+fn parse_option_range_constraint() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "tabstop"
+description = "Tab width"
+scope = "buffer"
+default = 4
+constraint = { min = 1, max = 32 }
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(
+        opt.constraint,
+        ManifestConstraint {
+            min: Some(1),
+            max: Some(32),
+            min_length: None,
+            max_length: None,
+        }
+    );
+}
+
+#[test]
+fn parse_option_string_length_constraint() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "label"
+description = "Label"
+default = "x"
+constraint = { min_length = 1, max_length = 10 }
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let opt = &manifest.options[0];
+    assert_eq!(
+        opt.constraint,
+        ManifestConstraint {
+            min: None,
+            max: None,
+            min_length: Some(1),
+            max_length: Some(10),
+        }
+    );
+}
+
+#[test]
+fn parse_no_options_defaults_to_empty() {
+    let manifest = PersonalityManifest::parse(MINIMAL_TOML).unwrap();
+    assert!(manifest.options.is_empty());
+}
+
+#[test]
+fn parse_existing_toml_with_no_options() {
+    // Existing VALID_TOML (no options) should still parse with empty options
+    let manifest = PersonalityManifest::parse(VALID_TOML).unwrap();
+    assert!(manifest.options.is_empty());
+    // Other fields still work
+    assert_eq!(manifest.keybindings.len(), 2);
+    assert_eq!(manifest.mode_bridges.len(), 1);
+}
+
+#[test]
+fn parse_option_default_scope_is_global() {
+    // When scope is omitted, it defaults to global
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "hlsearch"
+description = "Highlight search"
+default = false
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    assert_eq!(manifest.options[0].scope, ManifestOptionScope::Global);
+}
+
+#[test]
+fn parse_option_default_constraint_is_none() {
+    // When constraint is omitted, all fields are None
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "hlsearch"
+description = "Highlight search"
+default = false
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    assert_eq!(manifest.options[0].constraint, ManifestConstraint::default());
+}
+
+#[test]
+fn parse_option_no_short_form() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "noshort"
+description = "No short form"
+default = false
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    assert!(manifest.options[0].short.is_none());
+}
+
+// ========== Option conversion (#610) ==========
+
+use reovim_kernel::api::v1::{OptionConstraint, OptionScope, OptionValue};
+
+#[test]
+fn to_option_specs_count() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs.len(), 3);
+}
+
+#[test]
+fn to_option_specs_names() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].name.as_ref(), "scrolloff");
+    assert_eq!(specs[1].name.as_ref(), "number");
+    assert_eq!(specs[2].name.as_ref(), "wrapscan");
+}
+
+#[test]
+fn to_option_specs_short_forms() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].short_form.as_deref(), Some("so"));
+    assert_eq!(specs[1].short_form.as_deref(), Some("nu"));
+    assert_eq!(specs[2].short_form.as_deref(), Some("ws"));
+}
+
+#[test]
+fn to_option_specs_descriptions() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].description.as_ref(), "Minimum lines above/below cursor");
+}
+
+#[test]
+fn to_option_specs_defaults() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].default, OptionValue::int(0));
+    assert_eq!(specs[1].default, OptionValue::bool(false));
+    assert_eq!(specs[2].default, OptionValue::bool(true));
+}
+
+#[test]
+fn to_option_specs_scopes() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].scope, OptionScope::Global);
+    assert_eq!(specs[1].scope, OptionScope::Window);
+    assert_eq!(specs[2].scope, OptionScope::Global);
+}
+
+#[test]
+fn to_option_specs_constraints() {
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("vim"));
+    assert_eq!(specs[0].constraint, OptionConstraint::min(0));
+    assert_eq!(specs[1].constraint, OptionConstraint::none());
+}
+
+#[test]
+fn to_option_specs_owner() {
+    let owner = ModuleId::new("vim");
+    let manifest = PersonalityManifest::parse(OPTIONS_TOML).unwrap();
+    let specs = manifest.to_option_specs(&owner);
+    for spec in &specs {
+        assert_eq!(spec.owner(), Some(&owner));
+    }
+}
+
+#[test]
+fn to_option_specs_no_short_form() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "noshort"
+description = "No short form"
+default = false
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert!(specs[0].short_form.is_none());
+}
+
+#[test]
+fn to_option_specs_string_value() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "theme"
+description = "Theme"
+default = "monokai"
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert_eq!(specs[0].default, OptionValue::string("monokai"));
+}
+
+#[test]
+fn to_option_specs_choice_value() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "virtualedit"
+description = "Virtual edit mode"
+default = { value = "none", choices = ["none", "all", "block"] }
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert_eq!(
+        specs[0].default,
+        OptionValue::choice(
+            "none",
+            vec!["none".to_string(), "all".to_string(), "block".to_string()]
+        )
+    );
+}
+
+#[test]
+fn to_option_specs_buffer_scope() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "tabstop"
+description = "Tab width"
+scope = "buffer"
+default = 4
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert_eq!(specs[0].scope, OptionScope::Buffer);
+}
+
+#[test]
+fn to_option_specs_range_constraint() {
+    let toml = r#"
+[personality]
+name = "test"
+
+[[option]]
+name = "tabstop"
+description = "Tab width"
+default = 4
+constraint = { min = 1, max = 32 }
+"#;
+    let manifest = PersonalityManifest::parse(toml).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert_eq!(specs[0].constraint, OptionConstraint::range(1, 32));
+}
+
+#[test]
+fn to_option_specs_empty() {
+    let manifest = PersonalityManifest::parse(MINIMAL_TOML).unwrap();
+    let specs = manifest.to_option_specs(&ModuleId::new("test"));
+    assert!(specs.is_empty());
+}
+
+#[test]
+fn to_option_spec_single_integer() {
+    let spec_manifest = ManifestOptionSpec {
+        name: "scrolloff".to_string(),
+        short: Some("so".to_string()),
+        description: "Scroll offset".to_string(),
+        scope: ManifestOptionScope::Global,
+        default: ManifestOptionValue::Integer(5),
+        constraint: ManifestConstraint {
+            min: Some(0),
+            max: Some(999),
+            min_length: None,
+            max_length: None,
+        },
+    };
+    let spec = spec_manifest.to_option_spec(&ModuleId::new("vim"));
+    assert_eq!(spec.name.as_ref(), "scrolloff");
+    assert_eq!(spec.short_form.as_deref(), Some("so"));
+    assert_eq!(spec.default, OptionValue::int(5));
+    assert_eq!(spec.scope, OptionScope::Global);
+    assert_eq!(spec.constraint, OptionConstraint::range(0, 999));
+    assert_eq!(spec.owner().map(ModuleId::as_str), Some("vim"));
+}
+
+#[test]
+fn manifest_option_value_debug() {
+    let val = ManifestOptionValue::Bool(true);
+    let debug = format!("{val:?}");
+    assert!(debug.contains("Bool"));
+}
+
+#[test]
+fn manifest_option_scope_debug() {
+    let scope = ManifestOptionScope::Window;
+    let debug = format!("{scope:?}");
+    assert!(debug.contains("Window"));
+}
+
+#[test]
+fn manifest_constraint_debug() {
+    let c = ManifestConstraint {
+        min: Some(0),
+        max: None,
+        min_length: None,
+        max_length: None,
+    };
+    let debug = format!("{c:?}");
+    assert!(debug.contains("min"));
+}
+
+#[test]
+fn manifest_option_scope_default_is_global() {
+    assert_eq!(ManifestOptionScope::default(), ManifestOptionScope::Global);
+}
+
+#[test]
+fn manifest_constraint_default_is_none() {
+    let c = ManifestConstraint::default();
+    assert!(c.min.is_none());
+    assert!(c.max.is_none());
+    assert!(c.min_length.is_none());
+    assert!(c.max_length.is_none());
+}
+
+#[test]
+fn manifest_option_value_clone() {
+    let val = ManifestOptionValue::Integer(42);
+    let cloned = val.clone();
+    assert_eq!(val, cloned);
+}
+
+#[test]
+fn manifest_option_spec_clone() {
+    let spec = ManifestOptionSpec {
+        name: "test".to_string(),
+        short: None,
+        description: "Test".to_string(),
+        scope: ManifestOptionScope::Global,
+        default: ManifestOptionValue::Bool(false),
+        constraint: ManifestConstraint::default(),
+    };
+    let cloned = spec.clone();
+    assert_eq!(spec, cloned);
+}
+
+#[test]
+fn manifest_constraint_clone() {
+    let c = ManifestConstraint {
+        min: Some(1),
+        max: Some(100),
+        min_length: None,
+        max_length: None,
+    };
+    let cloned = c.clone();
+    assert_eq!(c, cloned);
+}
+
+#[test]
+fn manifest_option_scope_copy() {
+    let scope = ManifestOptionScope::Buffer;
+    let copied = scope;
+    assert_eq!(scope, copied);
+}
+
+#[test]
+fn to_option_spec_string_length_constraint() {
+    let spec_manifest = ManifestOptionSpec {
+        name: "label".to_string(),
+        short: None,
+        description: "Label".to_string(),
+        scope: ManifestOptionScope::Global,
+        default: ManifestOptionValue::String("x".to_string()),
+        constraint: ManifestConstraint {
+            min: None,
+            max: None,
+            min_length: Some(1),
+            max_length: Some(10),
+        },
+    };
+    let spec = spec_manifest.to_option_spec(&ModuleId::new("test"));
+    assert_eq!(spec.constraint, OptionConstraint::string_length(1, 10));
+}

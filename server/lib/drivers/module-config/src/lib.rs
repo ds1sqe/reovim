@@ -102,6 +102,34 @@ impl std::error::Error for ModuleConfigError {
     }
 }
 
+/// Error extracting a typed field from module config settings.
+///
+/// Returned when a field exists but has the wrong TOML type.
+/// Contains verbose diagnostics for user-facing error messages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigFieldError {
+    /// The module ID whose config was queried.
+    pub module_id: String,
+    /// The field name that was queried.
+    pub field: String,
+    /// The expected TOML type (e.g. `"bool"`, `"integer"`, `"string"`).
+    pub expected: &'static str,
+    /// The actual TOML value as a string.
+    pub actual: String,
+}
+
+impl fmt::Display for ConfigFieldError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "module '{}': field '{}' expected {}, got {}",
+            self.module_id, self.field, self.expected, self.actual
+        )
+    }
+}
+
+impl std::error::Error for ConfigFieldError {}
+
 /// Non-fatal warning from config validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModuleConfigWarning {
@@ -280,7 +308,7 @@ impl ModulesConfig {
 
 /// Service providing per-module settings to modules during `init()`.
 ///
-/// Registered in [`ServiceRegistry`] by bootstrap. Modules query their
+/// Registered in `ServiceRegistry` by bootstrap. Modules query their
 /// config section via `get(module_id)`.
 pub struct ModuleConfigStore {
     configs: HashMap<String, toml::Value>,
@@ -303,6 +331,93 @@ impl ModuleConfigStore {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.configs.is_empty()
+    }
+}
+
+impl ModuleConfigStore {
+    /// Extract a boolean field from a module's settings.
+    ///
+    /// Returns `Ok(None)` if the module or field is absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigFieldError`] if the field exists but is not a bool.
+    pub fn get_bool(&self, module_id: &str, field: &str) -> Result<Option<bool>, ConfigFieldError> {
+        let Some(settings) = self.get(module_id) else {
+            return Ok(None);
+        };
+        let Some(value) = settings.get(field) else {
+            return Ok(None);
+        };
+        value.as_bool().map_or_else(
+            || {
+                Err(ConfigFieldError {
+                    module_id: module_id.to_string(),
+                    field: field.to_string(),
+                    expected: "bool",
+                    actual: format!("{value}"),
+                })
+            },
+            |v| Ok(Some(v)),
+        )
+    }
+
+    /// Extract an integer field from a module's settings.
+    ///
+    /// Returns `Ok(None)` if the module or field is absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigFieldError`] if the field exists but is not an integer.
+    pub fn get_int(&self, module_id: &str, field: &str) -> Result<Option<i64>, ConfigFieldError> {
+        let Some(settings) = self.get(module_id) else {
+            return Ok(None);
+        };
+        let Some(value) = settings.get(field) else {
+            return Ok(None);
+        };
+        value.as_integer().map_or_else(
+            || {
+                Err(ConfigFieldError {
+                    module_id: module_id.to_string(),
+                    field: field.to_string(),
+                    expected: "integer",
+                    actual: format!("{value}"),
+                })
+            },
+            |v| Ok(Some(v)),
+        )
+    }
+
+    /// Extract a string field from a module's settings.
+    ///
+    /// Returns `Ok(None)` if the module or field is absent.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigFieldError`] if the field exists but is not a string.
+    pub fn get_str(
+        &self,
+        module_id: &str,
+        field: &str,
+    ) -> Result<Option<String>, ConfigFieldError> {
+        let Some(settings) = self.get(module_id) else {
+            return Ok(None);
+        };
+        let Some(value) = settings.get(field) else {
+            return Ok(None);
+        };
+        value.as_str().map_or_else(
+            || {
+                Err(ConfigFieldError {
+                    module_id: module_id.to_string(),
+                    field: field.to_string(),
+                    expected: "string",
+                    actual: format!("{value}"),
+                })
+            },
+            |v| Ok(Some(v.to_string())),
+        )
     }
 }
 
