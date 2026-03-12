@@ -65,6 +65,8 @@ pub struct ExplorerState {
     pub width: u16,
     /// Whether to show hidden files (dotfiles).
     pub show_hidden: bool,
+    /// Whether to show gitignored files.
+    pub show_gitignored: bool,
     /// Current input operation type.
     pub input_mode: ExplorerInputMode,
     /// Text buffer for input operations.
@@ -75,6 +77,8 @@ pub struct ExplorerState {
     pub root_path: PathBuf,
     /// The file tree (populated on first toggle via VFS).
     pub tree: Option<FileTree>,
+    /// Path marked for cut (move) operation.
+    pub cut_path: Option<PathBuf>,
     /// Cached visible node count (invalidated when tree structure changes).
     cached_visible_count: Mutex<Option<usize>>,
     /// Cached serialized nodes for bridge snapshot (invalidated with tree).
@@ -109,7 +113,7 @@ impl ExplorerState {
         let count = self
             .tree
             .as_ref()
-            .map_or(0, |t| t.flatten(self.show_hidden).len());
+            .map_or(0, |t| t.flatten(self.show_hidden, self.show_gitignored).len());
         *guard = Some(count);
         count
     }
@@ -223,11 +227,13 @@ impl SessionExtension for ExplorerState {
             visible_height: 24,
             width: 30,
             show_hidden: false,
+            show_gitignored: false,
             input_mode: ExplorerInputMode::None,
             input_buffer: String::new(),
             message: None,
             root_path: PathBuf::new(),
             tree: None,
+            cut_path: None,
             cached_visible_count: Mutex::new(None),
             cached_nodes_json: Mutex::new(None),
             tree_generation: AtomicU64::new(0),

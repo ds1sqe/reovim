@@ -1,0 +1,16 @@
+[package]
+name = "reovim-driver-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Git provider driver for reovim — trait contract and typed data"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }

@@ -235,7 +235,7 @@ impl CommandHandler for Expand {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -283,7 +283,7 @@ impl CommandHandler for Collapse {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -336,7 +336,7 @@ impl CommandHandler for Open {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -405,7 +405,7 @@ impl CommandHandler for GotoParent {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -567,7 +567,7 @@ impl CommandHandler for Rename {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -635,7 +635,7 @@ impl CommandHandler for ConfirmInput {
         };
 
         // Determine the parent path for the operation.
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let cursor_path = nodes.get(state.cursor_index).map(|n| n.path.clone());
 
         let Some(vfs) = args.vfs() else {
@@ -771,7 +771,7 @@ impl CommandHandler for YankPath {
             return CommandResult::Success;
         };
 
-        let nodes = tree.flatten(state.show_hidden);
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
         let Some(node) = nodes.get(state.cursor_index) else {
             return CommandResult::Success;
         };
@@ -783,6 +783,127 @@ impl CommandHandler for YankPath {
             state.message = Some(format!("Copied: {path_str}"));
         } else {
             state.message = Some("Clipboard not available".to_owned());
+        }
+
+        CommandResult::Success
+    }
+}
+
+// ============================================================================
+// Gitignore / Cut-Paste
+// ============================================================================
+
+/// Toggle display of gitignored files.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ToggleGitignored;
+
+impl reovim_driver_command::Command for ToggleGitignored {
+    fn id(&self) -> CommandId {
+        ids::TOGGLE_GITIGNORED
+    }
+
+    fn description(&self) -> &'static str {
+        "Toggle gitignored files"
+    }
+}
+
+impl CommandHandler for ToggleGitignored {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let state = runtime.ext_mut::<ExplorerState>();
+        state.show_gitignored = !state.show_gitignored;
+        state.invalidate_tree_cache();
+        state.update_scroll();
+        CommandResult::Success
+    }
+}
+
+/// Mark the selected item for a cut (move) operation.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CutMark;
+
+impl reovim_driver_command::Command for CutMark {
+    fn id(&self) -> CommandId {
+        ids::CUT_MARK
+    }
+
+    fn description(&self) -> &'static str {
+        "Mark item for cut/move"
+    }
+}
+
+impl CommandHandler for CutMark {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
+        let state = runtime.ext_mut::<ExplorerState>();
+        let Some(tree) = &state.tree else {
+            return CommandResult::Success;
+        };
+
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let Some(node) = nodes.get(state.cursor_index) else {
+            return CommandResult::Success;
+        };
+
+        let path = node.path.clone();
+        let name = node.name.clone();
+        let state = runtime.ext_mut::<ExplorerState>();
+        state.cut_path = Some(path);
+        state.message = Some(format!("Cut: {name}"));
+
+        CommandResult::Success
+    }
+}
+
+/// Paste (move) the cut-marked item to the current directory.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Paste;
+
+impl reovim_driver_command::Command for Paste {
+    fn id(&self) -> CommandId {
+        ids::PASTE
+    }
+
+    fn description(&self) -> &'static str {
+        "Paste (move) cut item here"
+    }
+}
+
+impl CommandHandler for Paste {
+    #[cfg_attr(coverage_nightly, coverage(off))]
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+        let state = runtime.ext_mut::<ExplorerState>();
+        let Some(cut_path) = state.cut_path.clone() else {
+            state.message = Some("Nothing to paste".to_owned());
+            return CommandResult::Success;
+        };
+        let Some(tree) = &state.tree else {
+            return CommandResult::Success;
+        };
+
+        let nodes = tree.flatten(state.show_hidden, state.show_gitignored);
+        let target_dir = cursor_dir_path(&nodes, state.cursor_index);
+
+        let file_name = cut_path.file_name().map_or_else(
+            || cut_path.to_string_lossy().to_string(),
+            |n| n.to_string_lossy().to_string(),
+        );
+        let new_path = target_dir.join(&file_name);
+
+        let Some(vfs) = args.vfs() else {
+            return CommandResult::error("VFS not available");
+        };
+
+        let state = runtime.ext_mut::<ExplorerState>();
+        if let Err(e) = vfs.rename(&cut_path, &new_path) {
+            state.message = Some(format!("Paste failed: {e}"));
+        } else {
+            state.cut_path = None;
+            state.message = Some(format!("Moved to {}", target_dir.display()));
+            if let Some(tree) = &mut state.tree {
+                let _ = tree.refresh(vfs.as_ref());
+            }
+            state.invalidate_tree_cache();
         }
 
         CommandResult::Success
@@ -842,6 +963,9 @@ pub fn command_handlers() -> Vec<Box<dyn CommandHandler>> {
         Box::new(CancelInput),
         Box::new(InputBackspace),
         Box::new(YankPath),
+        Box::new(ToggleGitignored),
+        Box::new(CutMark),
+        Box::new(Paste),
     ]
 }
 

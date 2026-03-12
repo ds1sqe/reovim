@@ -120,6 +120,7 @@ fn test_is_symlink() {
         },
         depth: 0,
         is_hidden: false,
+        is_gitignored: false,
     };
     assert!(node.is_symlink());
     assert!(!node.is_broken_symlink());
@@ -138,6 +139,7 @@ fn test_broken_symlink() {
         },
         depth: 0,
         is_hidden: false,
+        is_gitignored: false,
     };
     assert!(node.is_symlink());
     assert!(node.is_broken_symlink());
@@ -428,6 +430,7 @@ fn test_sort_comparator_direct() {
         node_type: NodeType::File { size: 0 },
         depth: 1,
         is_hidden: false,
+        is_gitignored: false,
     };
     let dir = FileNode {
         name: "dir".to_string(),
@@ -438,6 +441,7 @@ fn test_sort_comparator_direct() {
         },
         depth: 1,
         is_hidden: false,
+        is_gitignored: false,
     };
 
     // file vs dir → Greater

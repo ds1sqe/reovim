@@ -261,7 +261,7 @@ impl Module for VimModule {
 
         // Epic #458: Register GutterRenderer with LineNumberSource and LineNumberPresenter
         // Mode is dynamic - AnnotationContext will carry the actual mode from options
-        let mut gutter_renderer = GutterRenderer::new();
+        let gutter_renderer = GutterRenderer::new();
         gutter_renderer
             .register_source(annotation::create_line_number_source(LineNumberMode::Absolute));
         gutter_renderer.register_presenter(annotation::create_line_number_presenter());

@@ -2028,6 +2028,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-input"
 version = "0.10.0-dev"
 dependencies = [
@@ -2264,6 +2271,10 @@ dependencies = [
  "reovim-module-completion",
  "reovim-module-editor",
  "reovim-module-explorer",
+ "reovim-module-git",
+ "reovim-module-git-blame",
+ "reovim-module-git-signs",
+ "reovim-module-git-statusline",
  "reovim-module-health-check",
  "reovim-module-keymap",
  "reovim-module-lsp",
@@ -2293,6 +2304,10 @@ dependencies = [
  "reovim-picker-buffers",
  "reovim-picker-commands",
  "reovim-picker-files",
+ "reovim-picker-git-branches",
+ "reovim-picker-git-log",
+ "reovim-picker-git-stash",
+ "reovim-picker-git-status",
  "reovim-picker-grep",
  "reovim-picker-options",
 ]
@@ -2316,6 +2331,7 @@ dependencies = [
 name = "reovim-module-explorer"
 version = "0.10.0-dev"
 dependencies = [
+ "ignore",
  "reovim-bench-utils",
  "reovim-driver-command",
  "reovim-driver-command-types",
@@ -2329,6 +2345,46 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+]
+
+[[package]]
+name = "reovim-module-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-git-blame"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-git-signs"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-git-statusline"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2734,6 +2790,47 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "tempfile",
+]
+
+[[package]]
+name = "reovim-picker-git-branches"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-log"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-stash"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-status"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]

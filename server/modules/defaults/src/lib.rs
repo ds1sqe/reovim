@@ -46,7 +46,9 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
-    reovim_module_explorer as explorer, reovim_module_health_check as health_check,
+    reovim_module_explorer as explorer, reovim_module_git as git,
+    reovim_module_git_blame as git_blame, reovim_module_git_signs as git_signs,
+    reovim_module_git_statusline as git_statusline, reovim_module_health_check as health_check,
     reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
     reovim_module_motions as motions, reovim_module_notification as notification,
@@ -61,6 +63,8 @@ use {
     reovim_module_vim_range_finder as vim_range_finder, reovim_module_vim_snippet as vim_snippet,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
+    reovim_picker_git_branches as picker_git_branches, reovim_picker_git_log as picker_git_log,
+    reovim_picker_git_stash as picker_git_stash, reovim_picker_git_status as picker_git_status,
     reovim_picker_grep as picker_grep, reovim_picker_options as picker_options,
 };
 
@@ -112,16 +116,27 @@ impl DefaultsModule {
             Box::new(editor::EditorModule),
             Box::new(motions::MotionsModule),
             Box::new(vim::VimModule::new()),
+            // Git consumer modules (#530) - after vim (which creates GutterRenderer)
+            Box::new(git_signs::GitSignsModule::new()),
+            Box::new(git_statusline::GitStatuslineModule::new()),
+            Box::new(git_blame::GitBlameModule::new()),
             // Extension bridge modules (#468, #443)
             Box::new(cmdline::CmdlineModule::new()),
             Box::new(whichkey::WhichKeyModule::new()),
             Box::new(notification::NotificationModule::new()),
+            // Git provider module (#530) - must init before git pickers
+            Box::new(git::GitModule::new()),
             // Picker data providers (#522)
             Box::new(picker_files::PickerFilesModule::new()),
             Box::new(picker_buffers::PickerBuffersModule::new()),
             Box::new(picker_commands::PickerCommandsModule::new()),
             Box::new(picker_grep::PickerGrepModule::new()),
             Box::new(picker_options::PickerOptionsModule::new()),
+            // Git picker data providers (#530)
+            Box::new(picker_git_branches::PickerGitBranchesModule::new()),
+            Box::new(picker_git_log::PickerGitLogModule::new()),
+            Box::new(picker_git_stash::PickerGitStashModule::new()),
+            Box::new(picker_git_status::PickerGitStatusModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
             // Vim-microscope adapter - bridges vim keybindings to picker commands
@@ -184,6 +199,11 @@ impl Module for DefaultsModule {
         // Note: operators merged into vim module (Epic #385)
         // Note: Client-side modules removed (Epic #465 Phase 11)
         vec![
+            // Git provider and consumer modules (#530)
+            ModuleId::new("git"),
+            ModuleId::new("git-signs"),
+            ModuleId::new("git-statusline"),
+            ModuleId::new("git-blame"),
             // Service modules (Epic #417)
             ModuleId::new("undo"),
             ModuleId::new("buffer-simple"),
@@ -208,6 +228,11 @@ impl Module for DefaultsModule {
             ModuleId::new("picker-commands"),
             ModuleId::new("picker-grep"),
             ModuleId::new("picker-options"),
+            // Git picker data providers (#530)
+            ModuleId::new("picker-git-branches"),
+            ModuleId::new("picker-git-log"),
+            ModuleId::new("picker-git-stash"),
+            ModuleId::new("picker-git-status"),
             // Picker orchestration (#522)
             ModuleId::new("microscope"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
