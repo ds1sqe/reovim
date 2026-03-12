@@ -67,6 +67,7 @@
 // Modules
 // ============================================================================
 
+pub mod bracket;
 mod cache;
 mod composite;
 pub mod decoration;
@@ -94,10 +95,11 @@ pub use {
 
 // Types
 pub use {
+    bracket::{BracketConfig, BracketConfigStore, BracketPair},
     decoration::{DecorationCapture, DecorationRule, apply_rules},
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
-    highlight::{Annotation, HighlightCategory},
+    highlight::{Annotation, HighlightCategory, SyntaxContext},
     injection::Injection,
     lang_store::LanguageInfoStore,
     registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},

@@ -51,6 +51,9 @@ pub const MARKDOWN: &str = "markdown";
 /// Module manager interactive panel (#622).
 pub const MODULE_MANAGER: &str = "module-manager";
 
+/// Bracket pair highlighting (rainbow, matched-pair).
+pub const PAIR: &str = "pair";
+
 /// All known extension kinds, alphabetically sorted.
 ///
 /// Useful for validation and debugging.
@@ -64,6 +67,7 @@ pub const ALL: &[&str] = &[
     MICROSCOPE,
     MODULE_MANAGER,
     NOTIFICATION,
+    PAIR,
     POLYBLOCKS,
     RANGE_FINDER_FOLD,
     RANGE_FINDER_JUMP,

@@ -46,8 +46,8 @@ use std::sync::Arc;
 
 use {
     reovim_driver_syntax::{
-        DecorationRule, HighlightCategory, LanguageInfo, LanguageInfoStore, SyntaxDriver,
-        SyntaxDriverFactory, SyntaxFactoryStore,
+        BracketConfig, BracketConfigStore, DecorationRule, HighlightCategory, LanguageInfo,
+        LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
     reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
@@ -333,6 +333,16 @@ impl Module for TreesitterMarkdownModule {
         let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();
         lang_store.add(
             LanguageInfo::new("markdown", "Markdown").with_extensions(["md", "markdown", "mdx"]),
+        );
+
+        // Register bracket config for Markdown
+        // Note: {} not used in prose
+        let bracket_store = ctx.services.get_or_create::<BracketConfigStore>();
+        bracket_store.add(
+            BracketConfig::new("markdown")
+                .with_rainbow([('(', ')'), ('[', ']')])
+                .with_autopair([('(', ')'), ('[', ']'), ('"', '"'), ('`', '`')])
+                .with_highlight([('(', ')'), ('[', ']')]),
         );
 
         tracing::info!(

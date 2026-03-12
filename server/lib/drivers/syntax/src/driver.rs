@@ -7,7 +7,10 @@
 use std::{ops::Range, sync::Arc};
 
 use crate::{
-    edit::SyntaxEdit, factory::SyntaxDriverFactory, fold::FoldRange, highlight::Annotation,
+    edit::SyntaxEdit,
+    factory::SyntaxDriverFactory,
+    fold::FoldRange,
+    highlight::{Annotation, SyntaxContext},
     injection::Injection,
 };
 
@@ -158,6 +161,19 @@ pub trait SyntaxDriver: Send + Sync {
     ///
     /// No-op. Override for drivers that support injection highlighting.
     fn set_injection_depth(&mut self, _depth: u8) {}
+
+    /// Get the syntax context at a byte position.
+    ///
+    /// Returns the syntactic context (code, string, comment) at the given
+    /// byte offset. Used by features like auto-pair to skip insertion
+    /// inside strings or comments.
+    ///
+    /// # Default
+    ///
+    /// Returns `SyntaxContext::Code`. Override for context-aware behavior.
+    fn context_at_byte(&self, _byte_offset: usize) -> SyntaxContext {
+        SyntaxContext::Code
+    }
 
     /// Check if the driver has valid parse state.
     ///

@@ -49,6 +49,14 @@ members = [
     "server/modules/vfs-local",
     "server/modules/window-ops",
     "server/modules/treesitter-rust",
+    "server/modules/treesitter-python",
+    "server/modules/treesitter-c",
+    "server/modules/treesitter-javascript",
+    "server/modules/treesitter-typescript",
+    "server/modules/treesitter-json",
+    "server/modules/treesitter-toml",
+    "server/modules/treesitter-bash",
+    "server/modules/treesitter-go",
     "server/modules/cmdline",
     "server/modules/whichkey",
     "server/modules/notification",
@@ -78,6 +86,7 @@ members = [
     "server/modules/git-blame",
     "server/modules/module-manager",
     "server/modules/emacs",
+    "server/modules/pair",
 
     # Client layer - TUI
     "clients/tui",
@@ -99,6 +108,7 @@ members = [
     "clients/tui/extensions/diagnostics",
     "clients/tui/extensions/markdown",
     "clients/tui/extensions/landing",
+    "clients/tui/extensions/pair",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -258,6 +268,14 @@ reovim-module-undo = { path = "./server/modules/undo", version = "0.10.0-dev" }
 reovim-module-vfs-local = { path = "./server/modules/vfs-local", version = "0.10.0-dev" }
 reovim-module-window-ops = { path = "./server/modules/window-ops", version = "0.10.0-dev" }
 reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.10.0-dev" }
+reovim-module-treesitter-python = { path = "./server/modules/treesitter-python", version = "0.10.0-dev" }
+reovim-module-treesitter-c = { path = "./server/modules/treesitter-c", version = "0.10.0-dev" }
+reovim-module-treesitter-javascript = { path = "./server/modules/treesitter-javascript", version = "0.10.0-dev" }
+reovim-module-treesitter-typescript = { path = "./server/modules/treesitter-typescript", version = "0.10.0-dev" }
+reovim-module-treesitter-json = { path = "./server/modules/treesitter-json", version = "0.10.0-dev" }
+reovim-module-treesitter-toml = { path = "./server/modules/treesitter-toml", version = "0.10.0-dev" }
+reovim-module-treesitter-bash = { path = "./server/modules/treesitter-bash", version = "0.10.0-dev" }
+reovim-module-treesitter-go = { path = "./server/modules/treesitter-go", version = "0.10.0-dev" }
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.10.0-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.10.0-dev" }
 reovim-module-notification = { path = "./server/modules/notification", version = "0.10.0-dev" }
@@ -287,6 +305,8 @@ reovim-module-git-statusline = { path = "./server/modules/git-statusline", versi
 reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10.0-dev" }
 reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.10.0-dev" }
 reovim-module-emacs = { path = "./server/modules/emacs", version = "0.10.0-dev" }
+reovim-module-pair = { path = "./server/modules/pair", version = "0.10.0-dev" }
+reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

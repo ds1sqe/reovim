@@ -43,8 +43,8 @@ use std::sync::Arc;
 
 use {
     reovim_driver_syntax::{
-        CommentTokens, LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory,
-        SyntaxFactoryStore,
+        BracketConfig, BracketConfigStore, CommentTokens, LanguageInfo, LanguageInfoStore,
+        SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
     reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
@@ -209,6 +209,17 @@ impl Module for TreesitterRustModule {
                 .with_extensions(["rs"])
                 .with_mime_types(["text/x-rust"])
                 .with_comments(CommentTokens::with_block("//", "/*", "*/")),
+        );
+
+        // Register bracket config for Rust
+        // Note: <> excluded (operator conflict: ->, =>, <=, >=, <<, >>)
+        // Note: ' excluded (lifetime annotations: 'a, 'static)
+        let bracket_store = ctx.services.get_or_create::<BracketConfigStore>();
+        bracket_store.add(
+            BracketConfig::new("rust")
+                .with_rainbow([('(', ')'), ('[', ']'), ('{', '}')])
+                .with_autopair([('(', ')'), ('[', ']'), ('{', '}'), ('"', '"')])
+                .with_highlight([('(', ')'), ('[', ']'), ('{', '}')]),
         );
 
         tracing::info!("TreesitterRustModule: registered Rust syntax and injection factories");

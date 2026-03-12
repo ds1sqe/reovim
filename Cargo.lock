@@ -2034,6 +2034,7 @@ dependencies = [
  "reovim-driver-log",
  "reovim-driver-module-config",
  "reovim-driver-module-loader",
+ "reovim-driver-module-registry",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-driver-vfs",
@@ -2569,6 +2570,7 @@ name = "reovim-module-emacs"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-capabilities",
+ "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-editor",
  "reovim-module-macros",
@@ -2740,10 +2742,13 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
+ "reovim-driver-input",
  "reovim-driver-module-loader",
  "reovim-driver-session",
+ "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
@@ -2769,6 +2774,21 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-module-pair"
+version = "0.10.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-extension-kinds",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2876,6 +2896,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-treesitter-bash"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-bash",
+]
+
+[[package]]
+name = "reovim-module-treesitter-c"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-c",
+]
+
+[[package]]
+name = "reovim-module-treesitter-go"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-go",
+]
+
+[[package]]
+name = "reovim-module-treesitter-javascript"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-javascript",
+]
+
+[[package]]
+name = "reovim-module-treesitter-json"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-json",
+]
+
+[[package]]
 name = "reovim-module-treesitter-markdown"
 version = "0.10.0-dev"
 dependencies = [
@@ -2894,6 +2974,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-treesitter-python"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-python",
+]
+
+[[package]]
 name = "reovim-module-treesitter-rust"
 version = "0.10.0-dev"
 dependencies = [
@@ -2905,6 +2997,30 @@ dependencies = [
  "reovim-testing",
  "tracing",
  "tree-sitter-rust",
+]
+
+[[package]]
+name = "reovim-module-treesitter-toml"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-toml-ng",
+]
+
+[[package]]
+name = "reovim-module-treesitter-typescript"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -3186,6 +3302,7 @@ dependencies = [
  "reovim-tui-ext-markdown",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
+ "reovim-tui-ext-pair",
  "reovim-tui-ext-range-finder",
  "reovim-tui-ext-signature-help",
  "reovim-tui-ext-tetromino",
@@ -3259,6 +3376,17 @@ dependencies = [
  "reovim-arch",
  "reovim-driver-display",
  "reovim-extension-kinds",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-pair"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "reovim-extension-kinds",
+ "serde",
  "serde_json",
 ]
 
@@ -4086,6 +4214,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-bash"
+version = "0.23.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "329a4d48623ac337d42b1df84e81a1c9dbb2946907c102ca72db158c1964a52e"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-c"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afd2b1bf1585dc2ef6d69e87d01db8adb059006649dd5f96f31aa789ee6e9c71"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-go"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b13d476345220dbe600147dd444165c5791bf85ef53e28acbedd46112ee18431"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-javascript"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf40bf599e0416c16c125c3cec10ee5ddc7d1bb8b0c60fa5c4de249ad34dc1b1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-json"
+version = "0.24.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d727acca406c0020cffc6cf35516764f36c8e3dc4408e5ebe2cb35a947ec471"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4102,10 +4280,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-python"
+version = "0.23.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d065aaa27f3aaceaf60c1f0e0ac09e1cb9eb8ed28e7bcdaa52129cffc7f4b04"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-rust"
 version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca8ccb3e3a3495c8a943f6c3fd24c3804c471fd7f4f16087623c7fa4c0068e8a"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-toml-ng"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9adc2c898ae49730e857d75be403da3f92bb81d8e37a2f918a08dd10de5ebb1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
 dependencies = [
  "cc",
  "tree-sitter-language",

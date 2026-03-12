@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn test_all_count() {
-    assert_eq!(ALL.len(), 14);
+    assert_eq!(ALL.len(), 15);
 }
 
 #[test]
@@ -43,4 +43,5 @@ fn test_constants_match_expected_values() {
     assert_eq!(DIAGNOSTICS, "diagnostics");
     assert_eq!(MARKDOWN, "markdown");
     assert_eq!(MODULE_MANAGER, "module-manager");
+    assert_eq!(PAIR, "pair");
 }

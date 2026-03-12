@@ -112,6 +112,7 @@ fn all_extensions() -> Vec<Box<dyn TuiExtension>> {
         Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
         Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
         Box::new(reovim_tui_ext_landing::LandingExtension::new()),
+        Box::new(reovim_tui_ext_pair::PairExtension::new()),
     ]
 }
 

@@ -40,6 +40,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Also adds `BuiltinManifest` filtering to module-config, `ModuleLoadReport` type to kernel API,
   and wires module-manager into the 40-module defaults bundle.
 
+- **Language-aware bracket pair highlighting (#613)**: New `reovim-module-pair` server module
+  and `reovim-tui-ext-pair` TUI extension providing rainbow bracket coloring (6-color depth
+  cycling), matched-pair highlighting (bold + underline for innermost pair around cursor),
+  unmatched bracket warning (red + underline), and context-aware auto-pair insertion (skips
+  strings/comments). Language-agnostic design: treesitter language modules register per-language
+  `BracketConfig` via `BracketConfigStore` in `reovim-driver-syntax`. Adds `SyntaxContext` enum
+  (Code/String/Comment) and `context_at_byte()` to `SyntaxDriver` trait for syntax-aware
+  auto-pairing. Extension bridge serializes bracket state to JSON for client rendering via
+  `ExtensionStateBridge` with per-client scope.
+
 - **Module/config/setting separation and integration (#610)**: Unifies three disconnected
   systems -- personality manifests (#585), user config (#586), and kernel OptionRegistry --
   into a coherent three-layer architecture (L1 loading, L2 config, L3 options). Phase 1
@@ -55,6 +65,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `ModuleLoadReport` service in `reovim-driver-module-loader` and three new `:checkhealth`
   diagnostic sections (Modules, Dependencies, Configuration). Phase 6 adds extension kind
   filtering to web client `createExtensions()`.
+
+- **Treesitter language modules: Python, C, JavaScript, TypeScript (#525), JSON, TOML, Bash, Go
+  (#526)**: Eight new treesitter syntax modules following the established self-registration pattern.
+  Each module provides a `{Lang}SyntaxFactory` implementing `SyntaxDriverFactory` with pre-compiled
+  highlight and fold queries, and a `Treesitter{Lang}Module` implementing `Module` for
+  self-registration into `SyntaxFactoryStore` and `LanguageInfoStore`. TypeScript module handles
+  dual grammars (TypeScript + TSX). All modules registered in `DefaultsModule` (47 total modules).
+  Grammar versions pinned to tree-sitter 0.23.x for compatibility with workspace tree-sitter 0.24.
 
 - **Recursive injection highlighting (#611)**: Replace flat `InjectionLayer` / `InjectionLayerStore`
   system with recursive `Box<dyn SyntaxDriver>` children managed by `InjectionManager`. Child

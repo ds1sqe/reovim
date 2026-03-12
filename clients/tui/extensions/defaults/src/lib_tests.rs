@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn test_create_extensions_count() {
     let exts = create_extensions();
-    assert_eq!(exts.len(), 14);
+    assert_eq!(exts.len(), 15);
 }
 
 #[test]
@@ -26,6 +26,7 @@ fn test_extension_kinds() {
     assert!(kinds.contains(&"diagnostics"));
     assert!(kinds.contains(&"markdown"));
     assert!(kinds.contains(&"landing"));
+    assert!(kinds.contains(&"pair"));
 }
 
 #[test]
@@ -66,7 +67,7 @@ fn test_extension_dispatch() {
 fn test_create_extensions_sorted_by_depgraph() {
     // All current extensions have empty deps, so order is valid (no panic)
     let exts = create_extensions();
-    assert_eq!(exts.len(), 14);
+    assert_eq!(exts.len(), 15);
 }
 
 #[test]
@@ -189,14 +190,14 @@ fn test_validate_extensions_empty() {
 #[test]
 fn test_create_extensions_filtered_empty_set_returns_all() {
     let exts = create_extensions_filtered(&HashSet::new());
-    assert_eq!(exts.len(), 14);
+    assert_eq!(exts.len(), 15);
 }
 
 #[test]
 fn test_create_extensions_filtered_disable_one() {
     let disabled: HashSet<String> = ["polyblocks".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 13);
+    assert_eq!(exts.len(), 14);
     assert!(exts.iter().all(|e| e.kind() != "polyblocks"));
 }
 
@@ -209,7 +210,7 @@ fn test_create_extensions_filtered_disable_multiple() {
     ]
     .into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 11);
+    assert_eq!(exts.len(), 12);
     for ext in &exts {
         assert!(!disabled.contains(ext.kind()));
     }
@@ -219,7 +220,7 @@ fn test_create_extensions_filtered_disable_multiple() {
 fn test_create_extensions_filtered_unknown_kinds_ignored() {
     let disabled: HashSet<String> = ["nonexistent".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 14);
+    assert_eq!(exts.len(), 15);
 }
 
 #[test]

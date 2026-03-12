@@ -28,7 +28,7 @@ use {
     parking_lot::{Mutex, RwLock},
     reovim_driver_syntax::{
         Annotation, DecorationCapture, DecorationRule, FoldKind, FoldRange, HighlightCategory,
-        Injection, SyntaxDriver, SyntaxEdit, decoration::apply_rules,
+        Injection, SyntaxContext, SyntaxDriver, SyntaxEdit, decoration::apply_rules,
     },
     streaming_iterator::StreamingIterator,
     tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
@@ -896,6 +896,28 @@ impl SyntaxDriver for TreeSitterDriver {
             let mut manager = manager_mutex.lock();
             manager.set_depth(depth);
         }
+    }
+
+    fn context_at_byte(&self, byte_offset: usize) -> SyntaxContext {
+        // Use highlights to determine context — parser-agnostic approach.
+        // Check if any highlight annotation at this byte has a category
+        // starting with "string" or "comment".
+        let range = byte_offset..byte_offset.saturating_add(1);
+        let highlights = self.highlights(range);
+
+        for ann in &highlights {
+            if ann.contains(byte_offset) {
+                let cat = ann.category.as_str();
+                if cat.starts_with("string") || cat == "character" {
+                    return SyntaxContext::String;
+                }
+                if cat.starts_with("comment") {
+                    return SyntaxContext::Comment;
+                }
+            }
+        }
+
+        SyntaxContext::Code
     }
 
     fn is_parsed(&self) -> bool {
