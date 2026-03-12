@@ -148,6 +148,17 @@ pub trait SyntaxDriver: Send + Sync {
     /// No-op. Override for drivers that support injection highlighting.
     fn set_injection_factory(&mut self, _factory: Arc<dyn SyntaxDriverFactory>) {}
 
+    /// Set the injection nesting depth for this driver.
+    ///
+    /// Used to propagate depth through the injection hierarchy so that
+    /// `MAX_INJECTION_DEPTH` is correctly enforced. Depth 0 = root driver,
+    /// depth 1 = direct child, etc.
+    ///
+    /// # Default
+    ///
+    /// No-op. Override for drivers that support injection highlighting.
+    fn set_injection_depth(&mut self, _depth: u8) {}
+
     /// Check if the driver has valid parse state.
     ///
     /// Returns true if the driver has successfully parsed content.

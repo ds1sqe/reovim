@@ -119,3 +119,11 @@ fn test_syntax_driver_indent_for_multiple_lines() {
     assert_eq!(driver.indent_for(100), None);
     assert_eq!(driver.indent_for(usize::MAX), None);
 }
+
+#[test]
+fn test_syntax_driver_set_injection_depth_default() {
+    let mut driver = TestDriver::new("test");
+    // Default is a no-op — should not panic
+    driver.set_injection_depth(3);
+    assert!(!driver.is_parsed());
+}

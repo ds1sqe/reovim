@@ -882,3 +882,37 @@ fn test_set_injection_factory_with_manager() {
     // Calling set_injection_factory should set the factory (true branch of if-let)
     driver.set_injection_factory(Arc::new(DummyFactory));
 }
+
+#[test]
+fn test_set_injection_depth_no_manager() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+
+    // Build WITHOUT injections_query → no injection_manager
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .build()
+        .unwrap();
+
+    // Calling set_injection_depth should do nothing (false branch of if-let)
+    driver.set_injection_depth(2);
+}
+
+#[test]
+fn test_set_injection_depth_with_manager() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let injections_query =
+        Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
+
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .injections_query(injections_query)
+        .build()
+        .unwrap();
+
+    assert!(driver.supports_injections());
+
+    // Calling set_injection_depth should set depth on the injection manager
+    driver.set_injection_depth(2);
+    let manager = driver.injection_manager().unwrap().lock();
+    assert_eq!(manager.depth(), 2);
+}

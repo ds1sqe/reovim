@@ -454,11 +454,7 @@ fn test_multiple_doc_comments() {
         injections[0].is_combined(),
         "Expected combined injection for multiple doc comment lines"
     );
-    assert_eq!(
-        injections[0].ranges.len(),
-        2,
-        "Expected 2 ranges in combined injection"
-    );
+    assert_eq!(injections[0].ranges.len(), 2, "Expected 2 ranges in combined injection");
 }
 
 #[test]

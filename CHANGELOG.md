@@ -63,8 +63,9 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   at `MAX_INJECTION_DEPTH` (4). Add `injection.combined` support for consecutive doc comment lines
   (`///`, `//!`) that are concatenated with prefix stripping before parsing as a single Markdown
   document, with coordinate translation back to parent document space. Add `set_injection_factory()`
-  to `SyntaxDriver` trait for configuring child driver creation. Delete `InjectionLayer`,
-  `InjectionLayerFactory`, and `InjectionLayerStore` types.
+  and `set_injection_depth()` to `SyntaxDriver` trait for configuring child driver creation and
+  depth propagation. Delete `InjectionLayer`, `InjectionLayerFactory`, and `InjectionLayerStore`
+  types.
 
 - **Dynamic .so module loading with search paths and lock file (#587)**: New
   `reovim-driver-module-loader` crate provides safe dynamic loading of server modules from

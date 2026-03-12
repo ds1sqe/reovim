@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use reovim_driver_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory};
-use tree_sitter::Query;
+use {
+    reovim_driver_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory},
+    tree_sitter::Query,
+};
 
 use super::*;
 
@@ -17,8 +19,7 @@ struct TestRustFactory {
 impl TestRustFactory {
     fn new() -> Self {
         let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-        let highlight_query =
-            Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
         Self {
             language,
             highlight_query,
@@ -191,7 +192,11 @@ fn test_injection_manager_reuses_cached_child() {
     let injection = Injection::new("rust", 10..34, 1, 0, 1, 24);
 
     // First call creates child
-    let _ = manager.highlight_injections(std::slice::from_ref(&injection), full_content, 0..full_content.len());
+    let _ = manager.highlight_injections(
+        std::slice::from_ref(&injection),
+        full_content,
+        0..full_content.len(),
+    );
     assert_eq!(manager.child_count(), 1);
 
     // Second call reuses cached child
@@ -224,6 +229,29 @@ fn test_injection_manager_depth_limit() {
     // At max depth, no more recursion
     let manager_at_max = InjectionManager::with_factory(factory, MAX_INJECTION_DEPTH);
     assert_eq!(manager_at_max.depth(), MAX_INJECTION_DEPTH);
+}
+
+#[test]
+fn test_injection_manager_depth_propagation_to_children() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let content = "fn main() {}";
+
+    // At depth 0, child should be created at depth 1 (with factory)
+    let mut manager = InjectionManager::with_factory(factory.clone(), 0);
+    let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
+    let _ =
+        manager.highlight_injections(std::slice::from_ref(&injection), content, 0..content.len());
+    assert_eq!(manager.child_count(), 1);
+
+    // At depth MAX - 1, child should be created at depth MAX (without factory)
+    let mut manager_near_max = InjectionManager::with_factory(factory, MAX_INJECTION_DEPTH - 1);
+    let injection2 = Injection::new("rust", 0..12, 0, 0, 0, 12);
+    let _ = manager_near_max.highlight_injections(
+        std::slice::from_ref(&injection2),
+        content,
+        0..content.len(),
+    );
+    assert_eq!(manager_near_max.child_count(), 1);
 }
 
 #[test]
@@ -266,8 +294,7 @@ fn test_highlight_single_injection_empty_ranges() {
     let mut manager = InjectionManager::with_factory(factory, 0);
 
     let injection = Injection::combined("rust", vec![], 0, 0, 0, 0);
-    let highlights =
-        manager.highlight_injections(&[injection], "fn main() {}", 0..100);
+    let highlights = manager.highlight_injections(&[injection], "fn main() {}", 0..100);
     // Empty ranges -> no highlights (but child may be created if factory returns Some)
     assert!(highlights.is_empty());
 }
@@ -364,13 +391,14 @@ fn test_translate_combined_highlight_single_chunk() {
 #[test]
 fn test_translate_combined_highlight_second_chunk() {
     let range_offsets = vec![
-        (10, 0, 4),  // first chunk: src 10..20, dst 0..6, prefix 4
-        (30, 7, 4),  // second chunk: src 30..40, dst 7..13, prefix 4
+        (10, 0, 4), // first chunk: src 10..20, dst 0..6, prefix 4
+        (30, 7, 4), // second chunk: src 30..40, dst 7..13, prefix 4
     ];
     let source_ranges = vec![10..20, 30..40];
 
     // Highlight in the second chunk at dst position 8 (offset 1 within second chunk)
-    let highlight = Annotation::new(8, 10, reovim_driver_syntax::HighlightCategory::new("variable"));
+    let highlight =
+        Annotation::new(8, 10, reovim_driver_syntax::HighlightCategory::new("variable"));
 
     let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
     assert!(result.is_some());
@@ -381,7 +409,8 @@ fn test_translate_combined_highlight_second_chunk() {
 
 #[test]
 fn test_translate_combined_highlight_not_found() {
-    let highlight = Annotation::new(100, 105, reovim_driver_syntax::HighlightCategory::new("variable"));
+    let highlight =
+        Annotation::new(100, 105, reovim_driver_syntax::HighlightCategory::new("variable"));
     let range_offsets = [(10, 0, 4)];
     #[allow(clippy::single_range_in_vec_init)]
     let source_ranges = vec![10..20];
@@ -406,18 +435,17 @@ fn test_highlight_combined_injection() {
     let injection = Injection::combined(
         "rust",
         vec![0..14, 15..29], // Two comment lines
-        0, 0, 1, 14,
+        0,
+        0,
+        1,
+        14,
     );
 
-    let highlights =
-        manager.highlight_injections(&[injection], content, 0..content.len());
+    let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
 
     // After prefix stripping, child sees "let x = 1;\nlet y = 2;\n"
     // Should produce highlights for identifiers x, y
-    assert!(
-        !highlights.is_empty(),
-        "Expected highlights from combined injection"
-    );
+    assert!(!highlights.is_empty(), "Expected highlights from combined injection");
 
     // Verify highlights are in parent document coordinates
     for h in &highlights {

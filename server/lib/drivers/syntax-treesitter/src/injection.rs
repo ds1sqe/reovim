@@ -140,11 +140,12 @@ impl InjectionManager {
                     && let Some(mut driver) = factory.create(&injection.language_id)
                 {
                     // Configure child for recursive injection if not at max depth
-                    if self.depth + 1 < MAX_INJECTION_DEPTH {
+                    let child_depth = self.depth + 1;
+                    if child_depth < MAX_INJECTION_DEPTH {
                         driver.set_injection_factory(factory.clone());
                     }
-                    self.children
-                        .insert(injection.language_id.clone(), driver);
+                    driver.set_injection_depth(child_depth);
+                    self.children.insert(injection.language_id.clone(), driver);
                 }
             }
         }
@@ -257,9 +258,7 @@ impl InjectionManager {
         // Translate highlights from concatenated coordinates back to parent
         let mut result = Vec::new();
         for h in highlights {
-            if let Some(translated) =
-                translate_combined_highlight(&h, &range_offsets, ranges)
-            {
+            if let Some(translated) = translate_combined_highlight(&h, &range_offsets, ranges) {
                 result.push(translated);
             }
         }
@@ -280,10 +279,7 @@ impl std::fmt::Debug for InjectionManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InjectionManager")
             .field("child_count", &self.children.len())
-            .field(
-                "languages",
-                &self.children.keys().collect::<Vec<_>>(),
-            )
+            .field("languages", &self.children.keys().collect::<Vec<_>>())
             .field("has_factory", &self.factory.is_some())
             .field("depth", &self.depth)
             .finish_non_exhaustive()

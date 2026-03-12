@@ -670,9 +670,7 @@ impl SyntaxDriver for TreeSitterDriver {
             let (_, sr, sc, ..) = &entries[0];
             let (.., er, ec) = entries.last().expect("entries is not empty");
 
-            injections.push(Injection::combined(
-                language_id, ranges, *sr, *sc, *er, *ec,
-            ));
+            injections.push(Injection::combined(language_id, ranges, *sr, *sc, *er, *ec));
         }
 
         // Drop locks before tracing to avoid holding them during logging
@@ -883,10 +881,20 @@ impl SyntaxDriver for TreeSitterDriver {
         result
     }
 
-    fn set_injection_factory(&mut self, factory: Arc<dyn reovim_driver_syntax::SyntaxDriverFactory>) {
+    fn set_injection_factory(
+        &mut self,
+        factory: Arc<dyn reovim_driver_syntax::SyntaxDriverFactory>,
+    ) {
         if let Some(ref manager_mutex) = self.injection_manager {
             let mut manager = manager_mutex.lock();
             manager.set_factory(factory);
+        }
+    }
+
+    fn set_injection_depth(&mut self, depth: u8) {
+        if let Some(ref manager_mutex) = self.injection_manager {
+            let mut manager = manager_mutex.lock();
+            manager.set_depth(depth);
         }
     }
 
