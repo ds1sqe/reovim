@@ -45,6 +45,9 @@ reovim-driver-depgraph = { workspace = true }
 # Module configuration for user enable/disable and per-module settings (#586)
 reovim-driver-module-config = { workspace = true }
 
+# Dynamic module loading — external .so modules (#587)
+reovim-driver-module-loader = { workspace = true }
+
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
 

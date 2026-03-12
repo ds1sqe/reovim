@@ -32,6 +32,7 @@ use {
         BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
     },
     reovim_driver_module_config::ModulesConfig,
+    reovim_driver_module_loader::loader::ModuleLoader,
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
@@ -162,7 +163,7 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
     register_module_config_store(&config, &services);
     let kernel = create_kernel_context(Arc::clone(&services));
     let module_ctx = create_module_context(kernel, Arc::clone(&services));
-    let tracked = initialize_modules(&config, &module_ctx);
+    let (tracked, _external) = initialize_modules(&config, &module_ctx);
 
     let mut registry = BridgeRegistry::new();
     if let Some(provider) = services.get::<BridgeProvider>() {
@@ -216,15 +217,19 @@ pub fn create_session_state() -> SessionState {
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 
-    // Initialize enabled modules in dependency order (#582, #586)
-    let mut tracked = initialize_modules(&config, &module_ctx);
+    // Initialize enabled modules in dependency order (#582, #586, #587)
+    let (mut tracked, mut external) = initialize_modules(&config, &module_ctx);
 
     // Wire on_all_loaded lifecycle hook (#582)
-    call_on_all_loaded(&mut tracked, &module_ctx);
+    call_on_all_loaded(&mut tracked, &mut external, &module_ctx);
+
+    // Check modules.lock staleness (#587) — warning only, missing lock is fine
+    check_lockfile_staleness();
 
     // Modules are dropped here — exit() lifecycle requires a ManagedSession
     // wrapper (future work: no module currently overrides exit() meaningfully).
     drop(tracked);
+    drop(external);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
@@ -471,18 +476,31 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<TrackedModule> {
+fn initialize_modules(
+    config: &ModulesConfig,
+    ctx: &ModuleContext,
+) -> (Vec<TrackedModule>, ModuleLoader) {
     let mut all_modules =
         DefaultsModule::create_modules_filtered(|id| config.is_module_enabled(id));
     all_modules.extend(collect_extra_modules());
 
-    tracing::info!(count = all_modules.len(), "Initializing modules");
+    // Collect builtin IDs before external discovery (for dedup)
+    let builtin_ids: Vec<ModuleId> = all_modules.iter().map(|m| m.id()).collect();
 
-    // Save hardcoded order for shadow-mode comparison
-    let hardcoded_order: Vec<ModuleId> = all_modules.iter().map(|m| m.id()).collect();
+    // Discover and load external .so modules (#587)
+    let external = discover_and_load_externals(config, &builtin_ids);
+
+    tracing::info!(
+        builtin = all_modules.len(),
+        external = external.len(),
+        "Initializing modules"
+    );
+
+    // Save hardcoded order for shadow-mode comparison (reuse builtin_ids)
+    let hardcoded_order = builtin_ids;
 
     // Build dependency entries from module declarations
-    let entries: Vec<DepEntry<ModuleId>> = all_modules
+    let mut entries: Vec<DepEntry<ModuleId>> = all_modules
         .iter()
         .map(|m| DepEntry {
             key: m.id(),
@@ -490,6 +508,20 @@ fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<Tracke
             optional: m.optional_dependencies(),
         })
         .collect();
+
+    // Add dependency entries from external modules (#587)
+    {
+        let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+        for id in &ext_ids {
+            if let Some(handle) = external.get(id) {
+                entries.push(DepEntry {
+                    key: handle.id().clone(),
+                    required: handle.dependencies(),
+                    optional: handle.optional_dependencies(),
+                });
+            }
+        }
+    }
 
     // Resolve dependency order via Kahn's topological sort
     let dep_order = match resolve_dependencies(&entries) {
@@ -539,6 +571,12 @@ fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<Tracke
                 ModuleState::Failed("init returned non-success".into())
             };
             tracked.push(tm);
+        } else if external.get(id).is_some() {
+            // External module discovered in depgraph (#587).
+            // Init is deferred — bootstrap currently only initializes builtins.
+            // External modules are initialized when the full ModuleRegistry
+            // orchestrator is used (e.g., via `reovim module` CLI commands).
+            tracing::info!(%id, "External module registered (init deferred)");
         }
     }
 
@@ -546,9 +584,14 @@ fn initialize_modules(config: &ModulesConfig, ctx: &ModuleContext) -> Vec<Tracke
         .iter()
         .filter(|t| t.state == ModuleState::Running)
         .count();
-    tracing::info!(total = tracked.len(), running, "Module initialization complete");
+    tracing::info!(
+        total = tracked.len(),
+        running,
+        external = external.len(),
+        "Module initialization complete"
+    );
 
-    tracked
+    (tracked, external)
 }
 
 /// Initialize a single module, logging the result.
@@ -583,13 +626,28 @@ fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) -> bool {
 /// for all modules (none override this hook), but wires the mechanism
 /// so future modules can use it for cross-module queries.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn call_on_all_loaded(modules: &mut [TrackedModule], ctx: &ModuleContext) {
+fn call_on_all_loaded(
+    modules: &mut [TrackedModule],
+    external: &mut ModuleLoader,
+    ctx: &ModuleContext,
+) {
     for tm in modules.iter_mut() {
         if tm.state == ModuleState::Running {
             tm.module.on_all_loaded(ctx);
         }
     }
-    tracing::info!(count = modules.len(), "on_all_loaded complete");
+    // Call on_all_loaded for external modules (#587)
+    let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+    for id in &ext_ids {
+        if let Some(handle) = external.get_mut(id) {
+            handle.on_all_loaded(ctx);
+        }
+    }
+    tracing::info!(
+        builtin = modules.len(),
+        external = ext_ids.len(),
+        "on_all_loaded complete"
+    );
 }
 
 /// Collect extra modules from `REOVIM_EXTRA_MODULES` environment variable.
@@ -629,6 +687,69 @@ fn collect_extra_modules() -> Vec<Box<dyn Module>> {
             module
         })
         .collect()
+}
+
+/// Discover and load external `.so` modules from search paths (#587).
+///
+/// Scans default search paths (`$REOVIM_MODULE_PATH`, XDG dirs, system dirs)
+/// for module shared libraries, probes each one for metadata and API version
+/// compatibility, and loads enabled modules.
+///
+/// External modules that duplicate a builtin module ID are skipped — builtins
+/// always take priority. Modules disabled by user config are also skipped.
+///
+/// This function never fails — individual module load failures are logged
+/// as warnings but don't prevent other modules from loading.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unsafe_code)]
+fn discover_and_load_externals(
+    config: &ModulesConfig,
+    builtin_ids: &[ModuleId],
+) -> ModuleLoader {
+    let mut loader = ModuleLoader::new();
+
+    let discovered = loader.discover();
+    if discovered.is_empty() {
+        return loader;
+    }
+
+    tracing::info!(count = discovered.len(), "Discovered external module files");
+
+    for path in &discovered {
+        // SAFETY: We trust .so files found in system search paths (XDG user dir,
+        // /usr/local/lib, /usr/lib). Users control which paths are searched via
+        // the REOVIM_MODULE_PATH environment variable.
+        match unsafe { loader.load_dynamic(path) } {
+            Ok(id) => {
+                // Builtins always take priority — skip external duplicates
+                if builtin_ids.iter().any(|b| b == &id) {
+                    tracing::debug!(
+                        %id,
+                        "External module duplicates builtin, skipping"
+                    );
+                    loader.unload(&id).ok();
+                } else if config.is_module_enabled(id.as_str()) {
+                    tracing::info!(%id, ?path, "Loaded external module");
+                } else {
+                    tracing::info!(
+                        %id,
+                        "External module disabled by user config, unloading"
+                    );
+                    loader.unload(&id).ok();
+                }
+            }
+            Err(e) => {
+                tracing::warn!(?path, %e, "Failed to load external module, skipping");
+            }
+        }
+    }
+
+    let ext_count = loader.len();
+    if ext_count > 0 {
+        tracing::info!(count = ext_count, "External modules loaded");
+    }
+
+    loader
 }
 
 /// Compare relative ordering of dependent pairs between hardcoded and
@@ -841,6 +962,43 @@ fn default_cache_dir() -> std::path::PathBuf {
         )
         .join("reovim")
         .join("modules")
+}
+
+/// Check `modules.lock` staleness at startup (#587).
+///
+/// Warns if the lock file was generated by a different reovim version.
+/// Missing lock file is normal (first run or no external modules) and
+/// is silently ignored.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_lockfile_staleness() {
+    use reovim_driver_module_loader::lockfile::ModulesLock;
+
+    // Lock file lives alongside module data: ~/.local/share/reovim/modules.lock
+    let lock_path = default_data_dir()
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default()
+        .join("modules.lock");
+
+    match ModulesLock::load(&lock_path) {
+        Ok(lock) => {
+            let current_version = env!("CARGO_PKG_VERSION");
+            if lock.is_stale(current_version) {
+                tracing::warn!(
+                    lock_version = %lock.meta.reovim_version,
+                    current_version,
+                    "modules.lock is stale — run `reovim module resolve` to regenerate"
+                );
+            } else {
+                tracing::debug!("modules.lock is up to date");
+            }
+        }
+        Err(_) => {
+            // Missing lock file is expected on first run or when no
+            // external modules are installed.
+            tracing::debug!("No modules.lock found (normal for first run)");
+        }
+    }
 }
 
 #[cfg(test)]

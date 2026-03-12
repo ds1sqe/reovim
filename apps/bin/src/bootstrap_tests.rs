@@ -20,7 +20,7 @@ fn test_modules_register_services() {
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
 
-    let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
+    let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
 
     // After module initialization, services should be registered
     // Check for ResolverRegistry (registered by VimModule)
@@ -38,7 +38,7 @@ fn test_resolve_mode_str_valid() {
         let services = Arc::new(ServiceRegistry::new());
         let kernel = create_kernel_context(Arc::clone(&services));
         let ctx = create_module_context(kernel, Arc::clone(&services));
-        let _tracked = initialize_modules(&ModulesConfig::official(), &ctx);
+        let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
         let (mode_registry, _, _, _) = extract_registries(&services);
         mode_registry
     };
@@ -152,11 +152,50 @@ fn test_on_all_loaded_wired() {
     let services = Arc::new(ServiceRegistry::new());
     let kernel = create_kernel_context(Arc::clone(&services));
     let ctx = create_module_context(kernel, Arc::clone(&services));
-    let mut tracked = initialize_modules(&ModulesConfig::official(), &ctx);
+    let (mut tracked, mut external) = initialize_modules(&ModulesConfig::official(), &ctx);
     // Should not panic — currently no-op for all modules
-    call_on_all_loaded(&mut tracked, &ctx);
+    call_on_all_loaded(&mut tracked, &mut external, &ctx);
     // Verify all modules are in Running state
     for tm in &tracked {
         assert_eq!(tm.state, ModuleState::Running);
     }
+}
+
+// ============================================================================
+// Phase 6: External module integration tests (#587)
+// ============================================================================
+
+#[test]
+fn test_bootstrap_with_external_discovery() {
+    // Bootstrap initializes all builtin modules even when external .so files
+    // exist on system search paths. External modules that duplicate builtins
+    // are filtered out (#587).
+    let services = Arc::new(ServiceRegistry::new());
+    let kernel = create_kernel_context(Arc::clone(&services));
+    let ctx = create_module_context(kernel, Arc::clone(&services));
+    let (tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+
+    // All builtins should be initialized and running
+    assert!(!tracked.is_empty());
+    for tm in &tracked {
+        assert_eq!(tm.state, ModuleState::Running);
+    }
+}
+
+#[test]
+fn test_discover_and_load_externals_graceful() {
+    // External module discovery never panics, regardless of what's on disk.
+    // Duplicate builtins are filtered, failed loads are logged and skipped.
+    let builtin_ids: Vec<ModuleId> = DefaultsModule::create_modules()
+        .iter()
+        .map(|m| m.id())
+        .collect();
+    let _loader = discover_and_load_externals(&ModulesConfig::official(), &builtin_ids);
+    // Success = no panic, no matter what .so files are on the system
+}
+
+#[test]
+fn test_check_lockfile_staleness_missing() {
+    // Should not panic when lock file doesn't exist (normal first run)
+    check_lockfile_staleness();
 }
