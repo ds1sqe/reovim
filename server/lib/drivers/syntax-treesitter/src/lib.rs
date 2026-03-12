@@ -60,7 +60,7 @@ mod provider;
 
 pub use {
     driver::{TreeSitterDriver, TreeSitterDriverBuilder},
-    injection::{InjectionLayer, InjectionLayerFactory, InjectionLayerStore, InjectionManager},
+    injection::InjectionManager,
     provider::DecorationProvider,
 };
 

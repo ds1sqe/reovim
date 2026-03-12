@@ -4,9 +4,12 @@
 //! syntax highlighting implementations. Implementations handle parsing and
 //! highlighting for specific languages.
 
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
-use crate::{edit::SyntaxEdit, fold::FoldRange, highlight::Annotation, injection::Injection};
+use crate::{
+    edit::SyntaxEdit, factory::SyntaxDriverFactory, fold::FoldRange, highlight::Annotation,
+    injection::Injection,
+};
 
 /// Main parsing interface for syntax highlighting.
 ///
@@ -133,6 +136,17 @@ pub trait SyntaxDriver: Send + Sync {
     fn indent_for(&self, _line: usize) -> Option<usize> {
         None
     }
+
+    /// Configure injection support with the given factory.
+    ///
+    /// Called by the runtime after driver creation to enable recursive
+    /// injection highlighting. Implementations that support injections
+    /// use this factory to create child drivers for embedded languages.
+    ///
+    /// # Default
+    ///
+    /// No-op. Override for drivers that support injection highlighting.
+    fn set_injection_factory(&mut self, _factory: Arc<dyn SyntaxDriverFactory>) {}
 
     /// Check if the driver has valid parse state.
     ///

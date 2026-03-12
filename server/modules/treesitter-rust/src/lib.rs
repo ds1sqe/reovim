@@ -46,10 +46,7 @@ use {
         CommentTokens, LanguageInfo, LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{
-        InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
-        TreeSitterDriver,
-    },
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -159,17 +156,6 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
     }
 }
 
-impl InjectionLayerFactory for RustSyntaxFactory {
-    fn create_layer(&self) -> Option<InjectionLayer> {
-        let language: Language = tree_sitter_rust::LANGUAGE.into();
-        InjectionLayer::new("rust", &language, self.highlight_query.clone())
-    }
-
-    fn language_id(&self) -> &'static str {
-        "rust"
-    }
-}
-
 // ============================================================================
 // Module Implementation (Self-Registration Pattern)
 // ============================================================================
@@ -212,13 +198,9 @@ impl Module for TreesitterRustModule {
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let factory = Arc::new(RustSyntaxFactory::new());
 
-        // Register as SyntaxDriverFactory (for creating Rust drivers)
+        // Register as SyntaxDriverFactory (for creating Rust drivers and injection children)
         let syntax_store = ctx.services.get_or_create::<SyntaxFactoryStore>();
-        syntax_store.add(factory.clone());
-
-        // Register as InjectionLayerFactory (for embedding Rust in other languages)
-        let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
-        injection_store.add(factory);
+        syntax_store.add(factory);
 
         // Register language metadata for detection
         let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();

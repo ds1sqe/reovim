@@ -49,10 +49,7 @@ use {
         DecorationRule, HighlightCategory, LanguageInfo, LanguageInfoStore, SyntaxDriver,
         SyntaxDriverFactory, SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{
-        InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
-        TreeSitterDriver,
-    },
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -182,17 +179,6 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
 
     fn supports(&self, language_id: &str) -> bool {
         language_id == "markdown"
-    }
-}
-
-impl InjectionLayerFactory for MarkdownSyntaxFactory {
-    fn create_layer(&self) -> Option<InjectionLayer> {
-        let language: Language = tree_sitter_md::LANGUAGE.into();
-        InjectionLayer::new("markdown", &language, self.highlight_query.clone())
-    }
-
-    fn language_id(&self) -> &'static str {
-        "markdown"
     }
 }
 
@@ -339,14 +325,9 @@ impl Module for TreesitterMarkdownModule {
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let factory = Arc::new(MarkdownSyntaxFactory::new());
 
-        // Register as SyntaxDriverFactory (for creating Markdown drivers)
+        // Register as SyntaxDriverFactory (for creating Markdown drivers and injection children)
         let syntax_store = ctx.services.get_or_create::<SyntaxFactoryStore>();
-        syntax_store.add(factory.clone());
-
-        // Register as InjectionLayerFactory (for embedding Markdown in other languages)
-        // This enables Rust doc comments to inject Markdown highlighting
-        let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
-        injection_store.add(factory);
+        syntax_store.add(factory);
 
         // Register language metadata for detection
         let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();

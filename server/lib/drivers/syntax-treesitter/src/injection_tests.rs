@@ -1,40 +1,95 @@
+use std::sync::Arc;
+
+use reovim_driver_syntax::{Annotation, Injection, SyntaxDriver, SyntaxDriverFactory};
+use tree_sitter::Query;
+
 use super::*;
+
+// ========================================================================
+// Test factory for creating real tree-sitter drivers
+// ========================================================================
+
+struct TestRustFactory {
+    language: tree_sitter::Language,
+    highlight_query: Arc<Query>,
+}
+
+impl TestRustFactory {
+    fn new() -> Self {
+        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        let highlight_query =
+            Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+        Self {
+            language,
+            highlight_query,
+        }
+    }
+}
+
+impl SyntaxDriverFactory for TestRustFactory {
+    fn create(&self, language_id: &str) -> Option<Box<dyn SyntaxDriver>> {
+        use crate::TreeSitterDriver;
+        if language_id != "rust" {
+            return None;
+        }
+        TreeSitterDriver::new("rust", &self.language, self.highlight_query.clone())
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+    }
+
+    fn supported_languages(&self) -> Vec<&str> {
+        vec!["rust"]
+    }
+}
+
+// ========================================================================
+// InjectionManager basic tests
+// ========================================================================
 
 #[test]
 fn test_injection_manager_default() {
     let manager = InjectionManager::default();
-    assert_eq!(manager.layer_count(), 0);
+    assert_eq!(manager.child_count(), 0);
+    assert_eq!(manager.depth(), 0);
 }
 
 #[test]
 fn test_injection_manager_new() {
     let manager = InjectionManager::new();
-    assert_eq!(manager.layer_count(), 0);
-    assert!(!format!("{manager:?}").contains("has_store: true"));
+    assert_eq!(manager.child_count(), 0);
+    assert_eq!(manager.depth(), 0);
+    assert!(!manager.has_child("rust"));
 }
 
 #[test]
-fn test_injection_manager_with_store() {
-    let store = Arc::new(InjectionLayerStore::new());
-    let manager = InjectionManager::with_store(store);
-    assert_eq!(manager.layer_count(), 0);
-    assert!(format!("{manager:?}").contains("has_store: true"));
+fn test_injection_manager_with_factory() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let manager = InjectionManager::with_factory(factory, 0);
+    assert_eq!(manager.child_count(), 0);
+    assert_eq!(manager.depth(), 0);
 }
 
 #[test]
-fn test_injection_manager_set_store() {
+fn test_injection_manager_set_factory() {
     let mut manager = InjectionManager::new();
-    assert!(!format!("{manager:?}").contains("has_store: true"));
-
-    let store = Arc::new(InjectionLayerStore::new());
-    manager.set_store(store);
-    assert!(format!("{manager:?}").contains("has_store: true"));
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    manager.set_factory(factory);
+    // Factory is now set (verified indirectly via highlight_injections)
+    assert_eq!(manager.child_count(), 0);
 }
 
 #[test]
-fn test_injection_manager_has_layer() {
+fn test_injection_manager_set_depth() {
+    let mut manager = InjectionManager::new();
+    assert_eq!(manager.depth(), 0);
+    manager.set_depth(3);
+    assert_eq!(manager.depth(), 3);
+}
+
+#[test]
+fn test_injection_manager_has_child() {
     let manager = InjectionManager::new();
-    assert!(!manager.has_layer("rust"));
+    assert!(!manager.has_child("rust"));
+    assert!(!manager.has_child("python"));
 }
 
 #[test]
@@ -42,617 +97,335 @@ fn test_injection_manager_debug() {
     let manager = InjectionManager::new();
     let debug = format!("{manager:?}");
     assert!(debug.contains("InjectionManager"));
-    assert!(debug.contains("layer_count"));
-    assert!(debug.contains("has_store"));
+    assert!(debug.contains("child_count"));
+    assert!(debug.contains("has_factory"));
+    assert!(debug.contains("depth"));
 }
 
 #[test]
 fn test_injection_manager_invalidate() {
     let mut manager = InjectionManager::new();
-
-    // Invalidate should not panic even with no layers
     manager.invalidate();
-    assert_eq!(manager.layer_count(), 0);
+    assert_eq!(manager.child_count(), 0);
 }
 
 #[test]
 fn test_injection_manager_highlight_injections_empty() {
     let mut manager = InjectionManager::new();
-
     let injections: Vec<Injection> = vec![];
     let highlights = manager.highlight_injections(&injections, "content", 0..100);
-
     assert!(highlights.is_empty());
 }
 
 #[test]
-fn test_injection_manager_highlight_injections_no_layer() {
+fn test_injection_manager_highlight_injections_no_child() {
     let mut manager = InjectionManager::new();
-
-    // Injection for a language we don't have a layer for
-    let injections = vec![Injection::new("rust".to_string(), 10..50, 0, 0, 2, 10)];
-
+    // Injection for a language we don't have a factory for
+    let injections = vec![Injection::new("rust", 10..50, 0, 0, 2, 10)];
     let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..100);
-
-    // Should return empty since no rust layer is registered
+    // No factory, no child created
     assert!(highlights.is_empty());
 }
 
 #[test]
-fn test_injection_layer_creation() {
-    // Test creating an injection layer with Rust
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+fn test_injection_manager_highlight_non_overlapping() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
 
-    // Create a minimal highlights query
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query));
-
-    assert!(layer.is_some());
-    let layer = layer.unwrap();
-    assert_eq!(layer.language_id(), "rust");
-}
-
-#[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn test_injection_layer_highlight() {
-    // Test highlighting embedded Rust code
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-
-    // Create a query that matches identifiers
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-
-    let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-
-    // Simulate embedded Rust code in a larger document
-    // Full content: "Some text\n```rust\nlet x = 1;\n```\nMore text"
-    // Rust portion at bytes 17..28: "let x = 1;"
-    let full_content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
-
-    let injection = Injection::new(
-        "rust".to_string(),
-        18..28, // "let x = 1;"
-        2,      // start_row
-        0,      // start_col
-        2,      // end_row
-        10,     // end_col
-    );
-
-    let highlights = layer.highlight_injection(&injection, full_content);
-
-    // Should have at least one highlight for 'x'
-    assert!(!highlights.is_empty(), "Expected highlights for identifier 'x'");
-
-    // Check that the highlights are offset-adjusted
-    for h in &highlights {
-        assert!(h.start_byte >= 18, "Highlight start should be offset to parent coordinates");
-        assert!(h.end_byte <= 28, "Highlight end should be within injection range");
-    }
-}
-
-#[test]
-#[cfg_attr(coverage_nightly, coverage(off))]
-fn test_injection_manager_with_layer() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-
-    let mut manager = InjectionManager::new();
-
-    // Register a Rust layer
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    assert!(manager.has_layer("rust"));
-    assert_eq!(manager.layer_count(), 1);
-
-    // Test highlighting with the registered layer
-    let full_content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
-    let injections = vec![Injection::new(
-        "rust".to_string(),
-        18..28, // "let x = 1;"
-        2,
-        0,
-        2,
-        10,
-    )];
-
-    let highlights = manager.highlight_injections(&injections, full_content, 0..100);
-
-    // Should have highlights now
-    assert!(!highlights.is_empty(), "Expected highlights with registered layer");
-}
-
-// ========================================================================
-// InjectionLayerStore Tests
-// ========================================================================
-
-/// Mock factory for testing the store (always returns None).
-struct MockLayerFactory {
-    language: &'static str,
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl InjectionLayerFactory for MockLayerFactory {
-    fn create_layer(&self) -> Option<InjectionLayer> {
-        // For testing, we don't actually create a layer
-        None
-    }
-
-    fn language_id(&self) -> &'static str {
-        self.language
-    }
-}
-
-/// Real factory that creates a working Rust injection layer.
-struct RealRustLayerFactory {
-    language: tree_sitter::Language,
-    query: Arc<Query>,
-}
-
-impl RealRustLayerFactory {
-    fn new() -> Self {
-        let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-        let query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
-        Self { language, query }
-    }
-}
-
-#[cfg_attr(coverage_nightly, coverage(off))]
-impl InjectionLayerFactory for RealRustLayerFactory {
-    fn create_layer(&self) -> Option<InjectionLayer> {
-        InjectionLayer::new("rust", &self.language, self.query.clone())
-    }
-
-    fn language_id(&self) -> &'static str {
-        "rust"
-    }
-}
-
-#[test]
-fn test_injection_layer_store_new_empty() {
-    let store = InjectionLayerStore::new();
-    assert!(store.is_empty());
-    assert_eq!(store.len(), 0);
-}
-
-#[test]
-fn test_injection_layer_store_add_and_find() {
-    let store = InjectionLayerStore::new();
-
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-    store.add(Arc::new(MockLayerFactory { language: "python" }));
-
-    assert_eq!(store.len(), 2);
-    assert!(store.find("rust").is_some());
-    assert!(store.find("python").is_some());
-    assert!(store.find("javascript").is_none());
-}
-
-#[test]
-fn test_injection_layer_store_supported_languages() {
-    let store = InjectionLayerStore::new();
-
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-    store.add(Arc::new(MockLayerFactory { language: "python" }));
-
-    let languages = store.supported_languages();
-    assert_eq!(languages.len(), 2);
-    assert!(languages.contains(&"rust".to_string()));
-    assert!(languages.contains(&"python".to_string()));
-}
-
-#[test]
-fn test_injection_layer_store_debug() {
-    let store = InjectionLayerStore::new();
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-
-    let debug = format!("{store:?}");
-    assert!(debug.contains("InjectionLayerStore"));
-    assert!(debug.contains("count"));
-}
-
-#[test]
-fn test_injection_layer_store_default() {
-    let store = InjectionLayerStore::default();
-    assert!(store.is_empty());
-    assert_eq!(store.len(), 0);
-}
-
-#[test]
-fn test_injection_manager_register_and_has() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    assert!(manager.has_layer("rust"));
-    assert!(!manager.has_layer("python"));
-    assert_eq!(manager.layer_count(), 1);
-}
-
-#[test]
-fn test_injection_manager_highlight_out_of_range_skipped() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    // Create an injection outside the query range
-    let injections = vec![Injection::new("rust".to_string(), 100..200, 5, 0, 10, 0)];
-
-    // Query range 0..50 does not overlap injection 100..200
+    // Injection range 100..200, query range 0..50 => no overlap
+    let injections = vec![Injection::new("rust", 100..200, 5, 0, 10, 0)];
     let highlights = manager.highlight_injections(&injections, "fn main() {}", 0..50);
     assert!(highlights.is_empty());
 }
 
 #[test]
-fn test_injection_layer_clear_cache() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-
-    // Parse something to populate cache
-    let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
-    let injection = Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10);
-    let _highlights = layer.highlight_injection(&injection, content);
-
-    // Now clear cache
-    layer.clear_cache();
-
-    // Re-highlight after clear (should re-parse without error)
-    let highlights = layer.highlight_injection(&injection, content);
-    assert!(!highlights.is_empty());
-}
-
-#[test]
-fn test_injection_layer_highlight_empty_content() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-
-    // Empty injection content
-    let injection = Injection::new("rust".to_string(), 5..5, 0, 0, 0, 0);
-    let highlights = layer.highlight_injection(&injection, "hello");
-    assert!(highlights.is_empty());
-}
-
-#[test]
-fn test_injection_layer_highlight_out_of_bounds() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-
-    // Range beyond content length
-    let injection = Injection::new("rust".to_string(), 100..200, 0, 0, 0, 0);
-    let highlights = layer.highlight_injection(&injection, "short");
-    assert!(highlights.is_empty());
-}
-
-#[test]
-fn test_injection_manager_get_or_create_layer_no_store() {
-    let mut manager = InjectionManager::new();
-
-    // No store configured — always returns None for unknown languages
-    let result = manager.get_or_create_layer("unknown");
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_injection_manager_get_or_create_layer_store_factory_returns_none() {
-    // MockLayerFactory.create_layer() returns None
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-
-    let mut manager = InjectionManager::with_store(store);
-
-    // Store has a factory for "rust" but it returns None from create_layer()
-    let result = manager.get_or_create_layer("rust");
-    assert!(result.is_none());
-    assert_eq!(manager.layer_count(), 0);
-}
-
-#[test]
-fn test_injection_manager_get_or_create_layer_cached() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    // Pre-register a layer
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    // get_or_create_layer should find the cached layer (no store needed)
-    let result = manager.get_or_create_layer("rust");
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().language_id(), "rust");
-}
-
-#[test]
-fn test_injection_manager_get_or_create_layer_dynamic_creation() {
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(RealRustLayerFactory::new()));
-
-    let mut manager = InjectionManager::with_store(store);
-    assert_eq!(manager.layer_count(), 0);
-
-    // First call: dynamically creates the layer
-    let result = manager.get_or_create_layer("rust");
-    assert!(result.is_some());
-    assert_eq!(result.unwrap().language_id(), "rust");
-    assert_eq!(manager.layer_count(), 1);
-
-    // Second call: returns cached layer
-    let result = manager.get_or_create_layer("rust");
-    assert!(result.is_some());
-    assert_eq!(manager.layer_count(), 1);
-}
-
-#[test]
-fn test_injection_manager_get_or_create_layer_unknown_language_with_store() {
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-
-    let mut manager = InjectionManager::with_store(store);
-
-    // "python" not in store — returns None
-    let result = manager.get_or_create_layer("python");
-    assert!(result.is_none());
-}
-
-#[test]
-fn test_highlight_injections_dynamic_creation() {
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(RealRustLayerFactory::new()));
-
-    let mut manager = InjectionManager::with_store(store);
-
-    // Simulate: parent Markdown doc has embedded Rust at bytes 10..30
-    let full_content = "# Title\n\nfn main() { let x = 1; }extra";
-    let injection = Injection::new("rust".to_string(), 10..34, 1, 0, 1, 24);
-
-    // No layer pre-registered — should be created dynamically
-    assert_eq!(manager.layer_count(), 0);
-
-    let highlights =
-        manager.highlight_injections(&[injection], full_content, 0..full_content.len());
-
-    // Layer was dynamically created
-    assert_eq!(manager.layer_count(), 1);
-    assert!(manager.has_layer("rust"));
-
-    // Should have produced highlights from the Rust code
-    assert!(
-        !highlights.is_empty(),
-        "Expected highlights from dynamically created Rust injection layer"
-    );
-}
-
-#[test]
-fn test_highlight_injections_skips_unsupported_language() {
-    // Store with only Rust — injection for "python" should be silently skipped
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-
-    let mut manager = InjectionManager::with_store(store);
-
-    let content = "print('hello')";
-    let injection = Injection::new("python".to_string(), 0..14, 0, 0, 0, 14);
-    let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
-
-    assert!(highlights.is_empty());
-    assert_eq!(manager.layer_count(), 0);
-}
-
-#[test]
-fn test_injection_manager_highlight_non_overlapping_injection() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    // Injection range 10..50, query range 60..100 => no overlap
-    let injections = vec![Injection::new("rust".to_string(), 10..50, 0, 0, 2, 0)];
-    let highlights = manager.highlight_injections(&injections, "let x = 1;", 60..100);
-    assert!(highlights.is_empty());
-}
-
-#[test]
-fn test_injection_layer_store_service_impl() {
-    fn accepts_service(_: &dyn reovim_kernel::api::v1::Service) {}
-    let store = InjectionLayerStore::new();
-    accepts_service(&store);
-}
-
-#[test]
-fn test_injection_manager_invalidate_with_layers() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    // Highlight to populate cache
-    let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
-    let injections = vec![Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10)];
-    let _highlights = manager.highlight_injections(&injections, content, 0..100);
-
-    // Invalidate should not panic and should clear caches
-    manager.invalidate();
-    assert_eq!(manager.layer_count(), 1); // Layer still registered
-}
-
-#[test]
-fn test_injection_layer_store_debug_with_languages() {
-    let store = InjectionLayerStore::new();
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-    store.add(Arc::new(MockLayerFactory { language: "python" }));
-
-    let debug = format!("{store:?}");
-    assert!(debug.contains("InjectionLayerStore"));
-    assert!(debug.contains("rust"));
-    assert!(debug.contains("python"));
-    assert!(debug.contains('2'));
-}
-
-#[test]
-fn test_injection_layer_store_find_returns_none_for_unknown() {
-    let store = InjectionLayerStore::new();
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-    assert!(store.find("javascript").is_none());
-}
-
-#[test]
-fn test_injection_layer_store_supported_languages_empty() {
-    let store = InjectionLayerStore::new();
-    let langs = store.supported_languages();
-    assert!(langs.is_empty());
-}
-
-#[test]
-fn test_injection_manager_debug_with_layers() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
-
-    let debug = format!("{manager:?}");
-    assert!(debug.contains("InjectionManager"));
-    assert!(debug.contains("rust"));
-    assert!(debug.contains("layer_count"));
-}
-
-#[test]
 fn test_injection_manager_highlight_injection_end_at_start_of_range() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
 
     // Injection ends exactly where query range starts: no overlap
-    let injections = vec![Injection::new("rust".to_string(), 0..10, 0, 0, 0, 10)];
+    let injections = vec![Injection::new("rust", 0..10, 0, 0, 0, 10)];
     let highlights = manager.highlight_injections(&injections, "let x = 1;", 10..20);
     assert!(highlights.is_empty());
 }
 
 #[test]
 fn test_injection_manager_highlight_injection_start_at_end_of_range() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-    manager.register_layer(layer);
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
 
     // Injection starts exactly where query range ends: no overlap
-    let injections = vec![Injection::new("rust".to_string(), 20..30, 0, 0, 0, 10)];
+    let injections = vec![Injection::new("rust", 20..30, 0, 0, 0, 10)];
     let highlights =
         manager.highlight_injections(&injections, "let x = 1;let y = 2;let z = 3;", 0..20);
     assert!(highlights.is_empty());
 }
 
 #[test]
-fn test_injection_layer_highlight_reuses_cached_tree() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut layer = InjectionLayer::new("rust", &language, Arc::new(query)).unwrap();
-
-    let content = "Some text\n```rust\nlet x = 1;\n```\nMore text";
-    let injection = Injection::new("rust".to_string(), 18..28, 2, 0, 2, 10);
-
-    // First call populates cache
-    let h1 = layer.highlight_injection(&injection, content);
-    assert!(!h1.is_empty());
-
-    // Second call reuses cached tree
-    let h2 = layer.highlight_injection(&injection, content);
-    assert!(!h2.is_empty());
-    assert_eq!(h1.len(), h2.len());
-}
-
-#[test]
-fn test_injection_manager_register_replaces_existing_layer() {
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-    let query1 = Query::new(&language, "(identifier) @variable").unwrap();
-    let query2 = Query::new(&language, "(identifier) @variable").unwrap();
-    let mut manager = InjectionManager::new();
-
-    let layer1 = InjectionLayer::new("rust", &language, Arc::new(query1)).unwrap();
-    manager.register_layer(layer1);
-    assert_eq!(manager.layer_count(), 1);
-
-    // Re-registering with same language_id replaces
-    let layer2 = InjectionLayer::new("rust", &language, Arc::new(query2)).unwrap();
-    manager.register_layer(layer2);
-    assert_eq!(manager.layer_count(), 1); // Still 1, replaced
-}
-
-#[test]
-fn test_injection_layer_store_not_empty() {
-    let store = InjectionLayerStore::new();
-    assert!(store.is_empty());
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
-    assert!(!store.is_empty());
-    assert_eq!(store.len(), 1);
-}
-
-#[test]
-fn test_highlight_injections_skips_existing_layer() {
-    // Store contains a real factory for "rust"
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(RealRustLayerFactory::new()));
-
-    let mut manager = InjectionManager::with_store(store);
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_injection_manager_dynamic_child_creation() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
 
     let full_content = "# Title\n\nfn main() { let x = 1; }extra";
-    let injection = Injection::new("rust".to_string(), 10..34, 1, 0, 1, 24);
+    let injection = Injection::new("rust", 10..34, 1, 0, 1, 24);
 
-    // First call: dynamically creates the layer
-    let _ = manager.highlight_injections(
-        std::slice::from_ref(&injection),
-        full_content,
-        0..full_content.len(),
-    );
-    assert_eq!(manager.layer_count(), 1);
+    assert_eq!(manager.child_count(), 0);
 
-    // Second call with same injection: layer already exists in self.layers,
-    // so `!self.layers.contains_key(...)` is false (line 295 false branch)
-    let highlights = manager.highlight_injections(
-        std::slice::from_ref(&injection),
-        full_content,
-        0..full_content.len(),
-    );
+    let highlights =
+        manager.highlight_injections(&[injection], full_content, 0..full_content.len());
 
-    // Layer count unchanged — no duplicate creation
-    assert_eq!(manager.layer_count(), 1);
+    // Child was dynamically created
+    assert_eq!(manager.child_count(), 1);
+    assert!(manager.has_child("rust"));
+    assert!(!highlights.is_empty(), "Expected highlights from Rust injection");
+}
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_injection_manager_reuses_cached_child() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let full_content = "# Title\n\nfn main() { let x = 1; }extra";
+    let injection = Injection::new("rust", 10..34, 1, 0, 1, 24);
+
+    // First call creates child
+    let _ = manager.highlight_injections(std::slice::from_ref(&injection), full_content, 0..full_content.len());
+    assert_eq!(manager.child_count(), 1);
+
+    // Second call reuses cached child
+    let highlights =
+        manager.highlight_injections(&[injection], full_content, 0..full_content.len());
+    assert_eq!(manager.child_count(), 1); // Not duplicated
     assert!(!highlights.is_empty());
 }
 
 #[test]
-fn test_highlight_injections_skips_when_create_layer_returns_none() {
-    // MockLayerFactory's create_layer() returns None
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(MockLayerFactory { language: "rust" }));
+fn test_injection_manager_skips_unsupported_language() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
 
-    let mut manager = InjectionManager::with_store(store);
-
-    let content = "fn main() {}";
-    let injection = Injection::new("rust".to_string(), 0..12, 0, 0, 0, 12);
-
-    // Store finds factory for "rust" but create_layer() returns None
-    // (line 297 false branch)
+    let content = "print('hello')";
+    let injection = Injection::new("python", 0..14, 0, 0, 0, 14);
     let highlights = manager.highlight_injections(&[injection], content, 0..content.len());
 
     assert!(highlights.is_empty());
-    assert_eq!(manager.layer_count(), 0);
+    assert_eq!(manager.child_count(), 0);
+}
+
+#[test]
+fn test_injection_manager_depth_limit() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    // At max depth - 1, children should still get factory
+    let manager = InjectionManager::with_factory(factory.clone(), MAX_INJECTION_DEPTH - 1);
+    assert_eq!(manager.depth(), MAX_INJECTION_DEPTH - 1);
+
+    // At max depth, no more recursion
+    let manager_at_max = InjectionManager::with_factory(factory, MAX_INJECTION_DEPTH);
+    assert_eq!(manager_at_max.depth(), MAX_INJECTION_DEPTH);
+}
+
+#[test]
+fn test_injection_manager_invalidate_with_children() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let content = "fn main() { let x = 1; }";
+    let injection = Injection::new("rust", 0..24, 0, 0, 0, 24);
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len());
+    assert_eq!(manager.child_count(), 1);
+
+    manager.invalidate();
+    assert_eq!(manager.child_count(), 0);
+}
+
+#[test]
+fn test_injection_manager_debug_with_children() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 2);
+
+    let content = "fn main() {}";
+    let injection = Injection::new("rust", 0..12, 0, 0, 0, 12);
+    let _ = manager.highlight_injections(&[injection], content, 0..content.len());
+
+    let debug = format!("{manager:?}");
+    assert!(debug.contains("InjectionManager"));
+    assert!(debug.contains("rust"));
+    assert!(debug.contains("has_factory: true"));
+    assert!(debug.contains("depth: 2"));
+}
+
+// ========================================================================
+// highlight_single_injection tests
+// ========================================================================
+
+#[test]
+fn test_highlight_single_injection_empty_ranges() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let injection = Injection::combined("rust", vec![], 0, 0, 0, 0);
+    let highlights =
+        manager.highlight_injections(&[injection], "fn main() {}", 0..100);
+    // Empty ranges -> no highlights (but child may be created if factory returns Some)
+    assert!(highlights.is_empty());
+}
+
+#[test]
+fn test_highlight_single_injection_out_of_bounds() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    let injection = Injection::new("rust", 100..200, 0, 0, 0, 0);
+    let highlights = manager.highlight_injections(&[injection], "short", 0..200);
+    assert!(highlights.is_empty());
+}
+
+// ========================================================================
+// Doc comment prefix stripping tests
+// ========================================================================
+
+#[test]
+fn test_strip_doc_comment_prefix_outer_with_space() {
+    let (stripped, len) = strip_doc_comment_prefix("/// Hello world");
+    assert_eq!(stripped, "Hello world");
+    assert_eq!(len, 4);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_outer_no_space() {
+    let (stripped, len) = strip_doc_comment_prefix("///Hello");
+    assert_eq!(stripped, "Hello");
+    assert_eq!(len, 3);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_empty_outer() {
+    let (stripped, len) = strip_doc_comment_prefix("///");
+    assert_eq!(stripped, "");
+    assert_eq!(len, 3);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_inner_with_space() {
+    let (stripped, len) = strip_doc_comment_prefix("//! Module docs");
+    assert_eq!(stripped, "Module docs");
+    assert_eq!(len, 4);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_inner_no_space() {
+    let (stripped, len) = strip_doc_comment_prefix("//!Hello");
+    assert_eq!(stripped, "Hello");
+    assert_eq!(len, 3);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_regular_comment() {
+    let (stripped, len) = strip_doc_comment_prefix("// regular comment");
+    assert_eq!(stripped, "// regular comment");
+    assert_eq!(len, 0);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_quadruple_slash() {
+    // //// is a regular comment, NOT a doc comment
+    let (stripped, len) = strip_doc_comment_prefix("////not doc");
+    assert_eq!(stripped, "////not doc");
+    assert_eq!(len, 0);
+}
+
+#[test]
+fn test_strip_doc_comment_prefix_no_prefix() {
+    let (stripped, len) = strip_doc_comment_prefix("fn main() {}");
+    assert_eq!(stripped, "fn main() {}");
+    assert_eq!(len, 0);
+}
+
+// ========================================================================
+// translate_combined_highlight tests
+// ========================================================================
+
+#[test]
+fn test_translate_combined_highlight_single_chunk() {
+    let highlight = Annotation::new(0, 5, reovim_driver_syntax::HighlightCategory::new("variable"));
+    let range_offsets = [(100, 0, 4)]; // src_start=100, dst_start=0, prefix_len=4
+    #[allow(clippy::single_range_in_vec_init)]
+    let source_ranges = vec![100..120];
+
+    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    assert!(result.is_some());
+    let ann = result.unwrap();
+    assert_eq!(ann.start_byte, 104); // 100 + 4 + 0
+    assert_eq!(ann.end_byte, 109); // 100 + 4 + 5
+}
+
+#[test]
+fn test_translate_combined_highlight_second_chunk() {
+    let range_offsets = vec![
+        (10, 0, 4),  // first chunk: src 10..20, dst 0..6, prefix 4
+        (30, 7, 4),  // second chunk: src 30..40, dst 7..13, prefix 4
+    ];
+    let source_ranges = vec![10..20, 30..40];
+
+    // Highlight in the second chunk at dst position 8 (offset 1 within second chunk)
+    let highlight = Annotation::new(8, 10, reovim_driver_syntax::HighlightCategory::new("variable"));
+
+    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    assert!(result.is_some());
+    let ann = result.unwrap();
+    assert_eq!(ann.start_byte, 35); // 30 + 4 + 1
+    assert_eq!(ann.end_byte, 37); // 30 + 4 + 3
+}
+
+#[test]
+fn test_translate_combined_highlight_not_found() {
+    let highlight = Annotation::new(100, 105, reovim_driver_syntax::HighlightCategory::new("variable"));
+    let range_offsets = [(10, 0, 4)];
+    #[allow(clippy::single_range_in_vec_init)]
+    let source_ranges = vec![10..20];
+
+    let result = translate_combined_highlight(&highlight, &range_offsets, &source_ranges);
+    assert!(result.is_none());
+}
+
+// ========================================================================
+// Combined injection highlighting test
+// ========================================================================
+
+#[test]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn test_highlight_combined_injection() {
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory::new());
+    let mut manager = InjectionManager::with_factory(factory, 0);
+
+    // Simulate doc comments:
+    // "/// let x = 1;\n/// let y = 2;\n"
+    let content = "/// let x = 1;\n/// let y = 2;\n";
+    let injection = Injection::combined(
+        "rust",
+        vec![0..14, 15..29], // Two comment lines
+        0, 0, 1, 14,
+    );
+
+    let highlights =
+        manager.highlight_injections(&[injection], content, 0..content.len());
+
+    // After prefix stripping, child sees "let x = 1;\nlet y = 2;\n"
+    // Should produce highlights for identifiers x, y
+    assert!(
+        !highlights.is_empty(),
+        "Expected highlights from combined injection"
+    );
+
+    // Verify highlights are in parent document coordinates
+    for h in &highlights {
+        assert!(
+            h.start_byte < content.len(),
+            "Highlight start {start} should be within content bounds {len}",
+            start = h.start_byte,
+            len = content.len()
+        );
+    }
 }

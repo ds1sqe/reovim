@@ -5,11 +5,31 @@ fn test_injection_new() {
     let inj = Injection::new("rust", 100..200, 5, 3, 10, 3);
 
     assert_eq!(inj.language_id, "rust");
-    assert_eq!(inj.byte_range, 100..200);
+    assert_eq!(inj.ranges, vec![100..200]);
+    assert_eq!(inj.byte_range(), 100..200);
     assert_eq!(inj.start_row, 5);
     assert_eq!(inj.start_col, 3);
     assert_eq!(inj.end_row, 10);
     assert_eq!(inj.end_col, 3);
+    assert!(!inj.is_combined());
+}
+
+#[test]
+fn test_injection_combined() {
+    let inj = Injection::combined("markdown", vec![10..20, 30..40, 50..60], 0, 0, 5, 0);
+
+    assert_eq!(inj.language_id, "markdown");
+    assert_eq!(inj.ranges.len(), 3);
+    assert_eq!(inj.byte_range(), 10..60);
+    assert!(inj.is_combined());
+}
+
+#[test]
+fn test_injection_combined_empty_ranges() {
+    let inj = Injection::combined("markdown", vec![], 0, 0, 0, 0);
+
+    assert_eq!(inj.byte_range(), 0..0);
+    assert!(!inj.is_combined());
 }
 
 #[test]
@@ -17,7 +37,8 @@ fn test_injection_from_bytes() {
     let inj = Injection::from_bytes("python", 50..150);
 
     assert_eq!(inj.language_id, "python");
-    assert_eq!(inj.byte_range, 50..150);
+    assert_eq!(inj.ranges, vec![50..150]);
+    assert_eq!(inj.byte_range(), 50..150);
     assert_eq!(inj.start_row, 0);
     assert_eq!(inj.start_col, 0);
     assert_eq!(inj.end_row, 0);
@@ -74,6 +95,12 @@ fn test_injection_byte_len() {
 }
 
 #[test]
+fn test_injection_byte_len_combined() {
+    let inj = Injection::combined("markdown", vec![10..20, 30..50], 0, 0, 0, 0);
+    assert_eq!(inj.byte_len(), 30); // 10 + 20
+}
+
+#[test]
 fn test_injection_is_multiline() {
     let multiline = Injection::new("rust", 100..200, 5, 0, 10, 0);
     assert!(multiline.is_multiline());
@@ -89,4 +116,15 @@ fn test_injection_line_count() {
 
     let single = Injection::new("rust", 100..200, 5, 0, 5, 10);
     assert_eq!(single.line_count(), 1);
+}
+
+#[test]
+fn test_injection_overlaps_bytes_combined() {
+    let inj = Injection::combined("markdown", vec![100..150, 200..250], 0, 0, 0, 0);
+
+    // byte_range() returns 100..250
+    assert!(inj.overlaps_bytes(&(50..120)));
+    assert!(inj.overlaps_bytes(&(240..300)));
+    assert!(!inj.overlaps_bytes(&(0..100)));
+    assert!(!inj.overlaps_bytes(&(250..300)));
 }

@@ -93,10 +93,27 @@ fn test_driver_with_queries_no_injections() {
 
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn test_highlights_with_registered_injection_layer() {
-    use crate::InjectionLayer;
+fn test_highlights_with_injection_factory() {
+    use reovim_driver_syntax::SyntaxDriverFactory;
 
-    // Create a driver with injection support
+    // Create a factory that can produce Rust drivers
+    struct TestRustFactory {
+        language: tree_sitter::Language,
+        highlight_query: Arc<Query>,
+    }
+    impl SyntaxDriverFactory for TestRustFactory {
+        fn create(&self, language_id: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+            if language_id != "rust" {
+                return None;
+            }
+            TreeSitterDriver::new("rust", &self.language, self.highlight_query.clone())
+                .map(|d| Box::new(d) as Box<dyn reovim_driver_syntax::SyntaxDriver>)
+        }
+        fn supported_languages(&self) -> Vec<&str> {
+            vec!["rust"]
+        }
+    }
+
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
 
@@ -110,17 +127,16 @@ fn test_highlights_with_registered_injection_layer() {
         highlight_query.clone(),
         None,
         Some(injections_query),
-        None, // No indents query
+        None,
     )
     .unwrap();
 
-    // Register a Rust injection layer
-    {
-        let manager = driver.injection_manager().unwrap();
-        let mut manager_guard = manager.lock();
-        let layer = InjectionLayer::new("rust", &language, highlight_query).unwrap();
-        manager_guard.register_layer(layer);
-    }
+    // Set injection factory for dynamic child creation
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(TestRustFactory {
+        language,
+        highlight_query,
+    });
+    driver.set_injection_factory(factory);
 
     // Parse code (the string content won't actually match Rust syntax properly,
     // but this tests the wiring)
@@ -810,37 +826,59 @@ fn test_decorations_conceal_category() {
 // ========================================================================
 
 #[test]
-fn test_set_injection_layer_store_no_manager() {
+fn test_set_injection_factory_no_manager() {
+    use reovim_driver_syntax::SyntaxDriverFactory;
+
+    struct DummyFactory;
+    impl SyntaxDriverFactory for DummyFactory {
+        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+            None
+        }
+        fn supported_languages(&self) -> Vec<&str> {
+            vec![]
+        }
+    }
+
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
 
     // Build WITHOUT injections_query → no injection_manager
-    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
         .build()
         .unwrap();
 
     assert!(!driver.supports_injections());
 
-    // Calling set_injection_layer_store should do nothing (false branch of if-let)
-    let store = Arc::new(crate::InjectionLayerStore::new());
-    driver.set_injection_layer_store(store);
+    // Calling set_injection_factory should do nothing (false branch of if-let)
+    driver.set_injection_factory(Arc::new(DummyFactory));
 }
 
 #[test]
-fn test_set_injection_layer_store_with_manager() {
+fn test_set_injection_factory_with_manager() {
+    use reovim_driver_syntax::SyntaxDriverFactory;
+
+    struct DummyFactory;
+    impl SyntaxDriverFactory for DummyFactory {
+        fn create(&self, _: &str) -> Option<Box<dyn reovim_driver_syntax::SyntaxDriver>> {
+            None
+        }
+        fn supported_languages(&self) -> Vec<&str> {
+            vec![]
+        }
+    }
+
     let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
     let injections_query =
         Arc::new(Query::new(&language, "(string_literal) @injection.content").unwrap());
 
-    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+    let mut driver = TreeSitterDriver::builder("rust", &language, highlight_query)
         .injections_query(injections_query)
         .build()
         .unwrap();
 
     assert!(driver.supports_injections());
 
-    // Calling set_injection_layer_store should set the store (true branch of if-let)
-    let store = Arc::new(crate::InjectionLayerStore::new());
-    driver.set_injection_layer_store(store);
+    // Calling set_injection_factory should set the factory (true branch of if-let)
+    driver.set_injection_factory(Arc::new(DummyFactory));
 }

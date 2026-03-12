@@ -260,25 +260,13 @@ impl TreeSitterDriver {
         self.injections_query.is_some() && self.injection_manager.is_some()
     }
 
-    /// Get a reference to the injection manager (for registering layers).
+    /// Get a reference to the injection manager.
     ///
     /// Returns `None` if the driver was not created with an injections query.
+    #[cfg(test)]
     #[must_use]
-    pub const fn injection_manager(&self) -> Option<&Mutex<InjectionManager>> {
+    pub(crate) const fn injection_manager(&self) -> Option<&Mutex<InjectionManager>> {
         self.injection_manager.as_ref()
-    }
-
-    /// Set the injection layer store for dynamic layer creation.
-    ///
-    /// When set, the injection manager will lazily create layers for embedded
-    /// languages by querying the store during `highlight_injections()`.
-    ///
-    /// Does nothing if this driver has no injection manager (i.e., was not
-    /// created with an injections query).
-    pub fn set_injection_layer_store(&self, store: Arc<crate::InjectionLayerStore>) {
-        if let Some(ref manager_mutex) = self.injection_manager {
-            manager_mutex.lock().set_store(store);
-        }
     }
 
     /// Check if this driver supports folds.
@@ -560,6 +548,7 @@ impl SyntaxDriver for TreeSitterDriver {
         highlights
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn injections(&self) -> Vec<Injection> {
         let Some(injections_query) = &self.injections_query else {
             return Vec::new();
@@ -584,7 +573,6 @@ impl SyntaxDriver for TreeSitterDriver {
         let mut language_idx: Option<u32> = None;
 
         for (i, name) in capture_names.iter().enumerate() {
-            #[allow(clippy::cast_possible_truncation)]
             if *name == "injection.content" {
                 content_idx = Some(i as u32);
             } else if *name == "injection.language" {
@@ -595,6 +583,23 @@ impl SyntaxDriver for TreeSitterDriver {
         let Some(content_idx) = content_idx else {
             return Vec::new(); // No @injection.content capture
         };
+
+        // Detect combined patterns (patterns with #set! injection.combined)
+        let mut combined_patterns = std::collections::HashSet::new();
+        for pattern_idx in 0..injections_query.pattern_count() {
+            for property in injections_query.property_settings(pattern_idx) {
+                if &*property.key == "injection.combined" {
+                    combined_patterns.insert(pattern_idx);
+                }
+            }
+        }
+
+        // Accumulate combined injections by language
+        #[allow(clippy::type_complexity)]
+        let mut combined_injections: std::collections::HashMap<
+            String,
+            Vec<(std::ops::Range<usize>, u32, u32, u32, u32)>,
+        > = std::collections::HashMap::new();
 
         // Query injections
         let mut matches = cursor.matches(injections_query, tree.root_node(), content.as_bytes());
@@ -626,21 +631,48 @@ impl SyntaxDriver for TreeSitterDriver {
             }
 
             // Create injection if we have both content and language
-            #[allow(clippy::cast_possible_truncation)]
             if let (Some(content_node), Some(language_id)) = (injection_content, injection_language)
             {
                 let start_point = content_node.start_position();
                 let end_point = content_node.end_position();
+                let byte_range = content_node.start_byte()..content_node.end_byte();
 
-                injections.push(Injection::new(
-                    language_id,
-                    content_node.start_byte()..content_node.end_byte(),
-                    start_point.row as u32,
-                    start_point.column as u32,
-                    end_point.row as u32,
-                    end_point.column as u32,
-                ));
+                if combined_patterns.contains(&match_.pattern_index) {
+                    // Accumulate into combined map
+                    combined_injections.entry(language_id).or_default().push((
+                        byte_range,
+                        start_point.row as u32,
+                        start_point.column as u32,
+                        end_point.row as u32,
+                        end_point.column as u32,
+                    ));
+                } else {
+                    // Normal (non-combined) injection -- emit immediately
+                    injections.push(Injection::new(
+                        language_id,
+                        byte_range,
+                        start_point.row as u32,
+                        start_point.column as u32,
+                        end_point.row as u32,
+                        end_point.column as u32,
+                    ));
+                }
             }
+        }
+
+        // Flush combined injections as single entries with multiple ranges
+        for (language_id, entries) in combined_injections {
+            if entries.is_empty() {
+                continue;
+            }
+            let ranges: Vec<std::ops::Range<usize>> =
+                entries.iter().map(|(r, ..)| r.clone()).collect();
+            let (_, sr, sc, ..) = &entries[0];
+            let (.., er, ec) = entries.last().expect("entries is not empty");
+
+            injections.push(Injection::combined(
+                language_id, ranges, *sr, *sc, *er, *ec,
+            ));
         }
 
         // Drop locks before tracing to avoid holding them during logging
@@ -849,6 +881,13 @@ impl SyntaxDriver for TreeSitterDriver {
         }
 
         result
+    }
+
+    fn set_injection_factory(&mut self, factory: Arc<dyn reovim_driver_syntax::SyntaxDriverFactory>) {
+        if let Some(ref manager_mutex) = self.injection_manager {
+            let mut manager = manager_mutex.lock();
+            manager.set_factory(factory);
+        }
     }
 
     fn is_parsed(&self) -> bool {

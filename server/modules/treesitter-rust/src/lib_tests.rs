@@ -384,32 +384,14 @@ fn test_incremental_update() {
 }
 
 #[test]
-fn test_injection_layer_factory() {
+fn test_factory_creates_drivers_for_injection() {
     let factory = RustSyntaxFactory::new();
 
-    // Should create a valid injection layer
-    let layer = factory.create_layer();
-    assert!(layer.is_some(), "Should create Rust injection layer");
-
-    let layer = layer.unwrap();
-    assert_eq!(layer.language_id(), "rust");
-}
-
-#[test]
-fn test_injection_layer_factory_language_id() {
-    let factory = RustSyntaxFactory::new();
-    assert_eq!(factory.language_id(), "rust");
-}
-
-#[test]
-fn test_injection_layer_factory_creates_independent_layers() {
-    let factory = RustSyntaxFactory::new();
-
-    // Should be able to create multiple independent layers
-    let layer1 = factory.create_layer();
-    let layer2 = factory.create_layer();
-    assert!(layer1.is_some());
-    assert!(layer2.is_some());
+    // Factory should create drivers usable as injection children
+    let driver1 = factory.create("rust");
+    let driver2 = factory.create("rust");
+    assert!(driver1.is_some(), "Should create Rust driver for injection");
+    assert!(driver2.is_some(), "Should create independent Rust drivers");
 }
 
 // ========================================================================
@@ -461,8 +443,22 @@ fn test_multiple_doc_comments() {
     driver.parse("/// First doc\n/// Second doc\nfn main() {}");
     let injections = driver.injections();
 
-    // Each doc comment line should be a separate injection
-    assert_eq!(injections.len(), 2, "Expected 2 injections for 2 doc comment lines");
+    // Consecutive doc comment lines are combined into a single injection
+    assert_eq!(
+        injections.len(),
+        1,
+        "Expected 1 combined injection for consecutive doc comment lines, got {injections:?}"
+    );
+    assert_eq!(injections[0].language_id, "markdown");
+    assert!(
+        injections[0].is_combined(),
+        "Expected combined injection for multiple doc comment lines"
+    );
+    assert_eq!(
+        injections[0].ranges.len(),
+        2,
+        "Expected 2 ranges in combined injection"
+    );
 }
 
 #[test]

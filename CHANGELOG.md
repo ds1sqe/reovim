@@ -56,6 +56,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   diagnostic sections (Modules, Dependencies, Configuration). Phase 6 adds extension kind
   filtering to web client `createExtensions()`.
 
+- **Recursive injection highlighting (#611)**: Replace flat `InjectionLayer` / `InjectionLayerStore`
+  system with recursive `Box<dyn SyntaxDriver>` children managed by `InjectionManager`. Child
+  drivers are created on-demand via `SyntaxDriverFactory` and can recursively detect and highlight
+  their own injections (e.g., Rust doc comments -> Markdown -> fenced code blocks). Depth capped
+  at `MAX_INJECTION_DEPTH` (4). Add `injection.combined` support for consecutive doc comment lines
+  (`///`, `//!`) that are concatenated with prefix stripping before parsing as a single Markdown
+  document, with coordinate translation back to parent document space. Add `set_injection_factory()`
+  to `SyntaxDriver` trait for configuring child driver creation. Delete `InjectionLayer`,
+  `InjectionLayerFactory`, and `InjectionLayerStore` types.
+
 - **Dynamic .so module loading with search paths and lock file (#587)**: New
   `reovim-driver-module-loader` crate provides safe dynamic loading of server modules from
   `.so` files. Search paths follow XDG conventions. Lock file prevents concurrent loading.
