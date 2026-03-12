@@ -31,8 +31,9 @@ fn test_defaults_has_dependencies() {
     // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
     // Profiles (1): profiles
-    // Total: 36 modules
-    assert_eq!(deps.len(), 36);
+    // Health-check (1): health-check
+    // Total: 37 modules
+    assert_eq!(deps.len(), 37);
 }
 
 #[test]
@@ -53,8 +54,9 @@ fn test_create_modules() {
     // Vim adapter modules (1): vim-microscope
     // Tetromino (1): tetromino
     // Profiles (1): profiles
-    // Total: 36 modules
-    assert_eq!(modules.len(), 36);
+    // Health-check (1): health-check
+    // Total: 37 modules
+    assert_eq!(modules.len(), 37);
 }
 
 #[test]

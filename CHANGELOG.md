@@ -37,6 +37,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   module prefix (e.g., `editor:save` instead of `save`), and preview panel now refreshes on
   navigation for all pickers.
 
+- **Health-check diagnostic command (#594)**: New `:checkhealth` ex-command that opens a
+  read-only scratch buffer with system diagnostics. Reports: reovim/API version and platform,
+  registered LSP providers with active status, syntax highlighting factories, clipboard
+  availability, and option registry state. Gracefully handles missing services. Part of
+  Editor Customization Epic (#527).
+
 ### Changed
 
 - **Test helper deduplication (#569)**: Create `reovim_kernel::testing` module with

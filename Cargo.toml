@@ -68,6 +68,7 @@ members = [
     "server/modules/vim-snippet",
     "server/modules/profiles",
     "server/modules/tetromino",
+    "server/modules/health-check",
 
     # Client layer - TUI
     "clients/tui",
@@ -256,6 +257,7 @@ reovim-module-vim-range-finder = { path = "./server/modules/vim-range-finder", v
 reovim-module-vim-snippet = { path = "./server/modules/vim-snippet", version = "0.10.0-dev" }
 reovim-module-profiles = { path = "./server/modules/profiles", version = "0.10.0-dev" }
 reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
+reovim-module-health-check = { path = "./server/modules/health-check", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
