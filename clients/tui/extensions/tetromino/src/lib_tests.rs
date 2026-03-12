@@ -215,7 +215,8 @@ fn apply_notification_menu_screen() {
 #[test]
 fn apply_notification_lobby_screen() {
     let mut ext = TetrominoExtension::new();
-    let json = r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":2,"status":"Waiting"}]}"#;
+    let json =
+        r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":2,"status":"Waiting"}]}"#;
     ext.apply_notification(json);
     assert!(ext.is_active());
     assert_eq!(ext.data.screen, "lobby");
@@ -307,7 +308,9 @@ fn render_menu_no_panic() {
 fn render_lobby_no_panic() {
     use reovim_driver_display::FrameBuffer;
     let mut ext = TetrominoExtension::new();
-    ext.apply_notification(r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":1,"status":"Waiting"}]}"#);
+    ext.apply_notification(
+        r#"{"active":true,"screen":"lobby","rooms":[{"id":1,"playerCount":1,"status":"Waiting"}]}"#,
+    );
     let mut fb = FrameBuffer::new(80, 30);
     ext.render(&mut fb);
 }

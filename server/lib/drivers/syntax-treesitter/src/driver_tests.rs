@@ -741,11 +741,7 @@ fn test_decorations_respects_byte_range() {
     // "main" is at bytes 3..7
     assert!(!decorations.is_empty(), "Should find identifier in first line");
     for d in &decorations {
-        assert!(
-            d.start_byte < 13,
-            "Decoration at byte {} should be in first line",
-            d.start_byte
-        );
+        assert!(d.start_byte < 13, "Decoration at byte {} should be in first line", d.start_byte);
     }
 }
 

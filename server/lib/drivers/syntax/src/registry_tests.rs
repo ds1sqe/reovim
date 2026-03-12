@@ -217,9 +217,8 @@ fn test_language_registry_detect_from_path() {
 
 #[test]
 fn test_language_registry_detect_from_mime() {
-    let registry = TestRegistry::new(vec![
-        LanguageInfo::new("rust", "Rust").with_mime_types(["text/x-rust"]),
-    ]);
+    let registry =
+        TestRegistry::new(vec![LanguageInfo::new("rust", "Rust").with_mime_types(["text/x-rust"])]);
 
     assert_eq!(registry.detect_from_mime("text/x-rust"), Some("rust".to_string()));
     assert_eq!(registry.detect_from_mime("text/plain"), None);

@@ -175,10 +175,7 @@ fn test_store_replace_source() {
     let mut store = AnnotationStore::new();
     let source_id = SourceId::new("test");
 
-    store.replace_source(
-        source_id.clone(),
-        vec![make_annotation(5, 10), make_annotation(10, 20)],
-    );
+    store.replace_source(source_id.clone(), vec![make_annotation(5, 10), make_annotation(10, 20)]);
 
     assert!(!store.is_empty());
     assert_eq!(store.source_count(), 1);

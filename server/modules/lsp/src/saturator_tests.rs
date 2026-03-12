@@ -177,13 +177,8 @@ async fn test_handle_server_message_with_response() {
     let message = jsonrpc::Message::Response(response);
 
     // No pending request for ID 99 — logs warning, no panic
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
 }
 
 #[tokio::test]
@@ -204,13 +199,8 @@ async fn test_handle_server_message_with_diagnostics_notification() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
     assert!(cache.has(&uri));
 }
 
@@ -222,13 +212,8 @@ async fn test_handle_server_message_diagnostics_no_params() {
     let notification = jsonrpc::Notification::new("textDocument/publishDiagnostics", None);
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
     assert!(cache.is_empty());
 }
 
@@ -243,13 +228,8 @@ async fn test_handle_server_message_diagnostics_invalid_params() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
     assert!(cache.is_empty());
 }
 
@@ -264,13 +244,8 @@ async fn test_handle_server_message_unhandled_notification() {
     );
     let message = jsonrpc::Message::Notification(notification);
 
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
 }
 
 #[tokio::test]
@@ -281,13 +256,8 @@ async fn test_handle_server_message_with_request() {
     let request = jsonrpc::Request::new(1_i64, "client/registerCapability", None);
     let message = jsonrpc::Message::Request(request);
 
-    LspSaturator::handle_server_message(
-        &client,
-        &cache,
-        &make_test_capability_store(),
-        message,
-    )
-    .await;
+    LspSaturator::handle_server_message(&client, &cache, &make_test_capability_store(), message)
+        .await;
 }
 
 #[tokio::test]
@@ -315,13 +285,7 @@ async fn test_handle_server_request_unknown_direct() {
 async fn test_handle_did_open_sends_notification() {
     let client = make_test_client();
     let uri: Uri = "file:///test.rs".parse().unwrap();
-    LspSaturator::handle_did_open(
-        &client,
-        uri,
-        "rust".to_string(),
-        1,
-        "fn main() {}".to_string(),
-    );
+    LspSaturator::handle_did_open(&client, uri, "rust".to_string(), 1, "fn main() {}".to_string());
 }
 
 #[tokio::test]
@@ -361,13 +325,7 @@ async fn test_handle_did_open_with_closed_channel() {
     let client = make_dead_client().await;
     let uri: Uri = "file:///test.rs".parse().unwrap();
     // Should log error but not panic
-    LspSaturator::handle_did_open(
-        &client,
-        uri,
-        "rust".to_string(),
-        1,
-        "fn main() {}".to_string(),
-    );
+    LspSaturator::handle_did_open(&client, uri, "rust".to_string(), 1, "fn main() {}".to_string());
 }
 
 #[tokio::test]
@@ -456,8 +414,7 @@ async fn test_handle_server_request_unregister_capability_with_params() {
             "registerOptions": null
         }]
     });
-    let reg_request =
-        jsonrpc::Request::new(1_i64, "client/registerCapability", Some(reg_params));
+    let reg_request = jsonrpc::Request::new(1_i64, "client/registerCapability", Some(reg_params));
     LspSaturator::handle_server_request(&client, &caps, reg_request);
     assert!(caps.load_full().definition_provider.is_some());
 

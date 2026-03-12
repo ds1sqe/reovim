@@ -616,4 +616,3 @@ impl fmt::Debug for TimerHandle {
             .finish()
     }
 }
-

@@ -228,4 +228,3 @@ impl<C: FallbackContext> InputFallbackHandler<C> for BeepFallback {
         FallbackResult::Beep
     }
 }
-

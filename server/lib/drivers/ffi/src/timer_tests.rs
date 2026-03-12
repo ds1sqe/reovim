@@ -289,8 +289,7 @@ fn test_null_callback_after_init_returns_null_periodic() {
 fn test_schedule_delayed_zero_delay() {
     let _wheel = ensure_timer_wheel_initialized();
 
-    let handle =
-        unsafe { reovim_schedule_delayed(0, Some(noop_callback), std::ptr::null_mut()) };
+    let handle = unsafe { reovim_schedule_delayed(0, Some(noop_callback), std::ptr::null_mut()) };
     // Zero delay is valid - timer fires immediately
     assert!(handle.is_valid());
     reovim_cancel_timer(handle);
@@ -315,10 +314,8 @@ fn test_cancel_already_cancelled_timer() {
 fn test_schedule_multiple_timers_and_cancel() {
     let _wheel = ensure_timer_wheel_initialized();
 
-    let h1 =
-        unsafe { reovim_schedule_delayed(10_000, Some(noop_callback), std::ptr::null_mut()) };
-    let h2 =
-        unsafe { reovim_schedule_delayed(10_000, Some(noop_callback), std::ptr::null_mut()) };
+    let h1 = unsafe { reovim_schedule_delayed(10_000, Some(noop_callback), std::ptr::null_mut()) };
+    let h2 = unsafe { reovim_schedule_delayed(10_000, Some(noop_callback), std::ptr::null_mut()) };
     assert!(h1.is_valid());
     assert!(h2.is_valid());
     assert_ne!(h1.id, h2.id);
@@ -340,8 +337,7 @@ fn test_schedule_multiple_timers_and_cancel() {
 fn test_schedule_periodic_zero_interval() {
     let _wheel = ensure_timer_wheel_initialized();
 
-    let handle =
-        unsafe { reovim_schedule_periodic(0, Some(noop_callback), std::ptr::null_mut()) };
+    let handle = unsafe { reovim_schedule_periodic(0, Some(noop_callback), std::ptr::null_mut()) };
     // Zero interval is valid
     assert!(handle.is_valid());
     reovim_cancel_timer(handle);

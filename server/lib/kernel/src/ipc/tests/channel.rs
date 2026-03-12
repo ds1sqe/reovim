@@ -1,4 +1,7 @@
-use {super::*, std::thread, std::time::Duration};
+use {
+    super::*,
+    std::{thread, time::Duration},
+};
 
 // ========== Unbounded channel tests ==========
 

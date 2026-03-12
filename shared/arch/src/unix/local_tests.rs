@@ -14,8 +14,7 @@ async fn test_unix_socket_bind_accept() {
 
     // Connect from client (in separate task)
     let path = socket_path.clone();
-    let client_handle =
-        tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
+    let client_handle = tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
 
     // Accept connection
     let (server_stream, _) = listener.accept().await.unwrap();
@@ -78,8 +77,7 @@ async fn test_unix_stream_inner_mut_and_into() {
     let listener = UnixLocalListener::bind(&socket_path).await.unwrap();
 
     let path = socket_path.clone();
-    let client_handle =
-        tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
+    let client_handle = tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
 
     let (server_stream, _) = listener.accept().await.unwrap();
     let mut client_stream = client_handle.await.unwrap();
@@ -96,15 +94,13 @@ async fn test_unix_stream_inner_mut_and_into() {
 #[tokio::test]
 async fn test_unix_stream_into_inner() {
     let temp_dir = std::env::temp_dir();
-    let socket_path =
-        temp_dir.join(format!("reovim-test-into-inner-{}.sock", std::process::id()));
+    let socket_path = temp_dir.join(format!("reovim-test-into-inner-{}.sock", std::process::id()));
     let _ = std::fs::remove_file(&socket_path);
 
     let listener = UnixLocalListener::bind(&socket_path).await.unwrap();
 
     let path = socket_path.clone();
-    let client_handle =
-        tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
+    let client_handle = tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
 
     let (server_stream, _) = listener.accept().await.unwrap();
     let _client_stream = client_handle.await.unwrap();
@@ -124,8 +120,7 @@ async fn test_unix_stream_into_split() {
     let listener = UnixLocalListener::bind(&socket_path).await.unwrap();
 
     let path = socket_path.clone();
-    let client_handle =
-        tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
+    let client_handle = tokio::spawn(async move { UnixLocalStream::connect(&path).await.unwrap() });
 
     let (server_stream, _) = listener.accept().await.unwrap();
     let _client_stream = client_handle.await.unwrap();

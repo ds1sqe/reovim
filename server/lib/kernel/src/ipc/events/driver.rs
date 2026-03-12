@@ -257,4 +257,3 @@ pub enum MouseButton {
     /// Middle mouse button (scroll wheel click)
     Middle,
 }
-

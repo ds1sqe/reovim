@@ -33,4 +33,3 @@ use crate::{DefaultModeProvider, mode_key::ModeProviderKey};
 /// let provider = registry.get(&ModeProviderKey::Entry);
 /// ```
 pub type ModeProviderRegistry = MultiServiceRegistry<ModeProviderKey, dyn DefaultModeProvider>;
-

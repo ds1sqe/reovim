@@ -143,4 +143,3 @@ macro_rules! trace_event {
         }
     };
 }
-

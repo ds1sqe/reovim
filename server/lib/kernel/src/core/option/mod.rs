@@ -548,4 +548,3 @@ impl OptionRegistry {
         specs.is_empty()
     }
 }
-

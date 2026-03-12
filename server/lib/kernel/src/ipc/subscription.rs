@@ -194,4 +194,3 @@ impl fmt::Debug for Subscription {
 // - Arc<Mutex<...>> is Send + Sync
 //
 // No manual unsafe impl needed - Rust derives these automatically.
-

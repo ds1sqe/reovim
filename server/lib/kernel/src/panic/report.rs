@@ -214,4 +214,3 @@ pub fn generate_crash_report(info: &PanicHookInfo<'_>) -> CrashReport {
         client_dump_paths: Vec::new(),
     }
 }
-

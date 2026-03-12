@@ -15,9 +15,7 @@ fn as_placeholder(elem: &SnippetElement) -> (TabStopId, &Vec<SnippetElement>) {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn as_variable(
-    elem: &SnippetElement,
-) -> (&str, &Option<Vec<SnippetElement>>, &Option<Transform>) {
+fn as_variable(elem: &SnippetElement) -> (&str, &Option<Vec<SnippetElement>>, &Option<Transform>) {
     match elem {
         SnippetElement::Variable {
             name,

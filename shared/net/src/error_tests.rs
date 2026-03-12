@@ -165,8 +165,7 @@ fn test_from_io_error_preserves_message() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_from_json_error_preserves_message() {
-    let json_err: serde_json::Error =
-        serde_json::from_str::<i32>("\"not a number\"").unwrap_err();
+    let json_err: serde_json::Error = serde_json::from_str::<i32>("\"not a number\"").unwrap_err();
     let net_err = NetError::from(json_err);
     match net_err {
         NetError::JsonError(msg) => assert!(!msg.is_empty()),

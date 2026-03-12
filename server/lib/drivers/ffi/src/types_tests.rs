@@ -52,8 +52,7 @@ fn test_module_probe_id_max_length() {
 fn test_module_probe_id_truncation() {
     // ID longer than 63 chars should be truncated
     let long_id = "b".repeat(100);
-    let probe =
-        ModuleProbe::new(&long_id, "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
+    let probe = ModuleProbe::new(&long_id, "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
 
     // Should be truncated to 63 chars
     assert_eq!(probe.id_str().len(), 63);
@@ -64,8 +63,7 @@ fn test_module_probe_id_truncation() {
 fn test_module_probe_name_max_length() {
     // Name buffer is 128 bytes, max string is 127 chars + null
     let max_name = "c".repeat(127);
-    let probe =
-        ModuleProbe::new("test", &max_name, Version::new(1, 0, 0), Version::new(0, 2, 0));
+    let probe = ModuleProbe::new("test", &max_name, Version::new(1, 0, 0), Version::new(0, 2, 0));
 
     assert_eq!(probe.name_str(), max_name);
     assert_eq!(probe.name_str().len(), 127);
@@ -75,8 +73,7 @@ fn test_module_probe_name_max_length() {
 fn test_module_probe_name_truncation() {
     // Name longer than 127 chars should be truncated
     let long_name = "d".repeat(200);
-    let probe =
-        ModuleProbe::new("test", &long_name, Version::new(1, 0, 0), Version::new(0, 2, 0));
+    let probe = ModuleProbe::new("test", &long_name, Version::new(1, 0, 0), Version::new(0, 2, 0));
 
     // Should be truncated to 127 chars
     assert_eq!(probe.name_str().len(), 127);
@@ -119,8 +116,7 @@ fn test_module_probe_dependency_max_length() {
 #[test]
 fn test_module_probe_max_dependencies() {
     // Test all 8 required + 8 optional dependencies
-    let mut probe =
-        ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
+    let mut probe = ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
 
     for i in 0..8 {
         probe = probe.with_required_dep(i, &format!("req-{i}"));

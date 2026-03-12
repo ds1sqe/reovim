@@ -14,10 +14,8 @@ fn test_interpreter_single() {
 #[test]
 fn test_interpreter_vsplit() {
     let interpreter = DefaultLayoutInterpreter::new();
-    let logical = LogicalLayout::vsplit(vec![
-        LogicalLayout::single(1, 100),
-        LogicalLayout::single(2, 101),
-    ]);
+    let logical =
+        LogicalLayout::vsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]);
     let screen = Size::new(80, 24);
 
     let tree = interpreter.interpret(&logical, screen);
@@ -33,10 +31,8 @@ fn test_interpreter_vsplit() {
 #[test]
 fn test_interpreter_hsplit() {
     let interpreter = DefaultLayoutInterpreter::new();
-    let logical = LogicalLayout::hsplit(vec![
-        LogicalLayout::single(1, 100),
-        LogicalLayout::single(2, 101),
-    ]);
+    let logical =
+        LogicalLayout::hsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]);
     let screen = Size::new(80, 24);
 
     let tree = interpreter.interpret(&logical, screen);
@@ -53,10 +49,7 @@ fn test_interpreter_hsplit() {
 fn test_interpreter_nested() {
     let interpreter = DefaultLayoutInterpreter::new();
     let logical = LogicalLayout::vsplit(vec![
-        LogicalLayout::hsplit(vec![
-            LogicalLayout::single(1, 100),
-            LogicalLayout::single(2, 101),
-        ]),
+        LogicalLayout::hsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]),
         LogicalLayout::single(3, 102),
     ]);
     let screen = Size::new(80, 24);
@@ -68,10 +61,8 @@ fn test_interpreter_nested() {
 #[test]
 fn test_interpreter_tabs() {
     let interpreter = DefaultLayoutInterpreter::new();
-    let logical = LogicalLayout::tabs(
-        vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)],
-        0,
-    );
+    let logical =
+        LogicalLayout::tabs(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)], 0);
     let screen = Size::new(80, 24);
 
     let tree = interpreter.interpret(&logical, screen);

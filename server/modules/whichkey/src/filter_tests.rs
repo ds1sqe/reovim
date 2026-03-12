@@ -5,11 +5,7 @@ use {
 
 const TEST_MODULE: ModuleId = ModuleId::new("test");
 
-fn make_info(
-    name: &'static str,
-    cat: Option<&'static str>,
-    layer: BindingLayer,
-) -> BindingInfo {
+fn make_info(name: &'static str, cat: Option<&'static str>, layer: BindingLayer) -> BindingInfo {
     BindingInfo::new(CommandId::new(TEST_MODULE, name), "", cat, layer)
 }
 

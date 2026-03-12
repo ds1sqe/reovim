@@ -707,4 +707,3 @@ impl std::fmt::Debug for EventBus {
             .finish()
     }
 }
-

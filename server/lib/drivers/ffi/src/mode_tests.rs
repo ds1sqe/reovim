@@ -148,10 +148,7 @@ fn test_current_mode_with_runtime() {
 
     let mut buf = [0u8; 64];
     let mut result = ReovimStringResult::err(0);
-    assert_eq!(
-        unsafe { reovim_current_mode(buf.as_mut_ptr(), 64, &raw mut result) },
-        REOVIM_OK
-    );
+    assert_eq!(unsafe { reovim_current_mode(buf.as_mut_ptr(), 64, &raw mut result) }, REOVIM_OK);
     assert!(result.length > 0);
 }
 

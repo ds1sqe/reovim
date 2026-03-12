@@ -40,8 +40,7 @@ fn empty_entries() -> String {
 
 fn test_ext(timeout_ms: u64) -> (NotificationExtension, Arc<TestClock>) {
     let clock = Arc::new(TestClock::new());
-    let ext =
-        NotificationExtension::with_clock(clock.clone(), Duration::from_millis(timeout_ms));
+    let ext = NotificationExtension::with_clock(clock.clone(), Duration::from_millis(timeout_ms));
     (ext, clock)
 }
 
@@ -191,9 +190,7 @@ fn test_apply_notification_entry_missing_id() {
 #[test]
 fn test_apply_notification_unknown_level_defaults_info() {
     let (mut ext, _clock) = test_ext(4000);
-    ext.apply_notification(&make_data(
-        r#"[{"id":0,"level":"unknown","title":"test","body":""}]"#,
-    ));
+    ext.apply_notification(&make_data(r#"[{"id":0,"level":"unknown","title":"test","body":""}]"#));
     assert_eq!(ext.toasts[0].level, Level::Info);
 }
 
@@ -646,9 +643,7 @@ fn test_reactivation_after_dismiss() {
     assert!(!ext.is_active());
 
     // Add new toast after dismiss
-    ext.apply_notification(&make_data(
-        r#"[{"id":5,"level":"success","title":"New","body":""}]"#,
-    ));
+    ext.apply_notification(&make_data(r#"[{"id":5,"level":"success","title":"New","body":""}]"#));
     assert!(ext.is_active());
 
     // Should not be dismissed immediately (fresh displayed_at)

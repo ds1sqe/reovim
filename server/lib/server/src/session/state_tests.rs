@@ -1178,11 +1178,7 @@ impl reovim_driver_display::layout::RootCompositor for MockCompositor {
     ) {
     }
 
-    fn set_layer_opacity(
-        &mut self,
-        _layer: reovim_driver_display::layout::LayerId,
-        _opacity: f32,
-    ) {
+    fn set_layer_opacity(&mut self, _layer: reovim_driver_display::layout::LayerId, _opacity: f32) {
     }
 
     fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
@@ -1775,8 +1771,7 @@ fn resolve_pb_test(
     state: &mut SessionState,
     key: &reovim_driver_input::KeyEvent,
     extensions: &mut reovim_driver_session::ExtensionMap,
-) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)>
-{
+) -> Option<(reovim_driver_input::ResolveResult, reovim_driver_session::api::StateChanges)> {
     let mut mode_stack = ModeStack::new(state.home_mode().clone());
     let mut windows = reovim_driver_session::WindowLayout::empty();
     let mut compositor = None;
@@ -1949,8 +1944,7 @@ fn test_pending_bindings_on_push_with_parent() {
     });
 
     // Parent mode binding: "w" → word-forward
-    let word_fwd =
-        reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "word-forward");
+    let word_fwd = reovim_kernel::api::v1::CommandId::new(ModuleId::new("test"), "word-forward");
     state
         .keymap_registry
         .register_str(&motion_mode, "w", word_fwd);

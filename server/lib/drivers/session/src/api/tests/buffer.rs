@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_selection_modes() {

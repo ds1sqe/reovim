@@ -247,15 +247,7 @@ fn test_render_statusline_simple_narrow() {
     let pos_style = Style::new().bg(Color::Green);
     let fill_style = Style::default();
 
-    render_statusline_simple(
-        &mut buffer,
-        23,
-        "NOR",
-        "1:1",
-        &mode_style,
-        &pos_style,
-        &fill_style,
-    );
+    render_statusline_simple(&mut buffer, 23, "NOR", "1:1", &mode_style, &pos_style, &fill_style);
 
     // Mode at left
     assert_eq!(buffer.get(0, 23).unwrap().char, 'N');
@@ -364,15 +356,7 @@ fn test_render_statusline_simple_mode_exceeds_width() {
     let pos_style = Style::new().bg(Color::Green);
     let fill_style = Style::default();
 
-    render_statusline_simple(
-        &mut buffer,
-        0,
-        "NORMAL",
-        "",
-        &mode_style,
-        &pos_style,
-        &fill_style,
-    );
+    render_statusline_simple(&mut buffer, 0, "NORMAL", "", &mode_style, &pos_style, &fill_style);
 
     // Only first 3 chars fit, the rest are truncated by the break
     assert_eq!(buffer.get(0, 0).unwrap().char, 'N');
@@ -414,15 +398,7 @@ fn test_render_statusline_simple_position_exceeds_width() {
     // Position "123456" is 6 chars, but buffer is only 5 wide.
     // pos_start = 5 - 6 = 0 (saturating_sub), so it starts at 0.
     // Rendering position chars: at x=5 the break triggers.
-    render_statusline_simple(
-        &mut buffer,
-        0,
-        "",
-        "123456",
-        &mode_style,
-        &pos_style,
-        &fill_style,
-    );
+    render_statusline_simple(&mut buffer, 0, "", "123456", &mode_style, &pos_style, &fill_style);
 
     assert_eq!(buffer.get(0, 0).unwrap().char, '1');
     assert_eq!(buffer.get(4, 0).unwrap().char, '5');

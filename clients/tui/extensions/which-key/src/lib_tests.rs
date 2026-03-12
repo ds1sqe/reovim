@@ -97,9 +97,7 @@ fn test_apply_notification_missing_hints() {
 #[test]
 fn test_apply_notification_malformed_hint() {
     let mut ext = zero_delay_ext();
-    ext.apply_notification(
-        r#"{"active":true,"prefix":"g","hints":[{"key":"g"},{"bad":"data"}]}"#,
-    );
+    ext.apply_notification(r#"{"active":true,"prefix":"g","hints":[{"key":"g"},{"bad":"data"}]}"#);
     ext.tick();
     assert!(ext.is_active());
     assert!(ext.hints.is_empty());

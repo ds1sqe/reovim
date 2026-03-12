@@ -61,10 +61,7 @@ fn server_with_bridges() {
         fn scope(&self) -> reovim_driver_session::bridges::ExtensionScope {
             reovim_driver_session::bridges::ExtensionScope::Client
         }
-        fn snapshot(
-            &self,
-            _: &reovim_driver_session::ExtensionMap,
-        ) -> Option<serde_json::Value> {
+        fn snapshot(&self, _: &reovim_driver_session::ExtensionMap) -> Option<serde_json::Value> {
             None
         }
         fn is_active(&self, _: &reovim_driver_session::ExtensionMap) -> bool {

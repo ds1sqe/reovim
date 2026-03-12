@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn new_queue_is_empty() {

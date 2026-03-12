@@ -171,8 +171,7 @@ fn test_window_tree_all_windows_tabs() {
 #[test]
 fn test_window_tree_tabs_bounds() {
     let bounds = Rect::new(0, 0, 80, 24);
-    let tree =
-        WindowTree::tabs(vec![WindowTree::leaf(test_window(1, 0, 0, 80, 24))], 0, bounds);
+    let tree = WindowTree::tabs(vec![WindowTree::leaf(test_window(1, 0, 0, 80, 24))], 0, bounds);
     assert_eq!(tree.bounds(), bounds);
 }
 

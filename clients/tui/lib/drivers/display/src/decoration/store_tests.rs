@@ -34,8 +34,7 @@ fn test_buffer_decorations_for_line() {
         DecorationGroup::Search,
         Decoration::inline_style(Span::line(5, 0, 5), Style::default()),
     );
-    decorations
-        .add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
+    decorations.add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
 
     // Line 5 should have all three
     let line5 = decorations.for_line(5);
@@ -51,8 +50,7 @@ fn test_buffer_decorations_priority_order() {
     let mut decorations = BufferDecorations::new();
 
     // Add in reverse priority order
-    decorations
-        .add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
+    decorations.add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
     decorations.add(
         DecorationGroup::Language,
         Decoration::conceal(Span::line(5, 0, 10), "lang", None),
@@ -135,8 +133,7 @@ fn test_buffer_decorations_add_all() {
 #[test]
 fn test_buffer_decorations_clear_all() {
     let mut decorations = BufferDecorations::new();
-    decorations
-        .add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "a", None));
+    decorations.add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "a", None));
     decorations.add(
         DecorationGroup::Search,
         Decoration::inline_style(Span::line(0, 0, 5), Style::default()),
@@ -151,8 +148,7 @@ fn test_buffer_decorations_clear_all() {
 #[test]
 fn test_buffer_decorations_clear_nonexistent_group() {
     let mut decorations = BufferDecorations::new();
-    decorations
-        .add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "a", None));
+    decorations.add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "a", None));
 
     // Clearing a group that doesn't exist should not mark dirty again
     let was_dirty = decorations.is_dirty();
@@ -174,8 +170,7 @@ fn test_buffer_decorations_for_line_reverse_priority() {
         DecorationGroup::Search,
         Decoration::inline_style(Span::line(5, 0, 5), Style::default()),
     );
-    decorations
-        .add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
+    decorations.add(DecorationGroup::Visual, Decoration::line_background(5, 5, Style::default()));
 
     let reversed = decorations.for_line_reverse_priority(5);
     assert_eq!(reversed.len(), 3);
@@ -220,8 +215,7 @@ fn test_buffer_decorations_get_hides() {
 #[test]
 fn test_buffer_decorations_get_line_backgrounds() {
     let mut decorations = BufferDecorations::new();
-    decorations
-        .add(DecorationGroup::Visual, Decoration::line_background(1, 5, Style::default()));
+    decorations.add(DecorationGroup::Visual, Decoration::line_background(1, 5, Style::default()));
     decorations
         .add(DecorationGroup::Language, Decoration::conceal(Span::line(3, 0, 10), "x", None));
 
@@ -253,8 +247,7 @@ fn test_buffer_decorations_dirty_flag() {
     let mut decorations = BufferDecorations::new();
     assert!(!decorations.is_dirty());
 
-    decorations
-        .add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "x", None));
+    decorations.add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "x", None));
     assert!(decorations.is_dirty());
 
     decorations.rebuild_cache();
@@ -273,8 +266,7 @@ fn test_buffer_decorations_dirty_flag() {
 #[test]
 fn test_buffer_decorations_rebuild_cache() {
     let mut decorations = BufferDecorations::new();
-    decorations
-        .add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "x", None));
+    decorations.add(DecorationGroup::Language, Decoration::conceal(Span::line(0, 0, 5), "x", None));
     decorations.add(
         DecorationGroup::Search,
         Decoration::inline_style(Span::new(0, 0, 2, 5), Style::default()),

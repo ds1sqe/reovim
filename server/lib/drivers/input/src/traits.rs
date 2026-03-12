@@ -31,4 +31,3 @@ pub trait ClipboardProvider: Send + Sync {
     /// Get the name of this provider (for debugging).
     fn name(&self) -> &str;
 }
-

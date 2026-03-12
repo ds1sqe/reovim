@@ -57,8 +57,7 @@ fn test_paste_from_clipboard_no_runtime() {
 
 #[test]
 fn test_paste_from_clipboard_null_out_result() {
-    let ret =
-        unsafe { reovim_paste_from_clipboard(std::ptr::null_mut(), 0, std::ptr::null_mut()) };
+    let ret = unsafe { reovim_paste_from_clipboard(std::ptr::null_mut(), 0, std::ptr::null_mut()) };
     assert_eq!(ret, REOVIM_ERR_NULL_PTR);
 }
 
@@ -71,8 +70,7 @@ fn test_paste_from_selection_no_runtime() {
 
 #[test]
 fn test_paste_from_selection_null_out_result() {
-    let ret =
-        unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, std::ptr::null_mut()) };
+    let ret = unsafe { reovim_paste_from_selection(std::ptr::null_mut(), 0, std::ptr::null_mut()) };
     assert_eq!(ret, REOVIM_ERR_NULL_PTR);
 }
 

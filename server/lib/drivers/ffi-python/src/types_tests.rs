@@ -169,9 +169,9 @@ fn test_py_probe_result_from_kernel() {
     assert!(defer.is_defer());
     assert_eq!(defer.defer_reason(), Some("reason".to_string()));
 
-    let failed = PyProbeResult::from_kernel(&v1::ProbeResult::Failed(
-        v1::ModuleError::InitFailed("error".to_string()),
-    ));
+    let failed = PyProbeResult::from_kernel(&v1::ProbeResult::Failed(v1::ModuleError::InitFailed(
+        "error".to_string(),
+    )));
     assert!(failed.is_failed());
 }
 

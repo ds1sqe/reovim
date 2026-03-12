@@ -171,8 +171,7 @@ fn rg_not_found_fallback() {
 fn items_with_query_runs_ripgrep() {
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("searchable.rs");
-    std::fs::write(&file_path, "fn unique_grep_test_marker() {}\n")
-        .expect("Failed to write file");
+    std::fs::write(&file_path, "fn unique_grep_test_marker() {}\n").expect("Failed to write file");
 
     let picker = GrepPicker::new();
     let ctx = PickerContext {
@@ -193,8 +192,7 @@ fn items_with_query_runs_ripgrep() {
 fn run_ripgrep_success_path() {
     let dir = tempfile::tempdir().expect("Failed to create temp dir");
     let file_path = dir.path().join("target_file.txt");
-    std::fs::write(&file_path, "hello rg_coverage_test\nworld\n")
-        .expect("Failed to write file");
+    std::fs::write(&file_path, "hello rg_coverage_test\nworld\n").expect("Failed to write file");
 
     let results = run_ripgrep("rg_coverage_test", dir.path());
     // rg may or may not be installed.

@@ -249,8 +249,7 @@ fn transform_pos_before_insert_earlier_line() {
 
 #[test]
 fn transform_pos_after_single_line_insert() {
-    let result =
-        transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 2), "abc"));
+    let result = transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 2), "abc"));
     assert_eq!(result, Position::new(0, 8)); // 5 + 3
 }
 
@@ -258,8 +257,7 @@ fn transform_pos_after_single_line_insert() {
 
 #[test]
 fn transform_pos_at_insert_position() {
-    let result =
-        transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 5), "xyz"));
+    let result = transform_position(Position::new(0, 5), &Edit::insert(Position::new(0, 5), "xyz"));
     assert_eq!(result, Position::new(0, 8)); // shifted right
 }
 
@@ -287,8 +285,7 @@ fn transform_pos_later_line_after_insert() {
 
 #[test]
 fn transform_pos_before_delete() {
-    let result =
-        transform_position(Position::new(0, 1), &Edit::delete(Position::new(0, 5), "abc"));
+    let result = transform_position(Position::new(0, 1), &Edit::delete(Position::new(0, 5), "abc"));
     assert_eq!(result, Position::new(0, 1));
 }
 
@@ -296,8 +293,7 @@ fn transform_pos_before_delete() {
 
 #[test]
 fn transform_pos_at_delete_start() {
-    let result =
-        transform_position(Position::new(0, 5), &Edit::delete(Position::new(0, 5), "abc"));
+    let result = transform_position(Position::new(0, 5), &Edit::delete(Position::new(0, 5), "abc"));
     assert_eq!(result, Position::new(0, 5));
 }
 
@@ -312,10 +308,8 @@ fn transform_pos_within_delete_single_line() {
 
 #[test]
 fn transform_pos_within_delete_multiline() {
-    let result = transform_position(
-        Position::new(1, 2),
-        &Edit::delete(Position::new(0, 3), "hello\nworld"),
-    );
+    let result =
+        transform_position(Position::new(1, 2), &Edit::delete(Position::new(0, 3), "hello\nworld"));
     assert_eq!(result, Position::new(0, 3));
 }
 
@@ -323,8 +317,7 @@ fn transform_pos_within_delete_multiline() {
 
 #[test]
 fn transform_pos_after_single_line_delete() {
-    let result =
-        transform_position(Position::new(0, 8), &Edit::delete(Position::new(0, 2), "abc"));
+    let result = transform_position(Position::new(0, 8), &Edit::delete(Position::new(0, 2), "abc"));
     assert_eq!(result, Position::new(0, 5)); // 8 - 3
 }
 
@@ -334,10 +327,8 @@ fn transform_pos_after_single_line_delete() {
 fn transform_pos_after_multiline_delete_same_end_line() {
     // Delete "hello\nworld" at (0,3), del_end = (1,5)
     // Position (1,8) -> (0, 3 + 8 - 5) = (0, 6)
-    let result = transform_position(
-        Position::new(1, 8),
-        &Edit::delete(Position::new(0, 3), "hello\nworld"),
-    );
+    let result =
+        transform_position(Position::new(1, 8), &Edit::delete(Position::new(0, 3), "hello\nworld"));
     assert_eq!(result, Position::new(0, 6));
 }
 

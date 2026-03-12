@@ -166,12 +166,10 @@ fn map_lsp_item_with_string_documentation() {
 fn map_lsp_item_with_markup_documentation() {
     let lsp_item = lsp_types::CompletionItem {
         label: "test".to_owned(),
-        documentation: Some(lsp_types::Documentation::MarkupContent(
-            lsp_types::MarkupContent {
-                kind: lsp_types::MarkupKind::Markdown,
-                value: "# Test\nA test.".to_owned(),
-            },
-        )),
+        documentation: Some(lsp_types::Documentation::MarkupContent(lsp_types::MarkupContent {
+            kind: lsp_types::MarkupKind::Markdown,
+            value: "# Test\nA test.".to_owned(),
+        })),
         ..Default::default()
     };
     let item = map_lsp_item(&lsp_item);

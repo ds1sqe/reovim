@@ -50,12 +50,7 @@ impl Composable for MinimalComposable {
     fn bounds(&self, _w: u16, _h: u16) -> Bounds {
         Bounds::new(0, 0, 10, 10)
     }
-    fn render(
-        &self,
-        _buffer: &mut crate::frame::FrameBuffer,
-        _style: &crate::highlight::Style,
-    ) {
-    }
+    fn render(&self, _buffer: &mut crate::frame::FrameBuffer, _style: &crate::highlight::Style) {}
     // captures_keyboard and cursor_position use defaults
 }
 

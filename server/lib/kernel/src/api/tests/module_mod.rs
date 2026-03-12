@@ -1,7 +1,9 @@
 use super::*;
 
-use crate::api::{context::ModuleContext, version::API_VERSION};
-use crate::mm::BufferId;
+use crate::{
+    api::{context::ModuleContext, version::API_VERSION},
+    mm::BufferId,
+};
 
 /// Verify Module trait is object-safe (can be used as `dyn Module`).
 /// This is critical for dynamic module loading via libloading.

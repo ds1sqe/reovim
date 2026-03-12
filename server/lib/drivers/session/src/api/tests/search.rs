@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_search_state_default() {

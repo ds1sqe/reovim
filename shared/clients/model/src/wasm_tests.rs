@@ -10,10 +10,8 @@ fn test_interpret_layout_single() {
 
 #[test]
 fn test_interpret_layout_vsplit() {
-    let logical = LogicalLayout::vsplit(vec![
-        LogicalLayout::single(1, 100),
-        LogicalLayout::single(2, 101),
-    ]);
+    let logical =
+        LogicalLayout::vsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]);
     let tree = interpret_layout(logical, 80, 24);
     assert_eq!(tree.window_count(), 2);
 }

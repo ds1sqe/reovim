@@ -119,11 +119,7 @@ fn test_store_dispatch_with_user_data() {
 
     let counter = AtomicI32::new(0);
     let store = FfiEventSubscriptionStore::default();
-    store.subscribe(
-        "test".to_string(),
-        increment,
-        std::ptr::from_ref(&counter).cast_mut().cast(),
-    );
+    store.subscribe("test".to_string(), increment, std::ptr::from_ref(&counter).cast_mut().cast());
 
     store.dispatch("test");
     assert_eq!(counter.load(AOrdering::SeqCst), 1);
@@ -166,8 +162,7 @@ fn test_subscribe_event_null_type() {
 #[test]
 fn test_subscribe_event_null_callback() {
     let event_type = std::ffi::CString::new("test").unwrap();
-    let h =
-        unsafe { reovim_subscribe_event(event_type.as_ptr(), None, std::ptr::null_mut(), 0) };
+    let h = unsafe { reovim_subscribe_event(event_type.as_ptr(), None, std::ptr::null_mut(), 0) };
     assert!(h.is_null());
 }
 
@@ -175,9 +170,8 @@ fn test_subscribe_event_null_callback() {
 fn test_subscribe_event_no_init_ctx() {
     unsafe extern "C" fn noop(_: *mut c_void, _: *const c_char, _: *const c_void, _: u32) {}
     let event_type = std::ffi::CString::new("test").unwrap();
-    let h = unsafe {
-        reovim_subscribe_event(event_type.as_ptr(), Some(noop), std::ptr::null_mut(), 0)
-    };
+    let h =
+        unsafe { reovim_subscribe_event(event_type.as_ptr(), Some(noop), std::ptr::null_mut(), 0) };
     assert!(h.is_null());
 }
 
@@ -186,12 +180,7 @@ fn test_subscribe_event_invalid_utf8() {
     unsafe extern "C" fn noop(_: *mut c_void, _: *const c_char, _: *const c_void, _: u32) {}
     let invalid_bytes: &[u8] = &[0x80, 0x00];
     let h = unsafe {
-        reovim_subscribe_event(
-            invalid_bytes.as_ptr().cast(),
-            Some(noop),
-            std::ptr::null_mut(),
-            0,
-        )
+        reovim_subscribe_event(invalid_bytes.as_ptr().cast(), Some(noop), std::ptr::null_mut(), 0)
     };
     assert!(h.is_null());
 }
@@ -239,9 +228,8 @@ fn test_subscribe_and_unsubscribe_roundtrip() {
     let _guard = unsafe { crate::runtime::InitGuard::new(&registry) };
 
     let event_type = std::ffi::CString::new("test:event").unwrap();
-    let h = unsafe {
-        reovim_subscribe_event(event_type.as_ptr(), Some(noop), std::ptr::null_mut(), 0)
-    };
+    let h =
+        unsafe { reovim_subscribe_event(event_type.as_ptr(), Some(noop), std::ptr::null_mut(), 0) };
     assert!(!h.is_null());
 
     let result = unsafe { reovim_unsubscribe_event(h) };

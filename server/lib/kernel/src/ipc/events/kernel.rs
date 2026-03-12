@@ -530,4 +530,3 @@ impl Event for OptionReset {}
 pub struct Shutdown;
 
 impl Event for Shutdown {}
-

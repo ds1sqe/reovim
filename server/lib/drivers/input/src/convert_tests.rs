@@ -1,6 +1,4 @@
-use crate::{
-    KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use crate::{KeyCode, KeyEvent, KeyEventKind, Modifiers, MouseButton, MouseEvent, MouseEventKind};
 
 // ========================================================================
 // Modifiers conversion tests

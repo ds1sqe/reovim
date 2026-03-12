@@ -140,4 +140,3 @@ impl std::fmt::Debug for KeybindingStore {
             .finish()
     }
 }
-

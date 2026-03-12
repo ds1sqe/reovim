@@ -473,8 +473,9 @@ fn test_lookup_with_custom_policy() {
     impl KeyLookupPolicy for AlwaysExecutePolicy {
         fn resolve(&self, state: KeyLookupState) -> KeyLookupResult {
             match state {
-                KeyLookupState::ExactOnly(cmd)
-                | KeyLookupState::ExactWithLonger { exact: cmd } => KeyLookupResult::Found(cmd),
+                KeyLookupState::ExactOnly(cmd) | KeyLookupState::ExactWithLonger { exact: cmd } => {
+                    KeyLookupResult::Found(cmd)
+                }
                 _ => KeyLookupResult::NotFound,
             }
         }

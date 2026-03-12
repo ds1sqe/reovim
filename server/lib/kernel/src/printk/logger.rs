@@ -222,4 +222,3 @@ pub fn __log(
 pub fn flush() {
     logger().flush();
 }
-

@@ -319,4 +319,3 @@ impl From<MouseEvent> for reovim_arch::MouseEvent {
         }
     }
 }
-

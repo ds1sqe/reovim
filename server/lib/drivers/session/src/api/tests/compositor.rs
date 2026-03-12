@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_compositor_error_display() {
@@ -14,10 +12,7 @@ fn test_compositor_error_display() {
         CompositorError::WindowNotFound(WindowId::from_raw(42)).to_string(),
         "window 42 not found"
     );
-    assert_eq!(
-        CompositorError::LayerNotFound(LayerId::new(5)).to_string(),
-        "layer 5 not found"
-    );
+    assert_eq!(CompositorError::LayerNotFound(LayerId::new(5)).to_string(), "layer 5 not found");
 }
 
 #[test]

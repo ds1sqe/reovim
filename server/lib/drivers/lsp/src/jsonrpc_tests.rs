@@ -166,8 +166,7 @@ fn test_request_no_params_serialization() {
 
 #[test]
 fn test_notification_with_params() {
-    let notification =
-        Notification::new("$/progress", Some(serde_json::json!({"token": "123"})));
+    let notification = Notification::new("$/progress", Some(serde_json::json!({"token": "123"})));
     assert!(notification.params.is_some());
     let json = serde_json::to_string(&notification).unwrap();
     assert!(json.contains("\"params\""));

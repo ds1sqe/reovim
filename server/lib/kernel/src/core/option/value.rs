@@ -139,4 +139,3 @@ impl fmt::Display for OptionValue {
         }
     }
 }
-

@@ -168,4 +168,3 @@ impl fmt::Display for Level {
         f.write_str(self.as_str())
     }
 }
-

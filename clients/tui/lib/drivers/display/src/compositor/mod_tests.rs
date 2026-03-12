@@ -222,8 +222,7 @@ fn test_compositor_trait_render() {
 #[test]
 fn test_compositor_trait_render_no_cursor() {
     let mut compositor: Box<dyn Compositor> = Box::new(LayerCompositor::new());
-    let mock =
-        MockComposable::new(ComposableId::Window(0)).with_bounds(Bounds::new(0, 0, 80, 24));
+    let mock = MockComposable::new(ComposableId::Window(0)).with_bounds(Bounds::new(0, 0, 80, 24));
 
     compositor.register(Box::new(mock));
 
@@ -236,8 +235,7 @@ fn test_compositor_trait_render_no_cursor() {
 #[test]
 fn test_compositor_trait_hit_test() {
     let mut compositor: Box<dyn Compositor> = Box::new(LayerCompositor::new());
-    let mock =
-        MockComposable::new(ComposableId::Window(0)).with_bounds(Bounds::new(0, 0, 50, 50));
+    let mock = MockComposable::new(ComposableId::Window(0)).with_bounds(Bounds::new(0, 0, 50, 50));
 
     compositor.register(Box::new(mock));
 

@@ -986,8 +986,7 @@ fn test_create_buffer_named() {
 
     let mut harness = TestSessionRuntime::new();
 
-    let buf_id =
-        harness.with_runtime(|runtime| runtime.create_buffer(Some("test.txt"), "hello"));
+    let buf_id = harness.with_runtime(|runtime| runtime.create_buffer(Some("test.txt"), "hello"));
 
     let path = harness.with_runtime(|runtime| runtime.buffer_file_path(buf_id));
     assert_eq!(path, Some("test.txt".to_string()));
@@ -999,8 +998,7 @@ fn test_rename_buffer_api() {
 
     let mut harness = TestSessionRuntime::new();
 
-    let buf_id =
-        harness.with_runtime(|runtime| runtime.create_buffer(Some("old.txt"), "content"));
+    let buf_id = harness.with_runtime(|runtime| runtime.create_buffer(Some("old.txt"), "content"));
     harness.take_changes(); // Clear creation changes
 
     harness.with_runtime(|runtime| {
@@ -1734,8 +1732,7 @@ fn test_clipboard_register_without_provider() {
 
     harness.with_runtime(|runtime| {
         // Without clipboard provider, + register falls back to kernel registers
-        runtime
-            .set_register(Some('+'), crate::api::RegisterContent::characterwise("clipboard"));
+        runtime.set_register(Some('+'), crate::api::RegisterContent::characterwise("clipboard"));
 
         // The fallback stores in kernel registers
         let content = runtime.get_register(Some('+'));
@@ -1750,8 +1747,7 @@ fn test_selection_register_without_provider() {
     let mut harness = TestSessionRuntime::new();
 
     harness.with_runtime(|runtime| {
-        runtime
-            .set_register(Some('*'), crate::api::RegisterContent::characterwise("selection"));
+        runtime.set_register(Some('*'), crate::api::RegisterContent::characterwise("selection"));
 
         let content = runtime.get_register(Some('*'));
         assert!(content.is_none()); // No clipboard provider
@@ -2002,9 +1998,7 @@ fn test_delete_range_empty_range() {
 
 #[test]
 fn test_show_overlay_no_compositor() {
-    use {
-        crate::testing::TestSessionRuntime, reovim_driver_display::layout::OverlayConstraints,
-    };
+    use {crate::testing::TestSessionRuntime, reovim_driver_display::layout::OverlayConstraints};
 
     let mut harness = TestSessionRuntime::new();
 
@@ -2303,8 +2297,7 @@ impl reovim_kernel::api::v1::BufferManager for InMemoryBufferManager {
     fn get(
         &self,
         id: BufferId,
-    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<reovim_kernel::api::v1::Buffer>>>
-    {
+    ) -> Option<std::sync::Arc<reovim_arch::sync::RwLock<reovim_kernel::api::v1::Buffer>>> {
         self.buffers.read().get(&id).cloned()
     }
 
@@ -2496,10 +2489,7 @@ impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
     fn clipboard_available(&self) -> bool {
         true
     }
-    fn copy_to_clipboard(
-        &self,
-        text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_clipboard(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         *self.clipboard.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
@@ -2511,10 +2501,7 @@ impl reovim_driver_clipboard::ClipboardProvider for MockClipboard {
     fn selection_available(&self) -> bool {
         true
     }
-    fn copy_to_selection(
-        &self,
-        text: &str,
-    ) -> Result<(), reovim_driver_clipboard::ClipboardError> {
+    fn copy_to_selection(&self, text: &str) -> Result<(), reovim_driver_clipboard::ClipboardError> {
         *self.selection.lock().unwrap() = Some(text.to_string());
         Ok(())
     }
@@ -3734,11 +3721,7 @@ impl reovim_driver_display::layout::WindowLayerCompositor for MockLayerComposito
         Some(id)
     }
 
-    fn navigate_tiled(
-        &self,
-        from: WindowId,
-        _direction: NavigateDirection,
-    ) -> Option<WindowId> {
+    fn navigate_tiled(&self, from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
         self.windows.iter().find(|&&w| w != from).copied()
     }
 
@@ -3849,11 +3832,7 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
     ) {
     }
 
-    fn set_layer_opacity(
-        &mut self,
-        _layer: reovim_driver_display::layout::LayerId,
-        _opacity: f32,
-    ) {
+    fn set_layer_opacity(&mut self, _layer: reovim_driver_display::layout::LayerId, _opacity: f32) {
     }
 
     fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
@@ -3866,10 +3845,7 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
 
     fn set_focus(&mut self, window: WindowId) {
         self.focused = Some(window);
-        reovim_driver_display::layout::WindowLayerCompositor::set_focus(
-            &mut self.layer,
-            window,
-        );
+        reovim_driver_display::layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
     }
 
     fn focused(&self) -> Option<WindowId> {
@@ -4948,11 +4924,7 @@ impl reovim_driver_display::layout::WindowLayerCompositor for SingleWindowLayerC
     ) -> Option<WindowId> {
         None
     }
-    fn navigate_tiled(
-        &self,
-        _from: WindowId,
-        _direction: NavigateDirection,
-    ) -> Option<WindowId> {
+    fn navigate_tiled(&self, _from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
         None
     }
     fn resize_tiled(&mut self, _window: WindowId, _direction: NavigateDirection, _delta: i16) {}
@@ -5033,11 +5005,7 @@ impl reovim_driver_display::layout::RootCompositor for SingleWindowRootComposito
         _visible: bool,
     ) {
     }
-    fn set_layer_opacity(
-        &mut self,
-        _layer: reovim_driver_display::layout::LayerId,
-        _opacity: f32,
-    ) {
+    fn set_layer_opacity(&mut self, _layer: reovim_driver_display::layout::LayerId, _opacity: f32) {
     }
     fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
     fn set_active_layer(&mut self, _layer: reovim_driver_display::layout::LayerId) {}

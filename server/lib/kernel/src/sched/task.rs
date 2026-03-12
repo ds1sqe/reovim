@@ -363,4 +363,3 @@ impl fmt::Debug for Task {
             .finish()
     }
 }
-

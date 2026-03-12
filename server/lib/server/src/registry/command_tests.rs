@@ -47,11 +47,7 @@ impl Command for TestCommand {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for TestCommand {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }
@@ -227,11 +223,7 @@ impl Command for PriorityTestCommand {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for PriorityTestCommand {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }
@@ -287,15 +279,12 @@ fn test_priority_with_register_for_module() {
     registry.register(Arc::new(PriorityTestCommand::normal("cmd")));
 
     // Register override with module ownership - should replace
-    registry
-        .register_for_module(Arc::new(PriorityTestCommand::override_priority("cmd")), owner);
+    registry.register_for_module(Arc::new(PriorityTestCommand::override_priority("cmd")), owner);
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
 
     // Try to replace with normal + different owner - should NOT replace
-    registry.register_for_module(
-        Arc::new(PriorityTestCommand::normal("cmd")),
-        ModuleId::new("other"),
-    );
+    registry
+        .register_for_module(Arc::new(PriorityTestCommand::normal("cmd")), ModuleId::new("other"));
     assert_eq!(registry.get(&id).unwrap().description(), "Override priority");
 }
 
@@ -487,11 +476,7 @@ impl Command for BufferTestCommand {
 }
 
 impl CommandHandler for BufferTestCommand {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }
@@ -678,11 +663,7 @@ impl Command for MultiNameCommand {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl CommandHandler for MultiNameCommand {
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }

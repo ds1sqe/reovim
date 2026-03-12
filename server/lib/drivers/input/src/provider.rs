@@ -84,4 +84,3 @@ pub trait DefaultModeProvider: Send + Sync {
     /// the session starts.
     fn entry_mode(&self) -> &ModeId;
 }
-

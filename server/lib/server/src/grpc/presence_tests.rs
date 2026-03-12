@@ -21,8 +21,7 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
 #[tokio::test]
 async fn test_join_no_session() {
     let registry = Arc::new(SessionRegistry::new());
-    let service =
-        PresenceServiceImpl::new(registry, SessionId::new("nonexistent"), test_tokens());
+    let service = PresenceServiceImpl::new(registry, SessionId::new("nonexistent"), test_tokens());
 
     let request = Request::new(JoinRequest {
         client_type: "tui".to_string(),
@@ -364,8 +363,7 @@ async fn test_stream_presence_returns_stream() {
 async fn test_join_returns_session_token() {
     let tokens = test_tokens();
     let registry = test_registry();
-    let service =
-        PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
 
     let resp = service
         .join(Request::new(JoinRequest {
@@ -387,8 +385,7 @@ async fn test_join_returns_session_token() {
 async fn test_leave_revokes_token() {
     let tokens = test_tokens();
     let registry = test_registry();
-    let service =
-        PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
 
     // Join
     let join_resp = service
@@ -985,8 +982,7 @@ async fn test_set_relation_invalid_type_defaults_to_following() {
 async fn test_each_client_gets_unique_token() {
     let tokens = test_tokens();
     let registry = test_registry();
-    let service =
-        PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
+    let service = PresenceServiceImpl::new(registry, SessionId::new("test"), Arc::clone(&tokens));
 
     let r1 = service
         .join(Request::new(JoinRequest {

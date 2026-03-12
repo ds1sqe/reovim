@@ -227,11 +227,8 @@ fn test_registry_stale_entry_replaced() {
     std::fs::write(&path, json).unwrap();
 
     // Register with the same name should succeed (stale entry replaced)
-    let new_info = InstanceInfo::new(
-        "stale-replace".to_string(),
-        pid,
-        TransportInfo::tcp("127.0.0.1", 12522),
-    );
+    let new_info =
+        InstanceInfo::new("stale-replace".to_string(), pid, TransportInfo::tcp("127.0.0.1", 12522));
     registry.register(&new_info).unwrap();
 
     // Should find the new entry
@@ -334,11 +331,8 @@ fn test_registry_list_multiple_live_and_stale() {
     let pid = std::process::id();
 
     // Register a live instance
-    let live = InstanceInfo::new(
-        "live-instance".to_string(),
-        pid,
-        TransportInfo::tcp("127.0.0.1", 12521),
-    );
+    let live =
+        InstanceInfo::new("live-instance".to_string(), pid, TransportInfo::tcp("127.0.0.1", 12521));
     registry.register(&live).unwrap();
 
     // Write a stale entry

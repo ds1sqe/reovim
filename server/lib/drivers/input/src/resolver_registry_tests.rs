@@ -246,10 +246,7 @@ fn test_resolve_with_keymap_falls_back_to_parent() {
     let op_pending = op_pending_mode();
 
     // op-pending returns NotHandled and inherits from normal
-    registry.register(NotHandledResolver::with_parent(
-        op_pending.clone(),
-        normal.clone(),
-    ));
+    registry.register(NotHandledResolver::with_parent(op_pending.clone(), normal.clone()));
     // normal returns Pending
     registry.register(StubResolver::new(normal));
 
@@ -314,10 +311,7 @@ fn test_resolve_with_extensions_falls_back_to_parent() {
     let normal = normal_mode();
     let op_pending = op_pending_mode();
 
-    registry.register(NotHandledResolver::with_parent(
-        op_pending.clone(),
-        normal.clone(),
-    ));
+    registry.register(NotHandledResolver::with_parent(op_pending.clone(), normal.clone()));
     registry.register(StubResolver::new(normal));
 
     let key = KeyEvent::new(crate::KeyCode::Char('w'));
@@ -434,10 +428,7 @@ fn test_resolve_with_session_falls_back_to_parent() {
     let normal = normal_mode();
     let op_pending = op_pending_mode();
 
-    registry.register(NotHandledResolver::with_parent(
-        op_pending.clone(),
-        normal.clone(),
-    ));
+    registry.register(NotHandledResolver::with_parent(op_pending.clone(), normal.clone()));
     registry.register(StubResolver::new(normal));
 
     let key = KeyEvent::new(crate::KeyCode::Char('w'));

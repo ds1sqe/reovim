@@ -202,10 +202,8 @@ fn test_layout_apply_layout() {
 #[test]
 fn test_layout_apply_layout_tabs() {
     let mut layout = MockLayout::new();
-    let logical = LogicalLayout::tabs(
-        vec![LogicalLayout::single(10, 10), LogicalLayout::single(20, 20)],
-        0,
-    );
+    let logical =
+        LogicalLayout::tabs(vec![LogicalLayout::single(10, 10), LogicalLayout::single(20, 20)], 0);
     layout.apply_layout(&logical);
     assert_eq!(layout.window_count(), 2);
 }

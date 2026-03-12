@@ -402,4 +402,3 @@ impl std::fmt::Debug for ResolverRegistry {
 
 // Implement Service so ResolverRegistry can be stored in ServiceRegistry (Epic #417 Part 3)
 impl reovim_kernel::api::v1::Service for ResolverRegistry {}
-

@@ -115,7 +115,8 @@ fn test_log_entry_into_notification() {
 #[test]
 fn test_log_entry_payload_missing_field_deserialization() {
     // Missing 'source' field should use default (Server)
-    let json = r#"{"timestamp":"2026-01-17T12:00:00Z","level":"info","target":"test","message":"msg"}"#;
+    let json =
+        r#"{"timestamp":"2026-01-17T12:00:00Z","level":"info","target":"test","message":"msg"}"#;
     let payload: LogEntryPayload = serde_json::from_str(json).unwrap();
     assert_eq!(payload.source, LogSource::Server);
 }
@@ -590,8 +591,7 @@ fn test_cmdline_changed_payload_roundtrip() {
 
 #[test]
 fn test_cmdline_changed_payload_into_notification() {
-    let payload =
-        CmdlineChangedPayload::show(WireCmdlinePrompt::Command, "quit".to_string(), 4);
+    let payload = CmdlineChangedPayload::show(WireCmdlinePrompt::Command, "quit".to_string(), 4);
     let notification = payload.into_notification();
     assert_eq!(notification.jsonrpc, "2.0");
     assert_eq!(notification.method, CMDLINE_CHANGED);

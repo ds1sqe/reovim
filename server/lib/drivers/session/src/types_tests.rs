@@ -745,10 +745,7 @@ impl RootCompositor for MockCompositor {
     fn layer_compositor(&self, _layer: LayerId) -> Option<&dyn WindowLayerCompositor> {
         None
     }
-    fn layer_compositor_mut(
-        &mut self,
-        _layer: LayerId,
-    ) -> Option<&mut dyn WindowLayerCompositor> {
+    fn layer_compositor_mut(&mut self, _layer: LayerId) -> Option<&mut dyn WindowLayerCompositor> {
         None
     }
     fn window_count(&self) -> usize {

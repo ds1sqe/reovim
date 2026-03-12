@@ -167,4 +167,3 @@ pub fn cleanup_old_recovery_files(max_age_secs: u64) -> std::io::Result<usize> {
 
     Ok(removed)
 }
-

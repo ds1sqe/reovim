@@ -117,4 +117,3 @@ pub enum LinePosition {
     /// Last non-blank character (vim: g_)
     LastNonBlank,
 }
-

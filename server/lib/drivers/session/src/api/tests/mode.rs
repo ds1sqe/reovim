@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_mode_error_display() {

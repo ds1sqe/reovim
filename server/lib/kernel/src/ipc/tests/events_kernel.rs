@@ -1,7 +1,9 @@
-use crate::core::ModeId;
-use crate::ipc::events::kernel::{
-    BufferCreated, BufferModified, CursorMoved, LayoutChangeKind, LayoutChanged, ModeChanged,
-    Modification, Shutdown, SplitDirection, priority,
+use crate::{
+    core::ModeId,
+    ipc::events::kernel::{
+        BufferCreated, BufferModified, CursorMoved, LayoutChangeKind, LayoutChanged, ModeChanged,
+        Modification, Shutdown, SplitDirection, priority,
+    },
 };
 
 #[test]

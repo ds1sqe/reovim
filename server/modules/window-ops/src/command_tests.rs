@@ -60,11 +60,7 @@ impl reovim_driver_display::layout::WindowLayerCompositor for MockLayerComposito
         Some(id)
     }
 
-    fn navigate_tiled(
-        &self,
-        from: WindowId,
-        _direction: NavigateDirection,
-    ) -> Option<WindowId> {
+    fn navigate_tiled(&self, from: WindowId, _direction: NavigateDirection) -> Option<WindowId> {
         self.windows.iter().find(|&&w| w != from).copied()
     }
 
@@ -173,10 +169,7 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
 
     fn set_focus(&mut self, window: WindowId) {
         self.focused = Some(window);
-        reovim_driver_display::layout::WindowLayerCompositor::set_focus(
-            &mut self.layer,
-            window,
-        );
+        reovim_driver_display::layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
     }
 
     fn focused(&self) -> Option<WindowId> {

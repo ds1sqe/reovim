@@ -4,11 +4,8 @@ use super::*;
 fn test_registry_register() {
     let registry = OptionRegistry::new();
 
-    let result = registry.register(OptionSpec::new(
-        "number",
-        "Show line numbers",
-        OptionValue::bool(false),
-    ));
+    let result =
+        registry.register(OptionSpec::new("number", "Show line numbers", OptionValue::bool(false)));
     assert!(result.is_ok());
     assert!(registry.contains("number"));
 }
@@ -291,9 +288,7 @@ fn test_registry_list_matching_alias() {
     let registry = OptionRegistry::new();
     assert!(
         registry
-            .register(
-                OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
-            )
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),)
             .is_ok()
     );
     // Prefix "nu" should match via alias
@@ -445,15 +440,12 @@ fn test_registry_alias_conflicts_with_alias() {
     let registry = OptionRegistry::new();
     assert!(
         registry
-            .register(
-                OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
-            )
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),)
             .is_ok()
     );
     // Another option with the same alias should conflict
-    let result = registry.register(
-        OptionSpec::new("numbers", "desc", OptionValue::bool(false)).with_short("nu"),
-    );
+    let result = registry
+        .register(OptionSpec::new("numbers", "desc", OptionValue::bool(false)).with_short("nu"));
     assert!(matches!(result, Err(OptionError::AliasConflict(_))));
 }
 
@@ -471,8 +463,7 @@ fn test_registry_scope_mismatch_window_on_global() {
             .is_ok()
     );
 
-    let result =
-        registry.set_for_window("theme", OptionValue::string("light"), WindowId::new());
+    let result = registry.set_for_window("theme", OptionValue::string("light"), WindowId::new());
     assert!(matches!(result, Err(OptionError::ScopeMismatch { .. })));
 }
 
@@ -483,9 +474,7 @@ fn test_registry_get_spec_via_alias() {
     let registry = OptionRegistry::new();
     assert!(
         registry
-            .register(
-                OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
-            )
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),)
             .is_ok()
     );
 
@@ -571,9 +560,7 @@ fn test_registry_list_matching_alias_prefix() {
     let registry = OptionRegistry::new();
     assert!(
         registry
-            .register(
-                OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
-            )
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),)
             .is_ok()
     );
     assert!(
@@ -611,9 +598,7 @@ fn test_registry_set_via_alias() {
     let registry = OptionRegistry::new();
     assert!(
         registry
-            .register(
-                OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),
-            )
+            .register(OptionSpec::new("number", "desc", OptionValue::bool(false)).with_short("nu"),)
             .is_ok()
     );
 
@@ -675,8 +660,8 @@ fn test_registry_register_alias_conflicts_with_existing_spec_name() {
             .is_ok()
     );
     // Try to register "tabstop" with short alias "ts" - should fail because "ts" is a spec name
-    let result = registry
-        .register(OptionSpec::new("tabstop", "desc", OptionValue::int(8)).with_short("ts"));
+    let result =
+        registry.register(OptionSpec::new("tabstop", "desc", OptionValue::int(8)).with_short("ts"));
     assert!(matches!(result, Err(OptionError::AliasConflict(alias)) if alias == "ts"));
 }
 
@@ -697,8 +682,7 @@ fn test_registry_register_alias_conflicts_with_existing_alias() {
     );
     // Try to register "numberwidth" with the same alias "nu"
     let result = registry.register(
-        OptionSpec::new("numberwidth", "Number column width", OptionValue::int(4))
-            .with_short("nu"),
+        OptionSpec::new("numberwidth", "Number column width", OptionValue::int(4)).with_short("nu"),
     );
     assert!(matches!(result, Err(OptionError::AliasConflict(alias)) if alias == "nu"));
 }

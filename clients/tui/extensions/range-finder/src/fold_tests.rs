@@ -66,14 +66,10 @@ fn test_fold_apply_notification_invalid_json() {
 #[test]
 fn test_fold_apply_notification_replaces_previous() {
     let mut ext = RangeFinderFoldExtension::new();
-    ext.apply_notification(
-        r#"{"folds":{"1":[{"start_line":0,"hidden_count":5,"preview":"a"}]}}"#,
-    );
+    ext.apply_notification(r#"{"folds":{"1":[{"start_line":0,"hidden_count":5,"preview":"a"}]}}"#);
     assert_eq!(ext.folds.len(), 1);
 
-    ext.apply_notification(
-        r#"{"folds":{"2":[{"start_line":10,"hidden_count":2,"preview":"b"}]}}"#,
-    );
+    ext.apply_notification(r#"{"folds":{"2":[{"start_line":10,"hidden_count":2,"preview":"b"}]}}"#);
     assert_eq!(ext.folds.len(), 1);
     assert!(ext.folds.contains_key("2"));
     assert!(!ext.folds.contains_key("1"));
@@ -259,9 +255,7 @@ fn test_fold_render_no_active_buffer() {
 #[test]
 fn test_fold_render_wrong_buffer_id() {
     let mut ext = RangeFinderFoldExtension::new();
-    ext.apply_notification(
-        r#"{"folds":{"1":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#,
-    );
+    ext.apply_notification(r#"{"folds":{"1":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#);
     ext.active_buffer_id = Some("999".to_string());
 
     let viewport = ViewportContext {
@@ -372,9 +366,7 @@ fn test_fold_hidden_lines_no_active_buffer() {
 #[test]
 fn test_fold_hidden_lines_wrong_buffer() {
     let mut ext = RangeFinderFoldExtension::new();
-    ext.apply_notification(
-        r#"{"folds":{"1":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#,
-    );
+    ext.apply_notification(r#"{"folds":{"1":[{"start_line":0,"hidden_count":3,"preview":"a"}]}}"#);
     ext.active_buffer_id = Some("999".to_string());
     ext.rebuild_hidden_ranges();
     assert!(ext.fold_hidden_lines().is_empty());
@@ -403,9 +395,7 @@ fn test_fold_hidden_lines_updated_on_set_active_buffer() {
 #[test]
 fn test_fold_hidden_lines_cleared_on_deactivation() {
     let mut ext = RangeFinderFoldExtension::new();
-    ext.apply_notification(
-        r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"a"}]}}"#,
-    );
+    ext.apply_notification(r#"{"folds":{"1":[{"start_line":5,"hidden_count":3,"preview":"a"}]}}"#);
     assert!(!ext.fold_hidden_lines().is_empty());
 
     // Deactivate with empty folds

@@ -477,10 +477,7 @@ fn test_vim_notation_esc_with_modifiers() {
 #[test]
 fn test_vim_notation_char_tab() {
     // '\t' as Char should map to Tab
-    assert_eq!(
-        translate_to_vim_notation(KeyCode::Char('\t'), KeyModifiers::CONTROL),
-        "<C-Tab>"
-    );
+    assert_eq!(translate_to_vim_notation(KeyCode::Char('\t'), KeyModifiers::CONTROL), "<C-Tab>");
 }
 
 #[test]

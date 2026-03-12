@@ -1,6 +1,9 @@
 use {super::*, std::sync::atomic::AtomicBool};
 
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 // ========== SubscriptionId tests ==========
 

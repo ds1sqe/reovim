@@ -11,9 +11,7 @@ fn test_input_error_display() {
     assert!(format!("{}", InputError::InjectionFailed("test".into())).contains("test"));
     assert!(format!("{}", InputError::InvalidKeySequence("test".into())).contains("test"));
     assert!(format!("{}", InputError::KeymapError("test".into())).contains("test"));
-    assert!(
-        format!("{}", InputError::HandlerRegistrationFailed("test".into())).contains("test")
-    );
+    assert!(format!("{}", InputError::HandlerRegistrationFailed("test".into())).contains("test"));
 }
 
 #[test]

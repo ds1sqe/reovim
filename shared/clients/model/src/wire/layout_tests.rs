@@ -11,10 +11,8 @@ fn test_single_layout() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_hsplit_layout() {
-    let layout = LogicalLayout::hsplit(vec![
-        LogicalLayout::single(1, 100),
-        LogicalLayout::single(2, 101),
-    ]);
+    let layout =
+        LogicalLayout::hsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]);
     assert!(!layout.is_leaf());
     assert_eq!(layout.buffer_id(), None);
     assert_eq!(layout.window_count(), 2);
@@ -56,10 +54,7 @@ fn test_vsplit_layout() {
 fn test_nested_layout() {
     // Two columns, left column has two rows
     let layout = LogicalLayout::vsplit(vec![
-        LogicalLayout::hsplit(vec![
-            LogicalLayout::single(1, 100),
-            LogicalLayout::single(2, 101),
-        ]),
+        LogicalLayout::hsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]),
         LogicalLayout::single(3, 102),
     ]);
     assert_eq!(layout.window_count(), 3);
@@ -67,10 +62,8 @@ fn test_nested_layout() {
 
 #[test]
 fn test_tabs_layout() {
-    let layout = LogicalLayout::tabs(
-        vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)],
-        0,
-    );
+    let layout =
+        LogicalLayout::tabs(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)], 0);
     assert_eq!(layout.window_count(), 2);
     assert!(!layout.is_leaf());
 }
@@ -78,10 +71,7 @@ fn test_tabs_layout() {
 #[test]
 fn test_find_viewport() {
     let layout = LogicalLayout::vsplit(vec![
-        LogicalLayout::hsplit(vec![
-            LogicalLayout::single(1, 100),
-            LogicalLayout::single(2, 101),
-        ]),
+        LogicalLayout::hsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]),
         LogicalLayout::single(3, 102),
     ]);
 
@@ -151,10 +141,8 @@ fn test_tabs_window_count() {
 
 #[test]
 fn test_find_viewport_in_tabs() {
-    let layout = LogicalLayout::tabs(
-        vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 200)],
-        0,
-    );
+    let layout =
+        LogicalLayout::tabs(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 200)], 0);
     assert_eq!(layout.find_viewport(100), Some(vec![0]));
     assert_eq!(layout.find_viewport(200), Some(vec![1]));
     assert_eq!(layout.find_viewport(999), None);
@@ -168,10 +156,8 @@ fn test_find_viewport_single_not_found() {
 
 #[test]
 fn test_layout_serialize_deserialize() {
-    let layout = LogicalLayout::vsplit(vec![
-        LogicalLayout::single(1, 100),
-        LogicalLayout::single(2, 101),
-    ]);
+    let layout =
+        LogicalLayout::vsplit(vec![LogicalLayout::single(1, 100), LogicalLayout::single(2, 101)]);
     let json = serde_json::to_string(&layout).unwrap();
     let restored: LogicalLayout = serde_json::from_str(&json).unwrap();
     assert_eq!(layout, restored);

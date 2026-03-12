@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
-use reovim_driver_command_types::ArgValue as CmdArgValue;
-use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position};
+use {
+    reovim_driver_command_types::ArgValue as CmdArgValue,
+    reovim_kernel::api::v1::{CommandId, ModeId, ModuleId, Position},
+};
 
 use crate::{
     ArgValue, InputTarget, KeyCode, KeyEvent, KeySequence, ModeKeyResolver, ModeState,
@@ -631,10 +633,7 @@ fn test_mode_state_active_buffer() {
     assert!(state.active_buffer.is_none());
 
     state.active_buffer = Some(reovim_kernel::api::v1::BufferId::from_raw(42));
-    assert_eq!(
-        state.active_buffer,
-        Some(reovim_kernel::api::v1::BufferId::from_raw(42))
-    );
+    assert_eq!(state.active_buffer, Some(reovim_kernel::api::v1::BufferId::from_raw(42)));
 }
 
 #[test]
@@ -661,10 +660,7 @@ fn test_mode_state_clone() {
 
     let cloned = state.clone();
     assert_eq!(cloned.pending_keys.len(), 1);
-    assert_eq!(
-        cloned.active_buffer,
-        Some(reovim_kernel::api::v1::BufferId::from_raw(1))
-    );
+    assert_eq!(cloned.active_buffer, Some(reovim_kernel::api::v1::BufferId::from_raw(1)));
 }
 
 // ========================================================================

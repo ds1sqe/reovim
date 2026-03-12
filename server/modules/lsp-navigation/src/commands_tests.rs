@@ -476,12 +476,10 @@ fn format_hover_scalar_string() {
 #[test]
 fn format_hover_scalar_language_string() {
     let hover = lsp_types::Hover {
-        contents: HoverContents::Scalar(MarkedString::LanguageString(
-            lsp_types::LanguageString {
-                language: "rust".to_string(),
-                value: "fn main() {}".to_string(),
-            },
-        )),
+        contents: HoverContents::Scalar(MarkedString::LanguageString(lsp_types::LanguageString {
+            language: "rust".to_string(),
+            value: "fn main() {}".to_string(),
+        })),
         range: None,
     };
     assert_eq!(format_hover_content(&hover), "```rust\nfn main() {}\n```");
@@ -537,11 +535,10 @@ fn hover_content_type_scalar_string() {
 
 #[test]
 fn hover_content_type_scalar_language_string() {
-    let contents =
-        HoverContents::Scalar(MarkedString::LanguageString(lsp_types::LanguageString {
-            language: "rust".to_string(),
-            value: "fn main()".to_string(),
-        }));
+    let contents = HoverContents::Scalar(MarkedString::LanguageString(lsp_types::LanguageString {
+        language: "rust".to_string(),
+        value: "fn main()".to_string(),
+    }));
     assert_eq!(hover_content_type(&contents), HoverContentType::Markdown);
 }
 

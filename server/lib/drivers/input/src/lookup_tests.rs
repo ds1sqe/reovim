@@ -1,8 +1,8 @@
 use reovim_kernel::api::v1::{CommandId, ModeId, ModuleId};
 
 use crate::{
-    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState,
-    KeySequence, KeymapQuery,
+    BindingLayer, EagerLookupPolicy, KeyLookupPolicy, KeyLookupResult, KeyLookupState, KeySequence,
+    KeymapQuery,
 };
 
 fn test_module() -> ModuleId {

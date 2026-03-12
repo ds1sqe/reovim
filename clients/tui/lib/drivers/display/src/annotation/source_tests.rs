@@ -162,8 +162,7 @@ fn test_annotation_context_with_line_number_mode() {
     // Covers the with_line_number_mode constructor
     use crate::window_renderer::LineNumberMode;
 
-    let ctx =
-        AnnotationContext::with_line_number_mode(100, 50, "NORMAL", LineNumberMode::Absolute);
+    let ctx = AnnotationContext::with_line_number_mode(100, 50, "NORMAL", LineNumberMode::Absolute);
     assert_eq!(ctx.total_lines, 100);
     assert_eq!(ctx.cursor_line, 50);
     assert_eq!(ctx.mode, "NORMAL");

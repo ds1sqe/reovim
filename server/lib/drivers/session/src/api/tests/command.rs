@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 // Verify trait object safety
 #[test]

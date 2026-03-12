@@ -431,10 +431,7 @@ fn test_color_to_ansi_all_dark_colors_fg() {
     for (color, expected) in colors_and_expected {
         let style = Style::new().with_fg(color);
         let ansi = style.to_ansi_start(ColorMode::TrueColor);
-        assert!(
-            ansi.contains(expected),
-            "Color {color:?} should contain {expected}, got {ansi}"
-        );
+        assert!(ansi.contains(expected), "Color {color:?} should contain {expected}, got {ansi}");
     }
 }
 
@@ -453,10 +450,7 @@ fn test_color_to_ansi_all_bright_colors_fg() {
     for (color, expected) in colors_and_expected {
         let style = Style::new().with_fg(color);
         let ansi = style.to_ansi_start(ColorMode::TrueColor);
-        assert!(
-            ansi.contains(expected),
-            "Color {color:?} should contain {expected}, got {ansi}"
-        );
+        assert!(ansi.contains(expected), "Color {color:?} should contain {expected}, got {ansi}");
     }
 }
 

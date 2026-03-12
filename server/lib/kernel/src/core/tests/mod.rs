@@ -1,10 +1,11 @@
 use super::*;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
-use crate::api::module::ModuleId;
-use crate::mm::{Buffer, BufferId, Cursor, Position, WindowId};
+use crate::{
+    api::module::ModuleId,
+    mm::{Buffer, BufferId, Cursor, Position, WindowId},
+};
 
 mod config;
 mod direction;

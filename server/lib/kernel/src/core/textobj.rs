@@ -619,4 +619,3 @@ impl TextObjectEngine {
         }
     }
 }
-

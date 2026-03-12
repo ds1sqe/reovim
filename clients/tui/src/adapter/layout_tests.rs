@@ -72,10 +72,7 @@ impl RootCompositor for MockCompositor {
         None
     }
 
-    fn layer_compositor_mut(
-        &mut self,
-        _layer: LayerId,
-    ) -> Option<&mut dyn WindowLayerCompositor> {
+    fn layer_compositor_mut(&mut self, _layer: LayerId) -> Option<&mut dyn WindowLayerCompositor> {
         None
     }
 

@@ -1,4 +1,7 @@
-use {super::super::*, std::path::{Path, PathBuf}};
+use {
+    super::super::*,
+    std::path::{Path, PathBuf},
+};
 
 #[test]
 fn test_recovery_dir() {

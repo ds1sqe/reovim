@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_window_error_display() {

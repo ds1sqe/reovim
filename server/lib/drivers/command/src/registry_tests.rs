@@ -33,11 +33,7 @@ impl Command for TestCommand {
 
 impl CommandHandler for TestCommand {
     #[cfg_attr(coverage_nightly, coverage(off))]
-    fn execute(
-        &self,
-        _runtime: &mut SessionRuntime<'_>,
-        _args: &CommandContext,
-    ) -> CommandResult {
+    fn execute(&self, _runtime: &mut SessionRuntime<'_>, _args: &CommandContext) -> CommandResult {
         CommandResult::Success
     }
 }

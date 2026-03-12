@@ -451,9 +451,7 @@ fn test_set_register_non_bank_variants_fail() {
     let mut bank = RegisterBank::new();
     assert!(!bank.set_register(&Register::History(0), RegisterContent::characterwise("nope")));
     assert!(!bank.set_register(&Register::System, RegisterContent::characterwise("nope")));
-    assert!(
-        !bank.set_register(&Register::Session('A'), RegisterContent::characterwise("nope"))
-    );
+    assert!(!bank.set_register(&Register::Session('A'), RegisterContent::characterwise("nope")));
     assert!(!bank.set_register(
         &Register::PeerHistory {
             client: 0,

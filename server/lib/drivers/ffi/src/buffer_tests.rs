@@ -99,8 +99,7 @@ fn test_active_buffer_null_out() {
 #[test]
 fn test_buffer_line_null_result() {
     let mut buf = [0u8; 64];
-    let result =
-        unsafe { reovim_buffer_line(1, 0, buf.as_mut_ptr(), 64, std::ptr::null_mut()) };
+    let result = unsafe { reovim_buffer_line(1, 0, buf.as_mut_ptr(), 64, std::ptr::null_mut()) };
     assert_eq!(result, REOVIM_ERR_NULL_PTR);
 }
 
@@ -135,8 +134,7 @@ fn test_buffer_text_range_null_result() {
 #[test]
 fn test_buffer_content_null_result() {
     let mut buf = [0u8; 64];
-    let result =
-        unsafe { reovim_buffer_content(1, buf.as_mut_ptr(), 64, std::ptr::null_mut()) };
+    let result = unsafe { reovim_buffer_content(1, buf.as_mut_ptr(), 64, std::ptr::null_mut()) };
     assert_eq!(result, REOVIM_ERR_NULL_PTR);
 }
 
@@ -148,9 +146,8 @@ fn test_insert_text_null_text() {
 
 #[test]
 fn test_create_buffer_null_out_id() {
-    let result = unsafe {
-        reovim_create_buffer(std::ptr::null(), std::ptr::null(), std::ptr::null_mut())
-    };
+    let result =
+        unsafe { reovim_create_buffer(std::ptr::null(), std::ptr::null(), std::ptr::null_mut()) };
     assert_eq!(result, REOVIM_ERR_NULL_PTR);
 }
 
@@ -163,9 +160,8 @@ fn test_insert_text_invalid_utf8() {
     // Even without runtime, null-ptr check happens first, then UTF-8 check,
     // then runtime check. So we get REOVIM_ERR_INVALID_UTF8 before NO_RUNTIME.
     let invalid_bytes: &[u8] = &[0x48, 0x65, 0x80, 0x00]; // "He\x80\0"
-    let result = unsafe {
-        reovim_insert_text(1, ReovimPosition::new(0, 0), invalid_bytes.as_ptr().cast())
-    };
+    let result =
+        unsafe { reovim_insert_text(1, ReovimPosition::new(0, 0), invalid_bytes.as_ptr().cast()) };
     assert_eq!(result, REOVIM_ERR_INVALID_UTF8);
 }
 
@@ -185,11 +181,7 @@ fn test_create_buffer_invalid_utf8_content() {
     let valid_name = std::ffi::CString::new("test").unwrap();
     let invalid_bytes: &[u8] = &[0x80, 0x00];
     let result = unsafe {
-        reovim_create_buffer(
-            valid_name.as_ptr(),
-            invalid_bytes.as_ptr().cast(),
-            &raw mut out_id,
-        )
+        reovim_create_buffer(valid_name.as_ptr(), invalid_bytes.as_ptr().cast(), &raw mut out_id)
     };
     assert_eq!(result, REOVIM_ERR_INVALID_UTF8);
 }
@@ -389,10 +381,7 @@ fn test_buffer_queries_invalid_buffer() {
 
     // buffer_line_len → Ok(None) → NOT_FOUND
     let mut len: u32 = 0;
-    assert_eq!(
-        unsafe { reovim_buffer_line_len(bad_id, 0, &raw mut len) },
-        REOVIM_ERR_NOT_FOUND
-    );
+    assert_eq!(unsafe { reovim_buffer_line_len(bad_id, 0, &raw mut len) }, REOVIM_ERR_NOT_FOUND);
 
     // buffer_content → Ok(None)
     let mut result2 = ReovimStringResult::err(0);
@@ -452,9 +441,7 @@ fn test_buffer_mutations_with_runtime() {
 
     // delete_range → Ok(())
     assert_eq!(
-        unsafe {
-            reovim_delete_range(bid, ReovimPosition::new(0, 0), ReovimPosition::new(0, 1))
-        },
+        unsafe { reovim_delete_range(bid, ReovimPosition::new(0, 0), ReovimPosition::new(0, 1)) },
         REOVIM_OK
     );
 }

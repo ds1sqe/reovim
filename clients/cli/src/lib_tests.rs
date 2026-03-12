@@ -54,8 +54,7 @@ fn test_cli_args_clients() {
 
 #[test]
 fn test_cli_args_extension_state() {
-    let args =
-        CliArgs::parse_from(["reovim-cli", "extension-state", "whichkey", "--client", "1"]);
+    let args = CliArgs::parse_from(["reovim-cli", "extension-state", "whichkey", "--client", "1"]);
     match &args.command {
         CliCommand::ExtensionState { kind, client } => {
             assert_eq!(kind, "whichkey");
@@ -73,8 +72,7 @@ fn test_cli_args_extensions() {
 
 #[test]
 fn test_cli_args_capture_text_format() {
-    let args =
-        CliArgs::parse_from(["reovim-cli", "capture", "--client", "1", "-f", "plain_text"]);
+    let args = CliArgs::parse_from(["reovim-cli", "capture", "--client", "1", "-f", "plain_text"]);
     match &args.command {
         CliCommand::Capture {
             client,

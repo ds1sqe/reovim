@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 /// Verify the trait is object-safe (can use `dyn EmptySessionHandler`).
 #[test]

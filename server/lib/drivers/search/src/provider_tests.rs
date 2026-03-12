@@ -22,11 +22,7 @@ impl SearchProvider for MockSearch {
         }))
     }
 
-    fn find_all(
-        &self,
-        buffer: &Buffer,
-        pattern: &str,
-    ) -> Result<Vec<SearchMatch>, SearchError> {
+    fn find_all(&self, buffer: &Buffer, pattern: &str) -> Result<Vec<SearchMatch>, SearchError> {
         if pattern == "[invalid" {
             return Err(SearchError::InvalidPattern("unclosed bracket".into()));
         }

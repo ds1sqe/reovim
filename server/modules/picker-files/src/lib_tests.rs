@@ -118,9 +118,7 @@ fn on_select_file_path() {
         icon: None,
     };
     let action = picker.on_select(&item);
-    assert!(
-        matches!(action, PickerAction::OpenFile(ref p) if p == &PathBuf::from("/tmp/main.rs"))
-    );
+    assert!(matches!(action, PickerAction::OpenFile(ref p) if p == &PathBuf::from("/tmp/main.rs")));
 }
 
 #[test]

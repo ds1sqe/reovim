@@ -72,4 +72,3 @@ impl PendingBindings {
         self.continuations.clear();
     }
 }
-

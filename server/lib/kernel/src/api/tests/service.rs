@@ -1,5 +1,4 @@
-use super::*;
-use std::sync::Arc;
+use {super::*, std::sync::Arc};
 
 // Test service type
 struct TestService {

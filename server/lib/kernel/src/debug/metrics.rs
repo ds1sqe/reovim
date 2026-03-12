@@ -296,4 +296,3 @@ static METRICS: OnceLock<MetricsRegistry> = OnceLock::new();
 pub fn metrics() -> &'static MetricsRegistry {
     METRICS.get_or_init(MetricsRegistry::new)
 }
-

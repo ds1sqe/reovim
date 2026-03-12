@@ -1,8 +1,6 @@
-
 use super::*;
 
 use reovim_kernel::api::v1::Position;
-
 
 #[test]
 fn test_default_state() {

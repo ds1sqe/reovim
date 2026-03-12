@@ -10,11 +10,7 @@ impl StatuslineProvider for TestProvider {
     fn render(&self, ctx: &ComponentContext) -> Vec<Section> {
         vec![
             Section::new(SectionId::A, format!(" {} ", ctx.mode), Style::default()),
-            Section::new(
-                SectionId::Z,
-                format!(" {}:{} ", ctx.line, ctx.column),
-                Style::default(),
-            ),
+            Section::new(SectionId::Z, format!(" {}:{} ", ctx.line, ctx.column), Style::default()),
         ]
     }
 }

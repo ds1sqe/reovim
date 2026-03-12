@@ -228,10 +228,9 @@ fn test_timer_handle_drop_cancels() {
 
     {
         // Create and drop handle in this scope
-        let _handle =
-            wheel.schedule_oneshot(Duration::from_secs(1), Priority::NORMAL, move || {
-                counter_clone.fetch_add(1, Ordering::SeqCst);
-            });
+        let _handle = wheel.schedule_oneshot(Duration::from_secs(1), Priority::NORMAL, move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        });
         assert_eq!(wheel.pending_count(), 1);
         // Handle drops here, should cancel timer
     }
@@ -515,10 +514,9 @@ fn test_timer_periodic_with_nonzero_interval() {
     let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let counter_clone = counter.clone();
 
-    let handle =
-        wheel.schedule_periodic(Duration::from_millis(100), Priority::HIGH, move || {
-            counter_clone.fetch_add(1, Ordering::SeqCst);
-        });
+    let handle = wheel.schedule_periodic(Duration::from_millis(100), Priority::HIGH, move || {
+        counter_clone.fetch_add(1, Ordering::SeqCst);
+    });
     let _ = handle.detach();
 
     // Schedule fires at now + 100ms, tick at now + 200ms fires it

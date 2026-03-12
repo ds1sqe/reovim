@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_register_content_creation() {

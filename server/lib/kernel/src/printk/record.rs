@@ -164,4 +164,3 @@ impl<'a> RecordBuilder<'a> {
         }
     }
 }
-

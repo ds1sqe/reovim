@@ -285,10 +285,7 @@ async fn test_initialize_lifecycle() {
         server_info: None,
     };
     client
-        .handle_response(Response::success(
-            request_id,
-            serde_json::to_value(init_result).unwrap(),
-        ))
+        .handle_response(Response::success(request_id, serde_json::to_value(init_result).unwrap()))
         .await;
 
     // Read initialized notification

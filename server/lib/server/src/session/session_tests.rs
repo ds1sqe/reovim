@@ -98,8 +98,7 @@ fn test_remove_sharing_client_also_dumps() {
     session.add_client(share_id);
 
     // Set sharing relation
-    let _ =
-        session.set_client_relation(share_id, Some(ClientRelation::Sharing { with: owner_id }));
+    let _ = session.set_client_relation(share_id, Some(ClientRelation::Sharing { with: owner_id }));
 
     // Log event to sharer's ring buffer
     session.with_client_ring_buffer(share_id, |ring| {
@@ -432,8 +431,7 @@ async fn test_with_state_mut_sync() {
         state.create_buffer("test content");
     });
 
-    let has_buffer =
-        session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
+    let has_buffer = session.with_state_sync(|state| !state.app.kernel.buffers.list().is_empty());
     assert!(has_buffer);
 }
 
@@ -701,8 +699,7 @@ fn test_set_client_relation_with_cycle_detection() {
     let _ = session.set_client_relation(id3, Some(ClientRelation::Following { target: id1 }));
 
     // id1 trying to follow id2 would create cycle: 1 -> 2 -> 3 -> 1
-    let result =
-        session.set_client_relation(id1, Some(ClientRelation::Following { target: id2 }));
+    let result = session.set_client_relation(id1, Some(ClientRelation::Following { target: id2 }));
     assert!(result.is_err());
 }
 
@@ -1024,8 +1021,7 @@ fn test_insert_char_for_client_extension_path() {
     // Extension target with a random type_id - neither per-client nor shared
     // extension exists, so the char is effectively dropped with a warning.
     let type_id = std::any::TypeId::of::<String>();
-    let result =
-        session.insert_char_for_client(client_id, 'a', InputTarget::Extension(type_id));
+    let result = session.insert_char_for_client(client_id, 'a', InputTarget::Extension(type_id));
     // Extension path always returns None
     assert!(result.is_none());
 }
@@ -1175,8 +1171,8 @@ fn test_update_client_state_sharing_target_removed() {
     session.add_client(sharer_id);
 
     // Set sharer to share with owner
-    let _ = session
-        .set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }));
+    let _ =
+        session.set_client_relation(sharer_id, Some(ClientRelation::Sharing { with: owner_id }));
 
     // Remove the owner (the sharing target)
     session.remove_client(owner_id);
@@ -1394,8 +1390,7 @@ fn test_insert_char_for_client_per_client_extension_sink() {
     });
 
     // Route a char to the per-client extension
-    let result =
-        session.insert_char_for_client(client_id, 'q', InputTarget::Extension(type_id));
+    let result = session.insert_char_for_client(client_id, 'q', InputTarget::Extension(type_id));
     assert!(result.is_none()); // Extension path returns None
 
     // Verify the char arrived in the per-client extension
@@ -1452,8 +1447,7 @@ fn test_insert_char_for_client_shared_extension_sink() {
     });
 
     // Route a char - per-client won't have it, so falls through to shared
-    let result =
-        session.insert_char_for_client(client_id, 'w', InputTarget::Extension(type_id));
+    let result = session.insert_char_for_client(client_id, 'w', InputTarget::Extension(type_id));
     assert!(result.is_none());
 
     // Verify the char arrived in the shared extension
@@ -1656,11 +1650,7 @@ impl reovim_driver_display::layout::RootCompositor for TestPlacementCompositor {
     ) {
     }
 
-    fn set_layer_opacity(
-        &mut self,
-        _layer: reovim_driver_display::layout::LayerId,
-        _opacity: f32,
-    ) {
+    fn set_layer_opacity(&mut self, _layer: reovim_driver_display::layout::LayerId, _opacity: f32) {
     }
 
     fn reorder_layer(&mut self, _layer: reovim_driver_display::layout::LayerId, _new_z: u16) {}
@@ -1812,8 +1802,7 @@ fn test_ensure_client_has_window_with_compositor() {
     assert!(editing_state.windows.is_empty());
 
     // Now create a buffer and set it as the client's active_buffer (#471)
-    let buf_id =
-        session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
+    let buf_id = session.with_state_mut_sync(|state| state.create_buffer("hello lazy compositor"));
     session.with_clients_mut(|clients| {
         if let Some(client) = clients.get_mut(&client_id) {
             client.state.active_buffer = Some(buf_id);
@@ -2158,21 +2147,19 @@ fn with_tick_mut_calls_closure() {
     let session = Session::new(SessionId::new("tick-test"));
     session.add_client(ClientId::new(1));
 
-    let result =
-        session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
-            let counter = client_ext.get_or_insert::<Counter>();
-            counter.count += 1;
-            counter.count
-        });
+    let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+        let counter = client_ext.get_or_insert::<Counter>();
+        counter.count += 1;
+        counter.count
+    });
     assert_eq!(result, Some(1));
 
     // Second call accumulates
-    let result =
-        session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
-            let counter = client_ext.get_or_insert::<Counter>();
-            counter.count += 1;
-            counter.count
-        });
+    let result = session.with_tick_mut(ClientId::new(1), |client_ext, _shared_ext, _services| {
+        let counter = client_ext.get_or_insert::<Counter>();
+        counter.count += 1;
+        counter.count
+    });
     assert_eq!(result, Some(2));
 }
 
@@ -2200,11 +2187,10 @@ fn with_tick_mut_accesses_shared_extensions() {
     });
 
     // Read it back
-    let result =
-        session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
-            let data = shared_ext.get_or_insert::<SharedData>();
-            data.value
-        });
+    let result = session.with_tick_mut(ClientId::new(1), |_client_ext, shared_ext, _services| {
+        let data = shared_ext.get_or_insert::<SharedData>();
+        data.value
+    });
     assert_eq!(result, Some(42));
 }
 

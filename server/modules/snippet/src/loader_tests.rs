@@ -29,8 +29,7 @@ impl Drop for TempDir {
 /// Create a temporary directory for testing.
 fn make_temp_dir() -> TempDir {
     let id = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir =
-        std::env::temp_dir().join(format!("reovim-snippet-test-{}-{id}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("reovim-snippet-test-{}-{id}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     TempDir(dir)
 }
@@ -41,8 +40,7 @@ fn make_temp_dir() -> TempDir {
 
 #[test]
 fn test_load_error_display_io() {
-    let err =
-        LoadError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
+    let err = LoadError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"));
     let display = err.to_string();
     assert!(display.contains("I/O error"));
 }

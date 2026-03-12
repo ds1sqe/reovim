@@ -290,4 +290,3 @@ impl fmt::Debug for EventScope {
             .finish()
     }
 }
-

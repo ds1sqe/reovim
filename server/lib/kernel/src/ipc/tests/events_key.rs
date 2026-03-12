@@ -1,7 +1,9 @@
 use {
     super::*,
-    crate::ipc::events::driver::{KeyCode, Modifiers},
-    crate::ipc::events::key::{ClientId, KeyPressEvent, SessionId},
+    crate::ipc::events::{
+        driver::{KeyCode, Modifiers},
+        key::{ClientId, KeyPressEvent, SessionId},
+    },
 };
 
 #[test]

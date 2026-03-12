@@ -478,9 +478,8 @@ fn test_build_cursor_notification_with_client_and_window() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     // Build cursor notification for this client
@@ -516,9 +515,8 @@ fn test_build_cursor_notification_wrong_buffer_returns_none() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(42);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     // Ask for a different buffer - should return None
@@ -546,9 +544,8 @@ fn test_build_selection_notification_with_character_selection() {
     window.selection =
         Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 5)));
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 11111, 5);
@@ -585,12 +582,10 @@ fn test_build_selection_notification_with_line_selection() {
     let mode_stack = ModeStack::new(mode);
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(20);
     let mut window = Window::with_buffer(buffer_id);
-    window.selection =
-        Some(Selection::line(KernelPosition::new(1, 0), KernelPosition::new(3, 0)));
+    window.selection = Some(Selection::line(KernelPosition::new(1, 0), KernelPosition::new(3, 0)));
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 22222, 3);
@@ -620,12 +615,10 @@ fn test_build_selection_notification_with_block_selection() {
     let mode_stack = ModeStack::new(mode);
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(30);
     let mut window = Window::with_buffer(buffer_id);
-    window.selection =
-        Some(Selection::block(KernelPosition::new(0, 1), KernelPosition::new(2, 4)));
+    window.selection = Some(Selection::block(KernelPosition::new(0, 1), KernelPosition::new(2, 4)));
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let notification = build_selection_notification(&session, buffer_id, 33333, 7);
@@ -656,9 +649,8 @@ fn test_build_selection_notification_no_selection() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(15);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     // Window has no selection
@@ -696,9 +688,8 @@ fn test_build_viewport_notification_with_client_window() {
     viewport.scroll_left = 5;
     window.viewport = viewport;
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let notification = build_viewport_notification(&session, window_id, 55555, 4);
@@ -733,9 +724,8 @@ fn test_build_viewport_notification_wrong_window_returns_none() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(60);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     // Ask for a window that doesn't exist in client's layout
@@ -787,9 +777,8 @@ fn test_build_layout_notification_with_client_windows() {
     let buffer_id = reovim_kernel::api::v1::BufferId::from_raw(70);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let notification = build_layout_notification(&session, 88888, 9);
@@ -823,9 +812,8 @@ fn test_build_notifications_cursor_moved_with_client() {
     let mode_stack = ModeStack::new(mode);
     let window = Window::with_buffer(buffer_id);
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     // Build notifications with cursor_moved
@@ -854,9 +842,8 @@ fn test_build_notifications_selection_changed_with_client() {
     window.selection =
         Some(Selection::character(KernelPosition::new(0, 0), KernelPosition::new(0, 3)));
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let mut changes = StateChanges::new();
@@ -884,9 +871,8 @@ fn test_build_notifications_scroll_changed_with_client() {
     let window = Window::with_buffer(buffer_id);
     let window_id = window.id;
     let metadata = crate::session::ClientMetadata::default();
-    let client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     session.add_client_with_state(client);
 
     let mut changes = StateChanges::new();
@@ -905,8 +891,8 @@ fn test_build_layout_notification_with_compositor() {
     use reovim_driver_display::{
         Rect, RootCompositor, WindowId,
         layout::{
-            CompositeResult, Layer, LayerConfig, LayerId, WindowLayerCompositor,
-            WindowPlacement, ZOrder, Zone,
+            CompositeResult, Layer, LayerConfig, LayerId, WindowLayerCompositor, WindowPlacement,
+            ZOrder, Zone,
         },
     };
 
@@ -999,9 +985,8 @@ fn test_build_layout_notification_with_compositor() {
     // Override the window id to match the compositor placement
     window.id = reovim_kernel::api::v1::WindowId::from_raw(1);
     let metadata = crate::session::ClientMetadata::default();
-    let mut client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let mut client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositor {
         focused: Some(WindowId::from_raw(1)),
@@ -1177,9 +1162,8 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     let mut window = reovim_driver_session::Window::with_buffer(buffer_id);
     window.id = reovim_kernel::api::v1::WindowId::from_raw(10);
     let metadata = crate::session::ClientMetadata::default();
-    let mut client = crate::session::Client::with_mode_stack_and_window(
-        client_id, metadata, mode_stack, window,
-    );
+    let mut client =
+        crate::session::Client::with_mode_stack_and_window(client_id, metadata, mode_stack, window);
     // #474: Set compositor on per-client state (not shared)
     client.state.compositor = Some(Box::new(TestCompositorTwoWindows));
     // Per-client active_buffer (#471): set so fallback for unmapped windows works

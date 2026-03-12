@@ -35,10 +35,8 @@ fn test_response_error() {
 
 #[test]
 fn test_notification() {
-    let notification = RpcNotification::new(
-        "notification/mode_changed",
-        serde_json::json!({"mode": "Insert"}),
-    );
+    let notification =
+        RpcNotification::new("notification/mode_changed", serde_json::json!({"mode": "Insert"}));
     let json = serde_json::to_string(&notification).unwrap();
     assert!(!json.contains("\"id\""));
     assert!(json.contains("\"method\":\"notification/mode_changed\""));
@@ -46,8 +44,7 @@ fn test_notification() {
 
 #[test]
 fn test_request_deserialization() {
-    let json =
-        r#"{"jsonrpc":"2.0","id":42,"method":"input/keys","params":{"keys":"iHello<Esc>"}}"#;
+    let json = r#"{"jsonrpc":"2.0","id":42,"method":"input/keys","params":{"keys":"iHello<Esc>"}}"#;
     let request: RpcRequest = serde_json::from_str(json).unwrap();
     assert_eq!(request.id, Some(42));
     assert_eq!(request.method, "input/keys");
@@ -146,7 +143,8 @@ fn test_response_deserialization_success() {
 
 #[test]
 fn test_response_deserialization_error() {
-    let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found: test"}}"#;
+    let json =
+        r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found: test"}}"#;
     let response: RpcResponse = serde_json::from_str(json).unwrap();
     assert_eq!(response.id, 1);
     assert!(response.result.is_none());

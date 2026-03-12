@@ -445,4 +445,3 @@ pub fn oneshot<T>() -> (OneshotSender<T>, OneshotReceiver<T>) {
         OneshotReceiver(rx),
     )
 }
-

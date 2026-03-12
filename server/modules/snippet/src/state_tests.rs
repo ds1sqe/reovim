@@ -21,8 +21,7 @@ fn test_set_active_snippet() {
 
     let mut state = SnippetSessionState::default();
     let body = parser::parse("$1").unwrap();
-    let (_, snippet) =
-        ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+    let (_, snippet) = ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
     state.active = Some(snippet);
     assert!(state.active.is_some());
 }
@@ -36,8 +35,7 @@ fn test_clear_active_snippet() {
 
     let mut state = SnippetSessionState::default();
     let body = parser::parse("$1").unwrap();
-    let (_, snippet) =
-        ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+    let (_, snippet) = ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
     state.active = Some(snippet);
     state.active = None;
     assert!(state.active.is_none());

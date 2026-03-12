@@ -1,5 +1,7 @@
-use crate::{DefaultModeProvider, ProviderPriority};
-use reovim_kernel::api::v1::{ModeId, ModuleId};
+use {
+    crate::{DefaultModeProvider, ProviderPriority},
+    reovim_kernel::api::v1::{ModeId, ModuleId},
+};
 
 #[test]
 fn test_provider_priority_ordering() {

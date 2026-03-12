@@ -40,8 +40,10 @@ fn test_kernel_context_debug() {
 
 #[test]
 fn test_kernel_context_new() {
-    use crate::core::{MarkBank, MotionEngine, TextObjectEngine};
-    use std::sync::Arc;
+    use {
+        crate::core::{MarkBank, MotionEngine, TextObjectEngine},
+        std::sync::Arc,
+    };
 
     let event_bus = Arc::new(EventBus::new());
     let buffers: Arc<dyn BufferManager> = Arc::new(StubBufferManager);

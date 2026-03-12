@@ -335,8 +335,7 @@ fn test_register_then_unregister_roundtrip() {
 fn test_multiple_registrations_same_method() {
     let store = CapabilityStore::new(empty_caps());
     let options1 = serde_json::json!({"triggerCharacters": ["."]});
-    let options2 =
-        serde_json::json!({"triggerCharacters": [".", ":"], "resolveProvider": true});
+    let options2 = serde_json::json!({"triggerCharacters": [".", ":"], "resolveProvider": true});
 
     let reg1 = make_registration_with_options("r1", "textDocument/completion", options1);
     let reg2 = make_registration_with_options("r2", "textDocument/completion", options2);

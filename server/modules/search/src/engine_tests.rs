@@ -8,8 +8,7 @@ fn create_test_buffer(content: &str) -> Buffer {
 fn test_find_forward_basic() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello world");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "world", Direction::Forward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "world", Direction::Forward, false);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -33,8 +32,7 @@ fn test_find_backward_basic() {
 fn test_find_not_found() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello world");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "xyz", Direction::Forward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "xyz", Direction::Forward, false);
 
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
@@ -44,8 +42,7 @@ fn test_find_not_found() {
 fn test_find_wrap_forward() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello world hello");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 15), "hello", Direction::Forward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 15), "hello", Direction::Forward, true);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -98,8 +95,7 @@ fn test_find_all() {
 fn test_find_in_empty_buffer() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "hello", Direction::Forward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "hello", Direction::Forward, true);
 
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
@@ -129,8 +125,7 @@ fn test_find_wrap_backward() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello world hello");
     // Cursor at column 0 - no matches start before this position
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "hello", Direction::Backward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "hello", Direction::Backward, true);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -176,8 +171,7 @@ fn test_find_all_invalid_pattern() {
 fn test_find_multiline() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("line1\nline2\nline3");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "line2", Direction::Forward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "line2", Direction::Forward, false);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -202,8 +196,7 @@ fn test_find_all_multiline() {
 fn test_find_forward_regex_pattern() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello 123 world 456");
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), r"\d+", Direction::Forward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 0), r"\d+", Direction::Forward, false);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -216,8 +209,7 @@ fn test_find_backward_finds_closest_before_cursor() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("aaa bbb aaa bbb aaa");
     // Cursor at column 12, should find "aaa" at column 8 (closest before)
-    let result =
-        engine.find_next(&buffer, Position::new(0, 12), "aaa", Direction::Backward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 12), "aaa", Direction::Backward, false);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -315,8 +307,7 @@ fn test_find_forward_at_end_of_content() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello");
     // Cursor at the very end
-    let result =
-        engine.find_next(&buffer, Position::new(0, 5), "hello", Direction::Forward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 5), "hello", Direction::Forward, false);
 
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
@@ -327,8 +318,7 @@ fn test_find_backward_wrap_finds_last_match() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("abc abc abc");
     // Cursor at 0, backward wrap should find last "abc"
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Backward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Backward, true);
 
     assert!(result.is_ok());
     let m = result.unwrap().unwrap();
@@ -399,8 +389,7 @@ fn test_find_forward_wrap_with_cursor_at_zero() {
     // Cursor at 0, search for "abc" forward with wrap
     // Match starts at 0 but cursor_byte is 0 so search_start is 1
     // No match after cursor, wrap tries content[..0] which is empty
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Forward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Forward, true);
     assert!(result.is_ok());
     // Should find nothing because cursor_byte is 0, wrap searches [..0] which is empty
     assert!(result.unwrap().is_none());
@@ -411,8 +400,7 @@ fn test_find_backward_no_wrap_no_match_before() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("xyz abc");
     // Cursor at start - nothing before cursor
-    let result =
-        engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Backward, false);
+    let result = engine.find_next(&buffer, Position::new(0, 0), "abc", Direction::Backward, false);
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
 }
@@ -422,8 +410,7 @@ fn test_find_backward_wrap_no_matches_anywhere() {
     let engine = SearchEngine;
     let buffer = create_test_buffer("hello world");
     // Pattern exists nowhere in the buffer, backward wrap should return None
-    let result =
-        engine.find_next(&buffer, Position::new(0, 5), "zzz", Direction::Backward, true);
+    let result = engine.find_next(&buffer, Position::new(0, 5), "zzz", Direction::Backward, true);
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
 }

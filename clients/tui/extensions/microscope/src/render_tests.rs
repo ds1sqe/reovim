@@ -54,8 +54,7 @@ impl RenderBackend for MockBackend {
 
     fn clear(&mut self) {
         let default_style = Style::new();
-        self.cells =
-            vec![vec![(' ', default_style); self.width as usize]; self.height as usize];
+        self.cells = vec![vec![(' ', default_style); self.width as usize]; self.height as usize];
     }
 
     fn overlay_bg(&mut self, x: u16, y: u16, bg: Color) {

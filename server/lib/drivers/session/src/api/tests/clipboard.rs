@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 /// Mock clipboard for testing.
 struct MockClipboard {

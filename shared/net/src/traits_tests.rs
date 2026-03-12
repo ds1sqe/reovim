@@ -176,10 +176,7 @@ impl NetDriver for MockNetDriver {
             None
         }
     }
-    fn register_handler(
-        &mut self,
-        _handler: Box<dyn crate::RpcHandler>,
-    ) -> Result<(), NetError> {
+    fn register_handler(&mut self, _handler: Box<dyn crate::RpcHandler>) -> Result<(), NetError> {
         if !self.initialized {
             return Err(NetError::NotInitialized);
         }

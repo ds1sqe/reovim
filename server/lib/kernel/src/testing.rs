@@ -132,4 +132,3 @@ pub fn setup_buffer(ctx: &KernelContext, content: &str) -> BufferId {
     let buffer = Buffer::from_string(content);
     ctx.buffers.register(buffer)
 }
-

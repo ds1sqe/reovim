@@ -101,8 +101,7 @@ fn test_quit_modified_buffer_returns_error() {
 #[test]
 fn test_quit_bang_ignores_modified_buffer() {
     use {
-        reovim_driver_command_types::ArgValue,
-        reovim_driver_session::testing::TestSessionRuntime,
+        reovim_driver_command_types::ArgValue, reovim_driver_session::testing::TestSessionRuntime,
     };
 
     let mut harness = TestSessionRuntime::with_buffer("hello");

@@ -226,20 +226,10 @@ fn test_fallback_record_edit_with_undo_provider() {
         fn is_batching(&self, _: BufferId) -> bool {
             false
         }
-        fn persist(
-            &self,
-            _: BufferId,
-            _: &str,
-            _: &dyn VfsDriver,
-        ) -> Result<(), UndoPersistError> {
+        fn persist(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<(), UndoPersistError> {
             Ok(())
         }
-        fn load(
-            &self,
-            _: BufferId,
-            _: &str,
-            _: &dyn VfsDriver,
-        ) -> Result<bool, UndoPersistError> {
+        fn load(&self, _: BufferId, _: &str, _: &dyn VfsDriver) -> Result<bool, UndoPersistError> {
             Ok(false)
         }
     }

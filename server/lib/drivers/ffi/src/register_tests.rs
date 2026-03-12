@@ -74,13 +74,7 @@ fn test_yank_type_roundtrip() {
 fn test_get_register_no_runtime() {
     let mut result = ReovimStringResult::ok(0);
     let ret = unsafe {
-        reovim_get_register(
-            b'a',
-            std::ptr::null_mut(),
-            0,
-            &raw mut result,
-            std::ptr::null_mut(),
-        )
+        reovim_get_register(b'a', std::ptr::null_mut(), 0, &raw mut result, std::ptr::null_mut())
     };
     assert_eq!(ret, REOVIM_ERR_NO_RUNTIME);
 }
@@ -106,8 +100,7 @@ fn test_get_register_null_out_result() {
 #[test]
 fn test_set_register_no_runtime() {
     let text = c"hello";
-    let result =
-        unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Characterwise) };
+    let result = unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Characterwise) };
     assert_eq!(result, REOVIM_ERR_NO_RUNTIME);
 }
 
@@ -121,9 +114,8 @@ fn test_set_register_null_text() {
 #[test]
 fn test_set_register_invalid_utf8() {
     let bytes: &[u8] = &[0xFF, 0xFE, 0x00];
-    let result = unsafe {
-        reovim_set_register(b'a', bytes.as_ptr().cast(), ReovimYankType::Characterwise)
-    };
+    let result =
+        unsafe { reovim_set_register(b'a', bytes.as_ptr().cast(), ReovimYankType::Characterwise) };
     assert_eq!(result, REOVIM_ERR_INVALID_UTF8);
 }
 
@@ -141,13 +133,7 @@ fn test_get_register_empty_with_runtime() {
 
     let mut result = ReovimStringResult::ok(0);
     let ret = unsafe {
-        reovim_get_register(
-            b'a',
-            std::ptr::null_mut(),
-            0,
-            &raw mut result,
-            std::ptr::null_mut(),
-        )
+        reovim_get_register(b'a', std::ptr::null_mut(), 0, &raw mut result, std::ptr::null_mut())
     };
     assert_eq!(ret, REOVIM_ERR_NOT_FOUND);
 }
@@ -161,8 +147,7 @@ fn test_set_register_with_runtime() {
     let _guard = unsafe { RuntimeGuard::new(&mut rt) };
 
     let text = c"register content";
-    let ret =
-        unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Characterwise) };
+    let ret = unsafe { reovim_set_register(b'a', text.as_ptr(), ReovimYankType::Characterwise) };
     assert_eq!(ret, REOVIM_OK);
 }
 

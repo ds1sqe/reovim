@@ -71,8 +71,7 @@ fn test_line_position() {
     );
     assert_eq!(pos, Some(Position::new(0, 2))); // First 'h'
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::LinePosition(LinePosition::End), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::LinePosition(LinePosition::End), 1);
     assert_eq!(pos, Some(Position::new(0, 14))); // Last char index
 
     let pos = MotionEngine::calculate(
@@ -213,14 +212,12 @@ fn test_paragraph_motion() {
     let cursor = make_cursor(0, 0);
 
     // } (forward)
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
     assert_eq!(pos.map(|p| p.line), Some(2)); // Start of para2
 
     // { (backward) from para3
     let cursor = make_cursor(5, 0);
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
     assert_eq!(pos.map(|p| p.line), Some(2)); // Start of para2
 }
 
@@ -412,8 +409,7 @@ fn test_paragraph_backward_multiple_count() {
     let buffer = make_buffer("para1\n\npara2\n\npara3");
     let cursor = make_cursor(4, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
     assert_eq!(pos.map(|p| p.line), Some(0)); // Back to para1
 }
 
@@ -422,8 +418,7 @@ fn test_paragraph_forward_multiple_count() {
     let buffer = make_buffer("para1\n\npara2\n\npara3");
     let cursor = make_cursor(0, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 2);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 2);
     assert_eq!(pos.map(|p| p.line), Some(4)); // Start of para3
 }
 
@@ -432,8 +427,7 @@ fn test_paragraph_empty_buffer() {
     let buffer = Buffer::new();
     let cursor = make_cursor(0, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
     assert_eq!(pos, None);
 }
 
@@ -1092,8 +1086,7 @@ fn test_paragraph_backward_count2() {
     let buffer = make_buffer("para1\n\npara2\n\npara3");
     let cursor = make_cursor(4, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
     assert!(pos.is_some());
     assert_eq!(pos.unwrap().line, 0);
 }
@@ -1103,8 +1096,7 @@ fn test_paragraph_backward_from_empty_line() {
     let buffer = make_buffer("para1\n\npara2");
     let cursor = make_cursor(1, 0); // on empty line
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
     assert!(pos.is_some());
     assert_eq!(pos.unwrap().line, 0);
 }
@@ -1114,8 +1106,7 @@ fn test_paragraph_forward_count2() {
     let buffer = make_buffer("para1\n\npara2\n\npara3");
     let cursor = make_cursor(0, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 2);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 2);
     assert!(pos.is_some());
     assert_eq!(pos.unwrap().line, 4);
 }
@@ -1303,8 +1294,7 @@ fn test_paragraph_backward_starting_empty() {
     let buffer = make_buffer("\npara1\n\npara2");
     let cursor = make_cursor(3, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
     assert!(pos.is_some());
     assert!(pos.unwrap().line <= 1);
 }
@@ -1350,8 +1340,7 @@ fn test_paragraph_backward_line0_empty() {
     let buffer = make_buffer("\n\npara1");
     let cursor = make_cursor(2, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
     assert!(pos.is_some());
     // Paragraph backward from para1 skips empty lines 0,1 -> reaches line 0
     assert_eq!(pos.unwrap().line, 0);
@@ -1419,8 +1408,7 @@ fn test_paragraph_forward_past_end() {
     let buffer = make_buffer("hello");
     let cursor = make_cursor(0, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
     // Single line, no empty line, forward should stop at end
     assert!(pos.is_some());
 }
@@ -1432,8 +1420,7 @@ fn test_paragraph_backward_at_line0() {
     let buffer = make_buffer("hello\nworld");
     let cursor = make_cursor(0, 0);
 
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 1);
     // Already at line 0 with non-empty content, should stay
     assert!(pos.is_some());
     assert_eq!(pos.unwrap().line, 0);
@@ -1740,8 +1727,7 @@ fn test_paragraph_forward_past_end_of_buffer() {
     // After skipping empty lines, current_line >= line_count -> break (L540).
     let buffer = make_buffer("hello\n\nworld\n\n");
     let cursor = make_cursor(0, 0);
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 10);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 10);
     assert!(pos.is_some());
 }
 
@@ -2011,8 +1997,7 @@ fn test_paragraph_forward_single_paragraph_no_blank() {
     // Returns position at last line.
     let buffer = make_buffer("aaa\nbbb\nccc");
     let cursor = make_cursor(0, 0);
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Forward), 1);
     assert!(pos.is_some());
     let p = pos.unwrap();
     assert_eq!(p.line, 2);
@@ -2024,8 +2009,7 @@ fn test_paragraph_backward_multiple_paragraphs() {
     // with count=2, should skip back two paragraphs to the first.
     let buffer = make_buffer("aaa\nbbb\n\nccc\nddd\n\neee\nfff");
     let cursor = make_cursor(7, 0); // on "fff"
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 2);
     assert!(pos.is_some());
     let p = pos.unwrap();
     // Paragraph backward with count=2 lands at start of first paragraph
@@ -2037,8 +2021,7 @@ fn test_paragraph_backward_high_count() {
     // High count backward paragraph motion should clamp to line 0.
     let buffer = make_buffer("aaa\n\nbbb\n\nccc");
     let cursor = make_cursor(4, 0);
-    let pos =
-        MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 10);
+    let pos = MotionEngine::calculate(&buffer, &cursor, Motion::Paragraph(Direction::Backward), 10);
     assert!(pos.is_some());
     assert_eq!(pos.unwrap().line, 0);
 }

@@ -66,9 +66,7 @@ fn module_init_registers_picker_and_commands() {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn test_module_context(
-    services: Arc<reovim_kernel::api::v1::ServiceRegistry>,
-) -> ModuleContext {
+fn test_module_context(services: Arc<reovim_kernel::api::v1::ServiceRegistry>) -> ModuleContext {
     ModuleContext::new(
         reovim_kernel::api::v1::KernelContext::default(),
         services,

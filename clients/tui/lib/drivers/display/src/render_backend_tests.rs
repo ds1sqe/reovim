@@ -277,11 +277,7 @@ impl TuiExtension for ViewportAwareExtension {
         // Intentionally empty — this extension uses render_with_viewport
     }
 
-    fn render_with_viewport(
-        &self,
-        backend: &mut dyn RenderBackend,
-        viewport: &ViewportContext,
-    ) {
+    fn render_with_viewport(&self, backend: &mut dyn RenderBackend, viewport: &ViewportContext) {
         // Render a marker at buffer position (0, 0) mapped to screen
         let screen_x = viewport.content_x;
         let screen_y = 0u16;

@@ -10,10 +10,7 @@ fn test_text_object_from_chars() {
         TextObject::from_chars('i', 'w'),
         Some(TextObject::InnerWord(WordBoundary::Word))
     );
-    assert_eq!(
-        TextObject::from_chars('a', 'W'),
-        Some(TextObject::AWord(WordBoundary::BigWord))
-    );
+    assert_eq!(TextObject::from_chars('a', 'W'), Some(TextObject::AWord(WordBoundary::BigWord)));
     assert_eq!(TextObject::from_chars('i', '('), Some(TextObject::InnerBracket('(')));
     assert_eq!(TextObject::from_chars('a', '"'), Some(TextObject::AQuote('"')));
     assert_eq!(TextObject::from_chars('x', 'w'), None);
@@ -24,8 +21,7 @@ fn test_inner_word() {
     let buffer = make_buffer("hello world");
     let pos = Position::new(0, 0);
 
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
 
     assert_eq!(
         range,
@@ -130,10 +126,7 @@ fn test_from_chars_big_word() {
         TextObject::from_chars('i', 'W'),
         Some(TextObject::InnerWord(WordBoundary::BigWord))
     );
-    assert_eq!(
-        TextObject::from_chars('a', 'W'),
-        Some(TextObject::AWord(WordBoundary::BigWord))
-    );
+    assert_eq!(TextObject::from_chars('a', 'W'), Some(TextObject::AWord(WordBoundary::BigWord)));
 }
 
 #[test]
@@ -192,8 +185,7 @@ fn test_inner_word_big_word() {
 fn test_inner_word_punctuation() {
     let buffer = make_buffer("foo...bar");
     let pos = Position::new(0, 3); // on first '.'
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
     // Punctuation run
     assert_eq!(range, Some((Position::new(0, 3), Position::new(0, 5))));
 }
@@ -204,8 +196,7 @@ fn test_inner_word_punctuation() {
 fn test_inner_word_whitespace() {
     let buffer = make_buffer("hello   world");
     let pos = Position::new(0, 6); // on whitespace
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
     // Whitespace run from column 5 to 7
     assert_eq!(range, Some((Position::new(0, 5), Position::new(0, 7))));
 }
@@ -350,8 +341,7 @@ fn test_prev_position_at_start() {
 fn test_inner_word_empty_line() {
     let buffer = make_buffer("hello\n\nworld");
     let pos = Position::new(1, 0);
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
     // Empty line: chars is empty, should return (pos, pos)
     assert_eq!(range, Some((Position::new(1, 0), Position::new(1, 0))));
 }
@@ -373,8 +363,7 @@ fn test_range_count_zero_clamped() {
     let buffer = make_buffer("hello world");
     let pos = Position::new(0, 0);
     // count=0 should be clamped to 1
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 0);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 0);
     assert!(range.is_some());
 }
 
@@ -528,30 +517,18 @@ fn test_inner_bracket_count_nested() {
 #[test]
 fn test_inner_bracket_all_types() {
     let buffer_sq = make_buffer("[hello]");
-    let range = TextObjectEngine::range(
-        &buffer_sq,
-        Position::new(0, 3),
-        TextObject::InnerBracket('['),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_sq, Position::new(0, 3), TextObject::InnerBracket('['), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 
     let buffer_cu = make_buffer("{hello}");
-    let range = TextObjectEngine::range(
-        &buffer_cu,
-        Position::new(0, 3),
-        TextObject::InnerBracket('{'),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_cu, Position::new(0, 3), TextObject::InnerBracket('{'), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 
     let buffer_an = make_buffer("<hello>");
-    let range = TextObjectEngine::range(
-        &buffer_an,
-        Position::new(0, 3),
-        TextObject::InnerBracket('<'),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_an, Position::new(0, 3), TextObject::InnerBracket('<'), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 }
 
@@ -599,30 +576,18 @@ fn test_bracket_pair_closing_chars() {
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 
     let buffer_sq = make_buffer("[hello]");
-    let range = TextObjectEngine::range(
-        &buffer_sq,
-        Position::new(0, 3),
-        TextObject::InnerBracket(']'),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_sq, Position::new(0, 3), TextObject::InnerBracket(']'), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 
     let buffer_cu = make_buffer("{hello}");
-    let range = TextObjectEngine::range(
-        &buffer_cu,
-        Position::new(0, 3),
-        TextObject::InnerBracket('}'),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_cu, Position::new(0, 3), TextObject::InnerBracket('}'), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 
     let buffer_an = make_buffer("<hello>");
-    let range = TextObjectEngine::range(
-        &buffer_an,
-        Position::new(0, 3),
-        TextObject::InnerBracket('>'),
-        1,
-    );
+    let range =
+        TextObjectEngine::range(&buffer_an, Position::new(0, 3), TextObject::InnerBracket('>'), 1);
     assert_eq!(range, Some((Position::new(0, 1), Position::new(0, 5))));
 }
 
@@ -680,8 +645,7 @@ fn test_find_closing_bracket_not_found() {
 fn test_a_word_bigword() {
     let buffer = make_buffer("hello.world foo");
     let pos = Position::new(0, 5); // on '.'
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::AWord(WordBoundary::BigWord), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::AWord(WordBoundary::BigWord), 1);
     assert!(range.is_some());
     let (start, end) = range.unwrap();
     // BigWord "hello.world" + trailing whitespace
@@ -695,8 +659,7 @@ fn test_a_word_bigword() {
 fn test_inner_word_column_clamped() {
     let buffer = make_buffer("hi");
     let pos = Position::new(0, 100); // Way beyond line length
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
     // Column should be clamped to chars.len()-1 = 1
     assert!(range.is_some());
 }
@@ -725,8 +688,7 @@ fn test_inner_word_punctuation_cluster() {
     // loops expand to select all three dots.
     let buffer = make_buffer("foo...bar");
     let pos = Position::new(0, 4); // on middle '.'
-    let range =
-        TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
+    let range = TextObjectEngine::range(&buffer, pos, TextObject::InnerWord(WordBoundary::Word), 1);
     assert!(range.is_some());
     let (start, end) = range.unwrap();
     assert_eq!(start, Position::new(0, 3)); // first '.'

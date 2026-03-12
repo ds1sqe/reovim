@@ -15,8 +15,7 @@ fn test_module_probe_new() {
 fn test_module_probe_truncation() {
     // Long strings should be truncated, not overflow
     let long_id = "a".repeat(100);
-    let probe =
-        ModuleProbe::new(&long_id, "name", Version::new(1, 0, 0), Version::new(1, 0, 0));
+    let probe = ModuleProbe::new(&long_id, "name", Version::new(1, 0, 0), Version::new(1, 0, 0));
 
     // Should be truncated to 63 chars (64 - 1 for null)
     assert_eq!(probe.id_str().len(), 63);
@@ -26,8 +25,7 @@ fn test_module_probe_truncation() {
 fn test_module_probe_name_truncation() {
     // Long name should be truncated
     let long_name = "b".repeat(200);
-    let probe =
-        ModuleProbe::new("id", &long_name, Version::new(1, 0, 0), Version::new(1, 0, 0));
+    let probe = ModuleProbe::new("id", &long_name, Version::new(1, 0, 0), Version::new(1, 0, 0));
 
     // Should be truncated to 127 chars (128 - 1 for null)
     assert_eq!(probe.name_str().len(), 127);
@@ -102,8 +100,7 @@ fn test_module_probe_optional_deps() {
 
 #[test]
 fn test_module_probe_max_deps() {
-    let mut probe =
-        ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
+    let mut probe = ModuleProbe::new("test", "Test", Version::new(1, 0, 0), Version::new(0, 2, 0));
     for i in 0..8 {
         probe = probe.with_required_dep(i, &format!("dep{i}"));
     }

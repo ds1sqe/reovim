@@ -673,8 +673,7 @@ fn test_mirror_indices_excludes_self() {
             transform: None,
         },
     ]);
-    let (_, snippet) =
-        ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
+    let (_, snippet) = ActiveSnippet::expand(&body, Position::origin(), &VariableContext::empty());
     assert_eq!(snippet.tab_stops().len(), 3);
 
     // Excluding index 1, mirrors are [0, 2]

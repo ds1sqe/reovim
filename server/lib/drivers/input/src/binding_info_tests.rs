@@ -40,8 +40,7 @@ fn test_binding_info_no_category() {
 
 #[test]
 fn test_binding_info_clone() {
-    let info =
-        BindingInfo::new(cmd("yank"), "Yank text", Some("operator"), BindingLayer::Policy);
+    let info = BindingInfo::new(cmd("yank"), "Yank text", Some("operator"), BindingLayer::Policy);
     let cloned = info.clone();
     assert_eq!(info, cloned);
 }

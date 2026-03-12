@@ -205,11 +205,7 @@ fn test_icon_registry_provider_priority() {
         fn priority(&self) -> u8 {
             100
         }
-        fn file_icon(
-            &self,
-            _filename: &str,
-            extension: Option<&str>,
-        ) -> Option<&'static IconDef> {
+        fn file_icon(&self, _filename: &str, extension: Option<&str>) -> Option<&'static IconDef> {
             if extension == Some("rs") {
                 Some(&ui_icons::CHECK) // Return a different icon to verify priority
             } else {

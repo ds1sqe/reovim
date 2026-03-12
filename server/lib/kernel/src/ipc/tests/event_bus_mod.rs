@@ -1,7 +1,10 @@
 use {
     super::*,
     std::{
-        sync::{atomic::{AtomicI32, AtomicU32, Ordering}, Arc},
+        sync::{
+            Arc,
+            atomic::{AtomicI32, AtomicU32, Ordering},
+        },
         thread,
     },
 };
@@ -483,14 +486,11 @@ fn test_subscribe_targeted() {
     let called = Arc::new(AtomicU32::new(0));
     let called_copy = called.clone();
 
-    let _sub = bus.subscribe_targeted::<TargetedTestEvent, _>(
-        "my_plugin",
-        100,
-        move |_event, _ctx| {
+    let _sub =
+        bus.subscribe_targeted::<TargetedTestEvent, _>("my_plugin", 100, move |_event, _ctx| {
             called_copy.fetch_add(1, Ordering::SeqCst);
             EventResult::Handled
-        },
-    );
+        });
 
     // Event with matching target - should be handled
     let mut ctx = HandlerContext::new();

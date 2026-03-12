@@ -87,4 +87,3 @@ pub struct SetResult {
     /// New value that was set.
     pub new_value: OptionValue,
 }
-

@@ -9,8 +9,7 @@ struct MockModeProvider;
 
 impl DefaultModeProvider for MockModeProvider {
     fn provider_id(&self) -> &reovim_kernel::api::v1::ModuleId {
-        static ID: reovim_kernel::api::v1::ModuleId =
-            reovim_kernel::api::v1::ModuleId::new("mock");
+        static ID: reovim_kernel::api::v1::ModuleId = reovim_kernel::api::v1::ModuleId::new("mock");
         &ID
     }
 
@@ -19,9 +18,8 @@ impl DefaultModeProvider for MockModeProvider {
     }
 
     fn entry_mode(&self) -> &ModeId {
-        static MODE: LazyLock<ModeId> = LazyLock::new(|| {
-            ModeId::new(reovim_kernel::api::v1::ModuleId::new("mock"), "normal")
-        });
+        static MODE: LazyLock<ModeId> =
+            LazyLock::new(|| ModeId::new(reovim_kernel::api::v1::ModuleId::new("mock"), "normal"));
         &MODE
     }
 }

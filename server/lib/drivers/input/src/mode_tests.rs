@@ -266,11 +266,7 @@ fn test_key_sequence_parse_enter_aliases() {
     for alias in ["<Enter>", "<CR>", "<Return>"] {
         let seq = KeySequence::parse(alias).unwrap();
         assert_eq!(seq.len(), 1);
-        assert_eq!(
-            seq.as_slice()[0].code,
-            KeyCode::Enter,
-            "alias {alias} did not parse to Enter"
-        );
+        assert_eq!(seq.as_slice()[0].code, KeyCode::Enter, "alias {alias} did not parse to Enter");
     }
 }
 
@@ -331,11 +327,7 @@ fn test_key_sequence_parse_arrow_keys() {
     for (notation, expected) in cases {
         let seq = KeySequence::parse(notation).unwrap();
         assert_eq!(seq.len(), 1);
-        assert_eq!(
-            seq.as_slice()[0].code,
-            expected,
-            "notation {notation} did not parse correctly"
-        );
+        assert_eq!(seq.as_slice()[0].code, expected, "notation {notation} did not parse correctly");
     }
 }
 
@@ -350,11 +342,7 @@ fn test_key_sequence_parse_navigation_keys() {
     for (notation, expected) in cases {
         let seq = KeySequence::parse(notation).unwrap();
         assert_eq!(seq.len(), 1);
-        assert_eq!(
-            seq.as_slice()[0].code,
-            expected,
-            "notation {notation} did not parse correctly"
-        );
+        assert_eq!(seq.as_slice()[0].code, expected, "notation {notation} did not parse correctly");
     }
 }
 

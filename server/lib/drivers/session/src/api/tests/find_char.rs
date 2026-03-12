@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_find_char_record_new_and_accessors() {

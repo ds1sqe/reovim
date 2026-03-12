@@ -269,10 +269,7 @@ fn test_from_entry_symlink() {
         fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(
-            &self,
-            _: &Path,
-        ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn symlink_metadata(&self, _: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             Ok(reovim_driver_vfs::FileMetadata::symlink())
         }
         fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
@@ -347,10 +344,7 @@ fn test_from_path_symlink() {
         fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(
-            &self,
-            _: &Path,
-        ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn symlink_metadata(&self, _: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             Ok(reovim_driver_vfs::FileMetadata::symlink())
         }
         fn canonicalize(&self, p: &Path) -> Result<PathBuf, VfsError> {
@@ -488,10 +482,7 @@ fn test_load_children_entry_error() {
         fn metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             self.symlink_metadata(p)
         }
-        fn symlink_metadata(
-            &self,
-            p: &Path,
-        ) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
+        fn symlink_metadata(&self, p: &Path) -> Result<reovim_driver_vfs::FileMetadata, VfsError> {
             if p.file_name().is_some_and(|n| n == "bad.txt") {
                 Err(VfsError::PermissionDenied(p.to_path_buf()))
             } else if p.ends_with("good.txt") {

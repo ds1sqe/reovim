@@ -269,4 +269,3 @@ impl Jumplist {
         self.current = 0;
     }
 }
-

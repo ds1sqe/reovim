@@ -180,8 +180,7 @@ fn test_table_many_columns() {
 #[test]
 fn provider_returns_annotations_for_table() {
     let language: reovim_driver_syntax_treesitter::Language = tree_sitter_md::LANGUAGE.into();
-    let table_query =
-        Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
+    let table_query = Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
     let provider = TableDecorationProvider::new(table_query);
 
     let content = "| A | B |\n|---|---|\n| 1 | 2 |\n";
@@ -195,8 +194,7 @@ fn provider_returns_annotations_for_table() {
 #[test]
 fn provider_caches_results() {
     let language: reovim_driver_syntax_treesitter::Language = tree_sitter_md::LANGUAGE.into();
-    let table_query =
-        Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
+    let table_query = Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
     let provider = TableDecorationProvider::new(table_query);
 
     let content = "| A | B |\n|---|---|\n| 1 | 2 |\n";
@@ -216,8 +214,7 @@ fn provider_caches_results() {
 #[test]
 fn provider_invalidates_cache_on_content_change() {
     let language: reovim_driver_syntax_treesitter::Language = tree_sitter_md::LANGUAGE.into();
-    let table_query =
-        Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
+    let table_query = Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
     let provider = TableDecorationProvider::new(table_query);
 
     let content1 = "| A | B |\n|---|---|\n| 1 | 2 |\n";
@@ -239,8 +236,7 @@ fn provider_invalidates_cache_on_content_change() {
 #[test]
 fn provider_skips_tables_outside_range() {
     let language: reovim_driver_syntax_treesitter::Language = tree_sitter_md::LANGUAGE.into();
-    let table_query =
-        Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
+    let table_query = Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
     let provider = TableDecorationProvider::new(table_query);
 
     let content = "Some text.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nMore text.\n";
@@ -255,8 +251,7 @@ fn provider_skips_tables_outside_range() {
 #[test]
 fn no_table_returns_empty() {
     let language: reovim_driver_syntax_treesitter::Language = tree_sitter_md::LANGUAGE.into();
-    let table_query =
-        Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
+    let table_query = Arc::new(Query::new(&language, "(pipe_table) @table").expect("table query"));
     let provider = TableDecorationProvider::new(table_query);
 
     let content = "# Just a heading\n\nSome text.\n";

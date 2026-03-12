@@ -28,8 +28,7 @@ fn make_service(bridges: BridgeRegistry) -> (ExtensionServiceImpl, Arc<Session>)
     let session = Arc::new(Session::new(SessionId::new("test")));
     let sessions = Arc::new(SessionRegistry::new());
     sessions.insert(&session);
-    let service =
-        ExtensionServiceImpl::new(sessions, SessionId::new("test"), Arc::new(bridges));
+    let service = ExtensionServiceImpl::new(sessions, SessionId::new("test"), Arc::new(bridges));
     (service, session)
 }
 

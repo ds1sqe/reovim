@@ -155,4 +155,3 @@ pub fn set_recovery_callback(callback: RecoveryCallback) {
 pub fn is_handler_installed() -> bool {
     PANIC_HANDLER_INSTALLED.load(Ordering::SeqCst)
 }
-

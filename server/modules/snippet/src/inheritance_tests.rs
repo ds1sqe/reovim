@@ -61,11 +61,7 @@ fn test_chain_always_ends_with_global() {
         "global",
     ] {
         let chain = resolution_chain(ft);
-        assert_eq!(
-            chain.last().copied(),
-            Some("global"),
-            "chain for {ft} must end with global"
-        );
+        assert_eq!(chain.last().copied(), Some("global"), "chain for {ft} must end with global");
     }
 }
 

@@ -19,11 +19,8 @@ fn authed_request<T>(body: T, client_id: ClientId) -> Request<T> {
 #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
 async fn test_send_keys_valid_notation() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -45,11 +42,8 @@ async fn test_send_keys_invalid_notation() {
         .get(&SessionId::new("test"))
         .unwrap()
         .add_client(ClientId::new(1));
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -69,11 +63,8 @@ async fn test_send_keys_invalid_notation() {
 #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
 async fn test_send_keys_special_keys() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -94,11 +85,8 @@ async fn test_send_keys_special_keys() {
 #[ignore = "Per-client state (#471): Requires resolver registration; panics without modules"]
 async fn test_send_keys_with_modifiers() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -140,11 +128,8 @@ async fn test_send_keys_no_session() {
 #[tokio::test]
 async fn test_send_keys_rejects_unauthenticated() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     // No ClientId in extensions — should be rejected
     let request = Request::new(SendKeysRequest {
@@ -218,11 +203,8 @@ fn test_resolve_to_command_context_with_metadata() {
 #[tokio::test]
 async fn test_send_keys_client_not_found() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     // Client 42 is not added to session
     let request = authed_request(
@@ -253,11 +235,8 @@ async fn test_send_keys_following_client_ignored() {
         Some(crate::session::ClientRelation::Following { target: owner_id }),
     );
 
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -482,10 +461,8 @@ fn test_resolve_to_command_context_with_all_fields() {
         register: Some('z'),
         ..ResolveContext::default()
     };
-    ctx.metadata.insert(
-        "motion".to_string(),
-        reovim_driver_input::ArgValue::String("word".to_string()),
-    );
+    ctx.metadata
+        .insert("motion".to_string(), reovim_driver_input::ArgValue::String("word".to_string()));
     let cmd_ctx = InputServiceImpl::resolve_to_command_context(&ctx);
 
     assert_eq!(cmd_ctx.count(), Some(10));
@@ -823,11 +800,8 @@ fn test_resolve_to_command_context_with_multiple_metadata() {
 #[test]
 fn test_input_service_impl_new() {
     let registry = test_registry();
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
     // get_session should succeed
     assert!(service.get_session().is_ok());
 }
@@ -923,13 +897,9 @@ async fn test_handle_resolve_result_pending() {
 
     let key = reovim_driver_input::KeyEvent::new(KeyCode::Char('d'));
 
-    let (handled, changes) = InputServiceImpl::handle_resolve_result(
-        &session,
-        ResolveResult::Pending,
-        &key,
-        client_id,
-    )
-    .await;
+    let (handled, changes) =
+        InputServiceImpl::handle_resolve_result(&session, ResolveResult::Pending, &key, client_id)
+            .await;
 
     assert!(handled);
     assert!(!changes.has_changes());
@@ -1162,11 +1132,7 @@ fn test_handle_pop_result_data_with_multiple_values() {
     values.insert("count".to_string(), reovim_driver_command_types::ArgValue::Count(10));
     values.insert("register".to_string(), reovim_driver_command_types::ArgValue::Register('a'));
 
-    InputServiceImpl::handle_pop_result_for_client(
-        &session,
-        client_id,
-        PopResult::Data { values },
-    );
+    InputServiceImpl::handle_pop_result_for_client(&session, client_id, PopResult::Data { values });
 }
 
 #[tokio::test]
@@ -1176,11 +1142,8 @@ async fn test_send_keys_empty_key_sequence() {
     let client_id = ClientId::new(1);
     session.add_client(client_id);
 
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -1298,11 +1261,8 @@ async fn test_send_keys_independent_client() {
     // Set client as Independent (default)
     let _ = session.set_client_relation(client_id, None);
 
-    let service = InputServiceImpl::new(
-        registry,
-        SessionId::new("test"),
-        Arc::new(BridgeRegistry::new()),
-    );
+    let service =
+        InputServiceImpl::new(registry, SessionId::new("test"), Arc::new(BridgeRegistry::new()));
 
     let request = authed_request(
         SendKeysRequest {
@@ -1322,11 +1282,7 @@ fn test_handle_pop_result_for_nonexistent_client() {
     let nonexistent_id = ClientId::new(999);
 
     // Should not panic for nonexistent client
-    InputServiceImpl::handle_pop_result_for_client(
-        &session,
-        nonexistent_id,
-        PopResult::Cancelled,
-    );
+    InputServiceImpl::handle_pop_result_for_client(&session, nonexistent_id, PopResult::Cancelled);
 }
 
 #[tokio::test]
@@ -2301,13 +2257,7 @@ fn test_detect_bridge_changes_no_change() {
     // Before: inactive, After: inactive (TestBridge always false)
     let before = vec![("test", false)];
     let mut changes = StateChanges::new();
-    InputServiceImpl::detect_bridge_changes(
-        &session,
-        client_id,
-        &bridges,
-        &before,
-        &mut changes,
-    );
+    InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     // No toggle and not active → no change recorded
     assert!(!changes.extension_changed);
 }
@@ -2324,13 +2274,7 @@ fn test_detect_bridge_changes_was_active_now_inactive() {
     // was_active != is_active → should record change
     let before = vec![("test", true)];
     let mut changes = StateChanges::new();
-    InputServiceImpl::detect_bridge_changes(
-        &session,
-        client_id,
-        &bridges,
-        &before,
-        &mut changes,
-    );
+    InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     assert!(changes.extension_changed);
     assert!(changes.extensions_updated.contains(&"test".into()));
 }
@@ -2343,12 +2287,6 @@ fn test_detect_bridge_changes_empty_before() {
     let bridges = BridgeRegistry::new();
     let before: Vec<(&str, bool)> = vec![];
     let mut changes = StateChanges::new();
-    InputServiceImpl::detect_bridge_changes(
-        &session,
-        client_id,
-        &bridges,
-        &before,
-        &mut changes,
-    );
+    InputServiceImpl::detect_bridge_changes(&session, client_id, &bridges, &before, &mut changes);
     assert!(!changes.extension_changed);
 }

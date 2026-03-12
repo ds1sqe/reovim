@@ -56,10 +56,7 @@ fn test_tm_filename_base() {
 #[test]
 fn test_tm_filepath() {
     let ctx = test_ctx();
-    assert_eq!(
-        resolve_variable("TM_FILEPATH", &ctx).unwrap(),
-        "/home/user/project/src/main.rs"
-    );
+    assert_eq!(resolve_variable("TM_FILEPATH", &ctx).unwrap(), "/home/user/project/src/main.rs");
 }
 
 #[test]

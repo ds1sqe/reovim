@@ -297,8 +297,7 @@ fn test_transition_independent_to_sharing() {
     let mut client1 = clients.remove(&id1).unwrap();
     assert!(client1.is_independent());
 
-    let result =
-        client1.try_set_relation(Some(ClientRelation::Sharing { with: id2 }), &clients);
+    let result = client1.try_set_relation(Some(ClientRelation::Sharing { with: id2 }), &clients);
     assert!(result.is_ok());
     assert!(client1.is_sharing());
     assert_eq!(client1.target_id(), Some(id2));
@@ -373,8 +372,7 @@ fn test_transition_cannot_share_with_self() {
     let clients = HashMap::new();
 
     let mut client1 = Client::new(id1, test_metadata());
-    let result =
-        client1.try_set_relation(Some(ClientRelation::Sharing { with: id1 }), &clients);
+    let result = client1.try_set_relation(Some(ClientRelation::Sharing { with: id1 }), &clients);
     assert_eq!(result, TransitionResult::CannotTargetSelf);
     assert!(client1.is_independent()); // Relation unchanged
 }

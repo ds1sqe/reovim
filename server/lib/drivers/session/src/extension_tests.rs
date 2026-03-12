@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 // Test extension type
 #[derive(Debug, Default, PartialEq)]

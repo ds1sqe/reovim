@@ -192,4 +192,3 @@ impl fmt::Display for ConstraintError {
 }
 
 impl std::error::Error for ConstraintError {}
-

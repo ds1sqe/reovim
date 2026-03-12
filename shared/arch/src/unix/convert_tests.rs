@@ -18,8 +18,7 @@ fn test_convert_modifiers() {
 
 #[test]
 fn test_convert_key_event() {
-    let ct_event =
-        ct_event::KeyEvent::new(ct_event::KeyCode::Esc, ct_event::KeyModifiers::NONE);
+    let ct_event = ct_event::KeyEvent::new(ct_event::KeyCode::Esc, ct_event::KeyModifiers::NONE);
     let our_event = convert_key_event(ct_event);
     assert_eq!(our_event.code, KeyCode::Escape);
     assert_eq!(our_event.modifiers, Modifiers::NONE);

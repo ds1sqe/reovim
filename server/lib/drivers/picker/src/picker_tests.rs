@@ -60,11 +60,7 @@ impl Picker for CustomPromptPicker {
         PickerAction::Close
     }
 
-    fn preview(
-        &self,
-        _item: &PickerItem,
-        _services: &ServiceRegistry,
-    ) -> Option<PreviewContent> {
+    fn preview(&self, _item: &PickerItem, _services: &ServiceRegistry) -> Option<PreviewContent> {
         Some(PreviewContent {
             lines: vec!["preview line".to_owned()],
             highlight_line: Some(0),

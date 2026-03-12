@@ -257,8 +257,8 @@ mod build_registry_tests {
 
     fn make_temp_dir() -> TempDir {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir()
-            .join(format!("reovim-build-registry-{}-{id}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("reovim-build-registry-{}-{id}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         TempDir(dir)
     }
@@ -276,8 +276,7 @@ mod build_registry_tests {
         let user_dir = dir.path().join("user");
         std::fs::create_dir_all(&user_dir).unwrap();
         let mut f = std::fs::File::create(user_dir.join("rust.json")).unwrap();
-        writeln!(f, r#"{{ "function": {{ "prefix": "fn", "body": "fn $1() {{}}" }} }}"#)
-            .unwrap();
+        writeln!(f, r#"{{ "function": {{ "prefix": "fn", "body": "fn $1() {{}}" }} }}"#).unwrap();
 
         let registry = build_registry(dir.path());
         assert!(registry.find_by_prefix("rust", "fn").is_some());
@@ -309,8 +308,7 @@ mod build_registry_tests {
         let snippets_dir = dir.path().join("snippets");
         std::fs::create_dir_all(&snippets_dir).unwrap();
         let mut f2 = std::fs::File::create(snippets_dir.join("global.json")).unwrap();
-        writeln!(f2, r#"{{ "from_legacy": {{ "prefix": "tst", "body": "LEGACY" }} }}"#)
-            .unwrap();
+        writeln!(f2, r#"{{ "from_legacy": {{ "prefix": "tst", "body": "LEGACY" }} }}"#).unwrap();
 
         let registry = build_registry(dir.path());
         let def = registry.find_by_prefix("global", "tst").unwrap();
@@ -446,10 +444,8 @@ mod build_registry_tests {
             r#"{{ "contributes": {{ "snippets": [{{ "language": "global", "path": "./snippets/global.json" }}] }} }}"#
         )
         .unwrap();
-        let mut snip =
-            std::fs::File::create(friendly_dir.join("snippets/global.json")).unwrap();
-        writeln!(snip, r#"{{ "friendly_s": {{ "prefix": "fs", "body": "FRIENDLY" }} }}"#)
-            .unwrap();
+        let mut snip = std::fs::File::create(friendly_dir.join("snippets/global.json")).unwrap();
+        writeln!(snip, r#"{{ "friendly_s": {{ "prefix": "fs", "body": "FRIENDLY" }} }}"#).unwrap();
 
         // Built-in
         let builtin_dir = dir.path().join("built-in");

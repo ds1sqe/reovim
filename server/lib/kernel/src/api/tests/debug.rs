@@ -8,10 +8,7 @@ use {
 
 #[test]
 fn test_yank_type_snapshot_from() {
-    assert_eq!(
-        YankTypeSnapshot::from(YankType::Characterwise),
-        YankTypeSnapshot::Characterwise
-    );
+    assert_eq!(YankTypeSnapshot::from(YankType::Characterwise), YankTypeSnapshot::Characterwise);
     assert_eq!(YankTypeSnapshot::from(YankType::Linewise), YankTypeSnapshot::Linewise);
 }
 

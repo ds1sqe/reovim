@@ -1,6 +1,4 @@
-
 use super::*;
-
 
 #[test]
 fn test_tab_page_new() {

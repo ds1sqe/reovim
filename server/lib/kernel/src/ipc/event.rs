@@ -448,4 +448,3 @@ pub enum CacheKind {
     /// Both highlights and decorations.
     Both,
 }
-
