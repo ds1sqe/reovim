@@ -6,10 +6,7 @@ use super::lockfile::*;
 
 #[test]
 fn sha256_file_known_content() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-sha256-test-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-sha256-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let file = dir.join("test.bin");
@@ -17,20 +14,14 @@ fn sha256_file_known_content() {
 
     let hash = sha256_file(&file).unwrap();
     // SHA-256 of "hello world" is well-known
-    assert_eq!(
-        hash,
-        "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
-    );
+    assert_eq!(hash, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
 fn sha256_file_empty() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-sha256-empty-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-sha256-empty-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let file = dir.join("empty.bin");
@@ -38,10 +29,7 @@ fn sha256_file_empty() {
 
     let hash = sha256_file(&file).unwrap();
     // SHA-256 of empty input
-    assert_eq!(
-        hash,
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-    );
+    assert_eq!(hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -160,10 +148,7 @@ fn lock_roundtrip() {
         ],
     };
 
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-lock-roundtrip-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-lock-roundtrip-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let lock_path = dir.join("modules.lock");
@@ -191,10 +176,7 @@ fn lock_load_not_found() {
 
 #[test]
 fn lock_load_invalid_toml() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-lock-invalid-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-lock-invalid-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let lock_path = dir.join("modules.lock");
@@ -212,10 +194,7 @@ fn lock_load_invalid_toml() {
 
 #[test]
 fn verify_checksums_pass() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-verify-pass-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-verify-pass-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let file = dir.join("module.so");
@@ -247,10 +226,7 @@ fn verify_checksums_pass() {
 
 #[test]
 fn verify_checksums_fail_tampered() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-verify-fail-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-verify-fail-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let file = dir.join("module.so");
@@ -415,10 +391,7 @@ fn find_nonexistent_entry() {
 
 #[test]
 fn lock_file_error_display() {
-    let io_err = LockFileError::Io(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "not found",
-    ));
+    let io_err = LockFileError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "not found"));
     assert!(format!("{io_err}").contains("I/O"));
 
     let parse_err = LockFileError::Parse("bad toml".into());

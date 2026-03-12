@@ -77,7 +77,7 @@ fn test_gutter_renderer_new() {
 
 #[test]
 fn test_gutter_renderer_register() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     renderer.register_source(Arc::new(MockSource { id: "test" }));
     renderer.register_presenter(Arc::new(MockPresenter));
 
@@ -87,7 +87,7 @@ fn test_gutter_renderer_register() {
 
 #[test]
 fn test_gutter_renderer_render() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     renderer.register_source(Arc::new(MockSource { id: "test" }));
     renderer.register_presenter(Arc::new(MockPresenter));
 
@@ -101,7 +101,7 @@ fn test_gutter_renderer_render() {
 
 #[test]
 fn test_gutter_renderer_has_annotations() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     // Empty renderer has no annotations
     assert!(!renderer.has_annotations(BufferId::new()));
 
@@ -147,7 +147,7 @@ fn test_gutter_renderer_with_config() {
 
 #[test]
 fn test_gutter_renderer_set_config() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     let config = GutterConfig::default_line_numbers();
     renderer.set_config(config);
     // Verify config was set
@@ -156,7 +156,7 @@ fn test_gutter_renderer_set_config() {
 
 #[test]
 fn test_gutter_renderer_total_width() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     renderer.register_source(Arc::new(MockSource { id: "test" }));
     renderer.register_presenter(Arc::new(MockPresenter));
 
@@ -197,7 +197,7 @@ fn test_gutter_renderer_render_multiple_sources() {
         }
     }
 
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     renderer.register_source(Arc::new(MockSource { id: "test" }));
     renderer.register_source(Arc::new(MockSource2));
     renderer.register_presenter(Arc::new(MockPresenter));
@@ -232,7 +232,7 @@ fn test_annotation_source_key_equality() {
 #[test]
 fn test_gutter_renderer_has_annotations_with_source() {
     // MockSource always returns true for has_annotations (default impl)
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     let source = Arc::new(MockSource { id: "test" });
     renderer.register_source(source);
 
@@ -245,11 +245,25 @@ fn test_gutter_renderer_has_annotations_with_source() {
 
 #[test]
 fn test_gutter_renderer_render_empty_range() {
-    let mut renderer = GutterRenderer::new();
+    let renderer = GutterRenderer::new();
     renderer.register_source(Arc::new(MockSource { id: "test" }));
     renderer.register_presenter(Arc::new(MockPresenter));
 
     let context = AnnotationContext::new(10, 0, "normal".to_string());
     let lines = renderer.render(BufferId::new(), 0..0, &context);
     assert!(lines.is_empty());
+}
+
+#[test]
+fn test_gutter_renderer_render_with_file_path() {
+    let renderer = GutterRenderer::new();
+    renderer.register_source(Arc::new(MockSource { id: "test" }));
+    renderer.register_presenter(Arc::new(MockPresenter));
+
+    let mut context = AnnotationContext::new(10, 0, "normal".to_string());
+    context.file_path = Some(std::path::PathBuf::from("/tmp/test.rs"));
+
+    let lines = renderer.render(BufferId::new(), 0..3, &context);
+    assert_eq!(lines.len(), 3);
+    assert!(!lines[0].cells.is_empty());
 }

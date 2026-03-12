@@ -123,7 +123,9 @@ pub fn discover_modules(search_paths: &[PathBuf]) -> Vec<PathBuf> {
             let matches_prefix = file_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("libreovim_module_") || n.starts_with("reovim_module_"));
+                .is_some_and(|n| {
+                    n.starts_with("libreovim_module_") || n.starts_with("reovim_module_")
+                });
             if matches_ext && matches_prefix {
                 found.push(file_path);
             }
@@ -158,7 +160,8 @@ pub fn find_module(search_paths: &[PathBuf], name: &str) -> Option<PathBuf> {
 #[must_use]
 pub fn module_name_from_path(path: &std::path::Path) -> Option<String> {
     let stem = path.file_stem()?.to_str()?;
-    let name = stem.strip_prefix("libreovim_module_")
+    let name = stem
+        .strip_prefix("libreovim_module_")
         .or_else(|| stem.strip_prefix("reovim_module_"))?;
     Some(name.replace('_', "-"))
 }

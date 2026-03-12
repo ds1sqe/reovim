@@ -112,10 +112,7 @@ fn discover_nonexistent_path() {
 
 #[test]
 fn discover_with_temp_dir_finds_matching_files() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-discover-test-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-discover-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     // Create files matching the naming convention
@@ -137,10 +134,7 @@ fn discover_with_temp_dir_finds_matching_files() {
 
 #[test]
 fn discover_multiple_modules_in_dir() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-discover-multi-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-discover-multi-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let ext = library_extension();
@@ -157,14 +151,8 @@ fn discover_multiple_modules_in_dir() {
 
 #[test]
 fn discover_searches_multiple_paths() {
-    let dir1 = std::env::temp_dir().join(format!(
-        "reovim-discover-p1-{}",
-        std::process::id()
-    ));
-    let dir2 = std::env::temp_dir().join(format!(
-        "reovim-discover-p2-{}",
-        std::process::id()
-    ));
+    let dir1 = std::env::temp_dir().join(format!("reovim-discover-p1-{}", std::process::id()));
+    let dir2 = std::env::temp_dir().join(format!("reovim-discover-p2-{}", std::process::id()));
     std::fs::create_dir_all(&dir1).unwrap();
     std::fs::create_dir_all(&dir2).unwrap();
 
@@ -193,10 +181,7 @@ fn find_module_not_found() {
 
 #[test]
 fn find_module_in_temp_dir() {
-    let dir = std::env::temp_dir().join(format!(
-        "reovim-find-test-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("reovim-find-test-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
 
     let filename = library_filename("test-mod");
@@ -211,14 +196,8 @@ fn find_module_in_temp_dir() {
 
 #[test]
 fn find_module_returns_first_match() {
-    let dir1 = std::env::temp_dir().join(format!(
-        "reovim-find-first1-{}",
-        std::process::id()
-    ));
-    let dir2 = std::env::temp_dir().join(format!(
-        "reovim-find-first2-{}",
-        std::process::id()
-    ));
+    let dir1 = std::env::temp_dir().join(format!("reovim-find-first1-{}", std::process::id()));
+    let dir2 = std::env::temp_dir().join(format!("reovim-find-first2-{}", std::process::id()));
     std::fs::create_dir_all(&dir1).unwrap();
     std::fs::create_dir_all(&dir2).unwrap();
 
@@ -249,10 +228,7 @@ fn find_module_empty_search_paths() {
 #[test]
 fn module_name_from_path_linux_style() {
     let path = std::path::Path::new("/usr/lib/reovim/modules/libreovim_module_treesitter_rust.so");
-    assert_eq!(
-        module_name_from_path(path),
-        Some("treesitter-rust".to_string())
-    );
+    assert_eq!(module_name_from_path(path), Some("treesitter-rust".to_string()));
 }
 
 #[test]
@@ -260,10 +236,7 @@ fn module_name_from_path_without_lib_prefix() {
     // On Windows the prefix is "reovim_module_" not "libreovim_module_"
     // Test the no-lib-prefix variant using a plain filename (works on all platforms)
     let path = std::path::Path::new("reovim_module_foo_bar.dll");
-    assert_eq!(
-        module_name_from_path(path),
-        Some("foo-bar".to_string())
-    );
+    assert_eq!(module_name_from_path(path), Some("foo-bar".to_string()));
 }
 
 #[test]
@@ -275,10 +248,7 @@ fn module_name_from_path_non_module_file() {
 #[test]
 fn module_name_from_path_no_extension() {
     let path = std::path::Path::new("/usr/lib/libreovim_module_test");
-    assert_eq!(
-        module_name_from_path(path),
-        Some("test".to_string())
-    );
+    assert_eq!(module_name_from_path(path), Some("test".to_string()));
 }
 
 #[test]

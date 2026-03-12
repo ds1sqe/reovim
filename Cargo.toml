@@ -29,6 +29,7 @@ members = [
     "server/lib/drivers/manifest",
     "server/lib/drivers/module-config",
     "server/lib/drivers/module-loader",
+    "server/lib/drivers/git",
 
     # Server modules
     "server/modules/vim",
@@ -64,7 +65,17 @@ members = [
     "server/modules/range-finder",
     "server/modules/completion",
     "server/modules/lsp-navigation",
+    "server/modules/profiles",
     "server/modules/tetromino",
+    "server/modules/health-check",
+    "server/modules/git",
+    "server/modules/picker-git-branches",
+    "server/modules/picker-git-log",
+    "server/modules/picker-git-status",
+    "server/modules/picker-git-stash",
+    "server/modules/git-signs",
+    "server/modules/git-statusline",
+    "server/modules/git-blame",
 
     # Client layer - TUI
     "clients/tui",
@@ -84,6 +95,7 @@ members = [
     "clients/tui/extensions/signature-help",
     "clients/tui/extensions/diagnostics",
     "clients/tui/extensions/markdown",
+    "clients/tui/extensions/landing",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -203,6 +215,7 @@ reovim-driver-depgraph = { path = "./server/lib/drivers/depgraph", version = "0.
 reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.10.0-dev" }
 reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.10.0-dev" }
 reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.10.0-dev" }
+reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }
@@ -255,7 +268,17 @@ reovim-module-snippet = { path = "./server/modules/snippet", version = "0.10.0-d
 reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.10.0-dev" }
 reovim-module-completion = { path = "./server/modules/completion", version = "0.10.0-dev" }
 reovim-module-lsp-navigation = { path = "./server/modules/lsp-navigation", version = "0.10.0-dev" }
+reovim-module-profiles = { path = "./server/modules/profiles", version = "0.10.0-dev" }
 reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
+reovim-module-health-check = { path = "./server/modules/health-check", version = "0.10.0-dev" }
+reovim-module-git = { path = "./server/modules/git", version = "0.10.0-dev" }
+reovim-picker-git-branches = { path = "./server/modules/picker-git-branches", version = "0.10.0-dev" }
+reovim-picker-git-log = { path = "./server/modules/picker-git-log", version = "0.10.0-dev" }
+reovim-picker-git-status = { path = "./server/modules/picker-git-status", version = "0.10.0-dev" }
+reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version = "0.10.0-dev" }
+reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.10.0-dev" }
+reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.10.0-dev" }
+reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

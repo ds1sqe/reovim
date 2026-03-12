@@ -11,9 +11,7 @@ use std::{
 
 use {
     libloading::{Library, Symbol},
-    reovim_kernel::api::v1::{
-        API_VERSION, Module, ModuleError, ModuleId, Version, is_compatible,
-    },
+    reovim_kernel::api::v1::{API_VERSION, Module, ModuleError, ModuleId, Version, is_compatible},
 };
 
 use super::{
@@ -123,13 +121,13 @@ impl ModuleLoader {
         // the shared library is ABI-compatible.
         unsafe {
             // 1. Load shared library
-            let library =
-                Library::new(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
+            let library = Library::new(path).map_err(|e| ModuleError::LoadFailed(e.to_string()))?;
 
             // 2. Check API version FIRST (static symbol, fast)
-            let api_version: Symbol<&'static Version> = library
-                .get(b"REOVIM_MODULE_API_VERSION")
-                .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
+            let api_version: Symbol<&'static Version> =
+                library
+                    .get(b"REOVIM_MODULE_API_VERSION")
+                    .map_err(|e| ModuleError::NoEntryPoint(e.to_string()))?;
 
             let module_api = **api_version;
 

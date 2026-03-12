@@ -48,16 +48,22 @@ use {
     reovim_module_buffer_simple as buffer_simple, reovim_module_clipboard as clipboard,
     reovim_module_cmdline as cmdline, reovim_module_commands as commands,
     reovim_module_completion as completion, reovim_module_editor as editor,
-    reovim_module_explorer as explorer, reovim_module_keymap as keymap, reovim_module_lsp as lsp,
+    reovim_module_explorer as explorer, reovim_module_git as git,
+    reovim_module_git_blame as git_blame, reovim_module_git_signs as git_signs,
+    reovim_module_git_statusline as git_statusline, reovim_module_health_check as health_check,
+    reovim_module_keymap as keymap, reovim_module_lsp as lsp,
     reovim_module_lsp_navigation as lsp_navigation, reovim_module_microscope as microscope,
     reovim_module_motions as motions, reovim_module_notification as notification,
-    reovim_module_range_finder as range_finder, reovim_module_scratch_buffer as scratch_buffer,
-    reovim_module_search as search, reovim_module_snippet as snippet,
-    reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
+    reovim_module_profiles as profiles, reovim_module_range_finder as range_finder,
+    reovim_module_scratch_buffer as scratch_buffer, reovim_module_search as search,
+    reovim_module_snippet as snippet, reovim_module_tetromino as tetromino,
+    reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
+    reovim_picker_git_branches as picker_git_branches, reovim_picker_git_log as picker_git_log,
+    reovim_picker_git_stash as picker_git_stash, reovim_picker_git_status as picker_git_status,
     reovim_picker_grep as picker_grep, reovim_picker_options as picker_options,
 };
 
@@ -115,6 +121,12 @@ impl DefaultsModule {
             Box::new(editor::EditorModule),
             Box::new(motions::MotionsModule),
             Box::new(vim::VimModule::new()),
+            // Git provider module (#530) - must init before consumers and pickers
+            Box::new(git::GitModule::new()),
+            // Git consumer modules (#530) - after vim and git provider
+            Box::new(git_signs::GitSignsModule::new()),
+            Box::new(git_statusline::GitStatuslineModule::new()),
+            Box::new(git_blame::GitBlameModule::new()),
             // Extension bridge modules (#468, #443)
             Box::new(cmdline::CmdlineModule::new()),
             Box::new(whichkey::WhichKeyModule::new()),
@@ -125,6 +137,11 @@ impl DefaultsModule {
             Box::new(picker_commands::PickerCommandsModule::new()),
             Box::new(picker_grep::PickerGrepModule::new()),
             Box::new(picker_options::PickerOptionsModule::new()),
+            // Git picker data providers (#530)
+            Box::new(picker_git_branches::PickerGitBranchesModule::new()),
+            Box::new(picker_git_log::PickerGitLogModule::new()),
+            Box::new(picker_git_stash::PickerGitStashModule::new()),
+            Box::new(picker_git_status::PickerGitStatusModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
@@ -143,6 +160,10 @@ impl DefaultsModule {
             Box::new(explorer::ExplorerModule::new()),
             // Tetromino game (#537)
             Box::new(tetromino::TetrominoModule::new()),
+            // Configuration profiles (#593)
+            Box::new(profiles::ProfilesModule::new()),
+            // Health-check diagnostic command (#594)
+            Box::new(health_check::HealthCheckModule::new()),
         ]
     }
 
@@ -152,7 +173,8 @@ impl DefaultsModule {
     /// iterates this registry and calls factories for enabled modules only.
     #[must_use]
     pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
-        let mut map: HashMap<&'static str, ModuleFactory> = HashMap::with_capacity(29);
+        let mut map: HashMap<&'static str, ModuleFactory> =
+            HashMap::with_capacity(Self::builtin_order().len());
         // Service modules
         map.insert("undo", || Box::new(undo::UndoModule::new()));
         map.insert("buffer-simple", || Box::new(buffer_simple::BufferSimpleModule::new()));
@@ -167,6 +189,12 @@ impl DefaultsModule {
         map.insert("editor", || Box::new(editor::EditorModule));
         map.insert("motions", || Box::new(motions::MotionsModule));
         map.insert("vim", || Box::new(vim::VimModule::new()));
+        // Git provider (#530) - must init before consumers and pickers
+        map.insert("git", || Box::new(git::GitModule::new()));
+        // Git consumer modules (#530)
+        map.insert("git-signs", || Box::new(git_signs::GitSignsModule::new()));
+        map.insert("git-statusline", || Box::new(git_statusline::GitStatuslineModule::new()));
+        map.insert("git-blame", || Box::new(git_blame::GitBlameModule::new()));
         // Extension bridge modules
         map.insert("cmdline", || Box::new(cmdline::CmdlineModule::new()));
         map.insert("whichkey", || Box::new(whichkey::WhichKeyModule::new()));
@@ -177,6 +205,15 @@ impl DefaultsModule {
         map.insert("picker-commands", || Box::new(picker_commands::PickerCommandsModule::new()));
         map.insert("picker-grep", || Box::new(picker_grep::PickerGrepModule::new()));
         map.insert("picker-options", || Box::new(picker_options::PickerOptionsModule::new()));
+        // Git picker providers (#530)
+        map.insert("picker-git-branches", || {
+            Box::new(picker_git_branches::PickerGitBranchesModule::new())
+        });
+        map.insert("picker-git-log", || Box::new(picker_git_log::PickerGitLogModule::new()));
+        map.insert("picker-git-stash", || Box::new(picker_git_stash::PickerGitStashModule::new()));
+        map.insert("picker-git-status", || {
+            Box::new(picker_git_status::PickerGitStatusModule::new())
+        });
         // Picker orchestration
         map.insert("microscope", || Box::new(microscope::MicroscopeModule::new()));
         // Syntax highlighting modules
@@ -197,6 +234,10 @@ impl DefaultsModule {
         map.insert("explorer", || Box::new(explorer::ExplorerModule::new()));
         // Tetromino game
         map.insert("tetromino", || Box::new(tetromino::TetrominoModule::new()));
+        // Configuration profiles (#593)
+        map.insert("profiles", || Box::new(profiles::ProfilesModule::new()));
+        // Health-check diagnostic command (#594)
+        map.insert("health-check", || Box::new(health_check::HealthCheckModule::new()));
         map
     }
 
@@ -222,6 +263,12 @@ impl DefaultsModule {
             "editor",
             "motions",
             "vim",
+            // Git provider (#530) - must init before consumers and pickers
+            "git",
+            // Git consumer modules (#530) - after vim and git provider
+            "git-signs",
+            "git-statusline",
+            "git-blame",
             // Extension bridge modules
             "cmdline",
             "whichkey",
@@ -232,6 +279,11 @@ impl DefaultsModule {
             "picker-commands",
             "picker-grep",
             "picker-options",
+            // Git picker providers (#530)
+            "picker-git-branches",
+            "picker-git-log",
+            "picker-git-stash",
+            "picker-git-status",
             // Picker orchestration
             "microscope",
             // Syntax highlighting modules
@@ -250,6 +302,10 @@ impl DefaultsModule {
             "explorer",
             // Tetromino game
             "tetromino",
+            // Configuration profiles (#593)
+            "profiles",
+            // Health-check diagnostic command (#594)
+            "health-check",
         ]
     }
 
@@ -295,6 +351,11 @@ impl Module for DefaultsModule {
         // Note: operators merged into vim module (Epic #385)
         // Note: Client-side modules removed (Epic #465 Phase 11)
         vec![
+            // Git provider and consumer modules (#530)
+            ModuleId::new("git"),
+            ModuleId::new("git-signs"),
+            ModuleId::new("git-statusline"),
+            ModuleId::new("git-blame"),
             // Service modules (Epic #417)
             ModuleId::new("undo"),
             ModuleId::new("buffer-simple"),
@@ -319,6 +380,11 @@ impl Module for DefaultsModule {
             ModuleId::new("picker-commands"),
             ModuleId::new("picker-grep"),
             ModuleId::new("picker-options"),
+            // Git picker data providers (#530)
+            ModuleId::new("picker-git-branches"),
+            ModuleId::new("picker-git-log"),
+            ModuleId::new("picker-git-stash"),
+            ModuleId::new("picker-git-status"),
             // Picker orchestration (#522)
             ModuleId::new("microscope"),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
@@ -337,6 +403,10 @@ impl Module for DefaultsModule {
             ModuleId::new("explorer"),
             // Tetromino game (#537)
             ModuleId::new("tetromino"),
+            // Configuration profiles (#593)
+            ModuleId::new("profiles"),
+            // Health-check diagnostic command (#594)
+            ModuleId::new("health-check"),
         ]
     }
 

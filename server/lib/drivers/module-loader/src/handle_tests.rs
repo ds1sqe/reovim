@@ -1,6 +1,4 @@
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-};
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 use super::handle::{InitResult, ModuleHandle};
 
@@ -279,10 +277,7 @@ fn save_state_returns_data() {
     assert!(state.is_some());
     let state = state.unwrap();
     assert_eq!(state.len(), 4);
-    assert_eq!(
-        u32::from_le_bytes([state[0], state[1], state[2], state[3]]),
-        12345
-    );
+    assert_eq!(u32::from_le_bytes([state[0], state[1], state[2], state[3]]), 12345);
 }
 
 #[test]
@@ -300,10 +295,7 @@ fn restore_state_success() {
 
     // Verify by saving
     let saved = handle.save_state().unwrap();
-    assert_eq!(
-        u32::from_le_bytes([saved[0], saved[1], saved[2], saved[3]]),
-        99999
-    );
+    assert_eq!(u32::from_le_bytes([saved[0], saved[1], saved[2], saved[3]]), 99999);
 }
 
 #[test]

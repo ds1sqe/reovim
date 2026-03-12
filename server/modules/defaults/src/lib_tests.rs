@@ -18,11 +18,13 @@ fn test_defaults_module_name() {
 fn test_defaults_has_dependencies() {
     let module = DefaultsModule::new();
     let deps = module.dependencies();
+    // Git provider and consumers (4): git, git-signs, git-statusline, git-blame
     // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
+    // Git picker providers (4): picker-git-branches, picker-git-log, picker-git-stash, picker-git-status
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (2): lsp, lsp-navigation
@@ -31,20 +33,23 @@ fn test_defaults_has_dependencies() {
     // Completion (1): completion
     // Explorer (1): explorer
     // Tetromino (1): tetromino
-    // Total: 29 modules
+    // Profiles (1): profiles
+    // Health-check (1): health-check
+    // Total: 39 modules
     // Note: vim adapter modules removed (#585) — personality manifests handle bridging
-    // Note: picker-options added (#599)
-    assert_eq!(deps.len(), 29);
+    assert_eq!(deps.len(), 39);
 }
 
 #[test]
 fn test_create_modules() {
     let modules = DefaultsModule::create_modules();
+    // Git provider and consumers (4): git, git-signs, git-statusline, git-blame
     // Service modules (6): undo, buffer-simple, search, scratch-buffer, vfs-local, clipboard
     // Utility modules (2): keymap, commands
     // Policy modules (3): editor, motions, vim
     // Extension bridge modules (3): cmdline, whichkey, notification
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
+    // Git picker providers (4): picker-git-branches, picker-git-log, picker-git-stash, picker-git-status
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
     // Code intelligence modules (2): lsp, lsp-navigation
@@ -53,10 +58,11 @@ fn test_create_modules() {
     // Completion (1): completion
     // Explorer (1): explorer
     // Tetromino (1): tetromino
-    // Total: 29 modules
+    // Profiles (1): profiles
+    // Health-check (1): health-check
+    // Total: 39 modules
     // Note: vim adapter modules removed (#585) — personality manifests handle bridging
-    // Note: picker-options added (#599)
-    assert_eq!(modules.len(), 29);
+    assert_eq!(modules.len(), 39);
 }
 
 #[test]
@@ -159,6 +165,22 @@ fn test_dependencies_contain_lsp_module() {
 }
 
 #[test]
+fn test_dependencies_contain_git_modules() {
+    let module = DefaultsModule::new();
+    let deps = module.dependencies();
+    let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
+
+    assert!(dep_strs.contains(&"git"));
+    assert!(dep_strs.contains(&"git-signs"));
+    assert!(dep_strs.contains(&"git-statusline"));
+    assert!(dep_strs.contains(&"git-blame"));
+    assert!(dep_strs.contains(&"picker-git-branches"));
+    assert!(dep_strs.contains(&"picker-git-log"));
+    assert!(dep_strs.contains(&"picker-git-stash"));
+    assert!(dep_strs.contains(&"picker-git-status"));
+}
+
+#[test]
 fn test_create_modules_has_unique_ids() {
     let modules = DefaultsModule::create_modules();
     let ids: Vec<String> = modules
@@ -207,9 +229,9 @@ fn test_init_returns_success() {
 // ============================================================================
 
 #[test]
-fn builtin_registry_has_29_entries() {
+fn builtin_registry_has_39_entries() {
     let registry = DefaultsModule::builtin_registry();
-    assert_eq!(registry.len(), 29);
+    assert_eq!(registry.len(), 39);
 }
 
 #[test]
@@ -222,9 +244,9 @@ fn builtin_registry_keys_match_order() {
 }
 
 #[test]
-fn builtin_order_has_29_entries() {
+fn builtin_order_has_39_entries() {
     let order = DefaultsModule::builtin_order();
-    assert_eq!(order.len(), 29);
+    assert_eq!(order.len(), 39);
 }
 
 #[test]
@@ -265,7 +287,7 @@ fn builtin_registry_factories_produce_correct_ids() {
 #[test]
 fn create_modules_filtered_all_enabled() {
     let modules = DefaultsModule::create_modules_filtered(|_| true);
-    assert_eq!(modules.len(), 29);
+    assert_eq!(modules.len(), 39);
 }
 
 #[test]
@@ -294,7 +316,7 @@ fn create_modules_filtered_preserves_order() {
 #[test]
 fn create_modules_filtered_disable_one() {
     let modules = DefaultsModule::create_modules_filtered(|id| id != "tetromino");
-    assert_eq!(modules.len(), 28);
+    assert_eq!(modules.len(), 38);
     assert!(modules.iter().all(|m| m.id().as_str() != "tetromino"));
 }
 

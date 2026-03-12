@@ -490,11 +490,7 @@ fn initialize_modules(
     // Discover and load external .so modules (#587)
     let external = discover_and_load_externals(config, &builtin_ids);
 
-    tracing::info!(
-        builtin = all_modules.len(),
-        external = external.len(),
-        "Initializing modules"
-    );
+    tracing::info!(builtin = all_modules.len(), external = external.len(), "Initializing modules");
 
     // Save hardcoded order for shadow-mode comparison (reuse builtin_ids)
     let hardcoded_order = builtin_ids;
@@ -643,11 +639,7 @@ fn call_on_all_loaded(
             handle.on_all_loaded(ctx);
         }
     }
-    tracing::info!(
-        builtin = modules.len(),
-        external = ext_ids.len(),
-        "on_all_loaded complete"
-    );
+    tracing::info!(builtin = modules.len(), external = ext_ids.len(), "on_all_loaded complete");
 }
 
 /// Collect extra modules from `REOVIM_EXTRA_MODULES` environment variable.
@@ -702,10 +694,7 @@ fn collect_extra_modules() -> Vec<Box<dyn Module>> {
 /// as warnings but don't prevent other modules from loading.
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[allow(unsafe_code)]
-fn discover_and_load_externals(
-    config: &ModulesConfig,
-    builtin_ids: &[ModuleId],
-) -> ModuleLoader {
+fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId]) -> ModuleLoader {
     let mut loader = ModuleLoader::new();
 
     let discovered = loader.discover();

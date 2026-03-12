@@ -141,9 +141,30 @@ fn yank_path_metadata() {
 }
 
 #[test]
+fn toggle_gitignored_metadata() {
+    let cmd = ToggleGitignored;
+    assert_eq!(cmd.id(), ids::TOGGLE_GITIGNORED);
+    assert!(!cmd.description().is_empty());
+}
+
+#[test]
+fn cut_mark_metadata() {
+    let cmd = CutMark;
+    assert_eq!(cmd.id(), ids::CUT_MARK);
+    assert!(!cmd.description().is_empty());
+}
+
+#[test]
+fn paste_metadata() {
+    let cmd = Paste;
+    assert_eq!(cmd.id(), ids::PASTE);
+    assert!(!cmd.description().is_empty());
+}
+
+#[test]
 fn command_handlers_count() {
     let handlers = command_handlers();
-    assert_eq!(handlers.len(), 20);
+    assert_eq!(handlers.len(), 23);
 }
 
 #[test]
@@ -197,6 +218,9 @@ fn all_default_constructable() {
     let _ = CancelInput::default();
     let _ = InputBackspace::default();
     let _ = YankPath::default();
+    let _ = ToggleGitignored::default();
+    let _ = CutMark::default();
+    let _ = Paste::default();
 }
 
 #[test]
@@ -228,6 +252,7 @@ fn cursor_dir_path_on_file() {
         node_type: NodeType::File { size: 100 },
         depth: 1,
         is_hidden: false,
+        is_gitignored: false,
     };
 
     let nodes: Vec<&FileNode> = vec![&file_node];

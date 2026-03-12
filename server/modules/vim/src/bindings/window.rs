@@ -40,6 +40,11 @@
 //! - `]` - Raise float to front
 //! - `[` - Lower float to back
 //!
+//! # Layer Opacity (./,)
+//!
+//! - `.` - Increase layer opacity by 10%
+//! - `,` - Decrease layer opacity by 10%
+//!
 //! # Tabs (T)
 //!
 //! - `T` - Move current window to new tab
@@ -175,6 +180,17 @@ pub fn bindings() -> Vec<KeybindingRegistration> {
             .with_modes(&["vim:window"])
             .with_category("window")
             .with_description("Lower float to back"),
+        // ====================================================================
+        // Layer Opacity (#400)
+        // ====================================================================
+        KeybindingRegistration::new(".", window_ops::LAYER_OPACITY_INCREASE)
+            .with_modes(&["vim:window"])
+            .with_category("window")
+            .with_description("Increase layer opacity"),
+        KeybindingRegistration::new(",", window_ops::LAYER_OPACITY_DECREASE)
+            .with_modes(&["vim:window"])
+            .with_category("window")
+            .with_description("Decrease layer opacity"),
         // ====================================================================
         // Tabs (#401)
         // ====================================================================

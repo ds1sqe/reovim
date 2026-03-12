@@ -26,6 +26,7 @@ use {
 };
 
 use crate::{
+    ids,
     macros::notation_to_keys,
     modes::VimMode,
     session_state::{PendingCharOp, VimSessionState},
@@ -543,6 +544,20 @@ impl VimNormalResolver {
         }
     }
 
+    /// Check if a command is an insert entry command (#577).
+    ///
+    /// These commands start a change that should be recorded for dot repeat.
+    /// The recording starts here and continues through insert mode until
+    /// `ExitToNormal` finishes it.
+    pub fn is_insert_entry_command(cmd: &reovim_kernel::api::v1::CommandId) -> bool {
+        *cmd == ids::ENTER_INSERT
+            || *cmd == ids::ENTER_INSERT_AFTER
+            || *cmd == ids::ENTER_INSERT_EOL
+            || *cmd == ids::ENTER_INSERT_BOL
+            || *cmd == ids::OPEN_LINE_BELOW
+            || *cmd == ids::OPEN_LINE_ABOVE
+    }
+
     /// Classify an operator entry command and return the target mode.
     ///
     /// Returns the `ModeId` for the dedicated operator mode (DELETE, YANK, CHANGE)
@@ -811,6 +826,9 @@ impl ModeKeyResolver for VimNormalResolver {
                 // This simplifies the flow and eliminates vim.pending_operator.
                 if let Some(target_mode) = Self::classify_operator_mode(&cmd) {
                     self.clear_pending_keys();
+                    // #577: Start recording keys for dot repeat
+                    vim.start_repeat_recording();
+                    vim.record_repeat_key(*key);
                     return ResolveResult::ModeTransition(ModeTransition::Push {
                         mode: target_mode,
                         context: TransitionContext::new(),
@@ -821,6 +839,19 @@ impl ModeKeyResolver for VimNormalResolver {
                 ResolveResult::Pending
             }
             KeyLookupState::ExactOnly(cmd) => {
+                // #577 - Intercept dot repeat and replay recorded keys
+                if cmd == ids::DOT_REPEAT
+                    && let Some(ref lc) = vim.last_change
+                    && !lc.keys.is_empty()
+                {
+                    let replay_keys = lc.keys.clone();
+                    self.clear_pending_keys();
+                    return ResolveResult::InjectKeys {
+                        keys: replay_keys,
+                        exit_macro_playback: false,
+                    };
+                }
+
                 // Epic #385 - Intercept find-char commands
                 // Instead of executing commands that return WaitingForChar,
                 // set pending_char in VimSessionState and return Pending.
@@ -844,10 +875,19 @@ impl ModeKeyResolver for VimNormalResolver {
                 // and pending_register from VimSessionState on its first key press.
                 if let Some(target_mode) = Self::classify_operator_mode(&cmd) {
                     self.clear_pending_keys();
+                    // #577: Start recording keys for dot repeat
+                    vim.start_repeat_recording();
+                    vim.record_repeat_key(*key);
                     return ResolveResult::ModeTransition(ModeTransition::Push {
                         mode: target_mode,
                         context: TransitionContext::new(),
                     });
+                }
+
+                // #577: Start recording on insert entry commands
+                if Self::is_insert_entry_command(&cmd) {
+                    vim.start_repeat_recording();
+                    vim.record_repeat_key(*key);
                 }
 
                 // Execute with context containing count and register
@@ -873,6 +913,10 @@ impl ModeKeyResolver for VimNormalResolver {
 
     fn inherits_from(&self) -> Option<&ModeId> {
         None
+    }
+
+    fn pending_keys(&self) -> KeySequence {
+        self.get_pending_keys()
     }
 
     fn reset(&mut self) {

@@ -43,3 +43,7 @@ mod lockfile_tests;
 #[cfg(test)]
 #[path = "registry_tests.rs"]
 mod registry_tests;
+
+#[cfg(all(test, feature = "hot-reload"))]
+#[path = "hot_reload_tests.rs"]
+mod hot_reload_tests;

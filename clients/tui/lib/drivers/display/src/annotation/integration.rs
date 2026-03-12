@@ -19,7 +19,7 @@
 //! let cells = renderer.render(buffer_id, 0..24, &context);
 //! ```
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use reovim_kernel::api::v1::{BufferId, MultiServiceRegistry, ServiceKey};
 
@@ -99,12 +99,12 @@ pub type GutterRendererRegistry = MultiServiceRegistry<GutterRendererKey, Gutter
 /// The renderer is `Send + Sync` and can be shared across threads.
 /// Internal mutation is handled through interior mutability.
 pub struct GutterRenderer {
-    /// Registered annotation sources.
-    sources: Vec<Arc<dyn AnnotationSource>>,
-    /// Presenter registry for rendering.
-    presenters: PresenterRegistry,
+    /// Registered annotation sources (interior mutability for multi-module registration).
+    sources: RwLock<Vec<Arc<dyn AnnotationSource>>>,
+    /// Presenter registry for rendering (interior mutability for multi-module registration).
+    presenters: RwLock<PresenterRegistry>,
     /// Gutter configuration.
-    config: GutterConfig,
+    config: RwLock<GutterConfig>,
 }
 
 impl GutterRenderer {
@@ -112,9 +112,9 @@ impl GutterRenderer {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            sources: Vec::new(),
-            presenters: PresenterRegistry::new(),
-            config: GutterConfig::default_line_numbers(),
+            sources: RwLock::new(Vec::new()),
+            presenters: RwLock::new(PresenterRegistry::new()),
+            config: RwLock::new(GutterConfig::default_line_numbers()),
         }
     }
 
@@ -122,31 +122,59 @@ impl GutterRenderer {
     #[must_use]
     pub fn with_config(config: GutterConfig) -> Self {
         Self {
-            sources: Vec::new(),
-            presenters: PresenterRegistry::new(),
-            config,
+            sources: RwLock::new(Vec::new()),
+            presenters: RwLock::new(PresenterRegistry::new()),
+            config: RwLock::new(config),
         }
     }
 
     /// Register an annotation source.
-    pub fn register_source(&mut self, source: Arc<dyn AnnotationSource>) {
-        self.sources.push(source);
+    ///
+    /// Uses interior mutability so sources can be added after the renderer
+    /// is stored in a `ServiceRegistry` as `Arc<GutterRenderer>`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
+    pub fn register_source(&self, source: Arc<dyn AnnotationSource>) {
+        self.sources
+            .write()
+            .expect("sources lock poisoned")
+            .push(source);
     }
 
     /// Register a presenter.
-    pub fn register_presenter(&mut self, presenter: Arc<dyn AnnotationPresenter>) {
-        self.presenters.register(presenter);
+    ///
+    /// Uses interior mutability so presenters can be added after the renderer
+    /// is stored in a `ServiceRegistry` as `Arc<GutterRenderer>`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
+    pub fn register_presenter(&self, presenter: Arc<dyn AnnotationPresenter>) {
+        self.presenters
+            .write()
+            .expect("presenters lock poisoned")
+            .register(presenter);
     }
 
     /// Set the gutter configuration.
-    pub fn set_config(&mut self, config: GutterConfig) {
-        self.config = config;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
+    pub fn set_config(&self, config: GutterConfig) {
+        *self.config.write().expect("config lock poisoned") = config;
     }
 
-    /// Get the current configuration.
+    /// Get a clone of the current configuration.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
-    pub const fn config(&self) -> &GutterConfig {
-        &self.config
+    pub fn config(&self) -> GutterConfig {
+        self.config.read().expect("config lock poisoned").clone()
     }
 
     /// Render gutter for a range of lines.
@@ -160,6 +188,10 @@ impl GutterRenderer {
     /// # Returns
     ///
     /// A vector of composed lines, one per line in the range.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any internal lock is poisoned.
     #[must_use]
     pub fn render(
         &self,
@@ -167,21 +199,23 @@ impl GutterRenderer {
         range: std::ops::Range<usize>,
         context: &AnnotationContext,
     ) -> Vec<ComposedLine> {
+        let sources = self.sources.read().expect("sources lock poisoned");
+
         // Collect annotations from all sources
         let mut store = AnnotationStore::new();
-        for source in &self.sources {
+        for source in sources.iter() {
             let annotations = source.annotations(buffer_id, range.clone(), context);
             store.replace_source(SourceId::new(source.id()), annotations);
         }
+        drop(sources);
 
-        // Create composer
-        let composer = GutterComposer::new(&store, &self.presenters, &self.config);
-
-        // Build presenter context
+        let presenters = self.presenters.read().expect("presenters lock poisoned");
+        let config = self.config.read().expect("config lock poisoned");
+        let composer = GutterComposer::new(&store, &presenters, &config);
         let presenter_ctx = PresenterContext::new(context.total_lines, context.cursor_line, false);
-
-        // Compose gutter for range
-        composer.compose_range(range.start, range.end, &presenter_ctx)
+        let result = composer.compose_range(range.start, range.end, &presenter_ctx);
+        drop(presenters);
+        result
     }
 
     /// Calculate the total gutter width.
@@ -189,31 +223,54 @@ impl GutterRenderer {
     /// # Arguments
     ///
     /// * `context` - Context with total lines (for line number width calculation)
+    ///
+    /// # Panics
+    ///
+    /// Panics if any internal lock is poisoned.
     #[must_use]
     pub fn total_width(&self, context: &AnnotationContext) -> usize {
-        // Create empty store just to get width
+        let presenters = self.presenters.read().expect("presenters lock poisoned");
+        let config = self.config.read().expect("config lock poisoned");
         let store = AnnotationStore::new();
-        let composer = GutterComposer::new(&store, &self.presenters, &self.config);
+        let composer = GutterComposer::new(&store, &presenters, &config);
         let presenter_ctx = PresenterContext::new(context.total_lines, context.cursor_line, false);
-        composer.total_width(&presenter_ctx)
+        let result = composer.total_width(&presenter_ctx);
+        drop(presenters);
+        result
     }
 
     /// Check if any sources have annotations for the buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn has_annotations(&self, buffer_id: BufferId) -> bool {
-        self.sources.iter().any(|s| s.has_annotations(buffer_id))
+        let sources = self.sources.read().expect("sources lock poisoned");
+        sources.iter().any(|s| s.has_annotations(buffer_id))
     }
 
     /// Get the number of registered sources.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn source_count(&self) -> usize {
-        self.sources.len()
+        self.sources.read().expect("sources lock poisoned").len()
     }
 
     /// Get the number of registered presenters.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal lock is poisoned.
     #[must_use]
     pub fn presenter_count(&self) -> usize {
-        self.presenters.len()
+        self.presenters
+            .read()
+            .expect("presenters lock poisoned")
+            .len()
     }
 }
 

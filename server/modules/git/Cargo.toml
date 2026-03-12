@@ -1,0 +1,25 @@
+[package]
+name = "reovim-module-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Git provider module for reovim — subprocess-based git access"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = []
+dynamic = []
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-git = { workspace = true }
+reovim-module-macros = { workspace = true }

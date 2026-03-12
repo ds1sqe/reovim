@@ -46,6 +46,8 @@ fn snapshot_active_defaults() {
     assert_eq!(snap["inputMode"], "none");
     assert_eq!(snap["inputBuffer"], "");
     assert_eq!(snap["showHidden"], false);
+    assert_eq!(snap["showGitignored"], false);
+    assert!(snap.get("cutPath").is_none());
     assert!(snap["nodes"].as_array().unwrap().is_empty());
     assert!(snap.get("message").is_none());
 }
@@ -248,6 +250,7 @@ fn snapshot_with_symlink_node() {
             },
             depth: 1,
             is_hidden: false,
+            is_gitignored: false,
         });
     }
 
@@ -260,6 +263,30 @@ fn snapshot_with_symlink_node() {
     let symlink_node = nodes.iter().find(|n| n["name"] == "link").unwrap();
     assert!(symlink_node["isSymlink"].as_bool().unwrap());
     assert!(!symlink_node["isDir"].as_bool().unwrap());
+}
+
+#[test]
+fn snapshot_with_cut_path() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<ExplorerState>();
+    state.active = true;
+    state.root_path = PathBuf::from("/root");
+    state.cut_path = Some(PathBuf::from("/root/file.rs"));
+
+    let snap = ExplorerBridge.snapshot(&map).unwrap();
+    assert_eq!(snap["cutPath"], "/root/file.rs");
+}
+
+#[test]
+fn snapshot_show_gitignored() {
+    let mut map = ExtensionMap::new();
+    let state = map.get_or_insert::<ExplorerState>();
+    state.active = true;
+    state.root_path = PathBuf::from("/root");
+    state.show_gitignored = true;
+
+    let snap = ExplorerBridge.snapshot(&map).unwrap();
+    assert_eq!(snap["showGitignored"], true);
 }
 
 #[test]

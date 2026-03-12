@@ -6,6 +6,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Dynamic .so module loading with search paths and lock file (#587)**: New
+  `reovim-driver-module-loader` crate provides safe dynamic loading of server modules from
+  `.so` files. Search paths follow XDG conventions. Lock file prevents concurrent loading.
+  Hot-reload support via file watcher with debounce. Integration with module-config for
+  filtering. Full test coverage including error paths.
+
 - **User module enable/disable and settings configuration (#586)**: New
   `reovim-driver-module-config` crate provides TOML parsing for
   `~/.config/reovim/modules.toml`. Controls which server modules and TUI extensions are loaded.
@@ -50,6 +56,37 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   modules. `TrackedModule` with `ModuleState` FSM tracks init state. Shadow-mode logging
   compares relative ordering of dependent pairs during transition.
 
+- **Dot repeat command (#577)**: Implement the `.` (dot) command for replaying operator
+  changes. Records the actual key sequence during operator+motion and operator+insert
+  operations (e.g., `dw`, `dd`, `cwbar<Esc>`, `ccnew<Esc>`), then replays via `InjectKeys`
+  on `.` press. Supports delete operators (`dw..`, `dd..`), change+insert operators
+  (`cwbar<Esc>w.w.`, `ccnew<Esc>j.`), and standalone insert (`ihello<Esc>.`). Also fixes
+  `cw` at end of buffer incorrectly deleting only the first character of the last word.
+
+- **Configuration profiles module (#593)**: New `reovim-module-profiles` crate implementing
+  `:profile-save`, `:profile-load`, `:profile-list` commands for named option snapshots.
+  Profiles are stored as versioned TOML files with explicit type tags. Save captures
+  non-default option overrides from the registry; load applies them with warnings for
+  unknown/invalid options. Includes profile name validation (alphanumeric + hyphen/underscore,
+  max 64 chars) and VFS-based I/O for testability. Integrated into the defaults module bundle.
+
+- **Git provider architecture (#530)**: Shared provider pattern for cross-cutting
+  git services. Phase A: `reovim-driver-git` crate defines `GitProvider` trait (7 methods:
+  `current_branch`, `branches`, `status`, `log`, `stash_list`, `diff_hunks`, `blame`) with
+  typed data structs and `GitProviderStore` for `ServiceRegistry` integration.
+  `reovim-module-git` provides `SubprocessGitProvider` implementation via `git` CLI.
+  Phase B: 4 picker modules consuming `GitProvider` -- `picker-git-branches` (static,
+  lists branches with current marker), `picker-git-log` (dynamic, query-filters commits),
+  `picker-git-status` (static, opens changed files), `picker-git-stash` (static, lists
+  stash entries). Phase C: 3 consumer modules -- `git-signs` (gutter annotations for
+  add/change/delete diff hunks), `git-statusline` (branch name statusline component),
+  `git-blame` (on-demand blame annotations with toggle and per-path caching).
+  `GutterRenderer` changed to interior mutability (`RwLock`) for multi-module registration.
+  `AnnotationContext` extended with `file_path` for git-aware sources.
+  Phase D: `CachedGitProvider` TTL-based caching wrapper (2s default) for
+  `current_branch`, `status`, `diff_hunks`, and `blame`; pass-through for `branches`,
+  `log`, `stash_list`.
+
 - **`:set` ex-command (#572)**: Implement `:set` with vim-style syntax — `:set option`,
   `:set nooption`, `:set option!` (toggle), `:set option?` (query), `:set option=value`,
   `:set option&` (reset), `:set all`, `:set` (list changed). Supports short aliases,
@@ -73,6 +110,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   description, and available choices. Also fixes: command picker now shows qualified names with
   module prefix (e.g., `editor:save` instead of `save`), and preview panel now refreshes on
   navigation for all pickers.
+
+- **Health-check diagnostic command (#594)**: New `:checkhealth` ex-command that opens a
+  read-only scratch buffer with system diagnostics. Reports: reovim/API version and platform,
+  registered LSP providers with active status, syntax highlighting factories, clipboard
+  availability, and option registry state. Gracefully handles missing services. Part of
+  Editor Customization Epic (#527).
+
+- **Startup landing screen (#595)**: New TUI and web client extension that displays a centered
+  overlay with ASCII art logo, version info, and quick-action hints on startup. Dismissed on
+  any user interaction (cursor move, mode change, or buffer update). 16 unit tests. Part of
+  Editor Customization Epic (#527).
 
 ### Changed
 
@@ -115,6 +163,30 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (cross-PR reuse). Replace `apt-get install protobuf-compiler` with
   `arduino/setup-protoc@v3`. Merge fmt into lint job, split MSRV to non-blocking
   parallel job checking key crates only (`reovim-app`, `reovim-kernel`, `reovim-server`).
+
+- **CI pipeline parallelism (#588)**: Remove lint gate from build jobs so builds
+  start immediately in parallel with lint (~70s critical path savings). Merge
+  doc-tests into stable-checks job (shares MSRV toolchain, saves one runner).
+  Extract `setup-coverage` composite action for DRY nightly+llvm-cov+protoc setup
+  across 5 coverage jobs. Test jobs still require lint to pass before running.
+
+- **CI test speed optimization (#588)**: Shard MC/DC unit tests across 2 runners
+  using nextest `--partition count:N/2`, reducing critical path by ~40s. Add
+  `.config/nextest.toml` with default and CI profiles (slow-timeout, fail-fast).
+  Split monolithic test+report steps for timing visibility. Set
+  `CARGO_PROFILE_DEV_DEBUG=line-tables-only` in CI for faster builds and smaller
+  cache.
+
+- **Enable notification integration tests (#578)**: Remove `#[ignore]` from 4
+  notification E2E tests in `reovim-server`. Tests verify server connectivity,
+  mode changes, buffer modification, and cursor movement via gRPC. CI already
+  builds the server binary in `build-server` step so tests run automatically.
+
+- **Mock clipboard provider (#576)**: Add `MockClipboardProvider` to
+  `reovim-driver-clipboard` for headless CI testing. In-memory `ClipboardProvider`
+  implementation using `RwLock<String>` that works without a display server.
+  8 new driver tests, 5 new module-level mock tests. Display-dependent tests
+  (1 unit, 6 integration) remain `#[ignore]` with tracking reference.
 
 - **OptionSpec ownership tracking (#571)**: Add `owner: Option<ModuleId>` field to
   `OptionSpec` with `.with_owner()` builder, mirroring the `CommandId` ownership pattern.

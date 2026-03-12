@@ -37,7 +37,6 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();
@@ -167,15 +166,20 @@ impl CommandHandler for ExitToNormal {
             }
         }
 
-        // Record insert mode text for dot repeat (Epic #465)
-        // Only record if there was actual text inserted
+        // Record insert mode text for dot repeat (Epic #465, #577)
         if let Some(vim) = runtime.ext_mut::<crate::VimSessionState>().into() {
             let insert_text = std::mem::take(&mut vim.insert_buffer);
-            if !insert_text.is_empty() {
+            if vim.recording_repeat {
+                // #577: Operator-initiated insert (e.g., cwbar<Esc>) —
+                // don't overwrite last_change (operator set it), just finish recording
+                vim.finish_repeat_recording();
+            } else if !insert_text.is_empty() {
+                // Standalone insert (e.g., ihello<Esc>) — record as Insert change
                 vim.last_change = Some(crate::session_state::LastChange {
                     change_type: crate::session_state::ChangeType::Insert { text: insert_text },
                     count: None,
                     register: None,
+                    keys: Vec::new(),
                 });
             }
         }

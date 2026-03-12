@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-};
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 use super::loader::ModuleLoader;
 

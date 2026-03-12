@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn test_create_extensions_count() {
     let exts = create_extensions();
-    assert_eq!(exts.len(), 13);
+    assert_eq!(exts.len(), 14);
 }
 
 #[test]
@@ -25,6 +25,7 @@ fn test_extension_kinds() {
     assert!(kinds.contains(&"signature-help"));
     assert!(kinds.contains(&"diagnostics"));
     assert!(kinds.contains(&"markdown"));
+    assert!(kinds.contains(&"landing"));
 }
 
 #[test]
@@ -32,7 +33,8 @@ fn test_all_extensions_initially_inactive() {
     let exts = create_extensions();
     for ext in &exts {
         // Markdown is always active (lightweight, no-op when no tables)
-        if ext.kind() == "markdown" {
+        // Landing starts active (dismissed on first interaction)
+        if ext.kind() == "markdown" || ext.kind() == "landing" {
             assert!(ext.is_active());
             continue;
         }
@@ -55,16 +57,16 @@ fn test_extension_dispatch() {
 
     // With the default 500ms show-delay, whichkey is not yet visible
     // (server_active=true but visible=false until tick() after delay)
-    // Markdown is always active (lightweight), so count = 1
+    // Markdown is always active (lightweight), landing starts active = 2
     let active_count = exts.iter().filter(|e| e.is_active()).count();
-    assert_eq!(active_count, 1);
+    assert_eq!(active_count, 2);
 }
 
 #[test]
 fn test_create_extensions_sorted_by_depgraph() {
     // All current extensions have empty deps, so order is valid (no panic)
     let exts = create_extensions();
-    assert_eq!(exts.len(), 13);
+    assert_eq!(exts.len(), 14);
 }
 
 #[test]
@@ -185,14 +187,14 @@ fn test_validate_extensions_empty() {
 #[test]
 fn test_create_extensions_filtered_empty_set_returns_all() {
     let exts = create_extensions_filtered(&HashSet::new());
-    assert_eq!(exts.len(), 13);
+    assert_eq!(exts.len(), 14);
 }
 
 #[test]
 fn test_create_extensions_filtered_disable_one() {
     let disabled: HashSet<String> = ["polyblocks".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 12);
+    assert_eq!(exts.len(), 13);
     assert!(exts.iter().all(|e| e.kind() != "polyblocks"));
 }
 
@@ -205,7 +207,7 @@ fn test_create_extensions_filtered_disable_multiple() {
     ]
     .into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 10);
+    assert_eq!(exts.len(), 11);
     for ext in &exts {
         assert!(!disabled.contains(ext.kind()));
     }
@@ -215,7 +217,7 @@ fn test_create_extensions_filtered_disable_multiple() {
 fn test_create_extensions_filtered_unknown_kinds_ignored() {
     let disabled: HashSet<String> = ["nonexistent".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 13);
+    assert_eq!(exts.len(), 14);
 }
 
 #[test]

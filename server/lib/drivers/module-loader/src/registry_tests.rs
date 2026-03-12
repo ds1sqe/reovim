@@ -132,14 +132,8 @@ fn init_all_sets_running_state() {
     let ctx = ModuleContext::default();
     registry.init_all(&ctx).unwrap();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("a")),
-        Some(ModuleState::Running)
-    );
-    assert_eq!(
-        registry.state(&ModuleId::new("b")),
-        Some(ModuleState::Running)
-    );
+    assert_eq!(registry.state(&ModuleId::new("a")), Some(ModuleState::Running));
+    assert_eq!(registry.state(&ModuleId::new("b")), Some(ModuleState::Running));
 }
 
 #[test]
@@ -174,10 +168,7 @@ fn init_all_handles_failed_module() {
     let ctx = ModuleContext::default();
     registry.init_all(&ctx).unwrap();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("good")),
-        Some(ModuleState::Running)
-    );
+    assert_eq!(registry.state(&ModuleId::new("good")), Some(ModuleState::Running));
     assert!(matches!(
         registry.state(&ModuleId::new("fail-module")),
         Some(ModuleState::Failed(_))
@@ -225,10 +216,7 @@ fn deferred_probing_retries() {
     let ctx = ModuleContext::default();
     registry.init_all(&ctx).unwrap();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("deferring")),
-        Some(ModuleState::Running)
-    );
+    assert_eq!(registry.state(&ModuleId::new("deferring")), Some(ModuleState::Running));
     // init called twice: first deferred, second succeeded
     assert_eq!(INIT_COUNT.load(Ordering::SeqCst), 2);
 }
@@ -335,14 +323,8 @@ fn shutdown_transitions_to_loaded() {
 
     registry.shutdown();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("a")),
-        Some(ModuleState::Loaded)
-    );
-    assert_eq!(
-        registry.state(&ModuleId::new("b")),
-        Some(ModuleState::Loaded)
-    );
+    assert_eq!(registry.state(&ModuleId::new("a")), Some(ModuleState::Loaded));
+    assert_eq!(registry.state(&ModuleId::new("b")), Some(ModuleState::Loaded));
 }
 
 // ============================================================================

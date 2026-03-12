@@ -130,6 +130,11 @@ impl ModeKeyResolver for VimInsertResolver {
         _shared_extensions: &mut ExtensionMap,
         client_extensions: &mut ExtensionMap,
     ) -> ResolveResult {
+        // #577: Record key for dot repeat (before any early returns)
+        if let Some(vim) = client_extensions.get_mut::<VimSessionState>() {
+            vim.record_repeat_key(*key);
+        }
+
         // Check for insertable character first
         if let Some(c) = Self::is_insertable(key) {
             // Track inserted character for dot repeat (Epic #465)

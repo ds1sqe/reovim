@@ -22,6 +22,7 @@ reovim-driver-input = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-module-macros = { workspace = true }
 reovim-extension-kinds = { workspace = true }
+ignore = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

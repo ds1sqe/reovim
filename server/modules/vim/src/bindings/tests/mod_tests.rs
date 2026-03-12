@@ -103,7 +103,7 @@ fn test_commandline_bindings_count() {
 #[test]
 fn test_window_bindings_count() {
     let bindings = window::bindings();
-    assert_eq!(bindings.len(), 27, "Window mode should have 27 bindings");
+    assert_eq!(bindings.len(), 29, "Window mode should have 29 bindings");
 }
 
 #[test]

@@ -3,9 +3,7 @@
 //! This module is compiled as a `cdylib` and loaded by the module-loader
 //! integration tests to exercise the full FFI load-probe-init-exit cycle.
 
-use reovim_kernel::api::v1::{
-    ModuleContext, ModuleError, ModuleId, Module, ProbeResult, Version,
-};
+use reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version};
 
 /// A minimal test module for dynamic loading.
 pub struct TestDynamicModule {

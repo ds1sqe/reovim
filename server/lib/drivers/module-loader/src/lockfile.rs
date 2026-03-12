@@ -171,9 +171,7 @@ impl ModulesLock {
                 ModuleSource::Builtin
             };
 
-            let sha256 = path
-                .as_ref()
-                .and_then(|p| sha256_file(p).ok());
+            let sha256 = path.as_ref().and_then(|p| sha256_file(p).ok());
 
             let path_str = path.map(|p| p.display().to_string());
 

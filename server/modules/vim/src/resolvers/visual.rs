@@ -364,6 +364,10 @@ impl ModeKeyResolver for VimVisualResolver {
         Some(&self.parent_mode_id)
     }
 
+    fn pending_keys(&self) -> KeySequence {
+        self.state.read().expect("lock poisoned").keys()
+    }
+
     fn reset(&mut self) {
         self.state.write().expect("lock poisoned").reset();
     }

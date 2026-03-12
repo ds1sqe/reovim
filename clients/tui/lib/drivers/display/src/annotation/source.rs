@@ -61,7 +61,7 @@ use {
     super::types::{Annotation, AnnotationKind},
     crate::window_renderer::LineNumberMode,
     reovim_kernel::api::v1::BufferId,
-    std::ops::Range,
+    std::{ops::Range, path::PathBuf},
 };
 
 /// Context available to annotation sources when generating annotations.
@@ -95,6 +95,12 @@ pub struct AnnotationContext {
     /// When `Some`, sources should use this mode for line number display.
     /// When `None`, sources use their default/stored mode.
     pub line_number_mode: Option<LineNumberMode>,
+
+    /// File path associated with the buffer, if known.
+    ///
+    /// Used by sources that need filesystem context (e.g., git signs,
+    /// git blame) to map buffer content to file-level operations.
+    pub file_path: Option<PathBuf>,
 }
 
 impl AnnotationContext {
@@ -106,6 +112,7 @@ impl AnnotationContext {
             cursor_line,
             mode: mode.into(),
             line_number_mode: None,
+            file_path: None,
         }
     }
 
@@ -122,6 +129,7 @@ impl AnnotationContext {
             cursor_line,
             mode: mode.into(),
             line_number_mode: Some(line_number_mode),
+            file_path: None,
         }
     }
 
@@ -136,6 +144,7 @@ impl AnnotationContext {
             cursor_line: 0,
             mode: String::new(),
             line_number_mode: None,
+            file_path: None,
         }
     }
 

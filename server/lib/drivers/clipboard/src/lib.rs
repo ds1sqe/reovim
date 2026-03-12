@@ -47,10 +47,11 @@
 
 mod error;
 mod key;
+mod mock;
 mod provider;
 mod registry;
 
 pub use {
-    error::ClipboardError, key::ClipboardKey, provider::ClipboardProvider,
-    registry::ClipboardProviderRegistry,
+    error::ClipboardError, key::ClipboardKey, mock::MockClipboardProvider,
+    provider::ClipboardProvider, registry::ClipboardProviderRegistry,
 };

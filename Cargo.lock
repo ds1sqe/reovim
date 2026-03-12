@@ -2208,6 +2208,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-input"
 version = "0.10.0-dev"
 dependencies = [
@@ -2486,6 +2493,11 @@ dependencies = [
  "reovim-module-completion",
  "reovim-module-editor",
  "reovim-module-explorer",
+ "reovim-module-git",
+ "reovim-module-git-blame",
+ "reovim-module-git-signs",
+ "reovim-module-git-statusline",
+ "reovim-module-health-check",
  "reovim-module-keymap",
  "reovim-module-lsp",
  "reovim-module-lsp-navigation",
@@ -2493,6 +2505,7 @@ dependencies = [
  "reovim-module-microscope",
  "reovim-module-motions",
  "reovim-module-notification",
+ "reovim-module-profiles",
  "reovim-module-range-finder",
  "reovim-module-scratch-buffer",
  "reovim-module-search",
@@ -2507,6 +2520,10 @@ dependencies = [
  "reovim-picker-buffers",
  "reovim-picker-commands",
  "reovim-picker-files",
+ "reovim-picker-git-branches",
+ "reovim-picker-git-log",
+ "reovim-picker-git-stash",
+ "reovim-picker-git-status",
  "reovim-picker-grep",
  "reovim-picker-options",
 ]
@@ -2530,6 +2547,7 @@ dependencies = [
 name = "reovim-module-explorer"
 version = "0.10.0-dev"
 dependencies = [
+ "ignore",
  "reovim-bench-utils",
  "reovim-driver-command",
  "reovim-driver-command-types",
@@ -2544,6 +2562,59 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+]
+
+[[package]]
+name = "reovim-module-git"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-git-blame"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-git-signs"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-git-statusline"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-git",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-health-check"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-clipboard",
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-lsp",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2647,6 +2718,21 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-module-profiles"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-session",
+ "reovim-driver-vfs",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde",
+ "toml 0.8.23",
+ "tracing",
 ]
 
 [[package]]
@@ -2870,6 +2956,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-picker-git-branches"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-log"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-stash"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-picker-git-status"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-git",
+ "reovim-driver-picker",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+]
+
+[[package]]
 name = "reovim-picker-grep"
 version = "0.10.0-dev"
 dependencies = [
@@ -2995,6 +3122,7 @@ dependencies = [
  "reovim-tui-ext-diagnostics",
  "reovim-tui-ext-explorer",
  "reovim-tui-ext-hover",
+ "reovim-tui-ext-landing",
  "reovim-tui-ext-markdown",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
@@ -3035,6 +3163,14 @@ dependencies = [
  "reovim-extension-kinds",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-landing"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
 ]
 
 [[package]]

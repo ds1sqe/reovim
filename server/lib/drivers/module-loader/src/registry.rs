@@ -156,9 +156,8 @@ impl ModuleRegistry {
             })
             .collect();
 
-        let dep_order = resolve_dependencies(&entries).map_err(|e| {
-            ModuleError::InitFailed(format!("dependency resolution failed: {e:?}"))
-        })?;
+        let dep_order = resolve_dependencies(&entries)
+            .map_err(|e| ModuleError::InitFailed(format!("dependency resolution failed: {e:?}")))?;
 
         inner.init_order = dep_order.order;
         inner.dependents = dep_order.dependents;
@@ -211,9 +210,7 @@ impl ModuleRegistry {
             tracing::error!(module = %id, passes = MAX_DEFER_PASSES, "permanently deferred");
             inner.states.insert(
                 id,
-                ModuleState::Failed(format!(
-                    "deferred after {MAX_DEFER_PASSES} retry passes"
-                )),
+                ModuleState::Failed(format!("deferred after {MAX_DEFER_PASSES} retry passes")),
             );
         }
 
@@ -344,7 +341,11 @@ impl ModuleRegistry {
     /// - Module is static (cannot reload)
     /// - Module path is unknown
     /// - Reload fails
-    #[allow(unsafe_code, clippy::missing_panics_doc, clippy::significant_drop_tightening)]
+    #[allow(
+        unsafe_code,
+        clippy::missing_panics_doc,
+        clippy::significant_drop_tightening
+    )]
     pub unsafe fn reload_atomic(
         &self,
         id: &ModuleId,
@@ -433,9 +434,7 @@ impl ModuleRegistry {
             }
             Ok(InitResult::Defer(reason)) => {
                 tracing::warn!(module = %new_id, reason = %reason, "hot reload deferred");
-                Err(ModuleError::InitFailed(format!(
-                    "module deferred after reload: {reason}"
-                )))
+                Err(ModuleError::InitFailed(format!("module deferred after reload: {reason}")))
             }
             Err(e) => {
                 tracing::error!(module = %new_id, error = %e, "hot reload init failed");

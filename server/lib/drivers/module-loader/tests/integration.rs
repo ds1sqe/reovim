@@ -14,13 +14,15 @@
 
 use std::path::PathBuf;
 
-use reovim_driver_module_loader::{
-    loader::ModuleLoader,
-    lockfile::{ModulesLock, ModuleSource},
-    registry::ModuleRegistry,
-};
-use reovim_kernel::api::v1::{
-    Module, ModuleContext, ModuleError, ModuleId, ModuleState, ProbeResult, Version,
+use {
+    reovim_driver_module_loader::{
+        loader::ModuleLoader,
+        lockfile::{ModuleSource, ModulesLock},
+        registry::ModuleRegistry,
+    },
+    reovim_kernel::api::v1::{
+        Module, ModuleContext, ModuleError, ModuleId, ModuleState, ProbeResult, Version,
+    },
 };
 
 /// Locate the test module `.so` in `target/debug/`.
@@ -215,14 +217,8 @@ fn test_mixed_static_dynamic() {
     let ctx = ModuleContext::default();
     registry.init_all(&ctx).unwrap();
 
-    assert_eq!(
-        registry.state(&ModuleId::new("static-mod")),
-        Some(ModuleState::Running)
-    );
-    assert_eq!(
-        registry.state(&ModuleId::new("test-dynamic")),
-        Some(ModuleState::Running)
-    );
+    assert_eq!(registry.state(&ModuleId::new("static-mod")), Some(ModuleState::Running));
+    assert_eq!(registry.state(&ModuleId::new("test-dynamic")), Some(ModuleState::Running));
     assert_eq!(registry.len(), 2);
 }
 
