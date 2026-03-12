@@ -1,16 +1,16 @@
 //! Enhanced find-char command with multi-match jump labels.
 //!
-//! Overrides vim's `EXECUTE_FIND_CHAR` command when this adapter is loaded.
+//! Overrides vim's `EXECUTE_FIND_CHAR` command when loaded.
 //! When multiple matches exist for f/F/t/T on a line (and count == 1),
 //! activates jump labels via `JumpSessionState` instead of jumping to the
 //! first match.
 //!
 //! # Architecture
 //!
-//! This command lives in the vim-range-finder adapter because it couples
-//! vim's motion semantics with range-finder's jump state machine.
-//! Neither module knows about the other — this adapter is the sole
-//! coupling point.
+//! This command lives in range-finder because it couples vim's motion
+//! semantics with range-finder's jump state machine (`JumpSessionState`).
+//! It is registered during `RangeFinderModule::init()` when a personality
+//! manifest provides mode bridges.
 //!
 //! ```text
 //! VimNormalResolver → Execute(EXECUTE_FIND_CHAR, ctx)
@@ -25,6 +25,11 @@
 //! ```
 
 use {
+    crate::jump::{
+        ids as jump_ids,
+        search::{JumpMatch, generate_labels},
+        state::JumpSessionState,
+    },
     reovim_driver_command::{
         ArgValue, Command, CommandContext, CommandHandler, CommandPriority, CommandResult,
     },
@@ -32,11 +37,6 @@ use {
         ExtensionApi, ModeApi, SessionRuntime, TransitionContext, api::ChangeTracker,
     },
     reovim_kernel::api::v1::{CommandId, Cursor, ModuleId, Motion, MotionEngine, Position},
-    reovim_module_range_finder::jump::{
-        ids as jump_ids,
-        search::{JumpMatch, generate_labels},
-        state::JumpSessionState,
-    },
 };
 
 /// Vim module's command ID for find-char execution.

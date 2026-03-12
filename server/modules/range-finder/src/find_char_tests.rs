@@ -294,7 +294,7 @@ fn test_execute_multi_match_label_selection_moves_cursor() {
     });
 
     // Execute jump
-    let exec_cmd = reovim_module_range_finder::jump::command::JumpExecuteCommand;
+    let exec_cmd = crate::jump::command::JumpExecuteCommand;
     let exec_args = CommandContext::new();
     harness.with_runtime(|rt| exec_cmd.execute(rt, &exec_args));
 

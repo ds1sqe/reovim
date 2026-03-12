@@ -149,7 +149,13 @@ impl Module for SnippetModule {
     }
 
     fn dependencies(&self) -> Vec<ModuleId> {
-        vec![ModuleId::new("vim-snippet")]
+        vec![]
+    }
+
+    fn optional_dependencies(&self) -> Vec<ModuleId> {
+        // Personality modules (e.g., vim) populate ModeBridgeStore before us.
+        // Optional: snippet still works without a personality, just no parent mode bridging.
+        vec![ModuleId::new("vim")]
     }
 
     #[cfg_attr(coverage_nightly, coverage(off))]
@@ -159,18 +165,25 @@ impl Module for SnippetModule {
         self.handle = Some(handle.clone());
         self.data_dir = Some(ctx.data_dir.clone());
 
-        // Read parent mode from adapter-injected config (e.g., vim-snippet)
-        let parent_insert = ctx
-            .services
-            .get::<SnippetParentMode>()
-            .expect("SnippetParentMode must be registered (by adapter) before snippet")
-            .mode()
-            .clone();
+        // #585: Read parent mode from ModeBridgeStore (manifest-driven) or
+        // legacy SnippetParentMode (adapter-driven). Falls back to a default
+        // ModeId if no personality loaded.
         let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let parent_insert = resolve_snippet_parent(ctx, &modes);
+
+        // Self-register SnippetParentMode if resolved from bridge store
+        if let Some(ref parent) = parent_insert {
+            ctx.services
+                .register(Arc::new(SnippetParentMode::new(parent.clone())));
+        }
+
+        // Use resolved parent or fallback to snippet's own mode (reduced functionality)
+        let effective_parent = parent_insert.unwrap_or(ids::NAVIGATING_MODE);
 
         // 2. Register command handlers with return mode
         let store = ctx.services.get_or_create::<CommandHandlerStore>();
-        let commands = command::all_commands(handle, parent_insert.clone(), ctx.data_dir.clone());
+        let commands =
+            command::all_commands(handle, effective_parent.clone(), ctx.data_dir.clone());
         let command_count = commands.len();
         for cmd_handler in commands {
             store.add(cmd_handler);
@@ -178,7 +191,7 @@ impl Module for SnippetModule {
 
         // 3. Register snippet resolver with looked-up parent
         let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
-        resolvers.register(resolver::SnippetResolver::with_parent(parent_insert.clone()));
+        resolvers.register(resolver::SnippetResolver::with_parent(effective_parent.clone()));
 
         // 4. Register mode info for display
         modes.add(ModeInfo {
@@ -187,7 +200,7 @@ impl Module for SnippetModule {
             cursor_style: CursorStyle::Bar,
             accepts_char_input: true,
             has_selection: true,
-            inherits_from: Some(parent_insert),
+            inherits_from: Some(effective_parent),
             is_entry: false,
         });
 
@@ -245,6 +258,30 @@ impl CommandProvider for SnippetModule {
             .unwrap_or_else(|| std::path::PathBuf::from("/tmp/reovim-snippet-fallback"));
         command::all_commands(handle, fallback_mode, data_dir)
     }
+}
+
+/// Resolve the parent mode for snippet:navigating from `ModeBridgeStore` or legacy `SnippetParentMode`.
+fn resolve_snippet_parent(
+    ctx: &ModuleContext,
+    modes: &ModeInfoStore,
+) -> Option<reovim_kernel::api::v1::ModeId> {
+    use reovim_driver_manifest::ModeBridgeStore;
+
+    // Try ModeBridgeStore first (manifest-driven)
+    if let Some(bridge_store) = ctx.services.get::<ModeBridgeStore>()
+        && let Some(parent_str) = bridge_store.find_parent("snippet:navigating")
+        && let Some((module, name)) = parent_str.split_once(':')
+    {
+        if let Some(mode_id) = modes.find_by_name(module, name) {
+            return Some(mode_id);
+        }
+        tracing::warn!("Mode bridge parent '{parent_str}' not found in ModeInfoStore");
+    }
+
+    // Fallback: legacy SnippetParentMode from adapter
+    ctx.services
+        .get::<SnippetParentMode>()
+        .map(|p| p.mode().clone())
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

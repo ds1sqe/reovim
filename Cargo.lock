@@ -2069,6 +2069,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-manifest"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "reovim-driver-net"
 version = "0.10.0-dev"
 dependencies = [
@@ -2292,12 +2301,6 @@ dependencies = [
  "reovim-module-undo",
  "reovim-module-vfs-local",
  "reovim-module-vim",
- "reovim-module-vim-completion",
- "reovim-module-vim-explorer",
- "reovim-module-vim-lsp",
- "reovim-module-vim-microscope",
- "reovim-module-vim-range-finder",
- "reovim-module-vim-snippet",
  "reovim-module-whichkey",
  "reovim-picker-buffers",
  "reovim-picker-commands",
@@ -2452,6 +2455,7 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-extension-kinds",
@@ -2491,6 +2495,7 @@ dependencies = [
  "regex",
  "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
@@ -2500,6 +2505,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -2587,6 +2593,7 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-manifest",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-undo",
@@ -2601,70 +2608,6 @@ dependencies = [
  "reovim-testing",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "reovim-module-vim-completion"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-completion",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-explorer"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-explorer",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-lsp"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-lsp-navigation",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-microscope"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-microscope",
-]
-
-[[package]]
-name = "reovim-module-vim-range-finder"
-version = "0.10.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-driver-buffer",
- "reovim-driver-command",
- "reovim-driver-input",
- "reovim-driver-session",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-range-finder",
-]
-
-[[package]]
-name = "reovim-module-vim-snippet"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-snippet",
 ]
 
 [[package]]

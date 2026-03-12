@@ -397,7 +397,12 @@ fn test_init_registers_keybindings() {
     assert!(keybinding_store.is_some(), "KeybindingStore should exist after init");
     let keybinding_store = keybinding_store.unwrap();
     let all_bindings = bindings::all();
-    assert_eq!(keybinding_store.len(), all_bindings.len(), "Should register all keybindings");
+    // Keybindings = vim core bindings + 20 personality manifest bindings
+    assert_eq!(
+        keybinding_store.len(),
+        all_bindings.len() + 20,
+        "Should register all keybindings (core + manifest)"
+    );
 }
 
 #[test]
@@ -411,6 +416,51 @@ fn test_init_registers_commands() {
     let command_store = command_store.unwrap();
     let expected = module.command_handlers().len();
     assert_eq!(command_store.len(), expected, "Should register all command handlers");
+}
+
+#[test]
+fn test_init_registers_mode_bridge_store() {
+    let mut module = VimModule::new();
+    let ctx = ModuleContext::default();
+    module.init(&ctx);
+
+    let bridge_store = ctx
+        .services
+        .get::<reovim_driver_manifest::ModeBridgeStore>();
+    assert!(bridge_store.is_some(), "ModeBridgeStore should exist after init");
+    let bridge_store = bridge_store.unwrap();
+    assert_eq!(bridge_store.bridges().len(), 2, "Should have 2 mode bridges");
+    assert_eq!(bridge_store.find_parent("snippet:navigating"), Some("vim:insert"));
+    assert_eq!(bridge_store.find_parent("range-finder:jump-input"), Some("vim:normal"));
+}
+
+#[test]
+fn test_vim_manifest_has_no_key_conflicts() {
+    let manifest =
+        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+    let conflicts = manifest.detect_conflicts();
+    assert!(
+        conflicts.is_empty(),
+        "vim.toml should have no key conflicts, found: {conflicts:?}"
+    );
+}
+
+#[test]
+fn test_vim_manifest_modes_are_valid() {
+    let manifest =
+        reovim_driver_manifest::PersonalityManifest::parse(crate::VIM_MANIFEST_TOML).unwrap();
+    // Validate against VimModule's registered modes
+    let known_modes = &[
+        ("vim", "normal"),
+        ("vim", "insert"),
+        ("vim", "visual"),
+        ("vim", "operator-pending"),
+    ];
+    let warnings = manifest.validate_modes(known_modes);
+    assert!(
+        warnings.is_empty(),
+        "vim.toml should only reference valid vim modes, found: {warnings:?}"
+    );
 }
 
 #[test]

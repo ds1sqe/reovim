@@ -53,7 +53,6 @@ reovim-module-range-finder = { workspace = true }
 # Code intelligence modules
 reovim-module-lsp = { workspace = true }
 reovim-module-lsp-navigation = { workspace = true }
-reovim-module-vim-lsp = { workspace = true }
 
 # Snippet expansion module (#136)
 reovim-module-snippet = { workspace = true }
@@ -61,12 +60,6 @@ reovim-module-snippet = { workspace = true }
 # Completion engine (#521)
 reovim-module-completion = { workspace = true }
 
-# Vim adapter modules (keybinding bridges)
-reovim-module-vim-microscope = { workspace = true }
-reovim-module-vim-explorer = { workspace = true }
-reovim-module-vim-completion = { workspace = true }
-reovim-module-vim-range-finder = { workspace = true }
-reovim-module-vim-snippet = { workspace = true }
 # Tetromino game module (#537)
 reovim-module-tetromino = { workspace = true }
 

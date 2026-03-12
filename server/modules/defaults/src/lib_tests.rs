@@ -23,15 +23,16 @@ fn test_defaults_has_dependencies() {
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
-    // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
+    // Code intelligence modules (2): lsp, lsp-navigation
     // Snippet (1): snippet
     // Range-finder (1): range-finder
     // Completion (1): completion
     // Explorer (1): explorer
-    // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
-    // Total: 35 modules
-    assert_eq!(deps.len(), 35);
+    // Total: 29 modules
+    // Note: vim adapter modules removed (#585) — personality manifests handle bridging
+    // Note: picker-options added (#599)
+    assert_eq!(deps.len(), 29);
 }
 
 #[test]
@@ -44,15 +45,16 @@ fn test_create_modules() {
     // Picker providers (5): picker-files, picker-buffers, picker-commands, picker-grep, picker-options
     // Picker orchestration (1): microscope
     // Syntax modules (2): treesitter-rust, treesitter-markdown
-    // Code intelligence modules (3): lsp, lsp-navigation, vim-lsp
+    // Code intelligence modules (2): lsp, lsp-navigation
     // Snippet (1): snippet
     // Range-finder (1): range-finder
     // Completion (1): completion
     // Explorer (1): explorer
-    // Vim adapter modules (5): vim-microscope, vim-explorer, vim-completion, vim-range-finder, vim-snippet
     // Tetromino (1): tetromino
-    // Total: 35 modules
-    assert_eq!(modules.len(), 35);
+    // Total: 29 modules
+    // Note: vim adapter modules removed (#585) — personality manifests handle bridging
+    // Note: picker-options added (#599)
+    assert_eq!(modules.len(), 29);
 }
 
 #[test]
@@ -152,20 +154,6 @@ fn test_dependencies_contain_lsp_module() {
 
     assert!(dep_strs.contains(&"lsp"));
     assert!(dep_strs.contains(&"lsp-navigation"));
-    assert!(dep_strs.contains(&"vim-lsp"));
-}
-
-#[test]
-fn test_dependencies_contain_vim_adapter_modules() {
-    let module = DefaultsModule::new();
-    let deps = module.dependencies();
-    let dep_strs: Vec<&str> = deps.iter().map(ModuleId::as_str).collect();
-
-    assert!(dep_strs.contains(&"vim-microscope"));
-    assert!(dep_strs.contains(&"vim-explorer"));
-    assert!(dep_strs.contains(&"vim-completion"));
-    assert!(dep_strs.contains(&"vim-range-finder"));
-    assert!(dep_strs.contains(&"vim-snippet"));
 }
 
 #[test]

@@ -14,9 +14,10 @@
 //!
 //! The module registers its own mode (`range-finder:jump-input`) for label
 //! selection. The parent mode for keybinding inheritance is injected by
-//! the adapter module (e.g., `vim-range-finder`) via [`JumpParentMode`].
+//! the personality manifest (e.g., `vim.toml`) via [`ModeBridgeStore`].
 
 pub mod config;
+pub mod find_char;
 pub mod fold;
 pub mod jump;
 
@@ -24,6 +25,7 @@ pub use config::JumpParentMode;
 
 use {
     reovim_driver_input::{ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
         CursorStyle, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
     },
@@ -62,7 +64,13 @@ impl Module for RangeFinderModule {
     }
 
     fn dependencies(&self) -> Vec<ModuleId> {
-        vec![ModuleId::new("vim-range-finder")]
+        vec![]
+    }
+
+    fn optional_dependencies(&self) -> Vec<ModuleId> {
+        // Personality modules (e.g., vim) populate ModeBridgeStore before us.
+        // Optional: range-finder still works without a personality, just no parent mode bridging.
+        vec![ModuleId::new("vim")]
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
@@ -86,18 +94,25 @@ impl Module for RangeFinderModule {
             command_store.add(handler);
         }
 
-        // Read parent mode from adapter-injected config (e.g., vim-range-finder)
-        let parent_mode = ctx
-            .services
-            .get::<JumpParentMode>()
-            .expect("JumpParentMode must be registered (by adapter) before range-finder")
-            .mode()
-            .clone();
+        // #585: Read parent mode from ModeBridgeStore (populated by personality module)
+        // instead of requiring adapter pre-registration.
         let modes = ctx.services.get_or_create::<ModeInfoStore>();
+        let parent_mode = resolve_parent_mode(ctx, &modes);
+
+        if let Some(ref parent) = parent_mode {
+            // Self-register JumpParentMode for any internal code that still reads it
+            ctx.services
+                .register(std::sync::Arc::new(JumpParentMode::new(parent.clone())));
+
+            // Register enhanced find-char command (#535) — overrides vim's basic handler
+            command_store.add(Box::new(find_char::EnhancedFindCharCommand));
+        }
 
         // Register jump resolver for jump-input mode (#524)
         let resolvers = ctx.services.get_or_create::<ResolverRegistry>();
-        resolvers.register(jump::resolver::JumpResolver::with_parent(parent_mode.clone()));
+        resolvers.register(jump::resolver::JumpResolver::with_parent(
+            parent_mode.clone().unwrap_or(jump::ids::JUMP_INPUT_MODE),
+        ));
 
         // Register mode info for jump-input mode (#524)
         modes.add(ModeInfo {
@@ -106,7 +121,7 @@ impl Module for RangeFinderModule {
             cursor_style: CursorStyle::Block,
             accepts_char_input: true,
             has_selection: false,
-            inherits_from: Some(parent_mode),
+            inherits_from: parent_mode,
             is_entry: false,
         });
 
@@ -123,6 +138,32 @@ impl Module for RangeFinderModule {
             reovim_extension_kinds::RANGE_FINDER_FOLD,
         ]
     }
+}
+
+/// Resolve the parent mode for jump-input from `ModeBridgeStore` or legacy `JumpParentMode`.
+///
+/// Checks `ModeBridgeStore` first (new manifest path), then falls back to
+/// `JumpParentMode` in `ServiceRegistry` (legacy adapter path). Returns `None`
+/// if neither is available (no personality loaded).
+fn resolve_parent_mode(
+    ctx: &ModuleContext,
+    modes: &ModeInfoStore,
+) -> Option<reovim_kernel::api::v1::ModeId> {
+    // Try ModeBridgeStore first (manifest-driven)
+    if let Some(bridge_store) = ctx.services.get::<ModeBridgeStore>()
+        && let Some(parent_str) = bridge_store.find_parent("range-finder:jump-input")
+        && let Some((module, name)) = parent_str.split_once(':')
+    {
+        if let Some(mode_id) = modes.find_by_name(module, name) {
+            return Some(mode_id);
+        }
+        tracing::warn!("Mode bridge parent '{parent_str}' not found in ModeInfoStore");
+    }
+
+    // Fallback: legacy JumpParentMode from adapter
+    ctx.services
+        .get::<JumpParentMode>()
+        .map(|p| p.mode().clone())
 }
 
 #[cfg(feature = "dynamic")]

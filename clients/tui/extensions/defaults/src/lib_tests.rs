@@ -106,8 +106,7 @@ fn test_toposort_reorders_with_declared_deps() {
     }
 
     // Create in wrong order: B first, then A
-    let extensions: Vec<Box<dyn TuiExtension>> =
-        vec![Box::new(MockB), Box::new(MockA)];
+    let extensions: Vec<Box<dyn TuiExtension>> = vec![Box::new(MockB), Box::new(MockA)];
 
     let entries: Vec<DepEntry<&'static str>> = extensions
         .iter()

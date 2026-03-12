@@ -50,6 +50,7 @@ use {
         KeybindingStore, ModeInfo, ModeInfoStore, ModeProviderKey, ModeProviderRegistry,
         ResolverRegistry,
     },
+    reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
         KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, OptionConstraint,
         OptionScope, OptionSpec, OptionValue, ProbeResult, Version, pr_info,
@@ -228,6 +229,9 @@ impl Module for VimModule {
         let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
         keybinding_store.add_all(self.keybindings());
 
+        // #585: Load personality manifest (data-driven keybindings for adapter commands)
+        load_personality_manifest(ctx, &keybinding_store);
+
         // Epic #445: Register line number options
         if let Err(e) = ctx.kernel.options.register(
             OptionSpec::new("number", "Show line numbers", OptionValue::bool(false))
@@ -303,6 +307,53 @@ impl CommandProvider for VimModule {
         handlers.extend(operators::operator_commands()); // Epic #415
         handlers
     }
+}
+
+// ============================================================================
+// Personality manifest loading (#585)
+// ============================================================================
+
+/// Embedded vim personality manifest.
+const VIM_MANIFEST_TOML: &str = include_str!("../data/vim.toml");
+
+/// Load the vim personality manifest and register its keybindings and mode bridges.
+///
+/// Keybindings from the manifest are registered for all declared bindings.
+/// Command availability is validated at key-dispatch time (feature modules may
+/// not be loaded yet when `VimModule` initializes). Mode bridges are stored in
+/// `ModeBridgeStore` for feature modules to query during their `init()`.
+///
+/// Startup validation (#585 Phase 6):
+/// - Detects key conflicts within the manifest (same key + same mode)
+/// - Logs non-fatal warnings — does not fail initialization
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn load_personality_manifest(ctx: &ModuleContext, keybinding_store: &KeybindingStore) {
+    let manifest = match reovim_driver_manifest::PersonalityManifest::parse(VIM_MANIFEST_TOML) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Failed to parse vim.toml personality manifest: {e}");
+            return;
+        }
+    };
+
+    // #585 Phase 6: Startup validation — detect key conflicts within the manifest
+    let conflicts = manifest.detect_conflicts();
+    for warning in &conflicts {
+        tracing::warn!("vim.toml: {warning}");
+    }
+
+    // Register manifest keybindings (all bindings — command availability is
+    // validated at key-dispatch time, not at registration time, because
+    // feature modules may not have loaded yet)
+    let registrations = manifest.to_keybinding_registrations();
+    let count = registrations.len();
+    keybinding_store.add_all(registrations);
+    tracing::info!(count, "VimModule: loaded personality manifest keybindings");
+
+    // Populate ModeBridgeStore for feature modules
+    let bridge_store = ModeBridgeStore::new(manifest.mode_bridges);
+    ctx.services.register(Arc::new(bridge_store));
+    tracing::info!("VimModule: registered ModeBridgeStore");
 }
 
 // ============================================================================

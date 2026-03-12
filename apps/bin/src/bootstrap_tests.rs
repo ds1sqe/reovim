@@ -139,15 +139,9 @@ fn test_tier_ordering() {
     // vim must come after editor and motions
     assert!(pos("editor") < pos("vim"), "editor must init before vim");
     assert!(pos("motions") < pos("vim"), "motions must init before vim");
-    // adapters after vim
-    assert!(pos("vim") < pos("vim-snippet"), "vim must init before vim-snippet");
-    assert!(pos("vim") < pos("vim-range-finder"), "vim must init before vim-range-finder");
-    // snippet after vim-snippet, range-finder after vim-range-finder
-    assert!(pos("vim-snippet") < pos("snippet"), "vim-snippet must init before snippet");
-    assert!(
-        pos("vim-range-finder") < pos("range-finder"),
-        "vim-range-finder must init before range-finder"
-    );
+    // #585: snippet and range-finder optionally depend on vim (ModeBridgeStore)
+    assert!(pos("vim") < pos("snippet"), "vim must init before snippet");
+    assert!(pos("vim") < pos("range-finder"), "vim must init before range-finder");
 }
 
 #[test]

@@ -54,9 +54,6 @@ use {
     reovim_module_tetromino as tetromino, reovim_module_treesitter_markdown as treesitter_markdown,
     reovim_module_treesitter_rust as treesitter_rust, reovim_module_undo as undo,
     reovim_module_vfs_local as vfs_local, reovim_module_vim as vim,
-    reovim_module_vim_completion as vim_completion, reovim_module_vim_explorer as vim_explorer,
-    reovim_module_vim_lsp as vim_lsp, reovim_module_vim_microscope as vim_microscope,
-    reovim_module_vim_range_finder as vim_range_finder, reovim_module_vim_snippet as vim_snippet,
     reovim_module_whichkey as whichkey, reovim_picker_buffers as picker_buffers,
     reovim_picker_commands as picker_commands, reovim_picker_files as picker_files,
     reovim_picker_grep as picker_grep, reovim_picker_options as picker_options,
@@ -122,32 +119,20 @@ impl DefaultsModule {
             Box::new(picker_options::PickerOptionsModule::new()),
             // Picker orchestration (#522)
             Box::new(microscope::MicroscopeModule::new()),
-            // Vim-microscope adapter - bridges vim keybindings to picker commands
-            Box::new(vim_microscope::VimMicroscopeModule::new()),
             // Syntax highlighting modules (Epic #465 Phase 12.1, 12.2)
             Box::new(treesitter_rust::TreesitterRustModule::new()),
             Box::new(treesitter_markdown::TreesitterMarkdownModule::new()),
             // Code intelligence modules (#520, #532)
             Box::new(lsp::LspModule::new()),
             Box::new(lsp_navigation::LspNavigationModule::new()),
-            // Vim-LSP adapter (#532) - bridges vim keybindings to LSP commands
-            Box::new(vim_lsp::VimLspModule::new()),
-            // Vim-snippet adapter (#532) - registers SnippetParentMode before snippet
-            Box::new(vim_snippet::VimSnippetModule::new()),
-            // Snippet expansion (#136) - reads SnippetParentMode from adapter
+            // Snippet expansion (#136) - reads ModeBridgeStore from personality manifest
             Box::new(snippet::SnippetModule::new()),
-            // Vim-range-finder adapter (#532) - registers JumpParentMode before range-finder
-            Box::new(vim_range_finder::VimRangeFinderModule::new()),
-            // Jump navigation and code folding (#524) - reads JumpParentMode from adapter
+            // Jump navigation and code folding (#524) - reads ModeBridgeStore from personality manifest
             Box::new(range_finder::RangeFinderModule::new()),
             // Completion engine (#521)
             Box::new(completion::CompletionModule::new()),
-            // Vim-completion adapter - bridges vim keybindings to completion commands
-            Box::new(vim_completion::VimCompletionModule::new()),
             // File explorer (#523)
             Box::new(explorer::ExplorerModule::new()),
-            // Vim-explorer adapter - bridges vim keybindings to explorer commands
-            Box::new(vim_explorer::VimExplorerModule::new()),
             // Tetromino game (#537)
             Box::new(tetromino::TetrominoModule::new()),
         ]
@@ -210,21 +195,14 @@ impl Module for DefaultsModule {
             // Code intelligence modules (#520, #532)
             ModuleId::new("lsp"),
             ModuleId::new("lsp-navigation"),
-            ModuleId::new("vim-lsp"),
             // Snippet expansion (#136)
             ModuleId::new("snippet"),
-            ModuleId::new("vim-snippet"),
             // Jump navigation and code folding (#524)
             ModuleId::new("range-finder"),
-            ModuleId::new("vim-range-finder"),
             // Completion engine (#521)
             ModuleId::new("completion"),
-            ModuleId::new("vim-completion"),
             // File explorer (#523)
             ModuleId::new("explorer"),
-            ModuleId::new("vim-explorer"),
-            // Picker vim adapter
-            ModuleId::new("vim-microscope"),
             // Tetromino game (#537)
             ModuleId::new("tetromino"),
         ]

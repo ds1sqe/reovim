@@ -130,26 +130,33 @@ fn test_command_provider_matches_all_commands() {
 #[test]
 fn test_dependencies() {
     let module = SnippetModule::new();
-    let deps: Vec<String> = module
-        .dependencies()
-        .iter()
-        .map(|id| id.as_str().to_string())
-        .collect();
-    assert_eq!(deps, vec!["vim-snippet"]);
+    assert!(module.dependencies().is_empty());
+}
+
+#[test]
+fn test_optional_dependencies_contain_vim() {
+    let module = SnippetModule::new();
+    let opt_deps = module.optional_dependencies();
+    assert_eq!(opt_deps.len(), 1);
+    assert_eq!(opt_deps[0].as_str(), "vim");
 }
 
 // =========================================================================
 // Init with real context
 // =========================================================================
 
-/// Register a mock parent mode and `SnippetParentMode` config
-/// (adapter initializes before snippet).
+/// Register a mock parent mode and `ModeBridgeStore` config
+/// (personality module initializes before snippet).
 fn register_mock_parent(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>) {
-    use reovim_kernel::api::v1::ModeId;
-    let parent = ModeId::new(ModuleId::new("test"), "insert");
+    use {
+        reovim_driver_manifest::{ManifestModeBridge, ModeBridgeStore},
+        reovim_kernel::api::v1::ModeId,
+    };
+
+    let parent = ModeId::new(ModuleId::new("vim"), "insert");
     let modes = services.get_or_create::<ModeInfoStore>();
     modes.add(ModeInfo {
-        id: parent.clone(),
+        id: parent,
         display_name: "INSERT",
         cursor_style: CursorStyle::Bar,
         accepts_char_input: true,
@@ -157,7 +164,12 @@ fn register_mock_parent(services: &Arc<reovim_kernel::api::v1::ServiceRegistry>)
         inherits_from: None,
         is_entry: false,
     });
-    services.register(Arc::new(SnippetParentMode::new(parent)));
+
+    let bridge_store = ModeBridgeStore::new(vec![ManifestModeBridge {
+        feature_mode: "snippet:navigating".to_string(),
+        parent_mode: "vim:insert".to_string(),
+    }]);
+    services.register(Arc::new(bridge_store));
 }
 
 #[test]

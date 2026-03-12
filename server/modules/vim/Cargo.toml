@@ -34,6 +34,7 @@ reovim-driver-search = { workspace = true }
 reovim-module-window-ops = { workspace = true }
 # Display driver for annotation types (#455)
 reovim-driver-display = { workspace = true }
+reovim-driver-manifest = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

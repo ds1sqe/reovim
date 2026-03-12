@@ -6,6 +6,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Personality manifests replace vim adapter crates (#585)**: Introduce TOML-based personality
+  manifests that declare keybinding tables and mode bridges as data, collapsing the O(N x M) adapter
+  problem to O(M). New `reovim-driver-manifest` crate provides TOML parser, `ModeBridgeStore`, and
+  validation. VimModule loads embedded `vim.toml` (20 keybindings, 2 mode bridges) via
+  `include_str!`. Feature modules (snippet, range-finder) self-register parent modes by reading
+  `ModeBridgeStore` with `optional_dependencies` on vim. `EnhancedFindCharCommand` relocated from
+  `vim-range-finder` to `range-finder`. Six adapter crates deleted: vim-completion, vim-lsp,
+  vim-explorer, vim-microscope, vim-range-finder, vim-snippet (-2145 lines, 35 -> 29 modules).
+
 - **Cross-boundary extension contracts (#584)**: Server modules declare `extension_kinds()` on the
   `Module` trait (kernel-pure `&[&'static str]`). TUI extensions declare `server_kinds()`, web
   extensions declare `serverKinds()`. Server startup validates bridge-module contracts and logs
