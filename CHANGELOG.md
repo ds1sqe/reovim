@@ -32,6 +32,32 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Test helper deduplication (#569)**: Create `reovim_kernel::testing` module with
+  shared `TestBufferManager`, `create_test_context()`, `setup_buffer()`, and
+  `test_mode()`. Replaced 32 copies of `TestBufferManager`, 30 copies of
+  `create_test_context()`, 17 copies of `test_mode()`, and 34 copies of
+  `StubExecutor` across `server/modules/` with imports from shared modules.
+  Made `StubExecutor` pub in `reovim_driver_session::testing`. Added
+  `with_buffer_and_mode()` and `with_window()` constructors to
+  `TestSessionRuntime`. Created tracking issues for ignored tests (#576, #577, #578).
+- **Test organization standards (#569)**: Document test file layout rules (3 rules
+  based on module structure and test size), shared helper usage, test naming
+  convention (`test_{action}_{scenario}`), and ignored test policy in
+  `docs/contributing/guides/testing.md`.
+- **Inline test migration (#569)**: Migrate all inline `#[cfg(test)] mod tests`
+  blocks from source files into dedicated test files following the three-rule
+  layout standard. 142 files changed across 4 modules: textobjects (5 files),
+  motions (5 files), editor (14 files), vim (44 files). Source files now contain
+  only implementation code. Uses `#[path]` technique for 7 files with private
+  item access. All 2540 module tests pass.
+
+- **Test layout enforcement (#569)**: Add `scripts/check-test-layout.sh` to
+  detect inline `#[cfg(test)] mod tests { ... }` blocks that violate the test
+  organization standard. Integrated into `scripts/check.sh` as `test-layout`
+  step (runs after fmt, before clippy/tests). Migrated final 4 inline test
+  blocks from upstream code (bootstrap, main, set command, picker-options)
+  using `#[path]` technique. Zero violations across the workspace.
+
 - **Parallel check.sh (#588)**: Rewrite `scripts/check.sh` with parallel execution
   (clippy and tests run concurrently using separate CARGO_TARGET_DIR), CLI modes
   (`--quick`, `--sequential`, `--clean-cache`), structured report generation

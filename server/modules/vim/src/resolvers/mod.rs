@@ -41,3 +41,6 @@ pub use visual::VimVisualResolver;
 pub use {
     commandline::VimCommandLineResolver, insert::VimInsertResolver, normal::VimNormalResolver,
 };
+
+#[cfg(test)]
+mod tests;

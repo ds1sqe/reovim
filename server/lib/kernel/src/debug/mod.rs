@@ -71,3 +71,6 @@ pub use profiler::{
     NopProfiler, ProfileGuard, ProfileScope, Profiler, SetProfilerError, SpanData, SpanId,
     profiler, set_profiler,
 };
+
+#[cfg(test)]
+mod tests;

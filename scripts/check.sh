@@ -27,7 +27,7 @@ Usage: ./scripts/check.sh [OPTIONS]
 
 Options:
   (no args)        Full parallel check + report (default)
-  --quick          Format + clippy only (fast dev iteration)
+  --quick          Format + test-layout + clippy only (fast dev iteration)
   --sequential     Sequential execution (for debugging / low-memory)
   --clean-cache    Remove target/check-clippy and exit
   --help, -h       Show this help
@@ -245,8 +245,9 @@ generate_report() {
 
 # ─── Execution: Quick mode ───────────────────────────────────────────
 if [ "$MODE" = "quick" ]; then
-    echo -e "\033[1;36m==> Quick check (fmt + clippy)\033[0m"
+    echo -e "\033[1;36m==> Quick check (fmt + test-layout + clippy)\033[0m"
     run_step fmt cargo $TOOLCHAIN fmt --all
+    run_step test-layout ./scripts/check-test-layout.sh --check
     # shellcheck disable=SC2086
     run_step clippy cargo $TOOLCHAIN clippy \
         --all-targets --all-features --workspace $EXCLUDE -- -D warnings
@@ -264,6 +265,7 @@ fi
 if [ "$MODE" = "sequential" ]; then
     echo -e "\033[1;36m==> Sequential check\033[0m"
     run_step fmt cargo $TOOLCHAIN fmt --all
+    run_step test-layout ./scripts/check-test-layout.sh --check
     # shellcheck disable=SC2086
     run_step clippy cargo $TOOLCHAIN clippy \
         --all-targets --all-features --workspace $EXCLUDE -- -D warnings
@@ -283,8 +285,9 @@ fi
 # ─── Execution: Parallel mode (default) ──────────────────────────────
 echo -e "\033[1;36m==> Parallel check\033[0m"
 
-# Phase 1: Format (sequential, must complete before lint/test)
+# Phase 1: Format + test layout (sequential, fast, must complete before lint/test)
 run_step fmt cargo $TOOLCHAIN fmt --all
+run_step test-layout ./scripts/check-test-layout.sh --check
 
 # Phase 2: Clippy and tests in parallel
 echo -e "\033[1;33m==> Launching parallel jobs...\033[0m"

@@ -159,6 +159,5 @@ impl TuiModel for InteractiveModel {
 }
 
 #[cfg(test)]
-mod tests {
-    // Tests require a real terminal, skip in CI
-}
+#[path = "interactive_tests.rs"]
+mod tests;

@@ -101,3 +101,6 @@ pub use {
         WorkQueue,
     },
 };
+
+#[cfg(test)]
+mod tests;

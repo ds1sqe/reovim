@@ -1,0 +1,9 @@
+mod change;
+mod commandline;
+mod delete;
+mod insert;
+mod normal;
+mod operator_common;
+mod visual;
+mod window;
+mod yank;

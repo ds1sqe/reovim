@@ -1,0 +1,10 @@
+mod cursor;
+mod delete;
+mod display_line;
+mod file;
+mod mod_tests;
+mod operators;
+mod paste;
+mod replace;
+mod undo;
+mod yank;

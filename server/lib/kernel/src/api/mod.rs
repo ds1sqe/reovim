@@ -77,3 +77,6 @@ pub mod internal;
 /// This allows both `use reovim_kernel::api::v1::*` and
 /// `use reovim_kernel::api::*` to work.
 pub use v1::*;
+
+#[cfg(test)]
+mod tests;

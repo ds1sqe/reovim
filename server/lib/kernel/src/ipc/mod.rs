@@ -104,3 +104,6 @@ pub use scope::{DEFAULT_TIMEOUT, EventScope, ScopeId};
 
 // Re-export subscription types
 pub use subscription::{Subscription, SubscriptionId};
+
+#[cfg(test)]
+mod tests;
