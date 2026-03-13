@@ -74,8 +74,9 @@ impl ContentClassifier for LegacyClassifier {
             return None;
         }
 
-        // Sample the first SAMPLE_SIZE bytes, snapping back to avoid
-        // splitting a multi-byte UTF-8 sequence at the boundary.
+        // Sample the first SAMPLE_SIZE bytes, snapping back past any byte
+        // matching the UTF-8 continuation pattern (10xxxxxx) to avoid
+        // splitting a multi-byte sequence at the sample boundary.
         let sample = if raw.len() > SAMPLE_SIZE {
             let mut end = SAMPLE_SIZE;
             while end > 0 && (raw[end] & 0xC0) == 0x80 {

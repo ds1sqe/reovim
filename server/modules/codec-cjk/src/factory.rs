@@ -8,7 +8,7 @@ use crate::codec::CjkCodec;
 const CJK_ENCODINGS: &[(&str, &encoding_rs::Encoding)] = &[
     ("encoding/euc-kr", encoding_rs::EUC_KR),
     ("encoding/shift-jis", encoding_rs::SHIFT_JIS),
-    ("encoding/gb2312", encoding_rs::GBK),
+    ("encoding/gbk", encoding_rs::GBK),
     ("encoding/big5", encoding_rs::BIG5),
 ];
 

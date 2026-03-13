@@ -96,14 +96,15 @@ impl Default for ZipCodec {
 impl reovim_driver_codec::ContentCodec for ZipCodec {
     fn decode(&self, raw: &[u8]) -> Result<DecodeResult, CodecError> {
         let cursor = std::io::Cursor::new(raw);
-        let archive = zip::ZipArchive::new(cursor)
+        let mut archive = zip::ZipArchive::new(cursor)
             .map_err(|e| CodecError::Other(format!("ZIP parse failed: {e}")))?;
 
-        let (content, annotations) = format_zip_summary(&archive);
+        let entry_count = archive.len();
+        let (content, annotations) = format_zip_summary(&mut archive);
 
         let mut metadata = CodecMetadata::new(ContentType::new(ZIP));
         metadata.set("readonly", "true");
-        metadata.set("entry_count", archive.len().to_string());
+        metadata.set("entry_count", entry_count.to_string());
 
         Ok(DecodeResult {
             content,
@@ -230,7 +231,7 @@ fn format_elf_summary(elf: &goblin::elf::Elf<'_>, file_size: usize) -> (String, 
 
 /// Format a ZIP archive into a human-readable entry listing.
 fn format_zip_summary<R: std::io::Read + std::io::Seek>(
-    archive: &zip::ZipArchive<R>,
+    archive: &mut zip::ZipArchive<R>,
 ) -> (String, Vec<Annotation>) {
     let mut output = String::with_capacity(2048);
     let mut annotations = Vec::new();
@@ -238,6 +239,7 @@ fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     let header_kind = AnnotationKind::new(ZIP_HEADER_KIND);
     let entry_kind = AnnotationKind::new(ZIP_ENTRY_KIND);
 
+    let entry_count = archive.len();
     let mut line_idx = 0;
 
     // Header
@@ -253,7 +255,7 @@ fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     let _ = writeln!(output, "====================");
     line_idx += 1;
 
-    let _ = writeln!(output, "Entries: {}", archive.len());
+    let _ = writeln!(output, "Entries: {entry_count}");
     line_idx += 1;
 
     // Blank separator
@@ -261,8 +263,13 @@ fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     line_idx += 1;
 
     // Column headers
-    let _ = writeln!(output, "{name:<50} {size:>12} {comp:>12}  Method",
-        name = "Name", size = "Size", comp = "Compressed");
+    let _ = writeln!(
+        output,
+        "{name:<50} {size:>12} {comp:>12}  Method",
+        name = "Name",
+        size = "Size",
+        comp = "Compressed"
+    );
     annotations.push(Annotation {
         kind: header_kind,
         target: AnnotationTarget::Line(line_idx),
@@ -274,17 +281,26 @@ fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     let _ = writeln!(output, "{}", "-".repeat(90));
     line_idx += 1;
 
-    // Entries (read metadata without decompressing)
-    for i in 0..archive.len() {
-        // Use name_for_index to avoid mutable borrow
-        let name = archive
+    // Entries with metadata
+    for i in 0..entry_count {
+        // Capture name fallback before the mutable borrow.
+        let fallback_name = archive
             .name_for_index(i)
             .unwrap_or("<unknown>")
             .to_string();
 
-        // We can't call by_index without &mut, so use the raw central directory
-        // Instead, just list names — the metadata requires mutable access
-        let _ = writeln!(output, "{name:<50}");
+        let (name, size, compressed, method) = archive.by_index_raw(i).map_or_else(
+            |_| (fallback_name, 0, 0, "?".to_string()),
+            |entry| {
+                let n = entry.name().to_string();
+                let s = entry.size();
+                let c = entry.compressed_size();
+                let m = format!("{:?}", entry.compression());
+                (n, s, c, m)
+            },
+        );
+
+        let _ = writeln!(output, "{name:<50} {size:>12} {compressed:>12}  {method}");
 
         annotations.push(Annotation {
             kind: entry_kind.clone(),

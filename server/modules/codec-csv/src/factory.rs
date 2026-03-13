@@ -3,7 +3,7 @@
 use reovim_driver_codec::{ContentCodec, ContentCodecFactory, ContentType};
 
 use crate::{
-    classifier::{CSV, PSV, TSV},
+    classifier::{CSV, PSV, SCSV, TSV},
     codec::CsvCodec,
 };
 
@@ -33,12 +33,13 @@ impl ContentCodecFactory for CsvCodecFactory {
             s if s == CSV => Some(Box::new(CsvCodec::new(b',', CSV))),
             s if s == TSV => Some(Box::new(CsvCodec::new(b'\t', TSV))),
             s if s == PSV => Some(Box::new(CsvCodec::new(b'|', PSV))),
+            s if s == SCSV => Some(Box::new(CsvCodec::new(b';', SCSV))),
             _ => None,
         }
     }
 
     fn supported_content_types(&self) -> Vec<&str> {
-        vec![CSV, TSV, PSV]
+        vec![CSV, TSV, PSV, SCSV]
     }
 
     fn name(&self) -> &'static str {

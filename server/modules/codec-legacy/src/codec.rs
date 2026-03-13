@@ -87,6 +87,7 @@ impl reovim_driver_codec::ContentCodec for LegacyCodec {
                         "character U+{cp:04X} not representable in Latin-1"
                     ))));
                 }
+                // Safe: cp <= 0xFF is guarded above.
                 #[allow(clippy::cast_possible_truncation)]
                 bytes.push(cp as u8);
             }

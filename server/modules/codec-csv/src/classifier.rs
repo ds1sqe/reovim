@@ -14,6 +14,9 @@ pub const TSV: &str = "text/tsv";
 /// Content type for pipe-separated values.
 pub const PSV: &str = "text/psv";
 
+/// Content type for semicolon-separated values (European CSV).
+pub const SCSV: &str = "text/scsv";
+
 /// Minimum number of rows to consider as CSV (including header).
 const MIN_ROWS: usize = 2;
 
@@ -36,7 +39,7 @@ const DELIMITERS: &[(u8, &str)] = &[
     (b',', CSV),
     (b'\t', TSV),
     (b'|', PSV),
-    (b';', CSV), // Semicolon is common in European CSV
+    (b';', SCSV), // Semicolon is common in European CSV
 ];
 
 /// CSV/TSV/PSV content classifier (priority 15).
@@ -104,8 +107,7 @@ impl ContentClassifier for CsvClassifier {
 /// Check if a delimiter produces consistent column counts across lines.
 ///
 /// Returns true if every non-empty line has at least `MIN_COLUMNS`
-/// columns and the column count is consistent (same on every line,
-/// or within a tolerance of 1 for trailing delimiters).
+/// columns and the column count is identical on every line.
 fn is_consistent_delimiter(lines: &[&str], delim: u8) -> bool {
     let delim_char = delim as char;
     let mut expected_count = 0;

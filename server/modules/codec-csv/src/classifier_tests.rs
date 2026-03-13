@@ -29,7 +29,7 @@ fn psv_by_content() {
 fn semicolon_csv_by_content() {
     let c = CsvClassifier::new();
     let data = b"name;age;city\nAlice;30;NYC\nBob;25;LA\n";
-    assert_eq!(c.classify(data, "data.txt"), Some(ContentType::new(CSV)));
+    assert_eq!(c.classify(data, "data.txt"), Some(ContentType::new(SCSV)));
 }
 
 #[test]

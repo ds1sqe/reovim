@@ -26,6 +26,18 @@ fn creates_psv_codec() {
 }
 
 #[test]
+fn creates_scsv_codec() {
+    let factory = CsvCodecFactory::new();
+    let ct = ContentType::new(crate::classifier::SCSV);
+    let codec = factory.create(&ct);
+    assert!(codec.is_some());
+    // Verify it decodes with semicolon delimiter
+    let result = codec.unwrap().decode(b"a;b\n1;2\n").unwrap();
+    assert!(result.content.contains('a'));
+    assert!(result.content.contains('b'));
+}
+
+#[test]
 fn rejects_binary_raw() {
     let factory = CsvCodecFactory::new();
     let ct = ContentType::new(ContentType::BINARY_RAW);
@@ -53,7 +65,8 @@ fn supported_content_types() {
     assert!(types.contains(&crate::classifier::CSV));
     assert!(types.contains(&crate::classifier::TSV));
     assert!(types.contains(&crate::classifier::PSV));
-    assert_eq!(types.len(), 3);
+    assert!(types.contains(&crate::classifier::SCSV));
+    assert_eq!(types.len(), 4);
 }
 
 #[test]

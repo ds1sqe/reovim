@@ -214,8 +214,12 @@ fn encode_csv(content: &str, delimiter: char, line_ending: &str) -> Vec<u8> {
             }
             let trimmed = field.trim();
 
-            // Quote if field contains delimiter, quote, or newline
-            if trimmed.contains(delimiter) || trimmed.contains('"') {
+            // Quote if field contains delimiter, quote, or newline (RFC 4180 §2.6)
+            if trimmed.contains(delimiter)
+                || trimmed.contains('"')
+                || trimmed.contains('\n')
+                || trimmed.contains('\r')
+            {
                 result.push(b'"');
                 for ch in trimmed.bytes() {
                     if ch == b'"' {

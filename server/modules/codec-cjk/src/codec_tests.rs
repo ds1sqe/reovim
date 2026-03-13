@@ -13,7 +13,7 @@ fn shift_jis_codec() -> CjkCodec {
 }
 
 fn gbk_codec() -> CjkCodec {
-    CjkCodec::new(encoding_rs::GBK, "encoding/gb2312")
+    CjkCodec::new(encoding_rs::GBK, "encoding/gbk")
 }
 
 fn big5_codec() -> CjkCodec {

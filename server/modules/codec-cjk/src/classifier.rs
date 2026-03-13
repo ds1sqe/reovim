@@ -12,7 +12,7 @@ const SAMPLE_SIZE: usize = 8192;
 const CJK_ENCODINGS: &[(&str, &encoding_rs::Encoding)] = &[
     ("encoding/euc-kr", encoding_rs::EUC_KR),
     ("encoding/shift-jis", encoding_rs::SHIFT_JIS),
-    ("encoding/gb2312", encoding_rs::GBK),
+    ("encoding/gbk", encoding_rs::GBK),
     ("encoding/big5", encoding_rs::BIG5),
 ];
 
@@ -21,6 +21,12 @@ const CJK_ENCODINGS: &[(&str, &encoding_rs::Encoding)] = &[
 /// Runs before all other classifiers. Tries each CJK encoding via
 /// `encoding_rs` and accepts if the decode produces zero replacement
 /// characters and the content contains high bytes (0x80+).
+///
+/// Known limitation: encodings are tried in a fixed order (EUC-KR,
+/// Shift-JIS, GBK, Big5). Some byte sequences are valid in multiple
+/// encodings, so Big5 or high-range Shift-JIS content may be
+/// misidentified as EUC-KR. File extension hints could improve this
+/// but are not implemented yet.
 pub struct CjkClassifier;
 
 impl CjkClassifier {
@@ -43,11 +49,11 @@ impl ContentClassifier for CjkClassifier {
             return None;
         }
 
-        // Sample the first SAMPLE_SIZE bytes, snapping back to avoid
-        // splitting a multi-byte UTF-8 sequence at the boundary.
+        // Sample the first SAMPLE_SIZE bytes, snapping back past any byte
+        // matching the UTF-8 continuation pattern (10xxxxxx) to avoid
+        // splitting a multi-byte sequence at the sample boundary.
         let sample = if raw.len() > SAMPLE_SIZE {
             let mut end = SAMPLE_SIZE;
-            // Walk back past any UTF-8 continuation bytes (10xxxxxx)
             while end > 0 && (raw[end] & 0xC0) == 0x80 {
                 end -= 1;
             }

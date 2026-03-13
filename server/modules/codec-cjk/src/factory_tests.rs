@@ -19,9 +19,9 @@ fn creates_shift_jis_codec() {
 }
 
 #[test]
-fn creates_gb2312_codec() {
+fn creates_gbk_codec() {
     let factory = CjkCodecFactory::new();
-    let ct = ContentType::new("encoding/gb2312");
+    let ct = ContentType::new("encoding/gbk");
     assert!(factory.create(&ct).is_some());
 }
 
@@ -53,7 +53,7 @@ fn supported_content_types() {
     assert_eq!(types.len(), 4);
     assert!(types.contains(&"encoding/euc-kr"));
     assert!(types.contains(&"encoding/shift-jis"));
-    assert!(types.contains(&"encoding/gb2312"));
+    assert!(types.contains(&"encoding/gbk"));
     assert!(types.contains(&"encoding/big5"));
 }
 

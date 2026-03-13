@@ -8,13 +8,15 @@ use reovim_driver_codec::{ContentClassifier, ContentType};
 /// Maximum bytes to sample for binary detection.
 const SAMPLE_SIZE: usize = 8192;
 
-/// Threshold ratio of non-printable bytes to classify as binary.
-const NON_PRINTABLE_THRESHOLD: f64 = 0.30;
+/// Non-printable threshold: numerator for integer ratio check.
+/// Equivalent to 30%: `non_printable * 10 > sample.len() * 3`.
+const NON_PRINTABLE_NUMERATOR: usize = 10;
+const NON_PRINTABLE_DENOMINATOR: usize = 3;
 
 /// Known binary file extensions (fast-path, no content scanning needed).
 const BINARY_EXTENSIONS: &[&str] = &[
     "exe", "dll", "so", "dylib", "o", "a", "lib", // Executables/objects
-    "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", "svg", // Images
+    "png", "jpg", "jpeg", "gif", "bmp", "ico", "webp", // Images
     "zip", "gz", "bz2", "xz", "tar", "7z", "rar", "zst",   // Archives
     "pdf",   // Documents
     "wasm",  // WebAssembly
@@ -67,13 +69,12 @@ impl ContentClassifier for BinaryClassifier {
             return Some(ContentType::new(ContentType::BINARY_RAW));
         }
 
-        // Count non-printable bytes
+        // Count non-printable bytes — use integer arithmetic to avoid float casts.
+        // non_printable * 10 > sample.len() * 3 is equivalent to ratio > 0.30.
+        // Max product: SAMPLE_SIZE(8192) * 10 = 81_920, well within usize.
         let non_printable = sample.iter().filter(|&&b| !is_printable(b)).count();
 
-        #[allow(clippy::cast_precision_loss)]
-        let ratio = non_printable as f64 / sample.len() as f64;
-
-        if ratio > NON_PRINTABLE_THRESHOLD {
+        if non_printable * NON_PRINTABLE_NUMERATOR > sample.len() * NON_PRINTABLE_DENOMINATOR {
             Some(ContentType::new(ContentType::BINARY_RAW))
         } else {
             None

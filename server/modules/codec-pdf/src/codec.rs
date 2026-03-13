@@ -14,9 +14,6 @@ use crate::classifier::PDF;
 /// Annotation kind for page separator lines.
 pub const PDF_PAGE_KIND: &str = "content.pdf.page";
 
-/// Annotation kind for PDF metadata (title, author).
-pub const PDF_METADATA_KIND: &str = "content.pdf.metadata";
-
 /// PDF text extraction codec.
 ///
 /// Extracts text from PDF pages using `pdf-extract`. Each page is
