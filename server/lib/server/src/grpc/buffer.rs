@@ -203,6 +203,9 @@ impl BufferService for BufferServiceImpl {
                                 path: buf.file_path().map(String::from),
                                 line_count: buf.line_count() as u64,
                                 modified: buf.is_modified(),
+                                content_type: None,
+                                readonly: None,
+                                codec_metadata: None,
                             }
                         })
                     })

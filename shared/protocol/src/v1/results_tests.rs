@@ -22,12 +22,18 @@ fn test_buffer_list_result() {
                 file_path: Some("/tmp/a.txt".to_string()),
                 modified: false,
                 line_count: 10,
+                content_type: None,
+                readonly: None,
+                codec_metadata: None,
             },
             BufferInfo {
                 id: 2,
                 file_path: None,
                 modified: true,
                 line_count: 5,
+                content_type: None,
+                readonly: None,
+                codec_metadata: None,
             },
         ],
     };

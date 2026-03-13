@@ -38,6 +38,20 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Content Codec Pipeline foundation (#629, part of #627)**: Pluggable content codec system
+  replacing hardcoded `String::from_utf8(bytes)` in the file-loading path. New
+  `reovim-driver-codec` driver crate defines `ContentCodec`, `ContentClassifier`,
+  `ContentCodecFactory`, `ContentCodecFactoryStore`, `ContentClassifierStore`, and
+  `CodecSessionState` traits/stores following the established `SyntaxDriverFactory` pattern.
+  New `reovim-module-codec-utf8` module provides UTF-8 codec with BOM detection/stripping and
+  CRLF-to-LF normalization on decode, with round-trip restoration on save. `:e` command now
+  decodes files through the codec pipeline with graceful UTF-8 fallback when no codec module is
+  loaded. `:w` command encodes through the codec pipeline, respecting original line endings and
+  BOM. Read-only enforcement for lossy codec decodes (binary files). `CODEC_PROVIDER` capability
+  added. `BufferInfo` protocol type extended with optional `content_type`, `readonly`, and
+  `codec_metadata` fields (backward-compatible via `skip_serializing_if`). v2 protobuf
+  `BufferInfo` and `CodecMetadata` messages extended with corresponding optional fields.
+
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
   registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
   factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to

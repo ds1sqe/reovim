@@ -3,10 +3,11 @@
 use std::path::Path;
 
 use {
+    reovim_driver_codec::{CodecSessionState, ContentCodecFactoryStore},
     reovim_driver_command::{
         ArgKind, ArgSpec, Command, CommandContext, CommandHandler, CommandResult, RuntimeSignal,
     },
-    reovim_driver_session::{BufferApi, CommandApi, SessionRuntime},
+    reovim_driver_session::{BufferApi, CommandApi, ExtensionApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId, events::kernel::BufferSaved},
 };
 
@@ -62,11 +63,11 @@ impl CommandHandler for WriteCommand {
             return CommandResult::Error("buffer not found".to_string());
         };
 
-        // Write via VFS
+        // Write via VFS, encoding through codec pipeline if metadata exists
         let Some(vfs) = ctx.vfs() else {
             return CommandResult::Error("VFS not available".to_string());
         };
-        if let Err(e) = vfs.write_str(Path::new(&path), &content) {
+        if let Err(e) = encode_and_write(runtime, &path, &content, vfs.as_ref()) {
             return CommandResult::Error(format!("Write failed: {e}"));
         }
 
@@ -88,6 +89,55 @@ impl CommandHandler for WriteCommand {
 
         CommandResult::Success
     }
+}
+
+/// Encode content through codec pipeline and write to VFS.
+///
+/// If codec metadata exists for the buffer, uses the codec to encode
+/// back to the original format. Otherwise falls back to writing UTF-8 bytes.
+fn encode_and_write(
+    runtime: &mut SessionRuntime<'_>,
+    path: &str,
+    content: &str,
+    vfs: &dyn reovim_driver_vfs::VfsDriver,
+) -> Result<(), String> {
+    // Check if we have codec metadata for this buffer
+    if let Some(buffer_id) = runtime.active_buffer() {
+        let codec_state = runtime.ext_mut::<CodecSessionState>();
+        if let Some(metadata) = codec_state.get(buffer_id) {
+            // Check readonly (lossy decode means writing back would corrupt data)
+            if metadata.get("readonly") == Some("true") {
+                return Err("buffer is read-only (lossy codec decode)".to_string());
+            }
+
+            // Try to encode via codec
+            let content_type = metadata.content_type().clone();
+            let metadata_clone = metadata.clone();
+
+            let services = &runtime.kernel().services;
+            if let Some(factory_store) = services.get::<ContentCodecFactoryStore>()
+                && let Some(codec) = factory_store.find(&content_type)
+            {
+                match codec.encode(content, &metadata_clone) {
+                    Some(Ok(bytes)) => {
+                        return vfs
+                            .write(Path::new(path), &bytes)
+                            .map_err(|e| e.to_string());
+                    }
+                    Some(Err(e)) => {
+                        return Err(format!("codec encode failed: {e}"));
+                    }
+                    None => {
+                        return Err("buffer is read-only (one-way codec)".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: write as UTF-8
+    vfs.write_str(Path::new(path), content)
+        .map_err(|e| e.to_string())
 }
 
 /// Write and quit command - save and exit.

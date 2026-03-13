@@ -28,11 +28,18 @@ fn test_buffer_info_serialization() {
         file_path: Some("/tmp/test.txt".to_string()),
         modified: true,
         line_count: 100,
+        content_type: None,
+        readonly: None,
+        codec_metadata: None,
     };
     let json = serde_json::to_string(&buffer).unwrap();
     assert!(json.contains("\"id\":1"));
     assert!(json.contains("\"file_path\":\"/tmp/test.txt\""));
     assert!(json.contains("\"modified\":true"));
+    // Codec fields should be absent when None (skip_serializing_if)
+    assert!(!json.contains("content_type"));
+    assert!(!json.contains("readonly"));
+    assert!(!json.contains("codec_metadata"));
 }
 
 #[test]
@@ -475,6 +482,9 @@ fn test_buffer_info_without_file_path() {
         file_path: None,
         modified: false,
         line_count: 0,
+        content_type: None,
+        readonly: None,
+        codec_metadata: None,
     };
     let json = serde_json::to_string(&buffer).unwrap();
     assert!(!json.contains("file_path"));
@@ -583,4 +593,114 @@ fn test_wire_layout_change_kind_focus_no_from() {
     let json = serde_json::to_string(&kind).unwrap();
     assert!(json.contains("\"from\":null"));
     assert!(json.contains("\"to\":0"));
+}
+
+#[test]
+fn test_buffer_info_with_codec_metadata() {
+    let buffer = BufferInfo {
+        id: 1,
+        file_path: Some("test.txt".to_string()),
+        modified: false,
+        line_count: 42,
+        content_type: Some("text/utf-8".to_string()),
+        readonly: Some(false),
+        codec_metadata: Some(CodecMetadataWire {
+            codec_name: "utf-8".to_string(),
+            line_ending: Some("crlf".to_string()),
+            has_bom: true,
+        }),
+    };
+    let json = serde_json::to_string(&buffer).unwrap();
+    assert!(json.contains("\"content_type\":\"text/utf-8\""));
+    assert!(json.contains("\"codec_name\":\"utf-8\""));
+    assert!(json.contains("\"line_ending\":\"crlf\""));
+    assert!(json.contains("\"has_bom\":true"));
+
+    // Round-trip deserialization
+    let decoded: BufferInfo = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.content_type.as_deref(), Some("text/utf-8"));
+    assert_eq!(decoded.readonly, Some(false));
+    let meta = decoded.codec_metadata.unwrap();
+    assert_eq!(meta.codec_name, "utf-8");
+    assert_eq!(meta.line_ending.as_deref(), Some("crlf"));
+    assert!(meta.has_bom);
+}
+
+#[test]
+fn test_buffer_info_codec_fields_absent_when_none() {
+    let buffer = BufferInfo {
+        id: 1,
+        file_path: None,
+        modified: false,
+        line_count: 0,
+        content_type: None,
+        readonly: None,
+        codec_metadata: None,
+    };
+    let json = serde_json::to_string(&buffer).unwrap();
+    // Codec fields should be omitted entirely
+    assert!(!json.contains("content_type"));
+    assert!(!json.contains("readonly"));
+    assert!(!json.contains("codec_metadata"));
+}
+
+#[test]
+fn test_buffer_info_deserialize_without_codec_fields() {
+    // Legacy JSON without codec fields should deserialize with defaults
+    let json = r#"{"id":1,"modified":false,"line_count":10}"#;
+    let buffer: BufferInfo = serde_json::from_str(json).unwrap();
+    assert_eq!(buffer.id, 1);
+    assert!(buffer.content_type.is_none());
+    assert!(buffer.readonly.is_none());
+    assert!(buffer.codec_metadata.is_none());
+}
+
+#[test]
+fn test_codec_metadata_wire_without_bom() {
+    let meta = CodecMetadataWire {
+        codec_name: "utf-8".to_string(),
+        line_ending: Some("lf".to_string()),
+        has_bom: false,
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    // has_bom should be skipped when false
+    assert!(!json.contains("has_bom"));
+    assert!(json.contains("\"codec_name\":\"utf-8\""));
+    assert!(json.contains("\"line_ending\":\"lf\""));
+}
+
+#[test]
+fn test_codec_metadata_wire_without_line_ending() {
+    let meta = CodecMetadataWire {
+        codec_name: "hex".to_string(),
+        line_ending: None,
+        has_bom: false,
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    assert!(!json.contains("line_ending"));
+    assert!(!json.contains("has_bom"));
+    assert!(json.contains("\"codec_name\":\"hex\""));
+}
+
+#[test]
+fn test_codec_metadata_wire_equality() {
+    let a = CodecMetadataWire {
+        codec_name: "utf-8".to_string(),
+        line_ending: Some("lf".to_string()),
+        has_bom: true,
+    };
+    let b = a.clone();
+    assert_eq!(a, b);
+}
+
+#[test]
+fn test_codec_metadata_wire_debug() {
+    let meta = CodecMetadataWire {
+        codec_name: "utf-8".to_string(),
+        line_ending: None,
+        has_bom: false,
+    };
+    let debug = format!("{meta:?}");
+    assert!(debug.contains("CodecMetadataWire"));
+    assert!(debug.contains("utf-8"));
 }
