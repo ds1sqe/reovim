@@ -18,11 +18,12 @@ use reovim_protocol::v2::{
     Notification, notification::Payload, option_changed_payload::Value as OptionValue,
 };
 
+use reovim_client_driver::{BufferId, BufferUpdateEvent, ClientModule};
+
 use crate::{
     CursorPosition, RemoteClient, SelectionState, TuiCoreState,
     core_helpers::apply_layout_notification,
     grpc_client::{TuiGrpcClient, TuiGrpcError},
-    render_backend::TuiExtension,
 };
 
 /// Context trait for notification handling.
@@ -84,7 +85,7 @@ pub trait NotificationContext {
     ///
     /// Extensions own their state and handle notifications generically.
     /// The engine dispatches via `kind()` matching — zero extension knowledge.
-    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>];
+    fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>];
 }
 
 /// Result of notification handling.
@@ -146,7 +147,7 @@ pub async fn handle_notification<C: NotificationContext>(
             // Notify extensions of mode change (after dropping state borrow)
             if is_local {
                 for ext in ctx.extensions_mut() {
-                    ext.on_mode_change(&mode_display, is_insert);
+                    ext.on_mode_change(&mode_display);
                 }
             }
             Ok(NotificationResult::Redraw)
@@ -187,8 +188,10 @@ pub async fn handle_notification<C: NotificationContext>(
             };
             // Notify extensions of cursor update (after dropping state borrow)
             if is_local {
+                #[allow(clippy::cast_possible_truncation)]
+                let bid = BufferId(buffer_id as usize);
                 for ext in ctx.extensions_mut() {
-                    ext.on_cursor_update(buffer_id, cursor_line, cursor_col);
+                    ext.on_cursor_update(bid, cursor_line, cursor_col);
                 }
             }
             Ok(NotificationResult::Redraw)
@@ -217,8 +220,18 @@ pub async fn handle_notification<C: NotificationContext>(
             // Notify extensions of buffer content change
             let lines = ctx.state_mut().buffer_cache.get(&buffer_id).cloned();
             if let Some(lines) = &lines {
+                #[allow(clippy::cast_possible_truncation)]
+                let total = lines.len();
+                let event = BufferUpdateEvent {
+                    #[allow(clippy::cast_possible_truncation)]
+                    buffer_id: BufferId(buffer_id as usize),
+                    revision: 0,
+                    changed_range: 0..total,
+                    new_lines: lines.clone(),
+                    total_lines: total,
+                };
                 for ext in ctx.extensions_mut() {
-                    ext.on_buffer_update(buffer_id, lines);
+                    ext.on_buffer_update(&event);
                 }
             }
 
@@ -285,8 +298,18 @@ pub async fn handle_notification<C: NotificationContext>(
             for buf_id in fetched {
                 let lines = ctx.state_mut().buffer_cache.get(&buf_id).cloned();
                 if let Some(lines) = &lines {
+                    #[allow(clippy::cast_possible_truncation)]
+                    let total = lines.len();
+                    let event = BufferUpdateEvent {
+                        #[allow(clippy::cast_possible_truncation)]
+                        buffer_id: BufferId(buf_id as usize),
+                        revision: 0,
+                        changed_range: 0..total,
+                        new_lines: lines.clone(),
+                        total_lines: total,
+                    };
                     for ext in ctx.extensions_mut() {
-                        ext.on_buffer_update(buf_id, lines);
+                        ext.on_buffer_update(&event);
                     }
                 }
             }
@@ -511,7 +534,7 @@ pub async fn handle_notification<C: NotificationContext>(
                 // Generic dispatch — engine has ZERO knowledge of specific extensions
                 for extension in ctx.extensions_mut() {
                     if extension.kind() == ext.kind {
-                        extension.apply_notification(&ext.data);
+                        extension.on_notification(&ext.data);
                     }
                 }
             }

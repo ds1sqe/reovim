@@ -141,6 +141,7 @@ members = [
 
     # Shared clients layer
     "shared/clients/model",
+    "shared/clients/driver",
 
     # Shared benchmarking utilities
     "shared/bench",
@@ -261,6 +262,9 @@ reovim-client-cli = { path = "./clients/cli", version = "0.12.0-dev" }
 
 # Common client model (platform-agnostic abstractions)
 reovim-client-model = { path = "./shared/clients/model", version = "0.12.0-dev" }
+
+# Client driver contracts (CLM traits and types)
+reovim-client-driver = { path = "./shared/clients/driver", version = "0.12.0-dev" }
 
 # Application binary
 reovim-app = { path = "./apps/bin", version = "0.12.0-dev" }

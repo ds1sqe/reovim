@@ -21,7 +21,9 @@
 
 use std::{collections::HashMap, io, time::Duration};
 
-use crate::render_backend::{RenderBackend as _, TuiExtension};
+use reovim_client_driver::ClientModule;
+
+use crate::render_backend::RenderBackend as _;
 
 use {
     crossterm::event::{KeyCode, KeyModifiers},
@@ -132,7 +134,7 @@ pub struct TuiApp<O: TuiOutput> {
     /// Whether display options need refresh.
     needs_display_options_refresh: bool,
     /// TUI extensions (cmdline, whichkey, etc.) — engine has ZERO knowledge.
-    extensions: Vec<Box<dyn TuiExtension>>,
+    extensions: Vec<Box<dyn ClientModule>>,
 
     // === I/O adapter (only thing that differs) ===
     /// Display output adapter (terminal for interactive, no-op for headless).
@@ -184,7 +186,9 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: reovim_tui_ext_defaults::create_extensions(),
+            extensions: crate::bridge::wrap_extensions(
+                reovim_tui_ext_defaults::create_extensions(),
+            ),
             output,
         }
     }
@@ -194,8 +198,14 @@ impl<O: TuiOutput> TuiApp<O> {
     /// Called by the app layer after construction to apply user config.
     /// Must be called before `run()`. Extensions are already initialized
     /// by `create_extensions_filtered()`.
-    pub fn set_extensions(&mut self, extensions: Vec<Box<dyn TuiExtension>>) {
-        self.extensions = extensions;
+    ///
+    /// Accepts legacy `TuiExtension` trait objects and wraps them
+    /// as `ClientModule` via the bridge adapter.
+    pub fn set_extensions(
+        &mut self,
+        extensions: Vec<Box<dyn reovim_driver_display::render_backend::TuiExtension>>,
+    ) {
+        self.extensions = crate::bridge::wrap_extensions(extensions);
     }
 
     /// Apply a theme by name.
@@ -736,10 +746,10 @@ impl<O: TuiOutput> TuiApp<O> {
 
     /// Position cursor (for interactive mode).
     fn position_cursor(&mut self) {
-        // Check if any active extension wants cursor positioning
+        // Check if any chrome extension wants cursor positioning
         let (width, height) = self.frame_buffer.size();
         for ext in &self.extensions {
-            if ext.is_active()
+            if ext.has_chrome()
                 && let Some((cx, cy)) = ext.cursor_position(width, height)
             {
                 self.output.position_cursor(cx, cy);
@@ -773,7 +783,7 @@ impl<O: TuiOutput> TuiApp<O> {
             let virtual_count: usize = self
                 .extensions
                 .iter()
-                .filter(|e| e.is_active())
+                .filter(|e| e.has_buffer_contrib())
                 .flat_map(|e| e.virtual_lines())
                 .filter(|vl| vl.buffer_line >= scroll_top && vl.buffer_line <= cursor_line_idx)
                 .count();
@@ -786,13 +796,15 @@ impl<O: TuiOutput> TuiApp<O> {
             // Extension column mapping (e.g., table expanded columns)
             let buffer_id = self.state.get_focused_buffer_id().unwrap_or(0);
             #[allow(clippy::cast_possible_truncation)]
+            let bid = reovim_client_driver::BufferId(buffer_id as usize);
+            #[allow(clippy::cast_possible_truncation)]
             let cursor_x = self
                 .extensions
                 .iter()
-                .filter(|e| e.is_active())
+                .filter(|e| e.has_buffer_contrib())
                 .find_map(|e| {
                     e.map_cursor_column(
-                        buffer_id,
+                        bid,
                         cursor_pos.line as usize,
                         cursor_pos.column as usize,
                     )
@@ -886,7 +898,7 @@ impl<O: TuiOutput> NotificationContext for TuiApp<O> {
         self.output.invalidate();
     }
 
-    fn extensions_mut(&mut self) -> &mut [Box<dyn TuiExtension>] {
+    fn extensions_mut(&mut self) -> &mut [Box<dyn ClientModule>] {
         &mut self.extensions
     }
 

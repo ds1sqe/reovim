@@ -18,11 +18,13 @@ use {
     },
 };
 
+use reovim_client_driver::ClientModule;
+
 use crate::{
     LineNumberMode, SelectionState, TuiCoreState,
-    render_backend::{
-        RenderBackend, RenderBehavior, TransformedLine, TuiExtension, ViewportContext, VirtualLine,
-        VirtualLinePosition,
+    render_backend::{RenderBackend, RenderBehavior, TransformedLine, VirtualLine, VirtualLinePosition},
+    render_engine_bridge::{
+        self, BackendSurfaceAdapter, TuiPlatformCapabilities,
     },
 };
 
@@ -32,18 +34,14 @@ use crate::{
 
 /// Classify a token category via extension dispatch.
 ///
-/// Queries all active extensions; first `Some` wins.
+/// Queries all buffer-contrib extensions; first `Some` wins.
 /// Falls back to `Highlight` if no extension claims the category.
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn classify_with_extensions(
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
     category: &str,
 ) -> RenderBehavior {
-    extensions
-        .iter()
-        .filter(|e| e.is_active())
-        .find_map(|e| e.classify_token(category))
-        .unwrap_or(RenderBehavior::Highlight)
+    render_engine_bridge::classify_with_extensions(extensions, category)
 }
 
 /// Render configuration for a frame.
@@ -209,7 +207,7 @@ pub fn render_frame<B: RenderBackend>(
     backend: &mut B,
     state: &TuiCoreState,
     config: &RenderConfig,
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
 ) {
@@ -221,27 +219,22 @@ pub fn render_frame<B: RenderBackend>(
     // Reserve space for statusline only (cmdline floats on top)
     let content_height = height.saturating_sub(1);
 
-    // Compute sidebar offset from active extensions
-    let sidebar_width: u16 = extensions
-        .iter()
-        .filter(|e| e.is_active())
-        .map(|e| e.content_offset_left())
-        .sum();
+    // Compute sidebar offset from chrome extensions
+    let caps = TuiPlatformCapabilities::new(width, height);
+    let sidebar_width = render_engine_bridge::sidebar_width(extensions, &caps);
     let content_x = config.gutter_width + sidebar_width;
 
-    // Collect fold hidden ranges from extensions
-    let fold_ranges: Vec<(u32, u32)> = extensions
+    // Collect fold hidden ranges from buffer-contrib extensions
+    let fold_ranges_usize = render_engine_bridge::collect_fold_ranges(extensions);
+    #[allow(clippy::cast_possible_truncation)]
+    let fold_ranges: Vec<(u32, u32)> = fold_ranges_usize
         .iter()
-        .filter(|e| e.is_active())
-        .flat_map(|e| e.fold_hidden_lines().iter().copied())
+        .map(|&(s, c)| (s as u32, c as u32))
         .collect();
 
-    // Collect virtual lines from extensions
-    let virtual_lines: Vec<&VirtualLine> = extensions
-        .iter()
-        .filter(|e| e.is_active())
-        .flat_map(|e| e.virtual_lines())
-        .collect();
+    // Collect virtual lines from buffer-contrib extensions (converted to display types)
+    let display_virtual_lines = render_engine_bridge::collect_virtual_lines(extensions);
+    let virtual_lines: Vec<&VirtualLine> = display_virtual_lines.iter().collect();
 
     // Render buffer content
     render_buffer_content(
@@ -280,18 +273,18 @@ pub fn render_frame<B: RenderBackend>(
     // Render statusline
     render_statusline(backend, state, width, height);
 
-    // Build viewport context for buffer-position extensions
-    let viewport = ViewportContext {
-        scroll_top: state.get_focused_scroll_top(),
-        content_x,
-        content_height,
-        buffer_id: state.get_focused_buffer_id(),
-    };
-
-    // Render active extensions (engine has ZERO knowledge of specific ones)
+    // Render chrome extensions (engine has ZERO knowledge of specific ones)
+    let caps = TuiPlatformCapabilities::new(width, height);
     for ext in extensions {
-        if ext.is_active() {
-            ext.render_with_viewport(backend, &viewport);
+        if ext.has_chrome() {
+            let bounds = reovim_client_driver::Rect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            };
+            let mut surface = BackendSurfaceAdapter::new(backend);
+            ext.chrome_render(&mut surface, bounds, &caps);
         }
     }
 }
@@ -350,7 +343,7 @@ fn render_buffer_content<B: RenderBackend>(
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
     virtual_lines: &[&VirtualLine],
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) {
     let (width, _) = backend.size();
     let gutter_width = config.gutter_width;
@@ -422,10 +415,8 @@ fn render_buffer_content<B: RenderBackend>(
                 let line = &lines[line_idx];
 
                 // Check if any extension wants to transform this line
-                let transform = extensions
-                    .iter()
-                    .filter(|e| e.is_active())
-                    .find_map(|e| e.transform_line(buffer_id.unwrap_or(0), line_idx, line));
+                let transform =
+                    render_engine_bridge::transform_line(extensions, buffer_id.unwrap_or(0), line_idx, line);
 
                 if let Some(transformed) = transform {
                     render_transformed_line(
@@ -590,7 +581,7 @@ fn render_line_content<B: RenderBackend>(
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
     skip_conceals: bool,
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) {
     let tokens = buffer_id
         .map(|bid| token_cache.tokens_for_line(bid, line_idx as u32))
@@ -724,7 +715,7 @@ fn render_remote_selections<B: RenderBackend>(
     gutter_width: u16,
     content_height: u16,
     virtual_lines: &[&VirtualLine],
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) {
     let (width, _) = backend.size();
 
@@ -769,7 +760,7 @@ fn render_local_selection<B: RenderBackend>(
     gutter_width: u16,
     content_height: u16,
     virtual_lines: &[&VirtualLine],
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) {
     let (width, _) = backend.size();
     let Some(sel) = state.window_selections.get(&state.focused_window_id) else {
@@ -815,7 +806,7 @@ fn render_selection_range<B: RenderBackend>(
     lines: Option<&[String]>,
     scroll_top: u64,
     virtual_lines: &[&VirtualLine],
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
     buffer_id: u64,
 ) {
     let (start_line, start_col, end_line, end_col) = normalize_selection(sel);
@@ -834,23 +825,14 @@ fn render_selection_range<B: RenderBackend>(
 
         // Map a buffer column through extensions (table column mapping)
         let map_col = |buf_col: u64| -> u16 {
-            extensions
-                .iter()
-                .filter(|e| e.is_active())
-                .find_map(|e| e.map_cursor_column(buffer_id, line_idx, buf_col as usize))
+            #[allow(clippy::cast_possible_truncation)]
+            render_engine_bridge::map_cursor_column(extensions, buffer_id, line_idx, buf_col as usize)
                 .unwrap_or(buf_col as u16)
         };
 
         // Visual line length: transformed text length or buffer text length
         let line_text = lines.and_then(|l| l.get(line_idx));
-        let visual_line_len = extensions
-            .iter()
-            .filter(|e| e.is_active())
-            .find_map(|e| {
-                e.transform_line(buffer_id, line_idx, line_text.map_or("", String::as_str))
-                    .map(|t| t.text.chars().count() as u16)
-            })
-            .or_else(|| line_text.map(|s| s.len() as u16))
+        let visual_line_len = render_engine_bridge::visual_line_len(extensions, buffer_id, line_idx, line_text)
             .unwrap_or(content_width);
 
         let (col_start, col_end) = match sel.mode.as_str() {
@@ -1039,7 +1021,7 @@ fn render_self_cursor<B: RenderBackend>(
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
     virtual_lines: &[&VirtualLine],
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) {
     // Skip rendering if no cursor data yet (e.g., before first CursorMoved notification)
     let Some(cursor) = state.get_focused_cursor() else {
@@ -1057,13 +1039,13 @@ fn render_self_cursor<B: RenderBackend>(
 
     // Check if any extension wants to map the cursor column
     let buffer_id_val = state.windows.first().and_then(|w| w.buffer_id).unwrap_or(0);
-    let visual_col = extensions
-        .iter()
-        .filter(|e| e.is_active())
-        .find_map(|e| {
-            #[allow(clippy::cast_possible_truncation)]
-            e.map_cursor_column(buffer_id_val, cursor.line as usize, cursor.column as usize)
-        })
+    #[allow(clippy::cast_possible_truncation)]
+    let visual_col = render_engine_bridge::map_cursor_column(
+        extensions,
+        buffer_id_val,
+        cursor.line as usize,
+        cursor.column as usize,
+    )
         .unwrap_or_else(|| {
             if state.is_insert_mode() {
                 cursor.column as u16
@@ -1101,7 +1083,7 @@ fn compute_cursor_visual_col(
     source_col: usize,
     token_cache: &AnnotationCacheManager,
     theme: &ThemeManager,
-    extensions: &[Box<dyn TuiExtension>],
+    extensions: &[Box<dyn ClientModule>],
 ) -> u16 {
     let buffer_id = state.windows.first().and_then(|w| w.buffer_id);
     let Some(bid) = buffer_id else {

@@ -4,6 +4,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.12.0-dev
 
+### Added
+
+- **Client driver crate** (`reovim-client-driver`) (#632): Platform-agnostic trait contracts
+  for the Client Layer Model. Defines `ClientModule` trait (single trait CORE interacts with),
+  `PlatformCapabilities`, `RenderSurface`, `ServerHandle`, `ThemeProvider`, `ViewportRenderer`,
+  and `LayoutPolicy` traits. All supporting types: `ProbeResult`, `Version`, `BufferId`,
+  `ChromePosition`, `ColumnWidth`, `GutterCell`, `AnnotationContext`, `RenderBehavior`,
+  `TransformedLine`, `VirtualLine`, `InlineDecoration`, `Style`, `Attributes`, and more.
+  87 unit tests with zero clippy warnings.
+
+- **TuiExtensionBridge adapter** (#632): Bridge wrapping all 15 existing `TuiExtension`
+  implementations as `ClientModule`. Per-extension semantic classification (chrome vs
+  buffer-contrib), mode derivation (`is_insert` from mode name), type conversions between
+  display driver and client driver types, `SurfaceBackendAdapter` for legacy rendering.
+  80 unit tests covering all 15 extensions, all conversion functions, and adapter delegation.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)
