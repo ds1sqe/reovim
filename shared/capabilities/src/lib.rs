@@ -22,6 +22,9 @@ pub const BUFFER_MANAGER: &str = "buffer-manager";
 /// System clipboard integration.
 pub const CLIPBOARD_PROVIDER: &str = "clipboard-provider";
 
+/// Content codec (encoding/decoding file content).
+pub const CODEC_PROVIDER: &str = "codec-provider";
+
 /// Command dispatch and registration.
 pub const COMMAND_DISPATCH: &str = "command-dispatch";
 
@@ -67,6 +70,7 @@ pub const VFS_PROVIDER: &str = "vfs-provider";
 pub const ALL: &[&str] = &[
     BUFFER_MANAGER,
     CLIPBOARD_PROVIDER,
+    CODEC_PROVIDER,
     COMMAND_DISPATCH,
     COMPLETION_PROVIDER,
     FILE_EXPLORER,

@@ -354,6 +354,31 @@ pub struct BufferInfo {
     pub modified: bool,
     /// Total line count.
     pub line_count: usize,
+    /// Content type detected by codec pipeline (e.g., "text/utf-8", "binary/raw").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Whether the buffer is read-only (e.g., lossy codec decode).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readonly: Option<bool>,
+    /// Codec metadata for round-trip encoding awareness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codec_metadata: Option<CodecMetadataWire>,
+}
+
+/// Wire-format codec metadata for protocol transmission.
+///
+/// Contains the subset of codec metadata that clients may use for display
+/// (e.g., showing line ending type or BOM status in the statusline).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CodecMetadataWire {
+    /// Codec name that decoded this buffer (e.g., "utf-8").
+    pub codec_name: String,
+    /// Line ending style detected on open (e.g., "lf", "crlf").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line_ending: Option<String>,
+    /// Whether the file had a BOM (byte order mark).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub has_bom: bool,
 }
 
 /// Screen information snapshot.

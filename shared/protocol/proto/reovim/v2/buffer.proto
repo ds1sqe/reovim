@@ -91,6 +91,15 @@ message BufferInfo {
   string name = 3;               // Display name
   bool modified = 4;             // Has unsaved changes
   uint64 line_count = 5;
+  optional string content_type = 6;  // Codec content type (e.g., "text/utf-8")
+  optional bool readonly = 7;       // Read-only (lossy codec decode)
+  optional CodecMetadata codec_metadata = 8;
+}
+
+message CodecMetadata {
+  string codec_name = 1;            // Codec that decoded this buffer
+  optional string line_ending = 2;  // Line ending style ("lf", "crlf")
+  bool has_bom = 3;                 // File had a byte order mark
 }
 
 // File operations

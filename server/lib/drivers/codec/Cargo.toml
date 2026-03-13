@@ -1,0 +1,26 @@
+[package]
+name = "reovim-driver-codec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Content codec driver for reovim (trait definitions only)"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Only depends on kernel layer (for Service trait, BufferId)
+reovim-kernel = { workspace = true }
+
+# Session extension trait (for CodecSessionState as SessionExtension)
+reovim-driver-session = { workspace = true }
+
+# Annotation types (for DecodeResult annotations)
+reovim-driver-annotation = { workspace = true }
+
+# Sync primitives for stores
+parking_lot = { workspace = true }

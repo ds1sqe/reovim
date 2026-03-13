@@ -38,6 +38,70 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Content Codec Pipeline foundation (#629, part of #627)**: Pluggable content codec system
+  replacing hardcoded `String::from_utf8(bytes)` in the file-loading path. New
+  `reovim-driver-codec` driver crate defines `ContentCodec`, `ContentClassifier`,
+  `ContentCodecFactory`, `ContentCodecFactoryStore`, `ContentClassifierStore`, and
+  `CodecSessionState` traits/stores following the established `SyntaxDriverFactory` pattern.
+  New `reovim-module-codec-utf8` module provides UTF-8 codec with BOM detection/stripping and
+  CRLF-to-LF normalization on decode, with round-trip restoration on save. `:e` command now
+  decodes files through the codec pipeline with graceful UTF-8 fallback when no codec module is
+  loaded. `:w` command encodes through the codec pipeline, respecting original line endings and
+  BOM. Read-only enforcement for lossy codec decodes (binary files). `CODEC_PROVIDER` capability
+  added. `BufferInfo` protocol type extended with optional `content_type`, `readonly`, and
+  `codec_metadata` fields (backward-compatible via `skip_serializing_if`). v2 protobuf
+  `BufferInfo` and `CodecMetadata` messages extended with corresponding optional fields.
+
+- **Binary hex-dump codec (#630, part of #627)**: New `reovim-module-codec-hex` module provides
+  binary file detection and hex dump viewing. `BinaryClassifier` (priority 20) detects binary
+  files via null byte detection, non-printable character ratio (>30%), and known binary extension
+  fast-path (.exe, .dll, .so, .png, .zip, .pdf, .wasm, etc.). `HexCodec` formats raw bytes as
+  standard hex dump output (8-digit offset, 16 bytes/line in two groups of 8, ASCII sidebar).
+  One-way codec: `decode()` produces readonly/lossy hex view, `encode()` returns `None`. Emits
+  `content.hex.address`, `content.hex.byte`, and `content.hex.ascii` annotations per line for
+  syntax highlighting. Binary files open in read-only hex view; `:w` blocked with clear error.
+
+- **CJK encoding codecs (#631, part of #627)**: New `reovim-module-codec-cjk` module adds
+  EUC-KR, Shift-JIS, GB2312/GBK, and Big5 encoding support. `CjkClassifier` (priority 50)
+  detects CJK-encoded files by attempting decode with `encoding_rs` and checking for zero
+  replacement characters, with UTF-8 boundary-safe sampling. `CjkCodec` provides bidirectional
+  encode/decode with round-trip guarantees for all supported CJK character sets.
+
+- **Legacy encoding codecs (#631, part of #627)**: New `reovim-module-codec-legacy` module adds
+  Latin-1 (ISO-8859-1) and Windows-1252 encoding support. `LegacyClassifier` (priority 40)
+  distinguishes Windows-1252 from Latin-1 by detecting CP1252-specific bytes (0x80-0x9F range:
+  smart quotes, em-dash, Euro sign). Latin-1 codec uses direct byte-to-Unicode mapping;
+  Windows-1252 uses `encoding_rs`. Both are bidirectional with round-trip guarantees.
+  `encoding_rs` is the only new external dependency.
+
+- **PDF content codec (#640, part of #627)**: New `reovim-module-codec-pdf` module provides
+  read-only text extraction from PDF files. `PdfClassifier` (priority 35) detects `%PDF-` magic
+  bytes at offset 0 with `.pdf` extension fast-path. `PdfCodec` extracts text via `pdf-extract`
+  crate, producing page-delimited content with `--- Page N ---` separators and
+  `content.pdf.page` annotations with page number payloads. One-way codec: `decode()` extracts
+  text, `encode()` returns `None`. `lossy: true`, `readonly: true`. Metadata includes
+  `page_count`. New workspace dependency: `pdf-extract = "0.7"`. 44 tests.
+
+- **ELF/ZIP structured binary codec (#641, part of #627)**: New
+  `reovim-module-codec-binary-struct` module provides structured summaries for ELF binaries and
+  ZIP archives. `ElfClassifier` (priority 33) detects `\x7fELF` magic, `ZipClassifier`
+  (priority 31) detects `PK\x03\x04` magic with extension fast-path for `.zip`, `.jar`, `.war`,
+  `.apk`, `.xlsx`, `.docx`, etc. `ElfCodec` produces header info, section table with
+  name/size/offset/type columns. `ZipCodec` produces entry listing. Annotations:
+  `content.elf.header`, `content.elf.section`, `content.zip.header`, `content.zip.entry`. Both
+  one-way codecs: `lossy: true`, `readonly: true`. New workspace dependencies: `goblin = "0.9"`,
+  `zip = "8"`. 76 tests.
+
+- **CSV/TSV/PSV content codec (#642, part of #627)**: New `reovim-module-codec-csv` module
+  provides bidirectional column-aligned tabular view for delimiter-separated files.
+  `CsvClassifier` (priority 15) detects CSV/TSV/PSV by delimiter analysis (consistent columns
+  across rows, minimum 2 columns and 2 rows) with extension fast-path for `.csv`, `.tsv`,
+  `.psv`, `.tab`. `CsvCodec` decodes into column-aligned text with 2-space separators, minimum
+  column width 3. Full round-trip: `encode()` reconstructs original delimiter/quoting/line
+  endings from metadata. Header detection via numeric-vs-text heuristic. Annotations:
+  `content.csv.header` (header row), `content.csv.column` (every row with column count payload).
+  `lossy: false`, `readonly: false`. New workspace dependency: `csv = "1.3"`. 71 tests.
+
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
   registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
   factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to
