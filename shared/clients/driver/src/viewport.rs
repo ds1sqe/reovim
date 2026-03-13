@@ -515,6 +515,35 @@ pub const fn client_color(client_id: u64) -> reovim_arch::Color {
     CBF8_PALETTE[(client_id as usize) % CBF8_PALETTE.len()]
 }
 
+/// Dimmed CBF-8 palette for selection backgrounds.
+///
+/// Lower-intensity versions of the cursor palette, suitable for
+/// background overlays that don't obscure text.
+pub const CBF8_DIMMED: [reovim_arch::Color; 8] = [
+    reovim_arch::Color::Rgb { r: 0, g: 45, b: 70 },     // Blue
+    reovim_arch::Color::Rgb { r: 75, g: 50, b: 0 },      // Orange
+    reovim_arch::Color::Rgb { r: 25, g: 60, b: 75 },     // Sky blue
+    reovim_arch::Color::Rgb { r: 0, g: 55, b: 35 },      // Green
+    reovim_arch::Color::Rgb { r: 70, g: 65, b: 20 },     // Yellow
+    reovim_arch::Color::Rgb { r: 70, g: 30, b: 0 },      // Vermilion
+    reovim_arch::Color::Rgb { r: 65, g: 38, b: 55 },     // Pink
+    reovim_arch::Color::Rgb { r: 30, g: 30, b: 30 },     // Dark grey (fallback)
+];
+
+/// Get a dimmed color for selection backgrounds.
+#[must_use]
+#[allow(clippy::cast_possible_truncation)]
+pub const fn dimmed_client_color(client_id: u64) -> reovim_arch::Color {
+    CBF8_DIMMED[(client_id as usize) % CBF8_DIMMED.len()]
+}
+
+/// Local selection background color (subtle blue).
+pub const LOCAL_SELECTION_BG: reovim_arch::Color = reovim_arch::Color::Rgb {
+    r: 50,
+    g: 50,
+    b: 100,
+};
+
 /// Maximum display width for cursor label names.
 const MAX_LABEL_WIDTH: usize = 16;
 

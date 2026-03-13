@@ -51,6 +51,8 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   numbers, transformed lines), selections (local + remote, char/line/block modes),
   and cursors (self + remote with CBF-8 colorblind-friendly palette and labels).
   Expand `ViewportRenderer::render_viewport()` with `ViewportContext` + `TokenProvider`.
+  `render_engine.rs` reduced from 1232 to ~320 lines (thin compositor).
+  Add `TokenProviderAdapter` and `ThemeProviderAdapter` bridge adapters.
   67 viewport tests, 27 conceal tests.
 
 ### Changed

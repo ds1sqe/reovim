@@ -581,6 +581,147 @@ pub fn convert_mouse_event(
     })
 }
 
+// =============================================================================
+// Type conversion: display -> client-driver
+// =============================================================================
+
+/// Convert display `Style` to client-driver `Style`.
+const fn convert_display_style_to_driver_style(
+    style: &reovim_driver_display::Style,
+) -> reovim_client_driver::Style {
+    let mut attrs = reovim_client_driver::Attributes::new();
+
+    if style.attributes.contains(DisplayAttributes::BOLD) {
+        attrs.set(reovim_client_driver::Attributes::BOLD);
+    }
+    if style.attributes.contains(DisplayAttributes::ITALIC) {
+        attrs.set(reovim_client_driver::Attributes::ITALIC);
+    }
+    if style.attributes.contains(DisplayAttributes::UNDERLINE) {
+        attrs.set(reovim_client_driver::Attributes::UNDERLINE);
+    }
+    if style.attributes.contains(DisplayAttributes::STRIKETHROUGH) {
+        attrs.set(reovim_client_driver::Attributes::STRIKETHROUGH);
+    }
+    if style.attributes.contains(DisplayAttributes::REVERSE) {
+        attrs.set(reovim_client_driver::Attributes::REVERSE);
+    }
+    if style.attributes.contains(DisplayAttributes::DIM) {
+        attrs.set(reovim_client_driver::Attributes::DIM);
+    }
+
+    reovim_client_driver::Style {
+        fg: style.fg,
+        bg: style.bg,
+        attributes: attrs,
+    }
+}
+
+// =============================================================================
+// TokenProvider adapter
+// =============================================================================
+
+/// Wraps `AnnotationCacheManager` as `TokenProvider` for the viewport renderer.
+pub struct TokenProviderAdapter<'a> {
+    cache: &'a reovim_driver_display::AnnotationCacheManager,
+}
+
+impl<'a> TokenProviderAdapter<'a> {
+    #[must_use]
+    pub const fn new(cache: &'a reovim_driver_display::AnnotationCacheManager) -> Self {
+        Self { cache }
+    }
+}
+
+impl reovim_client_driver::TokenProvider for TokenProviderAdapter<'_> {
+    #[allow(clippy::cast_possible_truncation)]
+    fn tokens_for_line(
+        &self,
+        buffer_id: reovim_client_driver::BufferId,
+        line: u32,
+    ) -> Vec<reovim_client_driver::SyntaxToken> {
+        self.cache
+            .tokens_for_line(buffer_id.0 as u64, line)
+            .into_iter()
+            .map(|t| reovim_client_driver::SyntaxToken {
+                line: t.line,
+                start_col: t.start_col,
+                end_col: t.end_col,
+                category: t.category.clone(),
+            })
+            .collect()
+    }
+}
+
+// =============================================================================
+// ThemeProvider adapter
+// =============================================================================
+
+/// Wraps `ThemeManager` as `ThemeProvider` for the viewport renderer.
+pub struct ThemeProviderAdapter<'a> {
+    theme: &'a reovim_driver_display::ThemeManager,
+}
+
+impl<'a> ThemeProviderAdapter<'a> {
+    #[must_use]
+    pub const fn new(theme: &'a reovim_driver_display::ThemeManager) -> Self {
+        Self { theme }
+    }
+}
+
+impl reovim_client_driver::ThemeProvider for ThemeProviderAdapter<'_> {
+    fn highlight(&self, group: &str) -> reovim_client_driver::Style {
+        convert_display_style_to_driver_style(&self.theme.get_style(group))
+    }
+
+    fn highlight_with_fallback(&self, groups: &[&str]) -> reovim_client_driver::Style {
+        for group in groups {
+            let style = self.theme.get_style(group);
+            if style != reovim_driver_display::Style::default() {
+                return convert_display_style_to_driver_style(&style);
+            }
+        }
+        reovim_client_driver::Style::default()
+    }
+
+    fn foreground(&self) -> reovim_client_driver::Style {
+        convert_display_style_to_driver_style(&self.theme.get_style("Normal"))
+    }
+
+    fn background(&self) -> reovim_client_driver::Style {
+        let style = self.theme.get_style("Normal");
+        reovim_client_driver::Style {
+            fg: None,
+            bg: style.bg,
+            attributes: reovim_client_driver::Attributes::new(),
+        }
+    }
+
+    fn is_dark(&self) -> bool {
+        // Heuristic: if Normal bg is dark or absent, assume dark
+        let style = self.theme.get_style("Normal");
+        style.bg.is_none_or(|c| {
+            let Color::Rgb { r, g, b } = c else {
+                return true;
+            };
+            // Luminance < 128 = dark
+            (u16::from(r) + u16::from(g) + u16::from(b)) / 3 < 128
+        })
+    }
+}
+
+/// Collect virtual lines from modules as client-driver types (no display conversion).
+#[must_use]
+pub fn collect_driver_virtual_lines(
+    extensions: &[Box<dyn ClientModule>],
+) -> Vec<reovim_client_driver::VirtualLine> {
+    extensions
+        .iter()
+        .filter(|e| e.has_buffer_contrib())
+        .flat_map(|e| e.virtual_lines().iter().cloned())
+        .collect()
+}
+
 #[cfg(test)]
 #[path = "render_engine_bridge_tests.rs"]
 mod tests;
