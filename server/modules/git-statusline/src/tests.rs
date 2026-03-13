@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_display::statusline::ComponentProviderKey,
+    reovim_driver_statusline::ComponentDataProviderKey,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     std::sync::Arc,
 };
@@ -63,10 +63,7 @@ fn test_init_git_provider_store_empty() {
 /// `GitProviderStore` with a provider → registers branch component.
 #[test]
 fn test_init_registers_branch_component() {
-    use {
-        reovim_driver_display::statusline::ComponentProviderRegistry,
-        reovim_driver_git::GitProvider,
-    };
+    use {reovim_driver_git::GitProvider, reovim_driver_statusline::ComponentDataProviderRegistry};
 
     struct StubGitProvider;
     impl GitProvider for StubGitProvider {
@@ -103,11 +100,13 @@ fn test_init_registers_branch_component() {
 
     assert_eq!(module.init(&ctx), ProbeResult::Success);
 
-    let registry = ctx.services.get::<ComponentProviderRegistry>();
-    assert!(registry.is_some(), "ComponentProviderRegistry should exist");
+    let registry = ctx.services.get::<ComponentDataProviderRegistry>();
+    assert!(registry.is_some(), "ComponentDataProviderRegistry should exist");
     let registry = registry.unwrap();
     assert!(
-        registry.get(&ComponentProviderKey::new("branch")).is_some(),
+        registry
+            .get(&ComponentDataProviderKey::new("branch"))
+            .is_some(),
         "branch component should be registered"
     );
 }

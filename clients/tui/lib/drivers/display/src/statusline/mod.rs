@@ -32,8 +32,10 @@ mod section;
 
 pub use {
     component::{
-        ComponentContext, ComponentOutput, ComponentProvider, ComponentProviderKey,
-        ComponentProviderRegistry, DiagnosticCounts,
+        ComponentContext, ComponentData, ComponentDataContext, ComponentDataProvider,
+        ComponentDataProviderKey, ComponentDataProviderRegistry, ComponentOutput,
+        ComponentProvider, ComponentProviderKey, ComponentProviderRegistry, DataProviderAdapter,
+        DiagnosticCounts,
     },
     height::{
         ContentMetrics, HeightConfig, HeightResult, OverflowStrategy, ScreenThreshold,

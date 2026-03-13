@@ -6,6 +6,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Server-to-display boundary refactor (#625)**: Extract 3 new server-side driver crates
+  from the display driver to enforce mechanism-vs-policy separation. `reovim-driver-layout`
+  (compositor types, window layout), `reovim-driver-annotation` (annotation data types,
+  `AnnotationSource` trait, `AnnotationStore`), and `reovim-driver-statusline`
+  (`ComponentDataProvider` trait, `ComponentData`, `ComponentDataContext`). Server modules now
+  register data sources only -- the display layer creates presenters (Style, Color) and pairs
+  them with sources via bootstrap bridges. `DataProviderAdapter` wraps server-side
+  `ComponentDataProvider` into display-side `ComponentProvider`. `LineNumberPresenter`,
+  `GitSignsPresenter`, and `BlamePresenter` moved from server modules to display driver.
+  12 server crates no longer depend on `reovim-driver-display`. Only `reovim-module-commands`
+  retains the display dependency (colorscheme needs `ThemeManager`).
+
 - **Eliminate shared/extension-kinds crate (#625)**: Replace centralized
   `reovim-extension-kinds` closed registry with local `const KIND: &str` constants in each
   consumer. Server modules (12 crates), TUI extensions (14 crates + defaults), and web

@@ -42,10 +42,8 @@
 use std::sync::Arc;
 
 use {
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry, LineNumberMode},
     reovim_driver_command::{CommandHandler, CommandHandlerStore, CommandProvider},
-    reovim_driver_display::{
-        GutterRenderer, GutterRendererKey, GutterRendererRegistry, LineNumberMode,
-    },
     reovim_driver_input::{
         KeybindingStore, LookupPolicyStore, ModeInfo, ModeInfoStore, ModeProviderKey,
         ModeProviderRegistry, ResolverRegistry,
@@ -245,23 +243,14 @@ impl Module for VimModule {
             return ProbeResult::Failed(e);
         }
 
-        // Epic #458: Register GutterRenderer with LineNumberSource and LineNumberPresenter
-        // Mode is dynamic - AnnotationContext will carry the actual mode from options
-        let gutter_renderer = GutterRenderer::new();
-        gutter_renderer
-            .register_source(annotation::create_line_number_source(LineNumberMode::Absolute));
-        gutter_renderer.register_presenter(annotation::create_line_number_presenter());
-
-        tracing::info!(
-            sources = gutter_renderer.source_count(),
-            presenters = gutter_renderer.presenter_count(),
-            "VimModule: created GutterRenderer"
+        // Register annotation source (display-side creates presenters)
+        let source_registry = ctx.services.get_or_create::<AnnotationSourceRegistry>();
+        source_registry.register(
+            AnnotationSourceKey::new("builtin.line_number"),
+            annotation::create_line_number_source(LineNumberMode::Absolute),
         );
 
-        let renderer_registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-        renderer_registry.register(GutterRendererKey::Default, Arc::new(gutter_renderer));
-
-        tracing::info!("VimModule: registered GutterRenderer in ServiceRegistry");
+        tracing::info!("VimModule: registered LineNumberSource in AnnotationSourceRegistry");
 
         pr_info!("Vim module initialized");
         ProbeResult::Success

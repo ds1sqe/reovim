@@ -3,13 +3,13 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_display::statusline::{ComponentContext, ComponentOutput, ComponentProvider},
     reovim_driver_git::GitProvider,
+    reovim_driver_statusline::{ComponentData, ComponentDataContext, ComponentDataProvider},
 };
 
-/// Statusline component that renders the current git branch name.
+/// Statusline data provider that produces the current git branch name.
 ///
-/// Derives the working directory from `ComponentContext::filepath`
+/// Derives the working directory from `ComponentDataContext::filepath`
 /// and calls `GitProvider::current_branch()`.
 pub struct BranchComponent {
     provider: Arc<dyn GitProvider>,
@@ -22,27 +22,25 @@ impl BranchComponent {
     }
 }
 
-impl ComponentProvider for BranchComponent {
+impl ComponentDataProvider for BranchComponent {
     fn id(&self) -> &'static str {
         "branch"
     }
 
-    fn render(&self, ctx: &ComponentContext) -> ComponentOutput {
+    fn data(&self, ctx: &ComponentDataContext) -> ComponentData {
         let Some(filepath) = &ctx.filepath else {
-            return ComponentOutput::hidden();
+            return ComponentData::hidden();
         };
 
         let path = Path::new(filepath);
         let cwd = match path.parent() {
             Some(parent) if !parent.as_os_str().is_empty() => parent,
-            _ => return ComponentOutput::hidden(),
+            _ => return ComponentData::hidden(),
         };
 
         self.provider
             .current_branch(cwd)
-            .map_or_else(ComponentOutput::hidden, |branch| {
-                ComponentOutput::new(format!(" {branch} "))
-            })
+            .map_or_else(ComponentData::hidden, |branch| ComponentData::new(format!(" {branch} ")))
     }
 }
 

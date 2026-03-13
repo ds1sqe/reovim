@@ -3,26 +3,24 @@
 //! Git signs module for reovim.
 //!
 //! Provides gutter annotations for git diff hunks: additions, changes,
-//! and deletions. Implements `AnnotationSource` and `AnnotationPresenter`
-//! from `reovim-driver-display`.
+//! and deletions. Implements `AnnotationSource` from `reovim-driver-annotation`.
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_display::{GutterRendererKey, GutterRendererRegistry},
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 mod hunk;
-mod presenter;
 mod source;
 
-pub use {hunk::SignKind, presenter::GitSignsPresenter, source::GitSignsSource};
+pub use {hunk::SignKind, source::GitSignsSource};
 
 /// Git signs module.
 ///
-/// Registers a `GitSignsSource` and `GitSignsPresenter` into the
-/// default `GutterRenderer` so git diff hunks appear as gutter signs.
+/// Registers a `GitSignsSource` into the `AnnotationSourceRegistry`
+/// so git diff hunks appear as gutter signs.
 pub struct GitSignsModule;
 
 impl GitSignsModule {
@@ -53,12 +51,12 @@ impl Module for GitSignsModule {
     }
 
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        let renderer_registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-
-        if let Some(renderer) = renderer_registry.get(&GutterRendererKey::Default) {
-            renderer.register_source(Arc::new(GitSignsSource::new(ctx.services.clone())));
-            renderer.register_presenter(Arc::new(GitSignsPresenter::new()));
-        }
+        // Register only the data source (display-side creates presenters)
+        let source_registry = ctx.services.get_or_create::<AnnotationSourceRegistry>();
+        source_registry.register(
+            AnnotationSourceKey::new("git-signs"),
+            Arc::new(GitSignsSource::new(ctx.services.clone())),
+        );
 
         ProbeResult::Success
     }

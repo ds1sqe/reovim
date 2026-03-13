@@ -26,10 +26,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
+    reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
-    reovim_depgraph::{
-        DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies,
-    },
     reovim_driver_input::{
         BindingLayer, EagerLookupPolicy, KeySequence, KeybindingStore, LookupPolicyStore,
         ModeInfoStore, ResolverRegistry,
@@ -316,6 +314,50 @@ pub fn create_session_state() -> SessionState {
         services.register(Arc::new(theme_manager));
         let theme_loader = ThemeLoader::new();
         services.register(Arc::new(theme_loader));
+    }
+
+    // Build GutterRenderer from registered annotation sources + display presenters.
+    // Server modules register data sources in AnnotationSourceRegistry during init().
+    // The display layer creates presenters (Style, Color) and pairs them with sources.
+    {
+        use reovim_driver_display::{
+            AnnotationSourceRegistry, BlamePresenter, GitSignsPresenter, GutterRenderer,
+            GutterRendererKey, GutterRendererRegistry, LineNumberPresenter,
+        };
+        if let Some(source_registry) = services.get::<AnnotationSourceRegistry>() {
+            let renderer = GutterRenderer::new();
+            for source in source_registry.values() {
+                renderer.register_source(source);
+            }
+            renderer.register_presenter(Arc::new(LineNumberPresenter::new()));
+            renderer.register_presenter(Arc::new(GitSignsPresenter::new()));
+            renderer.register_presenter(Arc::new(BlamePresenter::new()));
+
+            let renderer_registry = services.get_or_create::<GutterRendererRegistry>();
+            renderer_registry.register(GutterRendererKey::Default, Arc::new(renderer));
+            tracing::info!("Built GutterRenderer from annotation sources");
+        }
+    }
+
+    // Wrap server-side ComponentDataProviders into display-side ComponentProviders.
+    // Server modules register data providers in ComponentDataProviderRegistry during init().
+    // The display layer wraps each with a DataProviderAdapter (adds Style from theme).
+    {
+        use reovim_driver_display::statusline::{
+            ComponentDataProviderRegistry, ComponentProviderKey, ComponentProviderRegistry,
+            DataProviderAdapter,
+        };
+        if let Some(data_registry) = services.get::<ComponentDataProviderRegistry>() {
+            let provider_registry = services.get_or_create::<ComponentProviderRegistry>();
+            for data_provider in data_registry.values() {
+                let key = ComponentProviderKey::new(data_provider.id());
+                provider_registry.register(key, Arc::new(DataProviderAdapter::new(data_provider)));
+            }
+            tracing::info!(
+                "Wrapped {} data providers into ComponentProviders",
+                data_registry.len()
+            );
+        }
     }
 
     let mut state = SessionState::with_registries(

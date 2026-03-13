@@ -221,3 +221,130 @@ fn test_custom_component_needs_frequent_update() {
     let component = CustomComponent;
     assert!(component.needs_frequent_update());
 }
+
+// ========================================================================
+// DataProviderAdapter + From conversion tests
+// ========================================================================
+
+/// Test data provider for adapter tests.
+struct TestDataProvider;
+
+impl ComponentDataProvider for TestDataProvider {
+    fn id(&self) -> &'static str {
+        "test-data"
+    }
+
+    fn data(&self, ctx: &ComponentDataContext) -> ComponentData {
+        ctx.git_branch
+            .as_ref()
+            .map_or_else(ComponentData::hidden, |branch| ComponentData::new(format!(" {branch} ")))
+    }
+}
+
+#[test]
+fn test_from_component_context_to_data_context() {
+    let ctx = ComponentContext {
+        mode: "NORMAL".to_string(),
+        mode_subtype: Some("CHAR".to_string()),
+        filename: Some("main.rs".to_string()),
+        filepath: Some("/home/user/src/main.rs".to_string()),
+        modified: true,
+        readonly: false,
+        filetype: Some("rust".to_string()),
+        line: 42,
+        column: 10,
+        total_lines: 100,
+        encoding: "utf-8".to_string(),
+        line_ending: "unix".to_string(),
+        terminal_width: 120,
+        terminal_height: 40,
+        git_branch: Some("main".to_string()),
+        breadcrumb: Some("fn test".to_string()),
+        diagnostics: Some(DiagnosticCounts {
+            errors: 1,
+            warnings: 2,
+            info: 3,
+            hints: 4,
+        }),
+    };
+
+    let data_ctx = ComponentDataContext::from(&ctx);
+    assert_eq!(data_ctx.mode, "NORMAL");
+    assert_eq!(data_ctx.mode_subtype.as_deref(), Some("CHAR"));
+    assert_eq!(data_ctx.filename.as_deref(), Some("main.rs"));
+    assert_eq!(data_ctx.filepath.as_deref(), Some("/home/user/src/main.rs"));
+    assert!(data_ctx.modified);
+    assert!(!data_ctx.readonly);
+    assert_eq!(data_ctx.filetype.as_deref(), Some("rust"));
+    assert_eq!(data_ctx.line, 42);
+    assert_eq!(data_ctx.column, 10);
+    assert_eq!(data_ctx.total_lines, 100);
+    assert_eq!(data_ctx.encoding, "utf-8");
+    assert_eq!(data_ctx.line_ending, "unix");
+    assert_eq!(data_ctx.terminal_width, 120);
+    assert_eq!(data_ctx.terminal_height, 40);
+    assert_eq!(data_ctx.git_branch.as_deref(), Some("main"));
+    assert_eq!(data_ctx.breadcrumb.as_deref(), Some("fn test"));
+    let diag = data_ctx.diagnostics.as_ref().unwrap();
+    assert_eq!(diag.errors, 1);
+    assert_eq!(diag.warnings, 2);
+    assert_eq!(diag.info, 3);
+    assert_eq!(diag.hints, 4);
+}
+
+#[test]
+fn test_from_component_context_default() {
+    let ctx = ComponentContext::default();
+    let data_ctx = ComponentDataContext::from(&ctx);
+    assert!(data_ctx.mode.is_empty());
+    assert!(data_ctx.filename.is_none());
+    assert!(data_ctx.diagnostics.is_none());
+}
+
+#[test]
+fn test_adapter_id() {
+    let adapter = DataProviderAdapter::new(Arc::new(TestDataProvider));
+    assert_eq!(adapter.id(), "test-data");
+}
+
+#[test]
+fn test_adapter_render_visible() {
+    let adapter = DataProviderAdapter::new(Arc::new(TestDataProvider));
+    let ctx = ComponentContext {
+        git_branch: Some("main".to_string()),
+        ..ComponentContext::default()
+    };
+    let output = adapter.render(&ctx);
+    assert!(output.visible);
+    assert_eq!(output.text, " main ");
+    assert!(output.style.is_none());
+}
+
+#[test]
+fn test_adapter_render_hidden() {
+    let adapter = DataProviderAdapter::new(Arc::new(TestDataProvider));
+    let ctx = ComponentContext::default();
+    let output = adapter.render(&ctx);
+    assert!(!output.visible);
+}
+
+#[test]
+fn test_adapter_preserves_min_width_and_priority() {
+    struct PriorityProvider;
+    impl ComponentDataProvider for PriorityProvider {
+        fn id(&self) -> &'static str {
+            "priority"
+        }
+        fn data(&self, _ctx: &ComponentDataContext) -> ComponentData {
+            ComponentData::new("test")
+                .with_min_width(15)
+                .with_priority(200)
+        }
+    }
+
+    let adapter = DataProviderAdapter::new(Arc::new(PriorityProvider));
+    let output = adapter.render(&ComponentContext::default());
+    assert!(output.visible);
+    assert_eq!(output.min_width, Some(15));
+    assert_eq!(output.truncation_priority, 200);
+}

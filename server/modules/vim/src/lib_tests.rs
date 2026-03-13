@@ -1,6 +1,6 @@
 use {
+    reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_driver_command::{CommandHandlerStore, CommandProvider},
-    reovim_driver_display::{GutterRendererKey, GutterRendererRegistry},
     reovim_driver_input::{KeybindingStore, ModeInfoStore, ModeProviderRegistry, ResolverRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, OptionScope, OptionValue, ProbeResult},
 };
@@ -275,27 +275,21 @@ fn test_vim_init_fails_on_duplicate_option() {
 }
 
 // ========================================================================
-// Epic #458: GutterRenderer registration test
+// AnnotationSource registration test
 // ========================================================================
 
 #[test]
-fn test_gutter_renderer_registered() {
+fn test_annotation_source_registered() {
     let mut module = VimModule::new();
     let ctx = ModuleContext::default();
     module.init(&ctx);
 
-    // Verify GutterRenderer is registered in ServiceRegistry
-    let registry = ctx.services.get::<GutterRendererRegistry>();
-    assert!(registry.is_some(), "GutterRendererRegistry should be created");
+    // Verify AnnotationSourceRegistry is created and has a source
+    let registry = ctx.services.get::<AnnotationSourceRegistry>();
+    assert!(registry.is_some(), "AnnotationSourceRegistry should be created");
 
     let registry = registry.unwrap();
-    let renderer = registry.get(&GutterRendererKey::Default);
-    assert!(renderer.is_some(), "GutterRenderer should be registered with Default key");
-
-    // Verify renderer has source and presenter
-    let renderer = renderer.unwrap();
-    assert_eq!(renderer.source_count(), 1, "Should have 1 source registered");
-    assert_eq!(renderer.presenter_count(), 1, "Should have 1 presenter registered");
+    assert_eq!(registry.len(), 1, "Should have 1 annotation source registered");
 }
 
 // ========================================================================

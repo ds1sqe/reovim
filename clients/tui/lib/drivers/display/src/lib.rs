@@ -175,10 +175,11 @@ pub use ui::{
 pub use annotation::{
     Annotation, AnnotationContext, AnnotationKind, AnnotationLayer, AnnotationPayload,
     AnnotationPresenter, AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry,
-    AnnotationStore, AnnotationTarget, BufferAnnotationStore, ColumnConfig, ColumnWidth,
-    ComposedLine, ComposerBuilder, GutterCell, GutterComposer, GutterConfig, GutterRenderer,
-    GutterRendererKey, GutterRendererRegistry, KindPattern, PresentedOutput, PresenterContext,
-    PresenterRegistry, SourceId, VisibilityMode,
+    AnnotationStore, AnnotationTarget, BlamePresenter, BufferAnnotationStore, ColumnConfig,
+    ColumnWidth, ComposedLine, ComposerBuilder, GitSignsPresenter, GutterCell, GutterComposer,
+    GutterConfig, GutterRenderer, GutterRendererKey, GutterRendererRegistry, KindPattern,
+    LineNumberPresenter, PresentedOutput, PresenterContext, PresenterRegistry, SourceId,
+    VisibilityMode,
 };
 
 // ============================================================================
@@ -233,12 +234,19 @@ pub use layout::{
 pub use statusline::{
     // Component API
     ComponentContext,
+    // Display-agnostic data provider types (from statusline driver)
+    ComponentData,
+    ComponentDataContext,
+    ComponentDataProvider,
+    ComponentDataProviderKey,
+    ComponentDataProviderRegistry,
     ComponentOutput,
     ComponentProvider,
     ComponentProviderKey,
     ComponentProviderRegistry,
     // Height configuration
     ContentMetrics,
+    DataProviderAdapter,
     DiagnosticCounts,
     HeightConfig,
     HeightResult,

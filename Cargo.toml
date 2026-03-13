@@ -31,6 +31,9 @@ members = [
     "server/lib/drivers/module-loader",
     "server/lib/drivers/git",
     "server/lib/drivers/module-registry",
+    "server/lib/drivers/layout",
+    "server/lib/drivers/annotation",
+    "server/lib/drivers/statusline",
 
     # Server modules
     "server/modules/vim",
@@ -234,6 +237,9 @@ reovim-driver-module-config = { path = "./server/lib/drivers/module-config", ver
 reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.10.0-dev" }
 reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.10.0-dev" }
 reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry", version = "0.10.0-dev" }
+reovim-driver-layout = { path = "./server/lib/drivers/layout", version = "0.10.0-dev" }
+reovim-driver-annotation = { path = "./server/lib/drivers/annotation", version = "0.10.0-dev" }
+reovim-driver-statusline = { path = "./server/lib/drivers/statusline", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }
