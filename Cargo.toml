@@ -128,6 +128,12 @@ members = [
 
     # Client modules - TUI (native ClientModule implementations)
     "clients/tui/modules/statusline",
+    "clients/tui/modules/hover",
+    "clients/tui/modules/signature-help",
+    "clients/tui/modules/landing",
+    "clients/tui/modules/completion",
+    "clients/tui/modules/notification",
+    "clients/tui/modules/which-key",
 
     # Client layer - CLI
     "clients/cli",
@@ -345,6 +351,12 @@ reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.12.
 
 # Client modules - TUI (native ClientModule implementations)
 reovim-tui-mod-statusline = { path = "./clients/tui/modules/statusline", version = "0.12.0-dev" }
+reovim-tui-mod-hover = { path = "./clients/tui/modules/hover", version = "0.12.0-dev" }
+reovim-tui-mod-signature-help = { path = "./clients/tui/modules/signature-help", version = "0.12.0-dev" }
+reovim-tui-mod-landing = { path = "./clients/tui/modules/landing", version = "0.12.0-dev" }
+reovim-tui-mod-completion = { path = "./clients/tui/modules/completion", version = "0.12.0-dev" }
+reovim-tui-mod-notification = { path = "./clients/tui/modules/notification", version = "0.12.0-dev" }
+reovim-tui-mod-whichkey = { path = "./clients/tui/modules/which-key", version = "0.12.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

@@ -5,3 +5,6 @@ pub mod ui;
 
 pub use traits::*;
 pub use types::*;
+
+// Re-export reovim-arch for native modules that need Clock etc.
+pub use reovim_arch;

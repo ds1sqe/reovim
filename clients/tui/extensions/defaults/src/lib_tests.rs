@@ -5,27 +5,23 @@ use super::*;
 #[test]
 fn test_create_extensions_count() {
     let exts = create_extensions();
-    assert_eq!(exts.len(), 15);
+    // Legacy extensions: cmdline, microscope, explorer, tetromino,
+    // range-finder-jump, range-finder-fold, diagnostics, markdown, pair = 9
+    assert_eq!(exts.len(), 9);
 }
 
 #[test]
 fn test_extension_kinds() {
     let exts = create_extensions();
     let kinds: Vec<&str> = exts.iter().map(|e| e.kind()).collect();
-    assert!(kinds.contains(&"whichkey"));
     assert!(kinds.contains(&"cmdline"));
-    assert!(kinds.contains(&"notification"));
     assert!(kinds.contains(&"microscope"));
-    assert!(kinds.contains(&"completion"));
     assert!(kinds.contains(&"explorer"));
-    assert!(kinds.contains(&"polyblocks"));
+    assert!(kinds.contains(&"polyblocks")); // tetromino kind
     assert!(kinds.contains(&"range-finder-jump"));
     assert!(kinds.contains(&"range-finder-fold"));
-    assert!(kinds.contains(&"hover"));
-    assert!(kinds.contains(&"signature-help"));
     assert!(kinds.contains(&"diagnostics"));
     assert!(kinds.contains(&"markdown"));
-    assert!(kinds.contains(&"landing"));
     assert!(kinds.contains(&"pair"));
 }
 
@@ -34,8 +30,7 @@ fn test_all_extensions_initially_inactive() {
     let exts = create_extensions();
     for ext in &exts {
         // Markdown is always active (lightweight, no-op when no tables)
-        // Landing starts active (dismissed on first interaction)
-        if ext.kind() == "markdown" || ext.kind() == "landing" {
+        if ext.kind() == "markdown" {
             assert!(ext.is_active());
             continue;
         }
@@ -47,18 +42,16 @@ fn test_all_extensions_initially_inactive() {
 fn test_extension_dispatch() {
     let mut exts = create_extensions();
 
-    // Find whichkey extension and activate it
+    // Find cmdline extension and activate it
     for ext in &mut exts {
-        if ext.kind() == "whichkey" {
+        if ext.kind() == "cmdline" {
             ext.apply_notification(
-                r#"{"active":true,"prefix":"g","hints":[{"key":"g","command":"top"}]}"#,
+                r#"{"active":true,"prompt":":","content":"","cursor_pos":0}"#,
             );
         }
     }
 
-    // With the default 500ms show-delay, whichkey is not yet visible
-    // (server_active=true but visible=false until tick() after delay)
-    // Markdown is always active (lightweight), landing starts active = 2
+    // Markdown is always active = 1, cmdline just activated = 2
     let active_count = exts.iter().filter(|e| e.is_active()).count();
     assert_eq!(active_count, 2);
 }
@@ -67,7 +60,7 @@ fn test_extension_dispatch() {
 fn test_create_extensions_sorted_by_depgraph() {
     // All current extensions have empty deps, so order is valid (no panic)
     let exts = create_extensions();
-    assert_eq!(exts.len(), 15);
+    assert_eq!(exts.len(), 9);
 }
 
 #[test]
@@ -190,27 +183,27 @@ fn test_validate_extensions_empty() {
 #[test]
 fn test_create_extensions_filtered_empty_set_returns_all() {
     let exts = create_extensions_filtered(&HashSet::new());
-    assert_eq!(exts.len(), 15);
+    assert_eq!(exts.len(), 9);
 }
 
 #[test]
 fn test_create_extensions_filtered_disable_one() {
-    let disabled: HashSet<String> = ["polyblocks".to_string()].into();
+    let disabled: HashSet<String> = ["cmdline".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 14);
-    assert!(exts.iter().all(|e| e.kind() != "polyblocks"));
+    assert_eq!(exts.len(), 8);
+    assert!(exts.iter().all(|e| e.kind() != "cmdline"));
 }
 
 #[test]
 fn test_create_extensions_filtered_disable_multiple() {
     let disabled: HashSet<String> = [
-        "polyblocks".to_string(),
-        "completion".to_string(),
-        "hover".to_string(),
+        "cmdline".to_string(),
+        "microscope".to_string(),
+        "explorer".to_string(),
     ]
     .into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 12);
+    assert_eq!(exts.len(), 6);
     for ext in &exts {
         assert!(!disabled.contains(ext.kind()));
     }
@@ -220,7 +213,7 @@ fn test_create_extensions_filtered_disable_multiple() {
 fn test_create_extensions_filtered_unknown_kinds_ignored() {
     let disabled: HashSet<String> = ["nonexistent".to_string()].into();
     let exts = create_extensions_filtered(&disabled);
-    assert_eq!(exts.len(), 15);
+    assert_eq!(exts.len(), 9);
 }
 
 #[test]
@@ -239,4 +232,28 @@ fn test_create_extensions_matches_filtered_empty() {
     let unfiltered_kinds: HashSet<&str> = unfiltered.iter().map(|e| e.kind()).collect();
     let filtered_kinds: HashSet<&str> = filtered.iter().map(|e| e.kind()).collect();
     assert_eq!(unfiltered_kinds, filtered_kinds);
+}
+
+// ============================================================================
+// Native modules (#634)
+// ============================================================================
+
+#[test]
+fn test_create_native_modules_count() {
+    let modules = create_native_modules();
+    // statusline, hover, signature-help, landing, completion, notification, whichkey = 7
+    assert_eq!(modules.len(), 7);
+}
+
+#[test]
+fn test_native_module_kinds() {
+    let modules = create_native_modules();
+    let kinds: Vec<&str> = modules.iter().map(|m| m.kind()).collect();
+    assert!(kinds.contains(&"statusline"));
+    assert!(kinds.contains(&"hover"));
+    assert!(kinds.contains(&"signature-help"));
+    assert!(kinds.contains(&"landing"));
+    assert!(kinds.contains(&"completion"));
+    assert!(kinds.contains(&"notification"));
+    assert!(kinds.contains(&"whichkey"));
 }

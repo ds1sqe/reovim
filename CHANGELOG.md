@@ -28,6 +28,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Add `convert_key_event()` and `convert_mouse_event()` crossterm-to-CLM conversion layer.
   67 bridge tests + 26 input type tests.
 
+- **Chrome module migration** (#634): Migrate 7 chrome extensions to native `ClientModule`
+  implementations, bypassing the `TuiExtensionBridge`. Includes statusline (extracted from
+  render engine), hover, signature-help, landing, completion, notification, and which-key.
+  Each module uses `RenderSurface` directly with `chrome_utils` and `ui` utilities.
+  Shared infrastructure: `chrome_utils::render_box_border()`, `chrome_utils::popup_width()`,
+  `chrome_utils::popup_x()`, `ui::truncate_end()`, `ui::display_width()`.
+  Re-export `reovim_arch` from `reovim-client-driver` for Clock access.
+  132 tests across 7 new module crates.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)

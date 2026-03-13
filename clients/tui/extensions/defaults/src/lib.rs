@@ -28,6 +28,12 @@ use reovim_client_driver::ClientModule;
 pub fn create_native_modules() -> Vec<Box<dyn ClientModule>> {
     vec![
         Box::new(reovim_tui_mod_statusline::StatuslineModule::new()),
+        Box::new(reovim_tui_mod_hover::HoverModule::new()),
+        Box::new(reovim_tui_mod_signature_help::SignatureHelpModule::new()),
+        Box::new(reovim_tui_mod_landing::LandingModule::new()),
+        Box::new(reovim_tui_mod_completion::CompletionModule::new()),
+        Box::new(reovim_tui_mod_notification::NotificationModule::new()),
+        Box::new(reovim_tui_mod_whichkey::WhichKeyModule::new()),
     ]
 }
 
@@ -112,20 +118,20 @@ pub fn create_extensions_filtered<S: std::hash::BuildHasher>(
 /// This is the canonical list. Filtering is applied by callers.
 fn all_extensions() -> Vec<Box<dyn TuiExtension>> {
     vec![
-        Box::new(reovim_tui_ext_whichkey::WhichKeyExtension::new()),
+        // whichkey migrated to native ClientModule (reovim-tui-mod-whichkey)
         Box::new(reovim_tui_ext_cmdline::CmdlineExtension::new()),
-        Box::new(reovim_tui_ext_notification::NotificationExtension::new()),
+        // notification migrated to native ClientModule (reovim-tui-mod-notification)
         Box::new(reovim_tui_ext_microscope::MicroscopeExtension::new()),
-        Box::new(reovim_tui_ext_completion::CompletionExtension::new()),
+        // completion migrated to native ClientModule (reovim-tui-mod-completion)
         Box::new(reovim_tui_ext_explorer::ExplorerExtension::new()),
         Box::new(reovim_tui_ext_tetromino::TetrominoExtension::new()),
         Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
         Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
-        Box::new(reovim_tui_ext_hover::HoverExtension::new()),
-        Box::new(reovim_tui_ext_signature_help::SignatureHelpExtension::new()),
+        // hover migrated to native ClientModule (reovim-tui-mod-hover)
+        // signature-help migrated to native ClientModule (reovim-tui-mod-signature-help)
         Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
         Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
-        Box::new(reovim_tui_ext_landing::LandingExtension::new()),
+        // landing migrated to native ClientModule (reovim-tui-mod-landing)
         Box::new(reovim_tui_ext_pair::PairExtension::new()),
     ]
 }

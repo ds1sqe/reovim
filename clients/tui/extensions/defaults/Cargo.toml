@@ -41,3 +41,9 @@ reovim-tui-ext-pair = { path = "../pair" }
 # Native ClientModule implementations
 reovim-client-driver = { workspace = true }
 reovim-tui-mod-statusline = { workspace = true }
+reovim-tui-mod-hover = { workspace = true }
+reovim-tui-mod-signature-help = { workspace = true }
+reovim-tui-mod-landing = { workspace = true }
+reovim-tui-mod-completion = { workspace = true }
+reovim-tui-mod-notification = { workspace = true }
+reovim-tui-mod-whichkey = { workspace = true }
