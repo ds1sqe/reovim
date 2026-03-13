@@ -34,10 +34,16 @@ use {
 /// TOML highlights query (embedded from queries/highlights.scm)
 const TOML_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 
+/// TOML context query (embedded from queries/context.scm)
+const TOML_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating TOML syntax drivers.
+#[allow(clippy::struct_field_names)]
 pub struct TomlSyntaxFactory {
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
+    /// Pre-compiled context query
+    context_query: Arc<Query>,
 }
 
 impl TomlSyntaxFactory {
@@ -53,8 +59,12 @@ impl TomlSyntaxFactory {
         let highlight_query = Query::new(&language, TOML_HIGHLIGHTS_QUERY)
             .expect("Failed to compile TOML highlights query");
 
+        let context_query = Query::new(&language, TOML_CONTEXT_QUERY)
+            .expect("Failed to compile TOML context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
+            context_query: Arc::new(context_query),
         }
     }
 }
@@ -73,15 +83,10 @@ impl SyntaxDriverFactory for TomlSyntaxFactory {
 
         let language: Language = tree_sitter_toml_ng::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "toml",
-            &language,
-            self.highlight_query.clone(),
-            None, // No folds
-            None, // No injections
-            None, // No indents
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("toml", &language, self.highlight_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

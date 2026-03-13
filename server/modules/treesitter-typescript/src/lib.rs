@@ -40,6 +40,9 @@ const TS_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// TypeScript folds query (embedded from queries/folds.scm)
 const TS_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// TypeScript context query (embedded from queries/context.scm)
+const TS_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating TypeScript and TSX syntax drivers.
 ///
 /// Supports both `"typescript"` (`.ts`) and `"typescriptreact"` (`.tsx`)
@@ -55,6 +58,10 @@ pub struct TypeScriptSyntaxFactory {
     highlight_query_tsx: Arc<Query>,
     /// Pre-compiled folds query for TSX
     folds_query_tsx: Arc<Query>,
+    /// Pre-compiled context query for TypeScript
+    context_query_ts: Arc<Query>,
+    /// Pre-compiled context query for TSX
+    context_query_tsx: Arc<Query>,
 }
 
 impl TypeScriptSyntaxFactory {
@@ -80,11 +87,18 @@ impl TypeScriptSyntaxFactory {
         let folds_query_tsx =
             Query::new(&lang_tsx, TS_FOLDS_QUERY).expect("Failed to compile TSX folds query");
 
+        let context_query_ts = Query::new(&lang_typescript, TS_CONTEXT_QUERY)
+            .expect("Failed to compile TypeScript context query");
+        let context_query_tsx =
+            Query::new(&lang_tsx, TS_CONTEXT_QUERY).expect("Failed to compile TSX context query");
+
         Self {
             highlight_query_ts: Arc::new(highlight_query_ts),
             folds_query_ts: Arc::new(folds_query_ts),
             highlight_query_tsx: Arc::new(highlight_query_tsx),
             folds_query_tsx: Arc::new(folds_query_tsx),
+            context_query_ts: Arc::new(context_query_ts),
+            context_query_tsx: Arc::new(context_query_tsx),
         }
     }
 
@@ -112,26 +126,22 @@ impl SyntaxDriverFactory for TypeScriptSyntaxFactory {
         match language_id {
             "typescript" => {
                 let language: Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
-                TreeSitterDriver::with_queries(
-                    "typescript",
-                    &language,
-                    self.highlight_query_ts.clone(),
-                    Some(self.folds_query_ts.clone()),
-                    None, // No injections
-                    None, // No indents
-                )
-                .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+                TreeSitterDriver::builder("typescript", &language, self.highlight_query_ts.clone())
+                    .folds_query(self.folds_query_ts.clone())
+                    .context_query(self.context_query_ts.clone())
+                    .build()
+                    .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
             }
             "typescriptreact" => {
                 let language: Language = tree_sitter_typescript::LANGUAGE_TSX.into();
-                TreeSitterDriver::with_queries(
+                TreeSitterDriver::builder(
                     "typescriptreact",
                     &language,
                     self.highlight_query_tsx.clone(),
-                    Some(self.folds_query_tsx.clone()),
-                    None, // No injections
-                    None, // No indents
                 )
+                .folds_query(self.folds_query_tsx.clone())
+                .context_query(self.context_query_tsx.clone())
+                .build()
                 .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
             }
             _ => None,

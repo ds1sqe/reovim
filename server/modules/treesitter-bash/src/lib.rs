@@ -49,15 +49,21 @@ const BASH_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// Bash folds query (embedded from queries/folds.scm)
 const BASH_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// Bash context query (embedded from queries/context.scm)
+const BASH_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating Bash syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
 /// Bash syntax highlighting and fold detection using the tree-sitter-bash grammar.
+#[allow(clippy::struct_field_names)]
 pub struct BashSyntaxFactory {
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
     folds_query: Arc<Query>,
+    /// Pre-compiled context query
+    context_query: Arc<Query>,
 }
 
 impl BashSyntaxFactory {
@@ -79,9 +85,13 @@ impl BashSyntaxFactory {
         let folds_query =
             Query::new(&language, BASH_FOLDS_QUERY).expect("Failed to compile Bash folds query");
 
+        let context_query = Query::new(&language, BASH_CONTEXT_QUERY)
+            .expect("Failed to compile Bash context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
+            context_query: Arc::new(context_query),
         }
     }
 
@@ -106,15 +116,11 @@ impl SyntaxDriverFactory for BashSyntaxFactory {
 
         let language: Language = tree_sitter_bash::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "bash",
-            &language,
-            self.highlight_query.clone(),
-            Some(self.folds_query.clone()),
-            None, // No injections
-            None, // No indents
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("bash", &language, self.highlight_query.clone())
+            .folds_query(self.folds_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

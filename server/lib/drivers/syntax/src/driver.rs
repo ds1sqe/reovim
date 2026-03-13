@@ -12,6 +12,7 @@ use crate::{
     fold::FoldRange,
     highlight::{Annotation, SyntaxContext},
     injection::Injection,
+    scope::ContextHierarchy,
 };
 
 /// Main parsing interface for syntax highlighting.
@@ -161,6 +162,24 @@ pub trait SyntaxDriver: Send + Sync {
     ///
     /// No-op. Override for drivers that support injection highlighting.
     fn set_injection_depth(&mut self, _depth: u8) {}
+
+    /// Get the enclosing scope hierarchy at a position.
+    ///
+    /// Returns the scope boundaries (function, class, module, etc.)
+    /// that contain the given line and column. Items are ordered
+    /// outermost-first.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - 0-indexed line number
+    /// * `col` - 0-indexed column number
+    ///
+    /// # Default
+    ///
+    /// Returns an empty hierarchy. Override for scope-aware behavior.
+    fn scopes(&self, _line: u32, _col: u32) -> ContextHierarchy {
+        ContextHierarchy::empty()
+    }
 
     /// Get the syntax context at a byte position.
     ///

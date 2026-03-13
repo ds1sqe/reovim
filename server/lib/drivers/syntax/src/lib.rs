@@ -77,9 +77,11 @@ mod error;
 mod factory;
 mod fold;
 mod highlight;
+pub mod indent;
 mod injection;
 mod lang_store;
 mod registry;
+mod scope;
 pub mod state;
 mod store;
 
@@ -100,9 +102,11 @@ pub use {
     edit::SyntaxEdit,
     fold::{FoldKind, FoldRange},
     highlight::{Annotation, HighlightCategory, SyntaxContext},
+    indent::{IndentConfig, IndentConfigStore},
     injection::Injection,
     lang_store::LanguageInfoStore,
     registry::{CommentTokens, DefaultLanguageRegistry, LanguageInfo},
+    scope::{ContextHierarchy, ScopeKind, ScopeRange},
 };
 
 // Error types

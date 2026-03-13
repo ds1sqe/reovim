@@ -71,6 +71,7 @@ fn test_syntax_driver_defaults() {
     assert!(driver.injections().is_empty());
     assert!(driver.folds().is_empty());
     assert_eq!(driver.indent_for(0), None);
+    assert!(driver.scopes(0, 0).is_empty());
 }
 
 #[test]

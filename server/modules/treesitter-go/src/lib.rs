@@ -37,12 +37,18 @@ const GO_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// Go folds query (embedded from queries/folds.scm)
 const GO_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// Go context query (embedded from queries/context.scm)
+const GO_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating Go syntax drivers.
+#[allow(clippy::struct_field_names)]
 pub struct GoSyntaxFactory {
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
     folds_query: Arc<Query>,
+    /// Pre-compiled context query
+    context_query: Arc<Query>,
 }
 
 impl GoSyntaxFactory {
@@ -63,9 +69,13 @@ impl GoSyntaxFactory {
         let folds_query =
             Query::new(&language, GO_FOLDS_QUERY).expect("Failed to compile Go folds query");
 
+        let context_query =
+            Query::new(&language, GO_CONTEXT_QUERY).expect("Failed to compile Go context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
+            context_query: Arc::new(context_query),
         }
     }
 
@@ -90,15 +100,11 @@ impl SyntaxDriverFactory for GoSyntaxFactory {
 
         let language: Language = tree_sitter_go::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "go",
-            &language,
-            self.highlight_query.clone(),
-            Some(self.folds_query.clone()),
-            None, // No injections
-            None, // No indents
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("go", &language, self.highlight_query.clone())
+            .folds_query(self.folds_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

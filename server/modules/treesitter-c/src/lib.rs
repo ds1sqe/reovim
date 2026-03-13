@@ -49,15 +49,21 @@ const C_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// C folds query (embedded from queries/folds.scm)
 const C_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// C context query (embedded from queries/context.scm)
+const C_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating C syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
 /// C syntax highlighting and fold detection using the tree-sitter-c grammar.
+#[allow(clippy::struct_field_names)]
 pub struct CSyntaxFactory {
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
     folds_query: Arc<Query>,
+    /// Pre-compiled context query
+    context_query: Arc<Query>,
 }
 
 impl CSyntaxFactory {
@@ -79,9 +85,13 @@ impl CSyntaxFactory {
         let folds_query =
             Query::new(&language, C_FOLDS_QUERY).expect("Failed to compile C folds query");
 
+        let context_query =
+            Query::new(&language, C_CONTEXT_QUERY).expect("Failed to compile C context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
+            context_query: Arc::new(context_query),
         }
     }
 
@@ -106,15 +116,11 @@ impl SyntaxDriverFactory for CSyntaxFactory {
 
         let language: Language = tree_sitter_c::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "c",
-            &language,
-            self.highlight_query.clone(),
-            Some(self.folds_query.clone()),
-            None, // No injections
-            None, // No indents
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("c", &language, self.highlight_query.clone())
+            .folds_query(self.folds_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

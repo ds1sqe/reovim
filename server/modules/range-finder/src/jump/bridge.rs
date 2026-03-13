@@ -7,8 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use super::state::JumpSessionState;
-use crate::KIND_JUMP;
+use {super::state::JumpSessionState, crate::KIND_JUMP};
 
 /// Bridge for jump navigation state.
 ///

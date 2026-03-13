@@ -8,7 +8,10 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::{KIND_HOVER, hover_state::{HoverContentType, HoverState}};
+use crate::{
+    KIND_HOVER,
+    hover_state::{HoverContentType, HoverState},
+};
 
 /// Bridge for hover popup state.
 ///

@@ -7,8 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use super::state::FoldSessionState;
-use crate::KIND_FOLD;
+use {super::state::FoldSessionState, crate::KIND_FOLD};
 
 /// Bridge for fold state.
 ///

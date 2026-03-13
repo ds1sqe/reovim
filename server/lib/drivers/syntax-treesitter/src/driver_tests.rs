@@ -916,3 +916,101 @@ fn test_set_injection_depth_with_manager() {
     let manager = driver.injection_manager().unwrap().lock();
     assert_eq!(manager.depth(), 2);
 }
+
+// ========================================================================
+// Context / Scope Tests
+// ========================================================================
+
+#[test]
+fn test_supports_context_false_by_default() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+    assert!(!driver.supports_context());
+}
+
+#[test]
+fn test_supports_context_true_with_query() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let context_query = Arc::new(Query::new(&language, "(function_item) @context").unwrap());
+
+    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .context_query(context_query)
+        .build()
+        .unwrap();
+
+    assert!(driver.supports_context());
+}
+
+#[test]
+fn test_scopes_empty_without_context_query() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let mut driver = TreeSitterDriver::new("rust", &language, highlight_query).unwrap();
+    driver.parse("fn main() {}");
+    assert!(driver.scopes(0, 3).is_empty());
+}
+
+#[test]
+fn test_scopes_empty_before_parse() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let context_query = Arc::new(Query::new(&language, "(function_item) @context").unwrap());
+
+    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .context_query(context_query)
+        .build()
+        .unwrap();
+
+    assert!(driver.scopes(0, 3).is_empty());
+}
+
+#[test]
+fn test_builder_context_query() {
+    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let highlight_query = Arc::new(Query::new(&language, "(identifier) @variable").unwrap());
+    let context_query = Arc::new(Query::new(&language, "(function_item) @context").unwrap());
+
+    let driver = TreeSitterDriver::builder("rust", &language, highlight_query)
+        .context_query(context_query)
+        .build()
+        .unwrap();
+
+    assert!(driver.supports_context());
+}
+
+#[test]
+fn test_simplify_kind_rust() {
+    assert_eq!(simplify_kind("function_item"), "fn");
+    assert_eq!(simplify_kind("struct_item"), "struct");
+    assert_eq!(simplify_kind("enum_item"), "enum");
+    assert_eq!(simplify_kind("impl_item"), "impl");
+    assert_eq!(simplify_kind("trait_item"), "trait");
+    assert_eq!(simplify_kind("mod_item"), "mod");
+    assert_eq!(simplify_kind("closure_expression"), "closure");
+}
+
+#[test]
+fn test_simplify_kind_python() {
+    assert_eq!(simplify_kind("function_definition"), "fn");
+    assert_eq!(simplify_kind("class_definition"), "class");
+}
+
+#[test]
+fn test_simplify_kind_js() {
+    assert_eq!(simplify_kind("arrow_function"), "fn");
+    assert_eq!(simplify_kind("method_definition"), "fn");
+}
+
+#[test]
+fn test_simplify_kind_markdown() {
+    assert_eq!(simplify_kind("atx_heading"), "heading");
+    assert_eq!(simplify_kind("setext_heading"), "heading");
+}
+
+#[test]
+fn test_simplify_kind_unknown() {
+    assert_eq!(simplify_kind("block"), "block");
+    assert_eq!(simplify_kind("if_expression"), "if_expression");
+}

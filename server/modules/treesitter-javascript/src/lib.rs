@@ -37,12 +37,18 @@ const JS_HIGHLIGHTS_QUERY: &str = include_str!("queries/highlights.scm");
 /// JavaScript folds query (embedded from queries/folds.scm)
 const JS_FOLDS_QUERY: &str = include_str!("queries/folds.scm");
 
+/// JavaScript context query (embedded from queries/context.scm)
+const JS_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating JavaScript syntax drivers.
+#[allow(clippy::struct_field_names)]
 pub struct JavaScriptSyntaxFactory {
     /// Pre-compiled highlights query
     highlight_query: Arc<Query>,
     /// Pre-compiled folds query
     folds_query: Arc<Query>,
+    /// Pre-compiled context query
+    context_query: Arc<Query>,
 }
 
 impl JavaScriptSyntaxFactory {
@@ -63,9 +69,13 @@ impl JavaScriptSyntaxFactory {
         let folds_query = Query::new(&language, JS_FOLDS_QUERY)
             .expect("Failed to compile JavaScript folds query");
 
+        let context_query = Query::new(&language, JS_CONTEXT_QUERY)
+            .expect("Failed to compile JavaScript context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
+            context_query: Arc::new(context_query),
         }
     }
 
@@ -90,15 +100,11 @@ impl SyntaxDriverFactory for JavaScriptSyntaxFactory {
 
         let language: Language = tree_sitter_javascript::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "javascript",
-            &language,
-            self.highlight_query.clone(),
-            Some(self.folds_query.clone()),
-            None, // No injections
-            None, // No indents
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("javascript", &language, self.highlight_query.clone())
+            .folds_query(self.folds_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

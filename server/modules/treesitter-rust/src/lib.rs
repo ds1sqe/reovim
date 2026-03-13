@@ -64,6 +64,10 @@ const RUST_INJECTIONS_QUERY: &str = include_str!("queries/injections.scm");
 /// Provides indentation hints for smart auto-indent
 const RUST_INDENTS_QUERY: &str = include_str!("queries/indents.scm");
 
+/// Rust context query (embedded from queries/context.scm)
+/// Provides scope hierarchy for statusline breadcrumbs
+const RUST_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating Rust syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
@@ -79,6 +83,8 @@ pub struct RustSyntaxFactory {
     injections_query: Arc<Query>,
     /// Pre-compiled indents query (indentation hints)
     indents_query: Arc<Query>,
+    /// Pre-compiled context query (scope hierarchy)
+    context_query: Arc<Query>,
 }
 
 impl RustSyntaxFactory {
@@ -106,11 +112,15 @@ impl RustSyntaxFactory {
         let indents_query = Query::new(&language, RUST_INDENTS_QUERY)
             .expect("Failed to compile Rust indents query");
 
+        let context_query = Query::new(&language, RUST_CONTEXT_QUERY)
+            .expect("Failed to compile Rust context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             folds_query: Arc::new(folds_query),
             injections_query: Arc::new(injections_query),
             indents_query: Arc::new(indents_query),
+            context_query: Arc::new(context_query),
         }
     }
 
@@ -136,15 +146,13 @@ impl SyntaxDriverFactory for RustSyntaxFactory {
 
         let language: Language = tree_sitter_rust::LANGUAGE.into();
 
-        TreeSitterDriver::with_queries(
-            "rust",
-            &language,
-            self.highlight_query.clone(),
-            Some(self.folds_query.clone()),
-            Some(self.injections_query.clone()), // Doc comments → Markdown injection
-            Some(self.indents_query.clone()),    // Indentation hints
-        )
-        .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
+        TreeSitterDriver::builder("rust", &language, self.highlight_query.clone())
+            .folds_query(self.folds_query.clone())
+            .injections_query(self.injections_query.clone())
+            .indents_query(self.indents_query.clone())
+            .context_query(self.context_query.clone())
+            .build()
+            .map(|d| Box::new(d) as Box<dyn SyntaxDriver>)
     }
 
     fn supported_languages(&self) -> Vec<&str> {

@@ -65,6 +65,9 @@ const MARKDOWN_DECORATIONS_QUERY: &str = include_str!("queries/decorations.scm")
 /// Markdown inline decorations query (embedded from `queries_inline/decorations.scm`)
 const MARKDOWN_INLINE_DECORATIONS_QUERY: &str = include_str!("queries_inline/decorations.scm");
 
+/// Markdown context query (embedded from queries/context.scm)
+const MARKDOWN_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
+
 /// Factory for creating Markdown syntax drivers.
 ///
 /// This factory creates `TreeSitterDriver` instances configured for
@@ -88,6 +91,8 @@ pub struct MarkdownSyntaxFactory {
     table_query: Arc<Query>,
     /// Pre-compiled list marker query for `ListDecorationProvider`
     list_query: Arc<Query>,
+    /// Pre-compiled context query (scope hierarchy)
+    context_query: Arc<Query>,
 }
 
 impl MarkdownSyntaxFactory {
@@ -126,6 +131,9 @@ impl MarkdownSyntaxFactory {
         )
         .expect("Failed to compile Markdown list query");
 
+        let context_query = Query::new(&language, MARKDOWN_CONTEXT_QUERY)
+            .expect("Failed to compile Markdown context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             injections_query: Arc::new(injections_query),
@@ -136,6 +144,7 @@ impl MarkdownSyntaxFactory {
             inline_decoration_rules: markdown_inline_decoration_rules(),
             table_query: Arc::new(table_query),
             list_query: Arc::new(list_query),
+            context_query: Arc::new(context_query),
         }
     }
 }
@@ -156,6 +165,7 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
         let language: Language = tree_sitter_md::LANGUAGE.into();
 
         TreeSitterDriver::builder("markdown", &language, self.highlight_query.clone())
+            .context_query(self.context_query.clone())
             .injections_query(self.injections_query.clone())
             .decoration(self.decoration_query.clone(), self.decoration_rules.clone())
             .inline_decoration(
