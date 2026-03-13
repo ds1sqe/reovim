@@ -1,4 +1,8 @@
-# Runner Architecture
+# Runner Architecture (Superseded)
+
+> **Superseded by**: [Server Architecture](../architecture/server/overview.md) and
+> [Client Architecture](../architecture/client/overview.md).
+> The runner was dissolved in Phase 8. Server and client docs now live separately.
 
 > **Note:** This documentation describes the pre-Phase 8 architecture. The runner has been
 > restructured into separate components:

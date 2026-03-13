@@ -291,7 +291,8 @@ See [perf/](./perf/) for versioned benchmark results.
 - [Kernel Overview](./docs/architecture/kernel/overview.md) - Core subsystems: mm/, ipc/, core/, block/
 - [Driver Overview](./docs/architecture/drivers/overview.md) - Services: syntax, input, display, LSP
 - [Module System](./docs/architecture/modules/overview.md) - Module trait, registration
-- [Runner Overview](./docs/architecture/runner/overview.md) - Server/client architecture
+- [Server Runtime](./docs/architecture/server/overview.md) - gRPC server, sessions
+- [Client Architecture](./docs/architecture/client/overview.md) - Client Layer Model
 
 **Contributing:**
 - [Getting Started](./docs/contributing/getting-started.md) - Development setup

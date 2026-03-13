@@ -106,7 +106,7 @@ All runtime editing state lives in `EditingState` per client (#471):
 
 ## Related Documents
 
-- [Sessions and Viewports](./runner/server/sessions.md) - Implementation details
+- [Sessions and Viewports](./server/sessions.md) - Implementation details
 - [Driver Overview](./drivers/overview.md) - Driver layer architecture
 - [Session Driver](./drivers/session/overview.md) - Session driver details
 - [Type Layers](./type-layers.md) - ID type conventions

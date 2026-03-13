@@ -379,4 +379,4 @@ async fn get_mode(&self, request: Request<GetModeRequest>) -> Result<Response<Ge
 - [Server Overview](./overview.md) - Server architecture
 - [Notifications](./notifications.md) - Buffer-scoped notifications
 - [Concurrency Reference](../../contributing/internals/concurrency.md) - Lock patterns
-- [Session Model](../../session-model.md) - High-level session architecture
+- [Session Model](../session-model.md) - High-level session architecture
