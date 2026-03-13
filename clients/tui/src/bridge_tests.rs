@@ -1,20 +1,22 @@
-use reovim_client_driver::{
-    BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ColumnWidth, PlatformCapabilities,
-    Rect, RenderBehavior, Style, Version,
-};
-use reovim_driver_display::{
-    render_backend::{
-        RenderBackend, RenderBehavior as DisplayRenderBehavior,
-        TransformedLine as DisplayTransformedLine, TuiExtension, VirtualLine as DisplayVirtualLine,
-        VirtualLinePosition as DisplayVirtualLinePosition,
+use {
+    reovim_client_driver::{
+        BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ColumnWidth,
+        PlatformCapabilities, Rect, RenderBehavior, Style, Version,
     },
-    Attributes as DisplayAttributes, Style as DisplayStyle,
+    reovim_driver_display::{
+        Attributes as DisplayAttributes, Style as DisplayStyle,
+        render_backend::{
+            RenderBackend, RenderBehavior as DisplayRenderBehavior,
+            TransformedLine as DisplayTransformedLine, TuiExtension,
+            VirtualLine as DisplayVirtualLine, VirtualLinePosition as DisplayVirtualLinePosition,
+        },
+    },
+    std::borrow::Cow,
 };
-use std::borrow::Cow;
 
 use super::{
-    classify_extension, convert_display_style_to_driver_style, convert_render_behavior,
-    convert_transformed_line, wrap_extensions, TuiExtensionBridge,
+    TuiExtensionBridge, classify_extension, convert_display_style_to_driver_style,
+    convert_render_behavior, convert_transformed_line, wrap_extensions,
 };
 
 // =============================================================================
@@ -169,95 +171,9 @@ impl TuiExtension for MockExtension {
 // classify_extension
 // =============================================================================
 
-#[test]
-fn classify_cmdline() {
-    let (chrome, buf, pos, pri) = classify_extension("cmdline");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Bottom);
-    assert_eq!(pri, 90);
-}
-
-#[test]
-fn classify_whichkey() {
-    let (chrome, buf, pos, pri) = classify_extension("whichkey");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 50);
-}
-
-#[test]
-fn classify_notification() {
-    let (chrome, buf, pos, pri) = classify_extension("notification");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 40);
-}
-
-#[test]
-fn classify_microscope() {
-    let (chrome, buf, pos, pri) = classify_extension("microscope");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 80);
-}
-
-#[test]
-fn classify_completion() {
-    let (chrome, buf, pos, pri) = classify_extension("completion");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 70);
-}
-
-#[test]
-fn classify_explorer() {
-    let (chrome, buf, pos, pri) = classify_extension("explorer");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Left);
-    assert_eq!(pri, 60);
-}
-
-#[test]
-fn classify_hover() {
-    let (chrome, buf, pos, pri) = classify_extension("hover");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 45);
-}
-
-#[test]
-fn classify_signature_help() {
-    let (chrome, buf, pos, pri) = classify_extension("signature-help");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 44);
-}
-
-#[test]
-fn classify_landing() {
-    let (chrome, buf, pos, pri) = classify_extension("landing");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 30);
-}
-
-#[test]
-fn classify_polyblocks() {
-    let (chrome, buf, pos, pri) = classify_extension("polyblocks");
-    assert!(chrome);
-    assert!(!buf);
-    assert_eq!(pos, ChromePosition::Overlay);
-    assert_eq!(pri, 10);
-}
+// Chrome extensions (cmdline, whichkey, notification, microscope, completion,
+// explorer, hover, signature-help, landing, polyblocks) are now native
+// ClientModule implementations and no longer need bridge classification.
 
 #[test]
 fn classify_pair() {
@@ -314,11 +230,11 @@ fn classify_unknown() {
 
 #[test]
 fn bridge_identity() {
-    let ext = MockExtension::default().with_kind("cmdline");
+    let ext = MockExtension::default().with_kind("custom-ext");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
-    assert_eq!(bridge.id(), "cmdline");
-    assert_eq!(bridge.kind(), "cmdline");
-    assert_eq!(bridge.name(), "cmdline");
+    assert_eq!(bridge.id(), "custom-ext");
+    assert_eq!(bridge.kind(), "custom-ext");
+    assert_eq!(bridge.name(), "custom-ext");
     assert_eq!(bridge.version(), Version::new(0, 1, 0));
 }
 
@@ -348,7 +264,7 @@ fn bridge_server_kinds() {
 
 #[test]
 fn bridge_chrome_role() {
-    let ext = MockExtension::default().with_kind("cmdline");
+    let ext = MockExtension::default().with_kind("custom-chrome");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
     assert!(bridge.has_chrome());
     assert!(!bridge.has_buffer_contrib());
@@ -369,35 +285,24 @@ fn bridge_buffer_contrib_role() {
 // =============================================================================
 
 #[test]
-fn bridge_chrome_position() {
-    let ext = MockExtension::default().with_kind("cmdline");
+fn bridge_chrome_position_default() {
+    // Unknown kinds get Overlay via default case
+    let ext = MockExtension::default().with_kind("custom-chrome");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
-    assert_eq!(bridge.chrome_position(), ChromePosition::Bottom);
+    assert_eq!(bridge.chrome_position(), ChromePosition::Overlay);
 }
 
 #[test]
-fn bridge_chrome_priority() {
-    let ext = MockExtension::default().with_kind("cmdline");
+fn bridge_chrome_priority_default() {
+    // Unknown kinds get priority 0 via default case
+    let ext = MockExtension::default().with_kind("custom-chrome");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
-    assert_eq!(bridge.chrome_priority(), 90);
+    assert_eq!(bridge.chrome_priority(), 0);
 }
 
 #[test]
-fn bridge_chrome_requested_size_explorer() {
-    let ext = MockExtension {
-        kind: "explorer",
-        offset_left: 30,
-        server_kinds_val: vec!["explorer"],
-        ..MockExtension::default()
-    };
-    let bridge = TuiExtensionBridge::new(Box::new(ext));
-    let caps = MockPlatformCaps;
-    assert_eq!(bridge.chrome_requested_size(&caps), 30);
-}
-
-#[test]
-fn bridge_chrome_requested_size_non_explorer() {
-    let ext = MockExtension::default().with_kind("cmdline");
+fn bridge_chrome_requested_size() {
+    let ext = MockExtension::default().with_kind("custom-chrome");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
     let caps = MockPlatformCaps;
     assert_eq!(bridge.chrome_requested_size(&caps), 1);
@@ -519,10 +424,7 @@ fn bridge_classify_token_highlight() {
         ..MockExtension::default()
     };
     let bridge = TuiExtensionBridge::new(Box::new(ext));
-    assert_eq!(
-        bridge.classify_token("keyword"),
-        Some(RenderBehavior::Highlight)
-    );
+    assert_eq!(bridge.classify_token("keyword"), Some(RenderBehavior::Highlight));
 }
 
 #[test]
@@ -610,10 +512,7 @@ fn bridge_virtual_lines_cached() {
     let vlines = bridge.virtual_lines();
     assert_eq!(vlines.len(), 1);
     assert_eq!(vlines[0].buffer_line, 10);
-    assert_eq!(
-        vlines[0].position,
-        reovim_client_driver::VirtualLinePosition::After
-    );
+    assert_eq!(vlines[0].position, reovim_client_driver::VirtualLinePosition::After);
     assert_eq!(vlines[0].content, "diagnostic hint");
 }
 
@@ -657,10 +556,7 @@ fn bridge_annotation_defaults() {
         gutter_style: Style::default(),
     };
     let caps = MockPlatformCaps;
-    assert_eq!(
-        bridge.annotation_column_width(&ctx, &caps),
-        ColumnWidth::Fixed(0)
-    );
+    assert_eq!(bridge.annotation_column_width(&ctx, &caps), ColumnWidth::Fixed(0));
     assert!(bridge.annotate(0, &ctx).is_none());
     assert_eq!(bridge.annotation_priority(), 0);
 }
@@ -678,12 +574,12 @@ fn wrap_extensions_empty() {
 #[test]
 fn wrap_extensions_multiple() {
     let extensions: Vec<Box<dyn TuiExtension>> = vec![
-        Box::new(MockExtension::default().with_kind("cmdline")),
+        Box::new(MockExtension::default().with_kind("custom-chrome")),
         Box::new(MockExtension::default().with_kind("pair")),
     ];
     let modules = wrap_extensions(extensions);
     assert_eq!(modules.len(), 2);
-    assert_eq!(modules[0].kind(), "cmdline");
+    assert_eq!(modules[0].kind(), "custom-chrome");
     assert!(modules[0].has_chrome());
     assert_eq!(modules[1].kind(), "pair");
     assert!(modules[1].has_buffer_contrib());
@@ -725,10 +621,7 @@ fn convert_render_behavior_hide() {
 #[test]
 fn convert_render_behavior_full_width_line() {
     let result = convert_render_behavior(&DisplayRenderBehavior::FullWidthLine { ch: '-' });
-    assert!(matches!(
-        result,
-        RenderBehavior::FullWidthLine { ch: '-', .. }
-    ));
+    assert!(matches!(result, RenderBehavior::FullWidthLine { ch: '-', .. }));
 }
 
 // =============================================================================
@@ -829,9 +722,11 @@ fn convert_style_bold() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::BOLD));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::BOLD)
+    );
 }
 
 #[test]
@@ -845,9 +740,11 @@ fn convert_style_italic() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::ITALIC));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::ITALIC)
+    );
 }
 
 #[test]
@@ -861,9 +758,11 @@ fn convert_style_underline() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::UNDERLINE));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::UNDERLINE)
+    );
 }
 
 #[test]
@@ -877,9 +776,11 @@ fn convert_style_strikethrough() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::STRIKETHROUGH));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::STRIKETHROUGH)
+    );
 }
 
 #[test]
@@ -893,9 +794,11 @@ fn convert_style_reverse() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::REVERSE));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::REVERSE)
+    );
 }
 
 #[test]
@@ -909,9 +812,11 @@ fn convert_style_dim() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::DIM));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::DIM)
+    );
 }
 
 #[test]
@@ -930,24 +835,36 @@ fn convert_style_all_attributes() {
         underline_color: None,
     };
     let driver = convert_display_style_to_driver_style(&display);
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::BOLD));
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::ITALIC));
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::UNDERLINE));
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::STRIKETHROUGH));
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::REVERSE));
-    assert!(driver
-        .attributes
-        .contains(reovim_client_driver::Attributes::DIM));
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::BOLD)
+    );
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::ITALIC)
+    );
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::UNDERLINE)
+    );
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::STRIKETHROUGH)
+    );
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::REVERSE)
+    );
+    assert!(
+        driver
+            .attributes
+            .contains(reovim_client_driver::Attributes::DIM)
+    );
 }
 
 #[test]
@@ -1064,8 +981,7 @@ fn surface_adapter_write_str() {
     let mut surface = MockSurface::new();
     let bounds = Rect::new(10, 5, 60, 20);
     {
-        let mut adapter =
-            super::SurfaceBackendAdapter::new(&mut surface, bounds);
+        let mut adapter = super::SurfaceBackendAdapter::new(&mut surface, bounds);
         adapter.write_str(3, 2, "hello", &DisplayStyle::default());
     }
     assert_eq!(surface.written.len(), 1);
@@ -1079,8 +995,7 @@ fn surface_adapter_set_cell() {
     let mut surface = MockSurface::new();
     let bounds = Rect::new(5, 3, 70, 20);
     {
-        let mut adapter =
-            super::SurfaceBackendAdapter::new(&mut surface, bounds);
+        let mut adapter = super::SurfaceBackendAdapter::new(&mut surface, bounds);
         adapter.set_cell(1, 1, 'X', &DisplayStyle::default());
     }
     assert_eq!(surface.written.len(), 1);
@@ -1094,8 +1009,7 @@ fn surface_adapter_apply_style() {
     let mut surface = MockSurface::new();
     let bounds = Rect::new(10, 5, 60, 20);
     {
-        let mut adapter =
-            super::SurfaceBackendAdapter::new(&mut surface, bounds);
+        let mut adapter = super::SurfaceBackendAdapter::new(&mut surface, bounds);
         adapter.apply_style(0, 0, &DisplayStyle::default());
     }
     assert_eq!(surface.applied.len(), 1);
@@ -1108,8 +1022,7 @@ fn surface_adapter_overlay_bg() {
     let mut surface = MockSurface::new();
     let bounds = Rect::new(10, 5, 60, 20);
     {
-        let mut adapter =
-            super::SurfaceBackendAdapter::new(&mut surface, bounds);
+        let mut adapter = super::SurfaceBackendAdapter::new(&mut surface, bounds);
         adapter.overlay_bg(2, 3, reovim_client_driver::Color::Red);
     }
     assert_eq!(surface.overlaid.len(), 1);
@@ -1130,8 +1043,7 @@ fn surface_adapter_clear() {
     let mut surface = MockSurface::new();
     let bounds = Rect::new(10, 5, 60, 20);
     {
-        let mut adapter =
-            super::SurfaceBackendAdapter::new(&mut surface, bounds);
+        let mut adapter = super::SurfaceBackendAdapter::new(&mut surface, bounds);
         adapter.clear();
     }
     assert_eq!(surface.cleared.len(), 1);
@@ -1145,9 +1057,9 @@ fn surface_adapter_clear() {
 #[test]
 fn bridge_chrome_render_inactive() {
     let ext = MockExtension {
-        kind: "cmdline",
+        kind: "custom-chrome",
         active: false,
-        server_kinds_val: vec!["cmdline"],
+        server_kinds_val: vec!["custom-chrome"],
         ..MockExtension::default()
     };
     let bridge = TuiExtensionBridge::new(Box::new(ext));
@@ -1160,7 +1072,7 @@ fn bridge_chrome_render_inactive() {
 
 #[test]
 fn bridge_chrome_render_active() {
-    let ext = MockExtension::default().with_kind("cmdline");
+    let ext = MockExtension::default().with_kind("custom-chrome");
     let bridge = TuiExtensionBridge::new(Box::new(ext));
     let mut surface = MockSurface::new();
     let caps = MockPlatformCaps;
@@ -1229,10 +1141,7 @@ impl reovim_client_driver::ThemeProvider for MockThemeProvider {
 struct MockServerHandle;
 
 impl reovim_client_driver::ServerHandle for MockServerHandle {
-    fn get_options(
-        &self,
-        _names: &[&str],
-    ) -> Vec<(String, reovim_client_driver::OptionValue)> {
+    fn get_options(&self, _names: &[&str]) -> Vec<(String, reovim_client_driver::OptionValue)> {
         Vec::new()
     }
     fn execute_command(&self, _command: &str) {}

@@ -28,14 +28,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Add `convert_key_event()` and `convert_mouse_event()` crossterm-to-CLM conversion layer.
   67 bridge tests + 26 input type tests.
 
-- **Chrome module migration** (#634): Migrate 7 chrome extensions to native `ClientModule`
+- **Chrome module migration** (#634): Migrate all 10 chrome extensions to native `ClientModule`
   implementations, bypassing the `TuiExtensionBridge`. Includes statusline (extracted from
-  render engine), hover, signature-help, landing, completion, notification, and which-key.
-  Each module uses `RenderSurface` directly with `chrome_utils` and `ui` utilities.
-  Shared infrastructure: `chrome_utils::render_box_border()`, `chrome_utils::popup_width()`,
+  render engine), hover, signature-help, landing, completion, notification, which-key,
+  cmdline, microscope, explorer, and tetromino (polyblocks). Each module uses `RenderSurface`
+  directly with `chrome_utils` and `ui` utilities. Explorer uses `ChromePosition::Left` with
+  `chrome_requested_size()` for sidebar width. Shared infrastructure:
+  `chrome_utils::render_box_border()`, `chrome_utils::popup_width()`,
   `chrome_utils::popup_x()`, `ui::truncate_end()`, `ui::display_width()`.
   Re-export `reovim_arch` from `reovim-client-driver` for Clock access.
-  132 tests across 7 new module crates.
+  Bridge `classify_extension()` cleaned: only 5 buffer-contrib extensions remain.
+  11 native module crates total.
 
 ### Changed
 

@@ -34,6 +34,10 @@ pub fn create_native_modules() -> Vec<Box<dyn ClientModule>> {
         Box::new(reovim_tui_mod_completion::CompletionModule::new()),
         Box::new(reovim_tui_mod_notification::NotificationModule::new()),
         Box::new(reovim_tui_mod_whichkey::WhichKeyModule::new()),
+        Box::new(reovim_tui_mod_cmdline::CmdlineModule::new()),
+        Box::new(reovim_tui_mod_microscope::MicroscopeModule::new()),
+        Box::new(reovim_tui_mod_explorer::ExplorerModule::new()),
+        Box::new(reovim_tui_mod_tetromino::TetrominoModule::new()),
     ]
 }
 
@@ -118,20 +122,14 @@ pub fn create_extensions_filtered<S: std::hash::BuildHasher>(
 /// This is the canonical list. Filtering is applied by callers.
 fn all_extensions() -> Vec<Box<dyn TuiExtension>> {
     vec![
-        // whichkey migrated to native ClientModule (reovim-tui-mod-whichkey)
-        Box::new(reovim_tui_ext_cmdline::CmdlineExtension::new()),
-        // notification migrated to native ClientModule (reovim-tui-mod-notification)
-        Box::new(reovim_tui_ext_microscope::MicroscopeExtension::new()),
-        // completion migrated to native ClientModule (reovim-tui-mod-completion)
-        Box::new(reovim_tui_ext_explorer::ExplorerExtension::new()),
-        Box::new(reovim_tui_ext_tetromino::TetrominoExtension::new()),
+        // cmdline migrated to native ClientModule (reovim-tui-mod-cmdline)
+        // microscope migrated to native ClientModule (reovim-tui-mod-microscope)
+        // explorer migrated to native ClientModule (reovim-tui-mod-explorer)
+        // tetromino migrated to native ClientModule (reovim-tui-mod-tetromino)
         Box::new(reovim_tui_ext_range_finder::RangeFinderJumpExtension::new()),
         Box::new(reovim_tui_ext_range_finder::RangeFinderFoldExtension::new()),
-        // hover migrated to native ClientModule (reovim-tui-mod-hover)
-        // signature-help migrated to native ClientModule (reovim-tui-mod-signature-help)
         Box::new(reovim_tui_ext_diagnostics::DiagnosticsExtension::new()),
         Box::new(reovim_tui_ext_markdown::MarkdownRenderExtension::new()),
-        // landing migrated to native ClientModule (reovim-tui-mod-landing)
         Box::new(reovim_tui_ext_pair::PairExtension::new()),
     ]
 }

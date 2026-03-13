@@ -134,6 +134,10 @@ members = [
     "clients/tui/modules/completion",
     "clients/tui/modules/notification",
     "clients/tui/modules/which-key",
+    "clients/tui/modules/cmdline",
+    "clients/tui/modules/microscope",
+    "clients/tui/modules/explorer",
+    "clients/tui/modules/tetromino",
 
     # Client layer - CLI
     "clients/cli",
@@ -357,6 +361,10 @@ reovim-tui-mod-landing = { path = "./clients/tui/modules/landing", version = "0.
 reovim-tui-mod-completion = { path = "./clients/tui/modules/completion", version = "0.12.0-dev" }
 reovim-tui-mod-notification = { path = "./clients/tui/modules/notification", version = "0.12.0-dev" }
 reovim-tui-mod-whichkey = { path = "./clients/tui/modules/which-key", version = "0.12.0-dev" }
+reovim-tui-mod-cmdline = { path = "./clients/tui/modules/cmdline", version = "0.12.0-dev" }
+reovim-tui-mod-microscope = { path = "./clients/tui/modules/microscope", version = "0.12.0-dev" }
+reovim-tui-mod-explorer = { path = "./clients/tui/modules/explorer", version = "0.12.0-dev" }
+reovim-tui-mod-tetromino = { path = "./clients/tui/modules/tetromino", version = "0.12.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

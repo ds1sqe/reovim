@@ -1,7 +1,9 @@
-use super::*;
-use reovim_client_driver::{Insets, RenderingModel};
-use reovim_client_driver::types::ColorDepth;
-use reovim_client_driver::reovim_arch::clock::TestClock;
+use {
+    super::*,
+    reovim_client_driver::{
+        Insets, RenderingModel, reovim_arch::clock::TestClock, types::ColorDepth,
+    },
+};
 
 // =============================================================================
 // Mock infrastructure
@@ -27,7 +29,9 @@ impl MockSurface {
     }
 
     fn has_content(&self) -> bool {
-        self.cells.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '))
+        self.cells
+            .iter()
+            .any(|row| row.iter().any(|(ch, _)| *ch != ' '))
     }
 }
 
@@ -68,20 +72,48 @@ impl RenderSurface for MockSurface {
 struct TestPlatformCaps;
 
 impl PlatformCapabilities for TestPlatformCaps {
-    fn rendering_model(&self) -> RenderingModel { RenderingModel::CellGrid }
-    fn grid_size(&self) -> Option<(u16, u16)> { Some((80, 24)) }
-    fn color_depth(&self) -> ColorDepth { ColorDepth::TrueColor }
-    fn pixel_size(&self) -> Option<(u32, u32)> { None }
-    fn reliable_unicode_width(&self) -> bool { true }
-    fn dark_mode(&self) -> bool { true }
-    fn smooth_scroll(&self) -> bool { false }
-    fn pointer_events(&self) -> bool { true }
-    fn touch_input(&self) -> bool { false }
-    fn haptic(&self) -> bool { false }
-    fn safe_area(&self) -> Insets { Insets::ZERO }
-    fn has_focus(&self) -> bool { true }
-    fn clipboard_available(&self) -> bool { true }
-    fn screen_reader_active(&self) -> bool { false }
+    fn rendering_model(&self) -> RenderingModel {
+        RenderingModel::CellGrid
+    }
+    fn grid_size(&self) -> Option<(u16, u16)> {
+        Some((80, 24))
+    }
+    fn color_depth(&self) -> ColorDepth {
+        ColorDepth::TrueColor
+    }
+    fn pixel_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn reliable_unicode_width(&self) -> bool {
+        true
+    }
+    fn dark_mode(&self) -> bool {
+        true
+    }
+    fn smooth_scroll(&self) -> bool {
+        false
+    }
+    fn pointer_events(&self) -> bool {
+        true
+    }
+    fn touch_input(&self) -> bool {
+        false
+    }
+    fn haptic(&self) -> bool {
+        false
+    }
+    fn safe_area(&self) -> Insets {
+        Insets::ZERO
+    }
+    fn has_focus(&self) -> bool {
+        true
+    }
+    fn clipboard_available(&self) -> bool {
+        true
+    }
+    fn screen_reader_active(&self) -> bool {
+        false
+    }
 }
 
 // =============================================================================
@@ -96,15 +128,18 @@ fn test_module() -> (NotificationModule, Arc<TestClock>) {
 
 fn render(module: &NotificationModule, w: u16, h: u16) -> MockSurface {
     let mut surface = MockSurface::new(w, h);
-    let bounds = Rect { x: 0, y: 0, width: w, height: h };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: w,
+        height: h,
+    };
     module.chrome_render(&mut surface, bounds, &TestPlatformCaps);
     surface
 }
 
 fn info_toast(id: u64, title: &str) -> String {
-    format!(
-        r#"{{"entries":[{{"id":{id},"level":"info","title":"{title}","body":""}}]}}"#,
-    )
+    format!(r#"{{"entries":[{{"id":{id},"level":"info","title":"{title}","body":""}}]}}"#)
 }
 
 fn progress_toast(id: u64, title: &str, percent: u8, detail: &str) -> String {
@@ -267,9 +302,7 @@ fn render_shows_toast() {
 #[test]
 fn render_border_color_by_level() {
     let (mut m, _clock) = test_module();
-    m.on_notification(
-        r#"{"entries":[{"id":1,"level":"error","title":"Error"}]}"#,
-    );
+    m.on_notification(r#"{"entries":[{"id":1,"level":"error","title":"Error"}]}"#);
     let surface = render(&m, 80, 24);
     // Toast at top-right, border should be red
     let toast_w = TOAST_WIDTH.min(78);

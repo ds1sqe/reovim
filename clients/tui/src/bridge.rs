@@ -4,20 +4,21 @@
 //! `ClientModule` implementations. Every `TuiExtension` is wrapped at
 //! construction with per-extension role classification.
 
-use reovim_client_driver::{
-    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
-    ClientModuleError, ColumnWidth, GutterCell, InlineDecoration, ModuleContext,
-    PlatformCapabilities, ProbeResult, Rect, RenderBehavior, RenderSurface, TransformedLine,
-    Version, VirtualLine, VirtualLinePosition,
-};
-use reovim_driver_display::render_backend::TuiExtension;
-use reovim_driver_display::{
-    render_backend::{
-        RenderBackend, RenderBehavior as DisplayRenderBehavior,
-        TransformedLine as DisplayTransformedLine,
-        VirtualLinePosition as DisplayVirtualLinePosition,
+use {
+    reovim_client_driver::{
+        AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModule,
+        ClientModuleError, ColumnWidth, GutterCell, InlineDecoration, ModuleContext,
+        PlatformCapabilities, ProbeResult, Rect, RenderBehavior, RenderSurface, TransformedLine,
+        Version, VirtualLine, VirtualLinePosition,
     },
-    Attributes as DisplayAttributes, Style as DisplayStyle,
+    reovim_driver_display::{
+        Attributes as DisplayAttributes, Style as DisplayStyle,
+        render_backend::{
+            RenderBackend, RenderBehavior as DisplayRenderBehavior,
+            TransformedLine as DisplayTransformedLine, TuiExtension,
+            VirtualLinePosition as DisplayVirtualLinePosition,
+        },
+    },
 };
 
 use reovim_client_driver::types::Color;
@@ -97,18 +98,13 @@ pub fn wrap_extensions(extensions: Vec<Box<dyn TuiExtension>>) -> Vec<Box<dyn Cl
 // =============================================================================
 
 /// Classify an extension by its `kind()` into (chrome, `buffer_contrib`, position, priority).
+///
+/// Chrome extensions (cmdline, whichkey, notification, microscope, completion,
+/// explorer, hover, signature-help, landing, polyblocks) are now native
+/// `ClientModule` implementations and no longer go through the bridge.
+/// Only buffer-contrib extensions remain here.
 fn classify_extension(kind: &str) -> (bool, bool, ChromePosition, u16) {
     match kind {
-        "cmdline" => (true, false, ChromePosition::Bottom, 90),
-        "whichkey" => (true, false, ChromePosition::Overlay, 50),
-        "notification" => (true, false, ChromePosition::Overlay, 40),
-        "microscope" => (true, false, ChromePosition::Overlay, 80),
-        "completion" => (true, false, ChromePosition::Overlay, 70),
-        "explorer" => (true, false, ChromePosition::Left, 60),
-        "hover" => (true, false, ChromePosition::Overlay, 45),
-        "signature-help" => (true, false, ChromePosition::Overlay, 44),
-        "landing" => (true, false, ChromePosition::Overlay, 30),
-        "polyblocks" => (true, false, ChromePosition::Overlay, 10),
         "pair" | "markdown" | "diagnostics" | "range-finder-jump" | "range-finder-fold" => {
             (false, true, ChromePosition::Bottom, 0)
         }
@@ -215,11 +211,7 @@ impl ClientModule for TuiExtensionBridge {
     }
 
     fn chrome_requested_size(&self, _caps: &dyn PlatformCapabilities) -> u16 {
-        if self.inner.kind() == "explorer" {
-            self.inner.content_offset_left()
-        } else {
-            1
-        }
+        1
     }
 
     fn chrome_priority(&self) -> u16 {
@@ -247,12 +239,7 @@ impl ClientModule for TuiExtensionBridge {
             .map(|old| convert_render_behavior(&old))
     }
 
-    fn transform_line(
-        &self,
-        buf: BufferId,
-        line: usize,
-        text: &str,
-    ) -> Option<TransformedLine> {
+    fn transform_line(&self, buf: BufferId, line: usize, text: &str) -> Option<TransformedLine> {
         #[allow(clippy::cast_possible_truncation)]
         let bid = buf.0 as u64;
         self.inner
@@ -379,9 +366,7 @@ fn convert_render_behavior(old: &DisplayRenderBehavior) -> RenderBehavior {
         DisplayRenderBehavior::Conceal { replacement } => RenderBehavior::Conceal {
             replacement: replacement.clone(),
         },
-        DisplayRenderBehavior::Background => {
-            RenderBehavior::Background(Color::default())
-        }
+        DisplayRenderBehavior::Background => RenderBehavior::Background(Color::default()),
         DisplayRenderBehavior::Hide => RenderBehavior::Hide,
         DisplayRenderBehavior::FullWidthLine { ch } => RenderBehavior::FullWidthLine {
             ch: *ch,
@@ -444,7 +429,10 @@ const fn convert_display_style_to_driver_style(
     if display.attributes.contains(DisplayAttributes::UNDERLINE) {
         attrs.set(reovim_client_driver::Attributes::UNDERLINE);
     }
-    if display.attributes.contains(DisplayAttributes::STRIKETHROUGH) {
+    if display
+        .attributes
+        .contains(DisplayAttributes::STRIKETHROUGH)
+    {
         attrs.set(reovim_client_driver::Attributes::STRIKETHROUGH);
     }
     if display.attributes.contains(DisplayAttributes::REVERSE) {

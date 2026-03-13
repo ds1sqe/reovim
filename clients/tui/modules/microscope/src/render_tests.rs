@@ -1,0 +1,518 @@
+use {
+    super::*,
+    crate::{ItemData, PreviewData},
+};
+
+/// Minimal `RenderSurface` for testing.
+struct MockSurface {
+    width: u16,
+    height: u16,
+    cells: Vec<Vec<(char, Style)>>,
+}
+
+impl MockSurface {
+    fn new(width: u16, height: u16) -> Self {
+        let default_style = Style::new();
+        Self {
+            width,
+            height,
+            cells: vec![vec![(' ', default_style); width as usize]; height as usize],
+        }
+    }
+
+    fn char_at(&self, x: u16, y: u16) -> char {
+        self.cells[y as usize][x as usize].0
+    }
+}
+
+impl RenderSurface for MockSurface {
+    #[allow(clippy::cast_possible_truncation)]
+    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
+        for (i, ch) in text.chars().enumerate() {
+            let cx = x as usize + i;
+            if cx < self.width as usize && (y as usize) < self.height as usize {
+                self.cells[y as usize][cx] = (ch, style.clone());
+            }
+        }
+        text.len() as u16
+    }
+
+    fn apply_style(&mut self, x: u16, y: u16, style: Style) {
+        if x < self.width && y < self.height {
+            self.cells[y as usize][x as usize].1 = style;
+        }
+    }
+
+    fn overlay_bg(&mut self, x: u16, y: u16, bg: Color) {
+        if x < self.width && y < self.height {
+            self.cells[y as usize][x as usize].1.bg = Some(bg);
+        }
+    }
+
+    fn fill(&mut self, rect: Rect, ch: char, style: Style) {
+        for row in rect.y..rect.y + rect.height {
+            for col in rect.x..rect.x + rect.width {
+                if (col as usize) < self.width as usize && (row as usize) < self.height as usize {
+                    self.cells[row as usize][col as usize] = (ch, style.clone());
+                }
+            }
+        }
+    }
+
+    fn clear(&mut self, rect: Rect) {
+        self.fill(rect, ' ', Style::new());
+    }
+
+    fn size(&self) -> (u16, u16) {
+        (self.width, self.height)
+    }
+}
+
+fn make_data(active: bool) -> MicroscopeData {
+    MicroscopeData {
+        active,
+        query: "test".to_owned(),
+        cursor: 4,
+        selected: 0,
+        scroll_offset: 0,
+        picker_title: "Files".to_owned(),
+        prompt: "> ".to_owned(),
+        items: vec![
+            ItemData {
+                display: "main.rs".to_owned(),
+                detail: Some("src/main.rs".to_owned()),
+            },
+            ItemData {
+                display: "lib.rs".to_owned(),
+                detail: None,
+            },
+        ],
+        total_count: 100,
+        matched_count: 2,
+        preview: None,
+    }
+}
+
+#[test]
+fn render_with_items() {
+    let mut surface = MockSurface::new(100, 30);
+    let data = make_data(true);
+    let bounds = LayoutBounds::calculate(100, 30);
+
+    render_microscope(&mut surface, &data, &bounds);
+
+    // Query row should contain prompt and query.
+    let query_row = bounds.query_row as usize;
+    assert_eq!(surface.cells[query_row][0].0, '>');
+    assert_eq!(surface.cells[query_row][1].0, ' ');
+    assert_eq!(surface.cells[query_row][2].0, 't');
+}
+
+#[test]
+fn render_without_items() {
+    let mut surface = MockSurface::new(80, 24);
+    let data = MicroscopeData {
+        active: true,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    let bounds = LayoutBounds::calculate(80, 24);
+
+    // Should not panic with empty items.
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_with_preview() {
+    let mut surface = MockSurface::new(100, 30);
+    let mut data = make_data(true);
+    data.preview = Some(PreviewData {
+        lines: vec!["fn main() {".to_owned(), "}".to_owned()],
+        highlight_line: Some(0),
+    });
+    let bounds = LayoutBounds::calculate(100, 30);
+
+    render_microscope(&mut surface, &data, &bounds);
+
+    // Preview separator should be a vertical line.
+    if bounds.show_preview {
+        let sep_col = bounds.results_width;
+        let sep_row = bounds.panel_start_y;
+        assert_eq!(surface.char_at(sep_col, sep_row), '\u{2502}');
+    }
+}
+
+#[test]
+fn render_narrow_no_preview() {
+    let mut surface = MockSurface::new(50, 24);
+    let data = make_data(true);
+    let bounds = LayoutBounds::calculate(50, 24);
+
+    assert!(!bounds.show_preview);
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn separator_row() {
+    let mut surface = MockSurface::new(80, 24);
+    let data = make_data(true);
+    let bounds = LayoutBounds::calculate(80, 24);
+
+    render_microscope(&mut surface, &data, &bounds);
+
+    let sep_row = (bounds.query_row + 1) as usize;
+    assert_eq!(surface.cells[sep_row][0].0, '\u{2500}');
+}
+
+#[test]
+fn selected_item_indicator() {
+    let mut surface = MockSurface::new(80, 24);
+    let data = make_data(true);
+    let bounds = LayoutBounds::calculate(80, 24);
+
+    render_microscope(&mut surface, &data, &bounds);
+
+    // First item should have '>' indicator.
+    let first_item_row = bounds.panel_start_y as usize;
+    assert_eq!(surface.cells[first_item_row][0].0, '>');
+
+    // Second item should have ' ' indicator.
+    if bounds.panel_height > 1 {
+        let second_item_row = (bounds.panel_start_y + 1) as usize;
+        assert_eq!(surface.cells[second_item_row][0].0, ' ');
+    }
+}
+
+#[test]
+fn render_items_overflow_panel_height() {
+    let mut surface = MockSurface::new(80, 24);
+    let bounds = LayoutBounds::calculate(80, 24);
+    let many_items: Vec<ItemData> = (0..100)
+        .map(|i| ItemData {
+            display: format!("item_{i}"),
+            detail: None,
+        })
+        .collect();
+    let data = MicroscopeData {
+        active: true,
+        items: many_items,
+        matched_count: 100,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_long_display_text_truncated() {
+    let mut surface = MockSurface::new(30, 24);
+    let bounds = LayoutBounds::calculate(30, 24);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "a".repeat(200),
+            detail: None,
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_long_detail_text_truncated() {
+    let mut surface = MockSurface::new(40, 24);
+    let bounds = LayoutBounds::calculate(40, 24);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "x".to_owned(),
+            detail: Some("d".repeat(200)),
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_preview_overflow_panel_height() {
+    let mut surface = MockSurface::new(100, 24);
+    let bounds = LayoutBounds::calculate(100, 24);
+    let data = MicroscopeData {
+        active: true,
+        preview: Some(PreviewData {
+            lines: (0..100).map(|i| format!("preview line {i}")).collect(),
+            highlight_line: Some(5),
+        }),
+        matched_count: 0,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_preview_long_line_truncated() {
+    let mut surface = MockSurface::new(60, 24);
+    let bounds = LayoutBounds::calculate(60, 24);
+    let data = MicroscopeData {
+        active: true,
+        preview: Some(PreviewData {
+            lines: vec!["x".repeat(200)],
+            highlight_line: None,
+        }),
+        matched_count: 0,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn render_preview_line_num_overflow() {
+    let mut surface = MockSurface::new(100, 30);
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 18,
+        width: 100,
+        total_height: 12,
+        query_row: 18,
+        panel_start_y: 20,
+        panel_height: 10,
+        results_width: 40,
+        show_preview: true,
+        preview_width: 2, // Narrower than a line number
+        preview_x: 41,
+    };
+    let data = MicroscopeData {
+        active: true,
+        preview: Some(PreviewData {
+            lines: vec!["hello".to_owned()],
+            highlight_line: None,
+        }),
+        matched_count: 0,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn count_indicator_on_right() {
+    let mut surface = MockSurface::new(80, 24);
+    let data = make_data(true);
+    let bounds = LayoutBounds::calculate(80, 24);
+
+    render_microscope(&mut surface, &data, &bounds);
+
+    // Count "[2/100]" should be near the right edge.
+    let query_row = bounds.query_row as usize;
+    let count_text = "[2/100]";
+    let start = (bounds.width as usize) - count_text.len();
+    let rendered: String = (start..bounds.width as usize)
+        .map(|col| surface.cells[query_row][col].0)
+        .collect();
+    assert_eq!(rendered, count_text);
+}
+
+#[test]
+fn selected_item_scrolled_into_view() {
+    let mut surface = MockSurface::new(80, 24);
+    let bounds = LayoutBounds::calculate(80, 24);
+    let many_items: Vec<ItemData> = (0..100)
+        .map(|i| ItemData {
+            display: format!("item_{i}"),
+            detail: None,
+        })
+        .collect();
+    let data = MicroscopeData {
+        active: true,
+        items: many_items,
+        selected: 50,
+        matched_count: 100,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+
+    // The selected item must appear somewhere in the panel.
+    let mut found_selected = false;
+    for row in bounds.panel_start_y..(bounds.panel_start_y + bounds.panel_height) {
+        if surface.char_at(0, row) == '>' {
+            let text: String = (2..10).map(|col| surface.char_at(col, row)).collect();
+            assert!(text.starts_with("item_50"), "selected row shows: {text}");
+            found_selected = true;
+            break;
+        }
+    }
+    assert!(found_selected, "selected item must be visible in panel");
+}
+
+#[test]
+fn scroll_shows_correct_items() {
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 0,
+        width: 80,
+        total_height: 10,
+        query_row: 0,
+        panel_start_y: 2,
+        panel_height: 8,
+        results_width: 80,
+        show_preview: false,
+        preview_width: 0,
+        preview_x: 0,
+    };
+    let mut surface = MockSurface::new(80, 12);
+    let many_items: Vec<ItemData> = (0..20)
+        .map(|i| ItemData {
+            display: format!("item_{i:02}"),
+            detail: None,
+        })
+        .collect();
+    let data = MicroscopeData {
+        active: true,
+        items: many_items,
+        selected: 10,
+        matched_count: 20,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_results(&mut surface, &data, &bounds);
+
+    // First visible row should be item_03 (scroll offset = 3).
+    let first_row = bounds.panel_start_y;
+    let text: String = (2..9).map(|col| surface.char_at(col, first_row)).collect();
+    assert_eq!(text, "item_03");
+
+    // Last visible row should be item_10 (selected, with '>').
+    let last_row = bounds.panel_start_y + bounds.panel_height - 1;
+    assert_eq!(surface.char_at(0, last_row), '>');
+    let text: String = (2..9).map(|col| surface.char_at(col, last_row)).collect();
+    assert_eq!(text, "item_10");
+}
+
+#[test]
+fn no_scroll_when_selected_in_view() {
+    let mut surface = MockSurface::new(80, 24);
+    let bounds = LayoutBounds::calculate(80, 24);
+    let items: Vec<ItemData> = (0..5)
+        .map(|i| ItemData {
+            display: format!("item_{i}"),
+            detail: None,
+        })
+        .collect();
+    let data = MicroscopeData {
+        active: true,
+        items,
+        selected: 2,
+        matched_count: 5,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_microscope(&mut surface, &data, &bounds);
+
+    // First item should be item_0 (no scroll).
+    let first_row = bounds.panel_start_y;
+    let text: String = (2..8).map(|col| surface.char_at(col, first_row)).collect();
+    assert_eq!(text, "item_0");
+
+    // Third item (index 2) should have '>' indicator.
+    let sel_row = bounds.panel_start_y + 2;
+    assert_eq!(surface.char_at(0, sel_row), '>');
+}
+
+#[test]
+fn query_row_overflow_narrow_width() {
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 0,
+        width: 4,
+        total_height: 4,
+        query_row: 0,
+        panel_start_y: 2,
+        panel_height: 2,
+        results_width: 4,
+        show_preview: false,
+        preview_width: 0,
+        preview_x: 0,
+    };
+    let mut surface = MockSurface::new(10, 10);
+    let data = MicroscopeData {
+        active: true,
+        prompt: "> > > ".to_owned(), // 6 chars, wider than width=4
+        query: "abcdef".to_owned(),  // also wider
+        ..MicroscopeData::default()
+    };
+
+    // Render the full microscope (which calls render_query_row internally).
+    render_microscope(&mut surface, &data, &bounds);
+
+    // Cells beyond width should remain as default space.
+    assert_eq!(surface.char_at(4, 0), ' ');
+    assert_eq!(surface.char_at(5, 0), ' ');
+}
+
+#[test]
+fn zero_panel_height_scroll() {
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 0,
+        width: 80,
+        total_height: 2,
+        query_row: 0,
+        panel_start_y: 2,
+        panel_height: 0,
+        results_width: 80,
+        show_preview: false,
+        preview_width: 0,
+        preview_x: 0,
+    };
+    let mut surface = MockSurface::new(80, 10);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "item".to_owned(),
+            detail: None,
+        }],
+        selected: 5,
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    // Should not panic -- no items rendered when panel_height is 0.
+    render_results(&mut surface, &data, &bounds);
+}
+
+#[test]
+fn detail_skipped_when_no_room() {
+    let bounds = LayoutBounds {
+        x: 0,
+        y: 0,
+        width: 10,
+        total_height: 4,
+        query_row: 0,
+        panel_start_y: 2,
+        panel_height: 2,
+        results_width: 10,
+        show_preview: false,
+        preview_width: 0,
+        preview_x: 0,
+    };
+    let mut surface = MockSurface::new(20, 10);
+    let data = MicroscopeData {
+        active: true,
+        items: vec![ItemData {
+            display: "longname".to_owned(), // 8 chars + 2 prefix = fills results_width=10
+            detail: Some("detail".to_owned()),
+        }],
+        matched_count: 1,
+        prompt: "> ".to_owned(),
+        ..MicroscopeData::default()
+    };
+    render_results(&mut surface, &data, &bounds);
+    // Detail should be skipped because col + 2 >= results_width after display.
+}

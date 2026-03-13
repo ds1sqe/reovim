@@ -47,3 +47,7 @@ reovim-tui-mod-landing = { workspace = true }
 reovim-tui-mod-completion = { workspace = true }
 reovim-tui-mod-notification = { workspace = true }
 reovim-tui-mod-whichkey = { workspace = true }
+reovim-tui-mod-cmdline = { workspace = true }
+reovim-tui-mod-microscope = { workspace = true }
+reovim-tui-mod-explorer = { workspace = true }
+reovim-tui-mod-tetromino = { workspace = true }
