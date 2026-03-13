@@ -306,6 +306,6 @@ The default gRPC port is `12540`, with fallback range `12541-12549`.
 
 - [CLI Reference](./cli-reference.md) - Complete CLI command reference
 - [Frame Capture](./frame-capture.md) - Frame capture for testing/debugging
-- [gRPC Protocol](../architecture/runner/server/rpc-protocol.md) - Full protocol specification
-- [Notifications](../architecture/runner/server/notifications.md) - Notification payload types
-- [Sessions](../architecture/runner/server/sessions.md) - Per-client state architecture
+- [gRPC Protocol](../architecture/server/rpc-protocol.md) - Full protocol specification
+- [Notifications](../architecture/server/notifications.md) - Notification payload types
+- [Sessions](../architecture/server/sessions.md) - Per-client state architecture

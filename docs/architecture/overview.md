@@ -234,11 +234,32 @@ shared/
 └── testing/                 # Integration test utilities
 ```
 
+## Client Layer Model
+
+Clients follow a separate layered architecture defined by the
+[Client Layer Model](./client/overview.md):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  PLATFORM ADAPTER           Ground truth (TUI, Web, Mobile)  │
+├──────────────────────────────────────────────────────────────┤
+│  COMMON CLIENT                               Platform-agnostic │
+│  ├── CLIENT CORE            Compositor, event dispatch        │
+│  ├── CLIENT DRIVER          Trait contracts (ClientModule,    │
+│  │                          ViewportRenderer, RenderSurface)  │
+│  └── CLIENT MODULE          Policy (statusline, line-numbers) │
+└──────────────────────────────────────────────────────────────┘
+```
+
+See: [Client Architecture](./client/overview.md) for the full specification.
+
 ## Related Documents
 
 - [Session Model](./session-model.md) - tmux-like multi-client architecture
 - [Mechanism vs Policy](./mechanism-vs-policy.md) - Core principle
 - [Module-Mode Inheritance](./modules/mode-inheritance.md) - Mode system
 - [Kernel Subsystems](./kernel/overview.md) - Kernel internals
-- [Driver Layer](./drivers/overview.md) - Driver implementations
-- [Module System](./modules/overview.md) - Dynamic modules
+- [Driver Layer](./drivers/overview.md) - Server driver implementations
+- [Module System](./modules/overview.md) - Server modules
+- [Server Runtime](./server/overview.md) - gRPC server, sessions
+- [Client Architecture](./client/overview.md) - Client Layer Model
