@@ -2,6 +2,8 @@
 tmp/
 COVERAGE.md
 COVERAGE-SERVER.md
+CLAUDE.md
+.claude/
 
 # Python cache
 __pycache__/
