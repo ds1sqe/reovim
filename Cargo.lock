@@ -3629,6 +3629,7 @@ dependencies = [
  "reovim-tui-mod-explorer",
  "reovim-tui-mod-hover",
  "reovim-tui-mod-landing",
+ "reovim-tui-mod-line-numbers",
  "reovim-tui-mod-microscope",
  "reovim-tui-mod-notification",
  "reovim-tui-mod-signature-help",
@@ -3785,6 +3786,14 @@ dependencies = [
 name = "reovim-tui-mod-landing"
 version = "0.12.0-dev"
 dependencies = [
+ "reovim-client-driver",
+]
+
+[[package]]
+name = "reovim-tui-mod-line-numbers"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-arch",
  "reovim-client-driver",
 ]
 

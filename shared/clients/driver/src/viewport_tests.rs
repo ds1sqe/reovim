@@ -343,63 +343,7 @@ fn render_transformed_line_truncated() {
     assert_eq!(text, "hello");
 }
 
-// =============================================================================
-// render_line_number
-// =============================================================================
-
-#[test]
-fn render_line_number_absolute() {
-    let mut surface = RecordingSurface::new(80, 24);
-    let ctx = ViewportContext {
-        line_number_mode: LineNumberMode::Absolute,
-        opacity: 1.0,
-        ..empty_ctx()
-    };
-    render_line_number(&mut surface, 0, 0, 4, 0, 0, &ctx);
-    let text = surface.text_at(0);
-    assert!(text.contains('1'));
-}
-
-#[test]
-fn render_line_number_relative() {
-    let mut surface = RecordingSurface::new(80, 24);
-    let ctx = ViewportContext {
-        line_number_mode: LineNumberMode::Relative,
-        opacity: 1.0,
-        ..empty_ctx()
-    };
-    // Cursor on line 5, rendering line 3 → relative = 2
-    render_line_number(&mut surface, 0, 0, 4, 3, 5, &ctx);
-    let text = surface.text_at(0);
-    assert!(text.contains('2'));
-}
-
-#[test]
-fn render_line_number_relative_cursor_line() {
-    let mut surface = RecordingSurface::new(80, 24);
-    let ctx = ViewportContext {
-        line_number_mode: LineNumberMode::Relative,
-        opacity: 1.0,
-        ..empty_ctx()
-    };
-    // Cursor on line 5, rendering line 5 → shows absolute (6)
-    render_line_number(&mut surface, 0, 0, 4, 5, 5, &ctx);
-    let text = surface.text_at(0);
-    assert!(text.contains('6'));
-}
-
-#[test]
-fn render_line_number_none_mode() {
-    let mut surface = RecordingSurface::new(80, 24);
-    let ctx = ViewportContext {
-        line_number_mode: LineNumberMode::None,
-        opacity: 1.0,
-        ..empty_ctx()
-    };
-    render_line_number(&mut surface, 0, 0, 4, 0, 0, &ctx);
-    // Nothing should be written
-    assert!(surface.writes.borrow().is_empty());
-}
+// render_line_number tests moved to reovim-tui-mod-line-numbers
 
 // =============================================================================
 // render_line_content
@@ -981,24 +925,50 @@ fn render_buffer_content_with_virtual_lines_after() {
 }
 
 #[test]
-fn render_buffer_content_with_line_numbers() {
+fn render_buffer_content_with_gutter_annotations() {
+    // Mock annotation module that returns line numbers
+    struct MockAnnotation;
+    impl ClientModule for MockAnnotation {
+        fn id(&self) -> &'static str { "mock-ann" }
+        fn name(&self) -> &'static str { "Mock" }
+        fn version(&self) -> crate::Version { crate::Version::new(1, 0, 0) }
+        fn init(&mut self, _ctx: &crate::ModuleContext) -> crate::ProbeResult {
+            crate::ProbeResult::Success
+        }
+        fn exit(&mut self) -> Result<(), crate::ClientModuleError> { Ok(()) }
+        fn has_annotations(&self) -> bool { true }
+        fn annotation_priority(&self) -> u16 { 100 }
+        fn annotation_column_width(
+            &self,
+            _ctx: &crate::AnnotationContext,
+            _caps: &dyn crate::PlatformCapabilities,
+        ) -> crate::ColumnWidth {
+            crate::ColumnWidth::Fixed(4)
+        }
+        fn annotate(&self, line: usize, _ctx: &crate::AnnotationContext) -> Option<crate::GutterCell> {
+            Some(crate::GutterCell {
+                text: (line + 1).to_string(),
+                style: Style::new().fg(reovim_arch::Color::DarkGrey),
+            })
+        }
+    }
+
     let mut surface = RecordingSurface::new(80, 24);
     let lines = vec!["hello".to_string(), "world".to_string()];
     let ctx = ViewportContext {
         buffer_id: Some(BufferId(0)),
         buffer_lines: Some(&lines),
         cursor: Some(CursorInfo { line: 0, column: 0 }),
-        line_number_mode: LineNumberMode::Absolute,
         gutter_width: 4,
         ..empty_ctx()
     };
-    let modules: Vec<Box<dyn ClientModule>> = Vec::new();
+    let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(MockAnnotation)];
     let token_provider = MockTokenProvider::empty();
     let viewport = Rect::new(0, 0, 84, 24);
 
     render_buffer_content(&mut surface, viewport, &ctx, &modules, &token_provider, &MockTheme);
 
-    // Line numbers should be written at x=0, content at x=4
+    // Line numbers from annotation module should be at x=0, content at x=4
     let row0 = surface.text_at(0);
     assert!(row0.contains('1'), "should have line number 1: {row0}");
     assert!(row0.contains("hello"), "should have content: {row0}");

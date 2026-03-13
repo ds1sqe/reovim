@@ -138,6 +138,7 @@ members = [
     "clients/tui/modules/microscope",
     "clients/tui/modules/explorer",
     "clients/tui/modules/tetromino",
+    "clients/tui/modules/line-numbers",
 
     # Client layer - CLI
     "clients/cli",
@@ -365,6 +366,7 @@ reovim-tui-mod-cmdline = { path = "./clients/tui/modules/cmdline", version = "0.
 reovim-tui-mod-microscope = { path = "./clients/tui/modules/microscope", version = "0.12.0-dev" }
 reovim-tui-mod-explorer = { path = "./clients/tui/modules/explorer", version = "0.12.0-dev" }
 reovim-tui-mod-tetromino = { path = "./clients/tui/modules/tetromino", version = "0.12.0-dev" }
+reovim-tui-mod-line-numbers = { path = "./clients/tui/modules/line-numbers", version = "0.12.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

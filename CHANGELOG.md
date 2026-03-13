@@ -55,6 +55,13 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Add `TokenProviderAdapter` and `ThemeProviderAdapter` bridge adapters.
   67 viewport tests, 27 conceal tests.
 
+- **Gutter framework and LineNumbersModule** (#636): Extract line number rendering
+  from viewport.rs into `LineNumbersModule` annotation module. Add gutter composition
+  system to `DefaultViewportRenderer` — modules with `has_annotations()` provide
+  `GutterCell` values per line, rendered left-to-right by priority. Supports absolute,
+  relative, hybrid modes via `on_option_changed("number"/"relativenumber")`. Dynamic
+  column width based on total line count. 24 module tests, 12 native modules total.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)

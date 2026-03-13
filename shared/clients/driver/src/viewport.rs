@@ -4,8 +4,8 @@
 //! text concealment, fold handling, virtual lines, and line numbers.
 
 use crate::{
-    BufferId, ClientModule, ConcealDecoration, CursorInfo, LineNumberMode, PlatformCapabilities,
-    Rect, RenderBehavior, RenderSurface, SelectionInfo, SelectionMode, Style,
+    BufferId, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities, Rect,
+    RenderBehavior, RenderSurface, SelectionInfo, SelectionMode, Style,
     ThemeProvider, TokenProvider, TransformedLine, ViewportContext, VirtualLinePosition,
     conceal::{apply_conceals, dim_style, source_to_display_col},
 };
@@ -133,15 +133,15 @@ fn render_buffer_content(
             break;
         }
 
-        // Line number
-        if ctx.line_number_mode != LineNumberMode::None && ctx.gutter_width > 0 {
-            render_line_number(
+        // Gutter annotations (line numbers, git signs, etc.)
+        if ctx.gutter_width > 0 {
+            render_gutter_annotations(
                 surface,
                 viewport.x + ctx.sidebar_width,
                 viewport.y + screen_row,
                 ctx.gutter_width,
                 line_idx,
-                cursor_line.unwrap_or(0),
+                modules,
                 ctx,
             );
         }
@@ -380,44 +380,111 @@ fn render_transformed_line(
     }
 }
 
-/// Render a line number in the gutter.
-fn render_line_number(
+/// Render gutter annotations from all annotation modules.
+///
+/// Modules are sorted by priority (highest = leftmost). Each module's
+/// `GutterCell` is right-aligned within its allocated column width.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::cast_possible_truncation)]
+fn render_gutter_annotations(
     surface: &mut dyn RenderSurface,
     x: u16,
     y: u16,
-    width: u16,
+    _total_width: u16,
     line_idx: usize,
-    cursor_line: usize,
+    modules: &[Box<dyn ClientModule>],
     ctx: &ViewportContext<'_>,
 ) {
-    let line_num = line_idx + 1;
-
-    let (display_num, is_cursor_line) = match ctx.line_number_mode {
-        LineNumberMode::Absolute | LineNumberMode::Hybrid => {
-            (line_num, line_idx == cursor_line)
-        }
-        LineNumberMode::Relative => {
-            let rel = if line_idx == cursor_line {
-                line_num
-            } else {
-                line_idx.abs_diff(cursor_line)
-            };
-            (rel, line_idx == cursor_line)
-        }
-        LineNumberMode::None => return,
+    let ann_ctx = crate::AnnotationContext {
+        buffer_id: ctx.buffer_id.unwrap_or(BufferId(0)),
+        total_lines: ctx.buffer_lines.map_or(0, <[String]>::len),
+        visible_range: (ctx.scroll_top, ctx.scroll_top + 100),
+        cursor_line: ctx.cursor.map_or(0, |c| c.line as usize),
+        gutter_style: Style::default(),
     };
 
-    let base_style = if is_cursor_line {
-        Style::new().fg(reovim_arch::Color::Yellow)
-    } else {
-        Style::new().fg(reovim_arch::Color::DarkGrey)
-    };
-    let style = apply_opacity(&base_style, ctx.opacity);
+    // Collect annotation modules sorted by priority (highest first = leftmost)
+    let mut ann_modules: Vec<&Box<dyn ClientModule>> = modules
+        .iter()
+        .filter(|m| m.has_annotations())
+        .collect();
+    ann_modules.sort_by_key(|m| std::cmp::Reverse(m.annotation_priority()));
 
-    let num_str = display_num.to_string();
-    let padding = (width as usize).saturating_sub(num_str.len() + 1);
-    let display = format!("{:>width$} ", num_str, width = padding + num_str.len());
-    surface.write_styled(x, y, &display, style);
+    let caps = DummyCaps;
+    let mut col_x = x;
+
+    for module in &ann_modules {
+        let col_width = match module.annotation_column_width(&ann_ctx, &caps) {
+            crate::ColumnWidth::Fixed(w) => w,
+            crate::ColumnWidth::Dynamic(min) => min,
+        };
+
+        if col_width == 0 {
+            continue;
+        }
+
+        if let Some(cell) = module.annotate(line_idx, &ann_ctx) {
+            let style = apply_opacity(&cell.style, ctx.opacity);
+            // Right-align the text within the column
+            let padding = (col_width as usize).saturating_sub(cell.text.len() + 1);
+            let display = format!(
+                "{:>width$} ",
+                cell.text,
+                width = padding + cell.text.len()
+            );
+            surface.write_styled(col_x, y, &display, style);
+        }
+
+        col_x += col_width;
+    }
+}
+
+/// Minimal `PlatformCapabilities` for annotation width queries.
+struct DummyCaps;
+
+impl PlatformCapabilities for DummyCaps {
+    fn rendering_model(&self) -> crate::RenderingModel {
+        crate::RenderingModel::CellGrid
+    }
+    fn grid_size(&self) -> Option<(u16, u16)> {
+        None
+    }
+    fn color_depth(&self) -> crate::ColorDepth {
+        crate::ColorDepth::TrueColor
+    }
+    fn pixel_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn reliable_unicode_width(&self) -> bool {
+        true
+    }
+    fn dark_mode(&self) -> bool {
+        true
+    }
+    fn smooth_scroll(&self) -> bool {
+        false
+    }
+    fn pointer_events(&self) -> bool {
+        false
+    }
+    fn touch_input(&self) -> bool {
+        false
+    }
+    fn haptic(&self) -> bool {
+        false
+    }
+    fn safe_area(&self) -> crate::Insets {
+        crate::Insets::ZERO
+    }
+    fn has_focus(&self) -> bool {
+        true
+    }
+    fn clipboard_available(&self) -> bool {
+        true
+    }
+    fn screen_reader_active(&self) -> bool {
+        false
+    }
 }
 
 // =============================================================================

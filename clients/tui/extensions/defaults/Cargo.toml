@@ -51,3 +51,4 @@ reovim-tui-mod-cmdline = { workspace = true }
 reovim-tui-mod-microscope = { workspace = true }
 reovim-tui-mod-explorer = { workspace = true }
 reovim-tui-mod-tetromino = { workspace = true }
+reovim-tui-mod-line-numbers = { workspace = true }

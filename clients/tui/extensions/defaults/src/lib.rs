@@ -38,6 +38,7 @@ pub fn create_native_modules() -> Vec<Box<dyn ClientModule>> {
         Box::new(reovim_tui_mod_microscope::MicroscopeModule::new()),
         Box::new(reovim_tui_mod_explorer::ExplorerModule::new()),
         Box::new(reovim_tui_mod_tetromino::TetrominoModule::new()),
+        Box::new(reovim_tui_mod_line_numbers::LineNumbersModule::new()),
     ]
 }
 

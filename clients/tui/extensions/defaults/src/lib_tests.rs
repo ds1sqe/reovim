@@ -230,8 +230,8 @@ fn test_create_extensions_matches_filtered_empty() {
 fn test_create_native_modules_count() {
     let modules = create_native_modules();
     // statusline, hover, signature-help, landing, completion, notification, whichkey,
-    // cmdline, microscope, explorer, polyblocks = 11
-    assert_eq!(modules.len(), 11);
+    // cmdline, microscope, explorer, polyblocks, line-numbers = 12
+    assert_eq!(modules.len(), 12);
 }
 
 #[test]
@@ -249,4 +249,5 @@ fn test_native_module_kinds() {
     assert!(kinds.contains(&"microscope"));
     assert!(kinds.contains(&"explorer"));
     assert!(kinds.contains(&"polyblocks"));
+    assert!(kinds.contains(&"line-numbers"));
 }
