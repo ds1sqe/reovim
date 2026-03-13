@@ -3236,7 +3236,6 @@ version = "0.10.0-dev"
 dependencies = [
  "prost",
  "reovim-arch",
- "reovim-kernel",
  "rmp-serde",
  "serde",
  "serde_json",

@@ -42,8 +42,7 @@ impl From<BufferId> for usize {
 /// Wire-format window identifier for serialization.
 ///
 /// This is a thin wrapper for protocol serialization only.
-/// Convert to/from `reovim_kernel::api::v1::WindowId` (the canonical type) at
-/// RPC boundaries using the `From` implementations.
+/// Convert to/from kernel `WindowId` at RPC boundaries in the server layer.
 ///
 /// `#[serde(transparent)]` ensures wire format is just `42`, not `{"0": 42}`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -59,18 +58,6 @@ impl From<usize> for WireWindowId {
 impl From<WireWindowId> for usize {
     fn from(id: WireWindowId) -> Self {
         id.0
-    }
-}
-
-impl From<reovim_kernel::api::v1::WindowId> for WireWindowId {
-    fn from(id: reovim_kernel::api::v1::WindowId) -> Self {
-        Self(id.as_usize())
-    }
-}
-
-impl From<WireWindowId> for reovim_kernel::api::v1::WindowId {
-    fn from(id: WireWindowId) -> Self {
-        Self::from_raw(id.0)
     }
 }
 

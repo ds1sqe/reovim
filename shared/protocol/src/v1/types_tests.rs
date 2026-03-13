@@ -53,14 +53,8 @@ fn test_cell_info_skips_defaults() {
 }
 
 #[test]
-fn test_wire_window_id_roundtrip() {
-    use reovim_kernel::api::v1::WindowId;
-
-    // Kernel → Wire → Kernel
-    let kernel_id = WindowId::from_raw(42);
-    let wire: WireWindowId = kernel_id.into();
-    let back: WindowId = wire.into();
-    assert_eq!(kernel_id, back);
+fn test_wire_window_id_serialization() {
+    let wire = WireWindowId(42);
 
     // Verify transparent serialization (just "42", not {"0": 42})
     let json = serde_json::to_string(&wire).unwrap();
@@ -69,6 +63,11 @@ fn test_wire_window_id_roundtrip() {
     // Verify deserialization
     let parsed: WireWindowId = serde_json::from_str("42").unwrap();
     assert_eq!(parsed.0, 42);
+
+    // Verify usize roundtrip
+    let from_usize = WireWindowId::from(42_usize);
+    let back: usize = from_usize.into();
+    assert_eq!(back, 42);
 }
 
 // Layout types tests (#444)

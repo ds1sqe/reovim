@@ -17,6 +17,7 @@
 //! Runner no longer needs `UndoPersistence` - it queries `dyn UndoProvider`
 //! from `ServiceRegistry`.
 
+mod conversion;
 mod registry;
 
 pub use registry::{UndoRegistry, decode_path_component, encode_path_component};

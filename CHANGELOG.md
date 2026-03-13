@@ -15,6 +15,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   discovery via `collect_available_kinds()` is unchanged. Any module (builtin or third-party)
   can now define its own extension kind without modifying a central registry.
 
+- **Decouple protocol crate from kernel (#625)**: Move undo tree kernel↔serializable
+  conversion code (`from_undo_tree`, `to_undo_tree`, and 7 From/Into impls) from
+  `shared/protocol/src/v1/undo.rs` to `server/modules/undo/src/conversion.rs`. Remove
+  unused `WireWindowId↔WindowId` From impls from `shared/protocol/src/v1/types.rs`.
+  Delete `reovim-kernel` dependency from `shared/protocol/Cargo.toml`. Conversion
+  functions use explicit functions instead of From/Into impls (orphan rule). Protocol
+  crate is now kernel-agnostic — TUI/web clients no longer transitively depend on
+  the kernel.
+
 ### Added
 
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
