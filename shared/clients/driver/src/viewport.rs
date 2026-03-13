@@ -333,6 +333,16 @@ fn render_line_content(
             }
         }
     }
+
+    // Apply inline decorations from buffer-contrib modules
+    for module in modules.iter().filter(|m| m.has_buffer_contrib()) {
+        for dec in module.inline_decorations(line_idx) {
+            for col in dec.col_start..dec.col_end.min(width) {
+                let dec_style = apply_opacity(&dec.style, opacity);
+                surface.apply_style(x + col, y, dec_style);
+            }
+        }
+    }
 }
 
 /// Render a virtual line.
