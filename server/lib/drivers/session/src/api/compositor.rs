@@ -25,9 +25,9 @@
 //! on the underlying tiled/float window.
 //!
 use {
-    reovim_driver_display::{
-        NavigateDirection, Rect, SplitDirection, WindowId,
-        layout::{LayerId, OverlayConstraints, WindowPlacement},
+    reovim_driver_layout::{
+        LayerId, NavigateDirection, OverlayConstraints, Rect, SplitDirection, WindowId,
+        WindowPlacement,
     },
     reovim_kernel::api::v1::TabId,
 };

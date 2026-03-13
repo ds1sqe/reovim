@@ -19,7 +19,7 @@ use reovim_kernel::api::v1::ServiceKey;
 /// # Example
 ///
 /// ```ignore
-/// use reovim_driver_display::layout::{CompositorKey, CompositorRegistry, RootCompositor};
+/// use reovim_driver_layout::{CompositorKey, CompositorRegistry, RootCompositor};
 /// use std::sync::Arc;
 ///
 /// let registry = CompositorRegistry::new();

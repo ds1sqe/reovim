@@ -888,12 +888,9 @@ fn test_build_notifications_scroll_changed_with_client() {
 #[test]
 #[allow(clippy::too_many_lines)]
 fn test_build_layout_notification_with_compositor() {
-    use reovim_driver_display::{
-        Rect, RootCompositor, WindowId,
-        layout::{
-            CompositeResult, Layer, LayerConfig, LayerId, WindowLayerCompositor, WindowPlacement,
-            ZOrder, Zone,
-        },
+    use reovim_driver_layout::{
+        CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
+        WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
     };
 
     // Mock compositor that returns real placements
@@ -1048,12 +1045,9 @@ fn test_build_layout_notification_compositor_with_active_buffer_fallback() {
     use {
         parking_lot::RwLock as ParkingLotRwLock,
         reovim_driver_buffer::TestBufferManager,
-        reovim_driver_display::{
-            Rect, RootCompositor, WindowId,
-            layout::{
-                CompositeResult, Layer, LayerConfig, LayerId, WindowLayerCompositor,
-                WindowPlacement, ZOrder, Zone,
-            },
+        reovim_driver_layout::{
+            CompositeResult, Layer, LayerConfig, LayerId, Rect, RootCompositor, WindowId,
+            WindowLayerCompositor, WindowPlacement, ZOrder, Zone,
         },
         reovim_kernel::api::v1::{
             EventBus, KernelContext, MarkBank, MotionEngine, OptionRegistry, ServiceRegistry,

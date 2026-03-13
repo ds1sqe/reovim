@@ -17,8 +17,8 @@ workspace = true
 reovim-kernel = { workspace = true }
 # Command types for CommandContext, CommandResult (avoids circular dependency)
 reovim-driver-command-types = { workspace = true }
-# Display driver for compositor traits (Rect, WindowPlacement, etc.)
-reovim-driver-display = { workspace = true }
+# Layout driver for compositor traits (Rect, WindowPlacement, etc.)
+reovim-driver-layout = { workspace = true }
 # Platform abstraction (RwLock for test buffer manager)
 reovim-arch = { workspace = true }
 # Clipboard driver for system clipboard and history (RegisterApi routing)

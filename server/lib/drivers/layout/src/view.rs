@@ -14,7 +14,7 @@
 //!
 //! # Location
 //!
-//! - **Trait definition**: `clients/tui/lib/drivers/display/src/layout/view.rs` (mechanism)
+//! - **Trait definition**: `server/lib/drivers/layout/src/view.rs` (mechanism)
 //! - **Implementation**: `server/modules/editor/src/view_manager.rs` (policy)
 //!
 //! # Strong Typing
@@ -36,7 +36,7 @@ use {crate::WindowId, reovim_kernel::api::v1::BufferId};
 /// # Example
 ///
 /// ```ignore
-/// use reovim_driver_display::layout::LineIndex;
+/// use reovim_driver_layout::LineIndex;
 ///
 /// let line = LineIndex::new(5);
 /// assert_eq!(line.as_usize(), 5);
@@ -96,7 +96,7 @@ impl std::fmt::Display for LineIndex {
 /// # Example
 ///
 /// ```ignore
-/// use reovim_driver_display::layout::ColIndex;
+/// use reovim_driver_layout::ColIndex;
 ///
 /// let col = ColIndex::new(10);
 /// assert_eq!(col.as_usize(), 10);

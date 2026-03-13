@@ -20,7 +20,7 @@ use super::{RootCompositor, compositor_key::CompositorKey};
 /// # Example
 ///
 /// ```ignore
-/// use reovim_driver_display::layout::{CompositorKey, CompositorRegistry, RootCompositor};
+/// use reovim_driver_layout::{CompositorKey, CompositorRegistry, RootCompositor};
 /// use std::sync::Arc;
 ///
 /// // Create registry (typically done by runner)
