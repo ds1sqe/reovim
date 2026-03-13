@@ -48,6 +48,9 @@ pub const DIAGNOSTICS: &str = "diagnostics";
 /// Markdown rendering (tables, conceals).
 pub const MARKDOWN: &str = "markdown";
 
+/// Module manager interactive panel (#622).
+pub const MODULE_MANAGER: &str = "module-manager";
+
 /// All known extension kinds, alphabetically sorted.
 ///
 /// Useful for validation and debugging.
@@ -59,6 +62,7 @@ pub const ALL: &[&str] = &[
     HOVER,
     MARKDOWN,
     MICROSCOPE,
+    MODULE_MANAGER,
     NOTIFICATION,
     POLYBLOCKS,
     RANGE_FINDER_FOLD,

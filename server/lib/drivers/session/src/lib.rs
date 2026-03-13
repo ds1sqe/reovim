@@ -97,6 +97,7 @@ mod empty_handler;
 mod extension;
 mod handler_key;
 mod handler_registry;
+mod initial_mode;
 mod mode;
 mod notification_drain;
 mod notification_queue;
@@ -111,6 +112,9 @@ mod types;
 
 // Empty session handling
 pub use empty_handler::{EmptySessionAction, EmptySessionContext, EmptySessionHandler};
+
+// Initial mode provider for cross-personality support (#623)
+pub use initial_mode::InitialModeProvider;
 
 // Session extension system
 pub use extension::{ExtensionMap, SessionExtension, SessionExtensionDyn, TextInputSink};

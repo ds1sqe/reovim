@@ -59,6 +59,27 @@ fn test_module_init() {
 }
 
 #[test]
+fn test_init_registers_initial_mode_provider() {
+    let kernel = KernelContext::default();
+    let services = Arc::new(ServiceRegistry::new());
+    let ctx = ModuleContext::new(
+        kernel,
+        services.clone(),
+        PathBuf::from("/tmp/test-data"),
+        PathBuf::from("/tmp/test-cache"),
+    );
+
+    let mut module = EmacsModule::new();
+    module.init(&ctx);
+
+    let provider = services
+        .get::<InitialModeProvider>()
+        .expect("InitialModeProvider should be registered");
+    let mode = provider.get().expect("initial mode should be set");
+    assert_eq!(mode, ModeId::new(ModuleId::new("emacs"), "default"));
+}
+
+#[test]
 fn test_provides_mode_management() {
     let module = EmacsModule::new();
     let caps = module.provides();

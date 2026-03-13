@@ -51,9 +51,10 @@ use {
         ModeProviderRegistry, ResolverRegistry,
     },
     reovim_driver_manifest::ModeBridgeStore,
+    reovim_driver_session::InitialModeProvider,
     reovim_kernel::api::v1::{
-        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
-        pr_info,
+        KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
+        Version, pr_info,
     },
 };
 
@@ -222,6 +223,12 @@ impl Module for VimModule {
         // #620: Self-register lookup policy (decouples bootstrap from vim import)
         let policy_store = ctx.services.get_or_create::<LookupPolicyStore>();
         policy_store.set(Arc::new(VimLookupPolicy));
+
+        // #623: Register initial mode for cross-personality support
+        let initial_mode_provider = ctx.services.get_or_create::<InitialModeProvider>();
+        if let Some(prev) = initial_mode_provider.set(ModeId::new(VIM_MODULE, "normal")) {
+            tracing::warn!(previous = %prev, "VimModule overrode existing initial mode");
+        }
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();

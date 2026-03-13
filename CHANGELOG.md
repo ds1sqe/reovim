@@ -19,13 +19,22 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 - **Extension manager phases 10-12 (#562)**: Four new crates completing the extension manager
   system. Phase 10 (#621): `reovim-driver-module-registry` with `ModuleManifest` parser for
   third-party `module.toml` files, `ModuleSource` (Git/Path) enum for install provenance, and
-  `InstalledModules` JSON persistence for tracking installed modules. Phase 10.5 (#622):
-  `reovim-module-module-manager` providing `:Modules` ex-command with LazyVim-style output
-  showing loaded/disabled/failed modules and dependency issues via `ModuleLoadReport` from
-  `ServiceRegistry`. Phase 11 (#623): `reovim-module-emacs` skeleton personality module
-  providing `MODE_MANAGEMENT` capability and emacs keybindings (C-f/b/p/n/a/e) that reuse
-  `editor::ids` command constants, demonstrating personality = keybinding vocabulary. Phase 12
-  (#624): `reovim-driver-extension-loader` for TUI `.so` dynamic loading via `libloading` with
+  `InstalledModules` JSON persistence for tracking installed modules. Workflow operations
+  (install, remove, update, check, resolve, info, list) for offline module lifecycle. CLI
+  subcommands via `reovim module <subcommand>` for all workflow operations. Phase 10.5 (#622):
+  `reovim-module-module-manager` with interactive panel: `ModuleManagerState` (per-client
+  state with filter/navigation), `ModuleManagerBridge` (extension state bridge for JSON
+  serialization), `ManagerMode` (navigation-only mode with Block cursor), `ManagerResolver`
+  (keymap-based key resolver), and navigation command handlers (open/close/next/prev/
+  toggle-filter/toggle-detail). Keybindings: j/k/Up/Down for navigation, Tab for filter
+  cycling, Enter for detail toggle, q/Esc to close. `MODULE_MANAGER` extension kind constant
+  in `reovim-extension-kinds`. Phase 11 (#623): Cross-personality initial mode support via
+  `InitialModeProvider` service in session driver. VimModule registers `vim:normal`, EmacsModule
+  registers `emacs:default` during init(). Bootstrap reads from provider with `vim:normal`
+  fallback, replacing hardcoded mode. Personality selection via module enable/disable in
+  `modules.toml`. Also includes `reovim-module-emacs` skeleton personality module with
+  `MODE_MANAGEMENT` capability and emacs keybindings. Phase 12 (#624):
+  `reovim-driver-extension-loader` for TUI `.so` dynamic loading via `libloading` with
   `probe_extension_kind()` and `load_extension()` APIs; `declare_extension!` proc macro in
   `reovim-module-macros` generating FFI entry points with double-box fat-pointer pattern.
   Also adds `BuiltinManifest` filtering to module-config, `ModuleLoadReport` type to kernel API,

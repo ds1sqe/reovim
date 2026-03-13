@@ -209,6 +209,44 @@ fn test_check_lockfile_staleness_missing() {
 }
 
 // ============================================================================
+// #623: Cross-personality initial mode tests
+// ============================================================================
+
+#[test]
+fn test_default_bootstrap_uses_vim_normal() {
+    // With default config (vim enabled), initial mode should be vim:normal
+    let state = create_session_state();
+    let mode = state.home_mode();
+    assert_eq!(mode.name(), "normal", "Default personality should start in vim:normal");
+}
+
+#[test]
+fn test_initial_mode_provider_registered_by_vim() {
+    let services = Arc::new(ServiceRegistry::new());
+    let kernel = create_kernel_context(Arc::clone(&services));
+    let ctx = create_module_context(kernel, Arc::clone(&services));
+    let (_tracked, _external) = initialize_modules(&ModulesConfig::official(), &ctx);
+
+    let provider = services
+        .get::<reovim_driver_session::InitialModeProvider>()
+        .expect("VimModule should register InitialModeProvider");
+    let mode = provider.get().expect("initial mode should be set");
+    assert_eq!(mode, ModeId::new(ModuleId::new("vim"), "normal"));
+}
+
+#[test]
+fn test_fallback_without_personality_module() {
+    // If no personality module registers an initial mode, bootstrap falls back
+    // to vim:normal.
+    let services = Arc::new(ServiceRegistry::new());
+    let fallback = services
+        .get::<reovim_driver_session::InitialModeProvider>()
+        .and_then(|p| p.get())
+        .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
+    assert_eq!(fallback, ModeId::new(ModuleId::new("vim"), "normal"));
+}
+
+// ============================================================================
 // #620: Manifest and static modules tests
 // ============================================================================
 

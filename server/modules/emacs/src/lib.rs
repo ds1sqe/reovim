@@ -20,9 +20,16 @@
 
 mod keybindings;
 
-use reovim_kernel::api::v1::{
-    KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+use {
+    reovim_driver_session::InitialModeProvider,
+    reovim_kernel::api::v1::{
+        KeybindingRegistration, ModeId, Module, ModuleContext, ModuleError, ModuleId, ProbeResult,
+        Version,
+    },
 };
+
+/// Module identifier for the emacs personality.
+const EMACS_MODULE: ModuleId = ModuleId::new("emacs");
 
 /// Emacs personality module.
 ///
@@ -46,7 +53,7 @@ impl Default for EmacsModule {
 
 impl Module for EmacsModule {
     fn id(&self) -> ModuleId {
-        ModuleId::new("emacs")
+        EMACS_MODULE
     }
 
     fn name(&self) -> &'static str {
@@ -65,9 +72,11 @@ impl Module for EmacsModule {
         keybindings::all()
     }
 
-    fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
-        // Skeleton: no commands registered yet.
-        // Future: register emacs ex-commands (M-x, C-x C-f, etc.)
+    fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
+        // #623: Register initial mode for cross-personality support
+        let initial_mode_provider = ctx.services.get_or_create::<InitialModeProvider>();
+        initial_mode_provider.set(ModeId::new(EMACS_MODULE, "default"));
+
         ProbeResult::Success
     }
 

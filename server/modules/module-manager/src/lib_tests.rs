@@ -1,5 +1,6 @@
 use {
     super::*,
+    reovim_driver_input::{ModeInfoStore, ResolverRegistry},
     reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
     std::{path::PathBuf, sync::Arc},
 };
@@ -59,4 +60,54 @@ fn test_module_init_registers_command() {
 
     let store = services.get_or_create::<CommandHandlerStore>();
     assert!(!store.is_empty());
+}
+
+#[test]
+fn test_init_registers_modes() {
+    let kernel = KernelContext::default();
+    let services = Arc::new(ServiceRegistry::new());
+    let ctx = ModuleContext::new(
+        kernel,
+        services.clone(),
+        PathBuf::from("/tmp/test-data"),
+        PathBuf::from("/tmp/test-cache"),
+    );
+
+    let mut module = ModuleManagerModule::new();
+    module.init(&ctx);
+
+    let mode_store = services.get_or_create::<ModeInfoStore>();
+    assert!(!mode_store.is_empty());
+}
+
+#[test]
+fn test_init_registers_resolver() {
+    let kernel = KernelContext::default();
+    let services = Arc::new(ServiceRegistry::new());
+    let ctx = ModuleContext::new(
+        kernel,
+        services.clone(),
+        PathBuf::from("/tmp/test-data"),
+        PathBuf::from("/tmp/test-cache"),
+    );
+
+    let mut module = ModuleManagerModule::new();
+    module.init(&ctx);
+
+    let resolver_registry = services.get_or_create::<ResolverRegistry>();
+    assert!(!resolver_registry.is_empty());
+}
+
+#[test]
+fn test_extension_kinds() {
+    let module = ModuleManagerModule::new();
+    let kinds = module.extension_kinds();
+    assert_eq!(kinds, &[reovim_extension_kinds::MODULE_MANAGER]);
+}
+
+#[test]
+fn test_keybindings_non_empty() {
+    let module = ModuleManagerModule::new();
+    let bindings = module.keybindings();
+    assert!(!bindings.is_empty());
 }

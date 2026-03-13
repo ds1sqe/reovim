@@ -296,8 +296,12 @@ pub fn create_session_state() -> SessionState {
     tracing::info!(count = name_index.count(), "Built command name index");
     services.register(name_index);
 
-    // Create session state with populated registries
-    let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
+    // #623: Read initial mode from personality module, fallback to vim:normal
+    let initial_mode = services
+        .get::<reovim_driver_session::InitialModeProvider>()
+        .and_then(|p| p.get())
+        .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
+    tracing::info!(mode = %initial_mode, "Selected initial mode from personality module");
     // Use StandardVfs for real file system operations (required for :e command)
     let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> =
         Arc::new(reovim_driver_vfs::StandardVfs::new());

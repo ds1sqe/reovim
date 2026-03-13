@@ -34,6 +34,7 @@
 //! 5. The result is handled (command execution, mode push/pop, char insertion)
 
 mod bootstrap;
+mod module_cli;
 
 use {
     clap::{Parser, Subcommand},
@@ -104,6 +105,13 @@ enum Commands {
         /// CLI command.
         #[command(subcommand)]
         command: CliSubcommand,
+    },
+
+    /// Manage third-party modules (install, remove, update).
+    Module {
+        /// Module management subcommand.
+        #[command(subcommand)]
+        command: module_cli::ModuleCommand,
     },
 
     /// Connect TUI to server (gRPC v2).
@@ -246,8 +254,8 @@ fn main() -> std::io::Result<()> {
     let needs_file_logging = match &cli.command {
         // Integrated mode and standalone TUI own the terminal.
         None | Some(Commands::Tui { .. }) => true,
-        // Server and CLI don't have a TUI — stderr is safe.
-        Some(Commands::Server { .. } | Commands::Cli { .. }) => false,
+        // Server, CLI, and module management don't have a TUI — stderr is safe.
+        Some(Commands::Server { .. } | Commands::Cli { .. } | Commands::Module { .. }) => false,
     };
 
     if needs_file_logging || cli.log.is_some() {
@@ -387,6 +395,8 @@ async fn run(cli: Cli) -> std::io::Result<()> {
             format,
             command,
         }) => run_cli(&grpc, format, command).await,
+
+        Some(Commands::Module { command }) => module_cli::run(&command),
 
         Some(Commands::Tui {
             grpc,

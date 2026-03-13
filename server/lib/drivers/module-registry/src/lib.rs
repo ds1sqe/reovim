@@ -40,11 +40,13 @@
 mod installed;
 mod manifest;
 mod source;
+pub mod workflow;
 
 pub use {
     installed::{InstalledModule, InstalledModules},
     manifest::{ManifestError, ModuleManifest},
     source::ModuleSource,
+    workflow::{CheckReport, ModuleInfo, RegistryError, RegistryPaths},
 };
 
 #[cfg(test)]

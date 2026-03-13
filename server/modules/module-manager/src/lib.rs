@@ -1,18 +1,29 @@
 #![cfg_attr(coverage_nightly, allow(unused_features))]
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
-//! Module manager command module - POLICY.
+//! Module manager module - POLICY (#622).
 //!
-//! Implements `:Modules` for listing loaded, disabled, and failed modules.
-//! LazyVim-style module status overview (#622).
+//! Provides `:Modules` command and interactive module management panel.
+//! Uses the extension bridge pattern (same as microscope) to push
+//! per-client state to TUI/web clients.
 
+mod bridge;
 mod command;
+mod commands;
+pub mod ids;
+pub mod modes;
+mod resolver;
+pub mod state;
 
 use {
     reovim_driver_command::CommandHandlerStore,
-    reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
+    reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
+    reovim_driver_session::bridges::BridgeProvider,
+    reovim_kernel::api::v1::{
+        KeybindingRegistration, Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version,
+    },
 };
 
-pub use command::ModulesCommand;
+pub use {bridge::ModuleManagerBridge, command::ModulesCommand, state::ModuleManagerState};
 
 /// Module manager module instance.
 pub struct ModuleManagerModule;
@@ -44,9 +55,67 @@ impl Module for ModuleManagerModule {
         Version::new(0, 1, 0)
     }
 
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[reovim_extension_kinds::MODULE_MANAGER]
+    }
+
+    fn keybindings(&self) -> Vec<KeybindingRegistration> {
+        vec![
+            KeybindingRegistration::new("j", ids::NEXT)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Next module"),
+            KeybindingRegistration::new("<Down>", ids::NEXT)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Next module"),
+            KeybindingRegistration::new("k", ids::PREV)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Previous module"),
+            KeybindingRegistration::new("<Up>", ids::PREV)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Previous module"),
+            KeybindingRegistration::new("<CR>", ids::TOGGLE_DETAIL)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Toggle detail"),
+            KeybindingRegistration::new("<Tab>", ids::TOGGLE_FILTER)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Cycle filter"),
+            KeybindingRegistration::new("q", ids::CLOSE)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Close"),
+            KeybindingRegistration::new("<Esc>", ids::CLOSE)
+                .with_modes(&["module-manager:MANAGER"])
+                .with_description("Close"),
+        ]
+    }
+
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        let store = ctx.services.get_or_create::<CommandHandlerStore>();
-        store.add(Box::new(ModulesCommand::new()));
+        // Register ModuleManagerBridge via BridgeProvider
+        let provider = ctx.services.get_or_create::<BridgeProvider>();
+        provider.register(ModuleManagerBridge);
+
+        // Register modes
+        let mode_store = ctx.services.get_or_create::<ModeInfoStore>();
+        for mode in modes::ManagerMode::ALL {
+            mode_store.add(ModeInfo::from_mode(*mode));
+        }
+
+        // Register resolver for module-manager:MANAGER mode
+        let resolver_registry = ctx.services.get_or_create::<ResolverRegistry>();
+        resolver_registry.register(resolver::ManagerResolver::new());
+
+        // Register :Modules ex-command
+        let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
+        command_store.add(Box::new(ModulesCommand::new()));
+
+        // Register navigation command handlers
+        for handler in commands::command_handlers() {
+            command_store.add(handler);
+        }
+
+        // Register keybindings for module-manager:MANAGER mode
+        let keybinding_store = ctx.services.get_or_create::<KeybindingStore>();
+        keybinding_store.add_all(self.keybindings());
+
         ProbeResult::Success
     }
 

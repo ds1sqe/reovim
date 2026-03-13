@@ -84,6 +84,9 @@ reovim-driver-module-config = { workspace = true }
 # Dynamic module loading — external .so modules (#587)
 reovim-driver-module-loader = { workspace = true }
 
+# Module distribution registry — install/remove/update third-party modules (#621)
+reovim-driver-module-registry = { workspace = true }
+
 # Syntax driver (for SyntaxFactoryStore registry extraction)
 reovim-driver-syntax = { workspace = true }
 
