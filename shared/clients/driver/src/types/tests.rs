@@ -662,3 +662,304 @@ fn style_inequality_attributes() {
     };
     assert_ne!(a, b);
 }
+
+// =============================================================================
+// InputEvent
+// =============================================================================
+
+#[test]
+fn input_event_key_variant() {
+    let event = InputEvent::Key(KeyEvent::new(KeyCode::Char('a'), Modifiers::NONE));
+    assert!(matches!(event, InputEvent::Key(_)));
+    assert!(!format!("{event:?}").is_empty());
+}
+
+#[test]
+fn input_event_pointer_variant() {
+    let event = InputEvent::Pointer(PointerEvent {
+        kind: PointerKind::Down(PointerButton::Left),
+        x: 10,
+        y: 20,
+        modifiers: Modifiers::NONE,
+    });
+    assert!(matches!(event, InputEvent::Pointer(_)));
+}
+
+#[test]
+fn input_event_touch_variant() {
+    let event = InputEvent::Touch(TouchEvent {
+        kind: TouchKind::Start,
+        id: 1,
+        x: 100.0,
+        y: 200.0,
+    });
+    assert!(matches!(event, InputEvent::Touch(_)));
+}
+
+#[test]
+fn input_event_focus_variant() {
+    let gained = InputEvent::Focus(FocusEvent::Gained);
+    let lost = InputEvent::Focus(FocusEvent::Lost);
+    assert!(matches!(gained, InputEvent::Focus(FocusEvent::Gained)));
+    assert!(matches!(lost, InputEvent::Focus(FocusEvent::Lost)));
+}
+
+#[test]
+fn input_event_paste_variant() {
+    let event = InputEvent::Paste("hello".to_string());
+    assert!(matches!(event, InputEvent::Paste(_)));
+    let cloned = event.clone();
+    assert_eq!(event, cloned);
+}
+
+// =============================================================================
+// KeyEvent
+// =============================================================================
+
+#[test]
+fn key_event_construction() {
+    let event = KeyEvent::new(KeyCode::Enter, Modifiers::CTRL);
+    assert_eq!(event.code, KeyCode::Enter);
+    assert!(event.modifiers.contains(Modifiers::CTRL));
+}
+
+#[test]
+fn key_event_clone_eq() {
+    let a = KeyEvent::new(KeyCode::Esc, Modifiers::ALT);
+    let b = a.clone();
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// KeyCode
+// =============================================================================
+
+#[test]
+fn key_code_char_variants() {
+    assert_eq!(KeyCode::Char('a'), KeyCode::Char('a'));
+    assert_ne!(KeyCode::Char('a'), KeyCode::Char('b'));
+}
+
+#[test]
+fn key_code_special_keys() {
+    let keys = [
+        KeyCode::Enter,
+        KeyCode::Esc,
+        KeyCode::Tab,
+        KeyCode::Backspace,
+        KeyCode::Left,
+        KeyCode::Right,
+        KeyCode::Up,
+        KeyCode::Down,
+        KeyCode::Home,
+        KeyCode::End,
+        KeyCode::PageUp,
+        KeyCode::PageDown,
+        KeyCode::Insert,
+        KeyCode::Delete,
+        KeyCode::Null,
+    ];
+    for key in keys {
+        assert!(!format!("{key:?}").is_empty());
+    }
+}
+
+#[test]
+fn key_code_function_keys() {
+    assert_eq!(KeyCode::F(1), KeyCode::F(1));
+    assert_ne!(KeyCode::F(1), KeyCode::F(12));
+    let f0 = KeyCode::F(0);
+    assert!(!format!("{f0:?}").is_empty());
+}
+
+// =============================================================================
+// Modifiers
+// =============================================================================
+
+#[test]
+fn modifiers_empty() {
+    let m = Modifiers::new();
+    assert!(m.is_empty());
+    assert_eq!(m.bits(), 0);
+    assert_eq!(m, Modifiers::NONE);
+}
+
+#[test]
+fn modifiers_set_unset() {
+    let mut m = Modifiers::new();
+    m.set(Modifiers::SHIFT);
+    assert!(m.contains(Modifiers::SHIFT));
+    assert!(!m.contains(Modifiers::CTRL));
+
+    m.set(Modifiers::CTRL);
+    assert!(m.contains(Modifiers::SHIFT));
+    assert!(m.contains(Modifiers::CTRL));
+
+    m.unset(Modifiers::SHIFT);
+    assert!(!m.contains(Modifiers::SHIFT));
+    assert!(m.contains(Modifiers::CTRL));
+}
+
+#[test]
+fn modifiers_bitor() {
+    let m = Modifiers::SHIFT | Modifiers::CTRL;
+    assert!(m.contains(Modifiers::SHIFT));
+    assert!(m.contains(Modifiers::CTRL));
+    assert!(!m.contains(Modifiers::ALT));
+}
+
+#[test]
+fn modifiers_bitand() {
+    let m = Modifiers::SHIFT | Modifiers::CTRL | Modifiers::ALT;
+    let masked = m & Modifiers::CTRL;
+    assert!(masked.contains(Modifiers::CTRL));
+    assert!(!masked.contains(Modifiers::SHIFT));
+}
+
+#[test]
+fn modifiers_all_flags() {
+    let all = Modifiers::SHIFT | Modifiers::CTRL | Modifiers::ALT | Modifiers::SUPER;
+    assert!(all.contains(Modifiers::SHIFT));
+    assert!(all.contains(Modifiers::CTRL));
+    assert!(all.contains(Modifiers::ALT));
+    assert!(all.contains(Modifiers::SUPER));
+    assert!(!all.is_empty());
+}
+
+#[test]
+fn modifiers_default() {
+    let m = Modifiers::default();
+    assert!(m.is_empty());
+    assert_eq!(m, Modifiers::NONE);
+}
+
+// =============================================================================
+// PointerEvent
+// =============================================================================
+
+#[test]
+fn pointer_event_construction() {
+    let event = PointerEvent {
+        kind: PointerKind::Down(PointerButton::Left),
+        x: 5,
+        y: 10,
+        modifiers: Modifiers::SHIFT,
+    };
+    assert_eq!(event.x, 5);
+    assert_eq!(event.y, 10);
+    assert!(event.modifiers.contains(Modifiers::SHIFT));
+}
+
+#[test]
+fn pointer_kind_all_variants() {
+    let variants = [
+        PointerKind::Down(PointerButton::Left),
+        PointerKind::Down(PointerButton::Right),
+        PointerKind::Down(PointerButton::Middle),
+        PointerKind::Up(PointerButton::Left),
+        PointerKind::Drag(PointerButton::Left),
+        PointerKind::Move,
+        PointerKind::ScrollUp,
+        PointerKind::ScrollDown,
+    ];
+    for v in variants {
+        assert!(!format!("{v:?}").is_empty());
+    }
+}
+
+#[test]
+fn pointer_event_at_origin() {
+    let event = PointerEvent {
+        kind: PointerKind::Move,
+        x: 0,
+        y: 0,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(event.x, 0);
+    assert_eq!(event.y, 0);
+}
+
+#[test]
+fn pointer_event_at_max() {
+    let event = PointerEvent {
+        kind: PointerKind::ScrollUp,
+        x: u16::MAX,
+        y: u16::MAX,
+        modifiers: Modifiers::NONE,
+    };
+    assert_eq!(event.x, u16::MAX);
+    assert_eq!(event.y, u16::MAX);
+}
+
+// =============================================================================
+// TouchEvent
+// =============================================================================
+
+#[test]
+fn touch_event_construction() {
+    let event = TouchEvent {
+        kind: TouchKind::Start,
+        id: 42,
+        x: 1.5,
+        y: 2.5,
+    };
+    assert_eq!(event.id, 42);
+    assert!((event.x - 1.5).abs() < f32::EPSILON);
+    assert!((event.y - 2.5).abs() < f32::EPSILON);
+}
+
+#[test]
+fn touch_kind_all_variants() {
+    let variants = [
+        TouchKind::Start,
+        TouchKind::Move,
+        TouchKind::End,
+        TouchKind::Cancel,
+    ];
+    for v in variants {
+        assert!(!format!("{v:?}").is_empty());
+    }
+}
+
+#[test]
+fn touch_event_clone() {
+    let a = TouchEvent {
+        kind: TouchKind::End,
+        id: 1,
+        x: 0.0,
+        y: 0.0,
+    };
+    let b = a;
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// FocusEvent
+// =============================================================================
+
+#[test]
+fn focus_event_variants() {
+    assert_ne!(FocusEvent::Gained, FocusEvent::Lost);
+    let gained = FocusEvent::Gained;
+    let cloned = gained;
+    assert_eq!(gained, cloned);
+}
+
+#[test]
+fn focus_event_debug() {
+    assert!(format!("{:?}", FocusEvent::Gained).contains("Gained"));
+    assert!(format!("{:?}", FocusEvent::Lost).contains("Lost"));
+}
+
+// =============================================================================
+// PointerButton
+// =============================================================================
+
+#[test]
+fn pointer_button_all_variants() {
+    let buttons = [PointerButton::Left, PointerButton::Right, PointerButton::Middle];
+    for b in buttons {
+        assert!(!format!("{b:?}").is_empty());
+    }
+    assert_ne!(PointerButton::Left, PointerButton::Right);
+}

@@ -220,7 +220,7 @@ pub fn render_frame<B: RenderBackend>(
     let content_height = height.saturating_sub(1);
 
     // Compute sidebar offset from chrome extensions
-    let caps = TuiPlatformCapabilities::new(width, height);
+    let caps = TuiPlatformCapabilities::for_test(width, height);
     let sidebar_width = render_engine_bridge::sidebar_width(extensions, &caps);
     let content_x = config.gutter_width + sidebar_width;
 
@@ -274,7 +274,7 @@ pub fn render_frame<B: RenderBackend>(
     render_statusline(backend, state, width, height);
 
     // Render chrome extensions (engine has ZERO knowledge of specific ones)
-    let caps = TuiPlatformCapabilities::new(width, height);
+    let caps = TuiPlatformCapabilities::for_test(width, height);
     for ext in extensions {
         if ext.has_chrome() {
             let bounds = reovim_client_driver::Rect {

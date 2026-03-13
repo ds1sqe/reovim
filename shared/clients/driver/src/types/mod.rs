@@ -351,5 +351,218 @@ impl Style {
     }
 }
 
+// =============================================================================
+// Input Events
+// =============================================================================
+
+/// Platform-agnostic input event.
+///
+/// Abstracts over terminal, web, and mobile input sources. Each platform
+/// converts its native events into `InputEvent` at the boundary.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputEvent {
+    /// Keyboard event.
+    Key(KeyEvent),
+    /// Pointer (mouse/trackpad) event.
+    Pointer(PointerEvent),
+    /// Touch event (mobile/tablet).
+    Touch(TouchEvent),
+    /// Focus change event.
+    Focus(FocusEvent),
+    /// Paste event (bracketed paste or clipboard).
+    Paste(String),
+}
+
+/// Keyboard event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyEvent {
+    /// Platform-agnostic key code.
+    pub code: KeyCode,
+    /// Modifier keys held during the event.
+    pub modifiers: Modifiers,
+}
+
+impl KeyEvent {
+    /// Create a new key event.
+    #[must_use]
+    pub const fn new(code: KeyCode, modifiers: Modifiers) -> Self {
+        Self { code, modifiers }
+    }
+}
+
+/// Platform-agnostic key code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyCode {
+    /// A unicode character.
+    Char(char),
+    /// Enter/Return.
+    Enter,
+    /// Escape.
+    Esc,
+    /// Tab.
+    Tab,
+    /// Backspace.
+    Backspace,
+    /// Left arrow.
+    Left,
+    /// Right arrow.
+    Right,
+    /// Up arrow.
+    Up,
+    /// Down arrow.
+    Down,
+    /// Home.
+    Home,
+    /// End.
+    End,
+    /// Page up.
+    PageUp,
+    /// Page down.
+    PageDown,
+    /// Insert.
+    Insert,
+    /// Delete.
+    Delete,
+    /// Function key (F1-F12).
+    F(u8),
+    /// Null/unknown key.
+    Null,
+}
+
+/// Modifier key bitflags.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modifiers(u8);
+
+impl Modifiers {
+    pub const NONE: Self = Self(0);
+    pub const SHIFT: Self = Self(0b0000_0001);
+    pub const CTRL: Self = Self(0b0000_0010);
+    pub const ALT: Self = Self(0b0000_0100);
+    pub const SUPER: Self = Self(0b0000_1000);
+
+    /// Create empty modifiers.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(0)
+    }
+
+    /// Check if this modifier set contains the given modifier.
+    #[must_use]
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Set a modifier flag.
+    pub const fn set(&mut self, other: Self) {
+        self.0 |= other.0;
+    }
+
+    /// Unset a modifier flag.
+    pub const fn unset(&mut self, other: Self) {
+        self.0 &= !other.0;
+    }
+
+    /// Check if no modifiers are set.
+    #[must_use]
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+
+    /// Get raw bits.
+    #[must_use]
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+}
+
+impl std::ops::BitOr for Modifiers {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl std::ops::BitAnd for Modifiers {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+
+/// Pointer (mouse/trackpad) event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointerEvent {
+    /// What happened.
+    pub kind: PointerKind,
+    /// Column (0-indexed).
+    pub x: u16,
+    /// Row (0-indexed).
+    pub y: u16,
+    /// Modifier keys held.
+    pub modifiers: Modifiers,
+}
+
+/// Kind of pointer event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerKind {
+    /// Button pressed.
+    Down(PointerButton),
+    /// Button released.
+    Up(PointerButton),
+    /// Drag with button held.
+    Drag(PointerButton),
+    /// Mouse moved (no button).
+    Move,
+    /// Scroll up.
+    ScrollUp,
+    /// Scroll down.
+    ScrollDown,
+}
+
+/// Pointer button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PointerButton {
+    Left,
+    Right,
+    Middle,
+}
+
+/// Touch event (mobile/tablet).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TouchEvent {
+    /// What happened.
+    pub kind: TouchKind,
+    /// Touch identifier (for multi-touch tracking).
+    pub id: u64,
+    /// X coordinate.
+    pub x: f32,
+    /// Y coordinate.
+    pub y: f32,
+}
+
+/// Kind of touch event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TouchKind {
+    /// Touch started.
+    Start,
+    /// Touch moved.
+    Move,
+    /// Touch ended.
+    End,
+    /// Touch cancelled.
+    Cancel,
+}
+
+/// Focus change event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusEvent {
+    /// Window/terminal gained focus.
+    Gained,
+    /// Window/terminal lost focus.
+    Lost,
+}
+
 #[cfg(test)]
 mod tests;

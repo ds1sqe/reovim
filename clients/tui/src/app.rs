@@ -135,6 +135,8 @@ pub struct TuiApp<O: TuiOutput> {
     needs_display_options_refresh: bool,
     /// TUI extensions (cmdline, whichkey, etc.) — engine has ZERO knowledge.
     extensions: Vec<Box<dyn ClientModule>>,
+    /// Platform capabilities (updated on resize, focus changes).
+    capabilities: crate::render_engine_bridge::TuiPlatformCapabilities,
 
     // === I/O adapter (only thing that differs) ===
     /// Display output adapter (terminal for interactive, no-op for headless).
@@ -188,6 +190,11 @@ impl<O: TuiOutput> TuiApp<O> {
             needs_display_options_refresh: false,
             extensions: crate::bridge::wrap_extensions(
                 reovim_tui_ext_defaults::create_extensions(),
+            ),
+            capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
+                width,
+                height,
+                reovim_driver_display::DisplayCapabilities::detect(),
             ),
             output,
         }
@@ -629,6 +636,12 @@ impl<O: TuiOutput> TuiApp<O> {
         self.state.width = width;
         self.state.height = height;
         self.layout_mirror.set_screen(width, height);
+
+        // Update platform capabilities and notify all modules
+        self.capabilities.update_grid_size(width, height);
+        for ext in &mut self.extensions {
+            ext.on_capabilities_changed(&self.capabilities);
+        }
 
         if let Err(e) = self
             .client

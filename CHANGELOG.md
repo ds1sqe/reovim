@@ -20,6 +20,14 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   display driver and client driver types, `SurfaceBackendAdapter` for legacy rendering.
   80 unit tests covering all 15 extensions, all conversion functions, and adapter delegation.
 
+- **Platform render surface and input abstraction** (#633): Upgrade `TuiPlatformCapabilities`
+  to wrap `DisplayCapabilities` with mutable terminal state (focus, dark mode via COLORFGBG
+  heuristic, grid size). Add `TuiRenderSurface<B>` generic adapter (monomorphized
+  `RenderBackend` → `RenderSurface`). Add `InputEvent` system to client-driver crate:
+  `KeyEvent`, `KeyCode`, `Modifiers` (bitflag), `PointerEvent`, `TouchEvent`, `FocusEvent`.
+  Add `convert_key_event()` and `convert_mouse_event()` crossterm-to-CLM conversion layer.
+  67 bridge tests + 26 input type tests.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)

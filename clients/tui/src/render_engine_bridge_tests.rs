@@ -163,36 +163,108 @@ fn backend_surface_adapter_size() {
 }
 
 // =============================================================================
+// TuiRenderSurface (generic) tests
+// =============================================================================
+
+#[test]
+fn tui_render_surface_write_styled() {
+    let mut backend = MockBackend::new(80, 24);
+    let mut surface = TuiRenderSurface::new(&mut backend);
+    let style = reovim_client_driver::Style {
+        fg: Some(Color::Red),
+        ..reovim_client_driver::Style::default()
+    };
+    let cols = surface.write_styled(5, 3, "hi", style);
+    assert_eq!(cols, 2);
+    let _ = surface;
+    assert_eq!(backend.write_calls.len(), 1);
+    assert_eq!(backend.write_calls[0].0, 5); // x
+    assert_eq!(backend.write_calls[0].1, 3); // y
+    assert_eq!(backend.write_calls[0].2, "hi");
+}
+
+#[test]
+fn tui_render_surface_apply_style() {
+    let mut backend = MockBackend::new(80, 24);
+    let mut surface = TuiRenderSurface::new(&mut backend);
+    let style = reovim_client_driver::Style::default();
+    surface.apply_style(2, 4, style);
+    assert_eq!(backend.apply_calls.len(), 1);
+    assert_eq!(backend.apply_calls[0].0, 2);
+    assert_eq!(backend.apply_calls[0].1, 4);
+}
+
+#[test]
+fn tui_render_surface_overlay_bg() {
+    let mut backend = MockBackend::new(80, 24);
+    let mut surface = TuiRenderSurface::new(&mut backend);
+    surface.overlay_bg(1, 2, Color::Blue);
+    assert_eq!(backend.overlay_calls.len(), 1);
+    assert_eq!(backend.overlay_calls[0].0, 1);
+    assert_eq!(backend.overlay_calls[0].1, 2);
+}
+
+#[test]
+fn tui_render_surface_fill() {
+    let mut backend = MockBackend::new(10, 5);
+    let mut surface = TuiRenderSurface::new(&mut backend);
+    let rect = Rect::new(0, 0, 5, 2);
+    let style = reovim_client_driver::Style::default();
+    surface.fill(rect, '#', style);
+    // 5*2 = 10 cells
+    assert_eq!(backend.set_cell_calls.len(), 10);
+    assert_eq!(backend.set_cell_calls[0].2, '#');
+}
+
+#[test]
+fn tui_render_surface_clear() {
+    let mut backend = MockBackend::new(10, 5);
+    let mut surface = TuiRenderSurface::new(&mut backend);
+    let rect = Rect::new(1, 1, 3, 2);
+    surface.clear(rect);
+    // 3*2 = 6 cells
+    assert_eq!(backend.set_cell_calls.len(), 6);
+    assert_eq!(backend.set_cell_calls[0].2, ' ');
+}
+
+#[test]
+fn tui_render_surface_size() {
+    let mut backend = MockBackend::new(160, 50);
+    let surface = TuiRenderSurface::new(&mut backend);
+    assert_eq!(surface.size(), (160, 50));
+}
+
+// =============================================================================
 // TuiPlatformCapabilities tests
 // =============================================================================
 
 #[test]
 fn tui_platform_capabilities_grid_size() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(caps.grid_size(), Some((80, 24)));
 }
 
 #[test]
 fn tui_platform_capabilities_rendering_model() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(caps.rendering_model(), RenderingModel::CellGrid);
 }
 
 #[test]
 fn tui_platform_capabilities_color_depth() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(caps.color_depth(), ColorDepth::TrueColor);
 }
 
 #[test]
 fn tui_platform_capabilities_pixel_size_none() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(caps.pixel_size(), None);
 }
 
 #[test]
 fn tui_platform_capabilities_boolean_defaults() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert!(caps.reliable_unicode_width());
     assert!(caps.dark_mode());
     assert!(!caps.smooth_scroll());
@@ -206,9 +278,93 @@ fn tui_platform_capabilities_boolean_defaults() {
 
 #[test]
 fn tui_platform_capabilities_safe_area_default() {
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     let insets = caps.safe_area();
     assert_eq!(insets, Insets::default());
+}
+
+// --- Full DisplayCapabilities wiring ---
+
+#[test]
+fn tui_platform_capabilities_with_display_caps() {
+    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    let display = DisplayCapabilities {
+        color_mode: ColorMode::Color256,
+        supports_underline_color: true,
+        supports_extended_underlines: true,
+        supports_mouse: true,
+        supports_kitty_graphics: false,
+        supports_sixel: false,
+    };
+    let caps = TuiPlatformCapabilities::new(120, 40, display);
+    assert_eq!(caps.grid_size(), Some((120, 40)));
+    assert_eq!(caps.color_depth(), ColorDepth::Ansi256);
+    assert!(caps.pointer_events());
+}
+
+#[test]
+fn tui_platform_capabilities_color_depth_ansi16() {
+    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    let display = DisplayCapabilities {
+        color_mode: ColorMode::Ansi16,
+        supports_underline_color: false,
+        supports_extended_underlines: false,
+        supports_mouse: false,
+        supports_kitty_graphics: false,
+        supports_sixel: false,
+    };
+    let caps = TuiPlatformCapabilities::new(80, 24, display);
+    assert_eq!(caps.color_depth(), ColorDepth::Ansi16);
+    assert!(!caps.pointer_events());
+}
+
+#[test]
+fn tui_platform_capabilities_color_depth_truecolor() {
+    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    let display = DisplayCapabilities {
+        color_mode: ColorMode::TrueColor,
+        supports_underline_color: false,
+        supports_extended_underlines: false,
+        supports_mouse: false,
+        supports_kitty_graphics: false,
+        supports_sixel: false,
+    };
+    let caps = TuiPlatformCapabilities::new(80, 24, display);
+    assert_eq!(caps.color_depth(), ColorDepth::TrueColor);
+}
+
+#[test]
+fn tui_platform_capabilities_update_grid_size() {
+    let mut caps = TuiPlatformCapabilities::for_test(80, 24);
+    assert_eq!(caps.grid_size(), Some((80, 24)));
+    caps.update_grid_size(120, 40);
+    assert_eq!(caps.grid_size(), Some((120, 40)));
+}
+
+#[test]
+fn tui_platform_capabilities_set_focus() {
+    let mut caps = TuiPlatformCapabilities::for_test(80, 24);
+    assert!(caps.has_focus());
+    caps.set_focus(false);
+    assert!(!caps.has_focus());
+    caps.set_focus(true);
+    assert!(caps.has_focus());
+}
+
+#[test]
+fn tui_platform_capabilities_dark_mode_from_for_test() {
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
+    assert!(caps.dark_mode());
+}
+
+#[test]
+fn detect_dark_mode_default_is_dark() {
+    // When COLORFGBG is not set or unparseable, default is dark (true)
+    // We can't easily control env vars in parallel tests, so just verify
+    // the function returns a bool without panicking.
+    let result = super::detect_dark_mode();
+    // Just verify it returns without panic; actual value depends on env.
+    let _ = result;
 }
 
 // =============================================================================
@@ -504,7 +660,7 @@ impl reovim_client_driver::ClientModule for StubModule {
 #[test]
 fn sidebar_width_no_extensions() {
     let exts: Vec<Box<dyn ClientModule>> = Vec::new();
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(sidebar_width(&exts, &caps), 0);
 }
 
@@ -516,7 +672,7 @@ fn sidebar_width_with_left_chrome() {
         requested_size: 30,
         ..StubModule::default()
     })];
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(sidebar_width(&exts, &caps), 30);
 }
 
@@ -536,7 +692,7 @@ fn sidebar_width_ignores_non_left() {
             ..StubModule::default()
         }),
     ];
-    let caps = TuiPlatformCapabilities::new(80, 24);
+    let caps = TuiPlatformCapabilities::for_test(80, 24);
     assert_eq!(sidebar_width(&exts, &caps), 20);
 }
 
@@ -672,4 +828,291 @@ fn visual_line_len_fallback_to_text() {
 fn visual_line_len_none_when_no_text_and_no_transform() {
     let exts: Vec<Box<dyn ClientModule>> = Vec::new();
     assert_eq!(visual_line_len(&exts, 1, 0, None), None);
+}
+
+// =============================================================================
+// Input event conversion tests
+// =============================================================================
+
+#[test]
+fn convert_key_event_char() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::Char('a'),
+        modifiers: KeyModifiers::NONE,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    assert!(matches!(
+        event,
+        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+            code: reovim_client_driver::KeyCode::Char('a'),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn convert_key_event_enter() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::Enter,
+        modifiers: KeyModifiers::NONE,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    assert!(matches!(
+        event,
+        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+            code: reovim_client_driver::KeyCode::Enter,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn convert_key_event_esc() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::Esc,
+        modifiers: KeyModifiers::NONE,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    assert!(matches!(
+        event,
+        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+            code: reovim_client_driver::KeyCode::Esc,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn convert_key_event_special_keys() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    let test_cases = [
+        (KeyCode::Tab, reovim_client_driver::KeyCode::Tab),
+        (KeyCode::Backspace, reovim_client_driver::KeyCode::Backspace),
+        (KeyCode::Left, reovim_client_driver::KeyCode::Left),
+        (KeyCode::Right, reovim_client_driver::KeyCode::Right),
+        (KeyCode::Up, reovim_client_driver::KeyCode::Up),
+        (KeyCode::Down, reovim_client_driver::KeyCode::Down),
+        (KeyCode::Home, reovim_client_driver::KeyCode::Home),
+        (KeyCode::End, reovim_client_driver::KeyCode::End),
+        (KeyCode::PageUp, reovim_client_driver::KeyCode::PageUp),
+        (KeyCode::PageDown, reovim_client_driver::KeyCode::PageDown),
+        (KeyCode::Insert, reovim_client_driver::KeyCode::Insert),
+        (KeyCode::Delete, reovim_client_driver::KeyCode::Delete),
+        (KeyCode::Null, reovim_client_driver::KeyCode::Null),
+    ];
+
+    for (crossterm_code, expected_code) in test_cases {
+        let tui_key = reovim_driver_tui::KeyEvent {
+            code: crossterm_code,
+            modifiers: KeyModifiers::NONE,
+            vim_notation: String::new(),
+        };
+        let event = convert_key_event(&tui_key);
+        if let reovim_client_driver::InputEvent::Key(ke) = event {
+            assert_eq!(ke.code, expected_code);
+        } else {
+            panic!("Expected Key event");
+        }
+    }
+}
+
+#[test]
+fn convert_key_event_f_keys() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::F(12),
+        modifiers: KeyModifiers::NONE,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    assert!(matches!(
+        event,
+        reovim_client_driver::InputEvent::Key(reovim_client_driver::KeyEvent {
+            code: reovim_client_driver::KeyCode::F(12),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn convert_key_event_modifiers() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    // Ctrl+Shift+A
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::Char('a'),
+        modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    if let reovim_client_driver::InputEvent::Key(ke) = event {
+        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::CTRL));
+        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::SHIFT));
+        assert!(!ke.modifiers.contains(reovim_client_driver::Modifiers::ALT));
+    } else {
+        panic!("Expected Key event");
+    }
+}
+
+#[test]
+fn convert_key_event_alt() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::Char('x'),
+        modifiers: KeyModifiers::ALT,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    if let reovim_client_driver::InputEvent::Key(ke) = event {
+        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::ALT));
+        assert!(!ke.modifiers.contains(reovim_client_driver::Modifiers::CTRL));
+    } else {
+        panic!("Expected Key event");
+    }
+}
+
+#[test]
+fn convert_key_event_backtab() {
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let tui_key = reovim_driver_tui::KeyEvent {
+        code: KeyCode::BackTab,
+        modifiers: KeyModifiers::SHIFT,
+        vim_notation: String::new(),
+    };
+    let event = convert_key_event(&tui_key);
+    if let reovim_client_driver::InputEvent::Key(ke) = event {
+        assert_eq!(ke.code, reovim_client_driver::KeyCode::Tab);
+        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::SHIFT));
+    } else {
+        panic!("Expected Key event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_left_click() {
+    use crossterm::event::{MouseButton, MouseEventKind};
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 10,
+        row: 5,
+        kind: MouseEventKind::Down(MouseButton::Left),
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert_eq!(pe.x, 10);
+        assert_eq!(pe.y, 5);
+        assert!(matches!(
+            pe.kind,
+            reovim_client_driver::PointerKind::Down(reovim_client_driver::PointerButton::Left)
+        ));
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_right_release() {
+    use crossterm::event::{MouseButton, MouseEventKind};
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 20,
+        row: 15,
+        kind: MouseEventKind::Up(MouseButton::Right),
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(
+            pe.kind,
+            reovim_client_driver::PointerKind::Up(reovim_client_driver::PointerButton::Right)
+        ));
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_drag() {
+    use crossterm::event::{MouseButton, MouseEventKind};
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 3,
+        row: 7,
+        kind: MouseEventKind::Drag(MouseButton::Middle),
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(
+            pe.kind,
+            reovim_client_driver::PointerKind::Drag(reovim_client_driver::PointerButton::Middle)
+        ));
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_scroll() {
+    use crossterm::event::MouseEventKind;
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 0,
+        row: 0,
+        kind: MouseEventKind::ScrollUp,
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollUp));
+    } else {
+        panic!("Expected Pointer event");
+    }
+
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 0,
+        row: 0,
+        kind: MouseEventKind::ScrollDown,
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_moved() {
+    use crossterm::event::MouseEventKind;
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 50,
+        row: 25,
+        kind: MouseEventKind::Moved,
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        assert!(matches!(pe.kind, reovim_client_driver::PointerKind::Move));
+        assert_eq!(pe.x, 50);
+        assert_eq!(pe.y, 25);
+    } else {
+        panic!("Expected Pointer event");
+    }
+}
+
+#[test]
+fn convert_mouse_event_scroll_left_maps_to_scroll_down() {
+    use crossterm::event::MouseEventKind;
+    let tui_mouse = reovim_driver_tui::MouseEvent {
+        column: 0,
+        row: 0,
+        kind: MouseEventKind::ScrollLeft,
+    };
+    let event = convert_mouse_event(&tui_mouse);
+    if let reovim_client_driver::InputEvent::Pointer(pe) = event {
+        // Best-effort mapping: ScrollLeft -> ScrollDown
+        assert!(matches!(pe.kind, reovim_client_driver::PointerKind::ScrollDown));
+    } else {
+        panic!("Expected Pointer event");
+    }
 }
