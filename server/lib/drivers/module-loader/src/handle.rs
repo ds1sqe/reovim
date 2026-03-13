@@ -319,10 +319,10 @@ impl ModuleHandle {
 
     /// Get extension kinds declared by this module.
     #[must_use]
-    pub fn extension_kinds(&self) -> &[&str] {
+    pub fn extension_kinds(&self) -> &[&'static str] {
         self.static_module
             .as_ref()
-            .map_or(&[] as &[&str], |module| module.extension_kinds())
+            .map_or(&[] as &[&'static str], |module| module.extension_kinds())
     }
 
     /// Get capabilities provided by this module (#618).

@@ -9,6 +9,9 @@ description = "Markdown syntax highlighting module for reovim"
 repository.workspace = true
 homepage.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
@@ -20,6 +23,9 @@ reovim-capabilities = { workspace = true }
 # Driver layer - implements SyntaxDriverFactory
 reovim-driver-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
+
+# Module macros for FFI entry points
+reovim-module-macros = { workspace = true }
 
 # Tree-sitter Markdown grammar - this is where language-specific deps live
 tree-sitter-md = "0.3"
@@ -35,3 +41,7 @@ reovim-testing = { workspace = true }
 reovim-module-treesitter-rust = { workspace = true }
 tree-sitter = "0.24"
 tree-sitter-rust = "0.23"
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

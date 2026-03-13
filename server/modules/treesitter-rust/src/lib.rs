@@ -243,6 +243,10 @@ impl Module for TreesitterRustModule {
     }
 }
 
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(TreesitterRustModule);
+
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;

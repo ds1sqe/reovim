@@ -6,6 +6,16 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
+  registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
+  factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to
+  unify static and dynamic module loading behind a single interface. Textobjects module
+  promoted from `REOVIM_EXTRA_MODULES` env var special case to regular builtin (41 modules
+  total). `collect_extra_modules()` and `create_extra_module()` removed. CI updated to build
+  treesitter modules as `.so` files. Build script paths fixed for `server/modules/` layout.
+  Both static (`--features static-modules`) and dynamic (`--no-default-features`) compilation
+  paths verified clean.
+
 - **Extension manager phases 10-12 (#562)**: Four new crates completing the extension manager
   system. Phase 10 (#621): `reovim-driver-module-registry` with `ModuleManifest` parser for
   third-party `module.toml` files, `ModuleSource` (Git/Path) enum for install provenance, and

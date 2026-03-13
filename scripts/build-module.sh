@@ -126,7 +126,7 @@ LIB_PREFIX=$(get_lib_prefix)
 # Get list of modules with cdylib support
 get_cdylib_modules() {
     local modules=()
-    for cargo_toml in "$REPO_ROOT"/modules/*/Cargo.toml; do
+    for cargo_toml in "$REPO_ROOT"/server/modules/*/Cargo.toml; do
         if grep -q 'cdylib' "$cargo_toml" 2>/dev/null; then
             local dir_name=$(dirname "$cargo_toml")
             local module_name=$(basename "$dir_name")
@@ -139,7 +139,7 @@ get_cdylib_modules() {
 # Get cargo package name for a module
 get_package_name() {
     local module=$1
-    local cargo_toml="$REPO_ROOT/modules/$module/Cargo.toml"
+    local cargo_toml="$REPO_ROOT/server/modules/$module/Cargo.toml"
 
     if [[ ! -f "$cargo_toml" ]]; then
         echo -e "${RED}Error: Module '$module' not found${NC}" >&2
@@ -248,9 +248,9 @@ build_module() {
     echo -e "${YELLOW}==> Building module: $module${NC}"
 
     # Check if module exists
-    local cargo_toml="$REPO_ROOT/modules/$module/Cargo.toml"
+    local cargo_toml="$REPO_ROOT/server/modules/$module/Cargo.toml"
     if [[ ! -f "$cargo_toml" ]]; then
-        echo -e "${RED}Error: Module '$module' not found at modules/$module/${NC}" >&2
+        echo -e "${RED}Error: Module '$module' not found at server/modules/$module/${NC}" >&2
         return 1
     fi
 

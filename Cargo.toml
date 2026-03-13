@@ -48,7 +48,6 @@ members = [
     "server/modules/undo",
     "server/modules/vfs-local",
     "server/modules/window-ops",
-    "server/modules/defaults",
     "server/modules/treesitter-rust",
     "server/modules/cmdline",
     "server/modules/whichkey",
@@ -258,7 +257,6 @@ reovim-module-search = { path = "./server/modules/search", version = "0.10.0-dev
 reovim-module-undo = { path = "./server/modules/undo", version = "0.10.0-dev" }
 reovim-module-vfs-local = { path = "./server/modules/vfs-local", version = "0.10.0-dev" }
 reovim-module-window-ops = { path = "./server/modules/window-ops", version = "0.10.0-dev" }
-reovim-module-defaults = { path = "./server/modules/defaults", version = "0.10.0-dev" }
 reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.10.0-dev" }
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.10.0-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.10.0-dev" }

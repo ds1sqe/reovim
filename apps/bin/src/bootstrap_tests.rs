@@ -86,23 +86,24 @@ fn test_create_kernel_context_valid() {
     drop(kernel);
 }
 
-#[test]
-fn test_create_extra_module_textobjects() {
-    let module = create_extra_module("textobjects");
-    assert!(module.is_some());
-    assert_eq!(module.unwrap().id().as_str(), "textobjects");
-}
-
-#[test]
-fn test_create_extra_module_unknown() {
-    assert!(create_extra_module("nonexistent").is_none());
-    assert!(create_extra_module("").is_none());
+/// Helper: create all builtin modules for test assertions.
+///
+/// Uses static factory map + manifest ordering (#620).
+#[cfg(feature = "static-modules")]
+fn create_all_builtin_modules() -> Vec<Box<dyn Module>> {
+    let manifest = parse_builtin_manifest();
+    let registry = static_modules::builtin_registry();
+    manifest
+        .module_ids()
+        .into_iter()
+        .filter_map(|id| registry.get(id).map(|factory| factory()))
+        .collect()
 }
 
 #[test]
 fn test_all_module_deps_resolve() {
     // Verify all default modules form a valid dependency graph (#582)
-    let modules = DefaultsModule::create_modules();
+    let modules = create_all_builtin_modules();
     let entries: Vec<DepEntry<ModuleId>> = modules
         .iter()
         .map(|m| DepEntry {
@@ -122,7 +123,7 @@ fn test_all_module_deps_resolve() {
 #[test]
 fn test_tier_ordering() {
     // Verify dependency order constraints (#582)
-    let modules = DefaultsModule::create_modules();
+    let modules = create_all_builtin_modules();
     let entries: Vec<DepEntry<ModuleId>> = modules
         .iter()
         .map(|m| DepEntry {
@@ -190,9 +191,12 @@ fn test_bootstrap_with_external_discovery() {
 fn test_discover_and_load_externals_graceful() {
     // External module discovery never panics, regardless of what's on disk.
     // Duplicate builtins are filtered, failed loads are logged and skipped.
-    let builtin_ids: Vec<ModuleId> = DefaultsModule::create_modules()
-        .iter()
-        .map(|m| m.id())
+    // #620: Use manifest IDs instead of DefaultsModule::create_modules()
+    let manifest = parse_builtin_manifest();
+    let builtin_ids: Vec<ModuleId> = manifest
+        .module_ids()
+        .into_iter()
+        .map(|id| ModuleId::from_string(id.to_string()))
         .collect();
     let _loader = discover_and_load_externals(&ModulesConfig::official(), &builtin_ids);
     // Success = no panic, no matter what .so files are on the system
@@ -202,4 +206,38 @@ fn test_discover_and_load_externals_graceful() {
 fn test_check_lockfile_staleness_missing() {
     // Should not panic when lock file doesn't exist (normal first run)
     check_lockfile_staleness();
+}
+
+// ============================================================================
+// #620: Manifest and static modules tests
+// ============================================================================
+
+#[test]
+fn test_parse_builtin_manifest() {
+    let manifest = parse_builtin_manifest();
+    let ids = manifest.module_ids();
+    // Should have all 40 builtin modules + emacs
+    assert!(ids.len() >= 40, "Expected at least 40 modules, got {}", ids.len());
+    // Key modules must be present
+    assert!(ids.contains(&"vim"));
+    assert!(ids.contains(&"editor"));
+    assert!(ids.contains(&"motions"));
+    assert!(ids.contains(&"undo"));
+}
+
+#[cfg(feature = "static-modules")]
+#[test]
+fn test_static_registry_covers_manifest() {
+    // Verify the static factory map covers all manifest entries (except emacs)
+    let manifest = parse_builtin_manifest();
+    let registry = static_modules::builtin_registry();
+    for id in manifest.module_ids() {
+        if id == "emacs" {
+            continue; // Alternative personality, not in static registry
+        }
+        assert!(
+            registry.contains_key(id),
+            "Static registry missing module '{id}' from builtins.toml"
+        );
+    }
 }

@@ -17,10 +17,51 @@ path = "src/main.rs"
 default = ["grpc-web", "static-modules"]
 grpc = ["reovim-server/grpc", "dep:reovim-client-cli", "dep:reovim-client-tui"]
 grpc-web = ["grpc", "reovim-server/grpc-web"]
-# Static module linking: compile all 39 modules into the binary (#620).
+# Static module linking: compile all 40 modules into the binary (#620).
 # When disabled, modules are loaded as .so files from builtins.toml manifest.
-# Currently always-on; dynamic-only mode will be wired in Phase 10.
-static-modules = []
+static-modules = [
+    "dep:reovim-module-undo",
+    "dep:reovim-module-buffer-simple",
+    "dep:reovim-module-search",
+    "dep:reovim-module-scratch-buffer",
+    "dep:reovim-module-vfs-local",
+    "dep:reovim-module-clipboard",
+    "dep:reovim-module-keymap",
+    "dep:reovim-module-commands",
+    "dep:reovim-module-editor",
+    "dep:reovim-module-motions",
+    "dep:reovim-module-vim",
+    "dep:reovim-module-git",
+    "dep:reovim-module-git-signs",
+    "dep:reovim-module-git-statusline",
+    "dep:reovim-module-git-blame",
+    "dep:reovim-module-cmdline",
+    "dep:reovim-module-whichkey",
+    "dep:reovim-module-notification",
+    "dep:reovim-picker-files",
+    "dep:reovim-picker-buffers",
+    "dep:reovim-picker-commands",
+    "dep:reovim-picker-grep",
+    "dep:reovim-picker-options",
+    "dep:reovim-picker-git-branches",
+    "dep:reovim-picker-git-log",
+    "dep:reovim-picker-git-stash",
+    "dep:reovim-picker-git-status",
+    "dep:reovim-module-microscope",
+    "dep:reovim-module-treesitter-rust",
+    "dep:reovim-module-treesitter-markdown",
+    "dep:reovim-module-lsp",
+    "dep:reovim-module-lsp-navigation",
+    "dep:reovim-module-snippet",
+    "dep:reovim-module-range-finder",
+    "dep:reovim-module-completion",
+    "dep:reovim-module-explorer",
+    "dep:reovim-module-tetromino",
+    "dep:reovim-module-profiles",
+    "dep:reovim-module-health-check",
+    "dep:reovim-module-module-manager",
+    "dep:reovim-module-textobjects",
+]
 
 [dependencies]
 # Server crate
@@ -33,16 +74,6 @@ reovim-driver-vfs = { workspace = true }
 reovim-driver-input = { workspace = true }
 reovim-driver-command = { workspace = true }
 reovim-driver-session = { workspace = true }
-
-# Module bundle (provides DefaultsModule::create_modules)
-# Will become optional when static-modules feature is fully wired (#620)
-reovim-module-defaults = { workspace = true }
-
-# Vim module (for VimLookupPolicy - #542 mechanism/policy separation)
-reovim-module-vim = { workspace = true }
-
-# Extra modules available via REOVIM_EXTRA_MODULES env var
-reovim-module-textobjects = { workspace = true }
 
 # Dependency resolution for module init ordering (#582)
 reovim-driver-depgraph = { workspace = true }
@@ -76,6 +107,77 @@ reovim-driver-log = { path = "../../shared/log" }
 
 # Sync primitives for KernelContext
 parking_lot = { workspace = true }
+
+# ============================================================================
+# Static module dependencies (#620)
+# These are optional — only compiled when `static-modules` feature is enabled.
+# Replaces the `reovim-module-defaults` god-crate with direct imports.
+# ============================================================================
+
+# Tier 1: Service modules
+reovim-module-undo = { workspace = true, optional = true }
+reovim-module-buffer-simple = { workspace = true, optional = true }
+reovim-module-search = { workspace = true, optional = true }
+reovim-module-scratch-buffer = { workspace = true, optional = true }
+reovim-module-vfs-local = { workspace = true, optional = true }
+reovim-module-clipboard = { workspace = true, optional = true }
+
+# Tier 2: Utility modules
+reovim-module-keymap = { workspace = true, optional = true }
+reovim-module-commands = { workspace = true, optional = true }
+
+# Tier 3: Policy modules
+reovim-module-editor = { workspace = true, optional = true }
+reovim-module-motions = { workspace = true, optional = true }
+reovim-module-vim = { workspace = true, optional = true }
+
+# Tier 3: Git provider and consumer modules (#530)
+reovim-module-git = { workspace = true, optional = true }
+reovim-module-git-signs = { workspace = true, optional = true }
+reovim-module-git-statusline = { workspace = true, optional = true }
+reovim-module-git-blame = { workspace = true, optional = true }
+
+# Tier 3: Extension bridge modules
+reovim-module-cmdline = { workspace = true, optional = true }
+reovim-module-whichkey = { workspace = true, optional = true }
+reovim-module-notification = { workspace = true, optional = true }
+
+# Tier 4: Picker data providers (#522)
+reovim-picker-files = { workspace = true, optional = true }
+reovim-picker-buffers = { workspace = true, optional = true }
+reovim-picker-commands = { workspace = true, optional = true }
+reovim-picker-grep = { workspace = true, optional = true }
+reovim-picker-options = { workspace = true, optional = true }
+
+# Tier 4: Git picker providers (#530)
+reovim-picker-git-branches = { workspace = true, optional = true }
+reovim-picker-git-log = { workspace = true, optional = true }
+reovim-picker-git-stash = { workspace = true, optional = true }
+reovim-picker-git-status = { workspace = true, optional = true }
+
+# Tier 4: Picker orchestration
+reovim-module-microscope = { workspace = true, optional = true }
+
+# Tier 4: Syntax highlighting modules
+reovim-module-treesitter-rust = { workspace = true, optional = true }
+reovim-module-treesitter-markdown = { workspace = true, optional = true }
+
+# Tier 4: Code intelligence modules
+reovim-module-lsp = { workspace = true, optional = true }
+reovim-module-lsp-navigation = { workspace = true, optional = true }
+
+# Tier 4: Text objects
+reovim-module-textobjects = { workspace = true, optional = true }
+
+# Tier 4: Feature modules
+reovim-module-snippet = { workspace = true, optional = true }
+reovim-module-range-finder = { workspace = true, optional = true }
+reovim-module-completion = { workspace = true, optional = true }
+reovim-module-explorer = { workspace = true, optional = true }
+reovim-module-tetromino = { workspace = true, optional = true }
+reovim-module-profiles = { workspace = true, optional = true }
+reovim-module-health-check = { workspace = true, optional = true }
+reovim-module-module-manager = { workspace = true, optional = true }
 
 [lints]
 workspace = true

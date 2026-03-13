@@ -47,8 +47,8 @@ use {
         GutterRenderer, GutterRendererKey, GutterRendererRegistry, LineNumberMode,
     },
     reovim_driver_input::{
-        KeybindingStore, ModeInfo, ModeInfoStore, ModeProviderKey, ModeProviderRegistry,
-        ResolverRegistry,
+        KeybindingStore, LookupPolicyStore, ModeInfo, ModeInfoStore, ModeProviderKey,
+        ModeProviderRegistry, ResolverRegistry,
     },
     reovim_driver_manifest::ModeBridgeStore,
     reovim_kernel::api::v1::{
@@ -218,6 +218,10 @@ impl Module for VimModule {
         resolver_registry.register(resolvers::VimVisualResolver::character_wise());
         resolver_registry.register(resolvers::VimVisualResolver::line_wise());
         resolver_registry.register(resolvers::VimVisualResolver::block_wise());
+
+        // #620: Self-register lookup policy (decouples bootstrap from vim import)
+        let policy_store = ctx.services.get_or_create::<LookupPolicyStore>();
+        policy_store.set(Arc::new(VimLookupPolicy));
 
         // Epic #417 Part 3: Self-register commands
         let command_store = ctx.services.get_or_create::<CommandHandlerStore>();
