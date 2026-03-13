@@ -26,6 +26,7 @@ static-modules = [
     "dep:reovim-module-scratch-buffer",
     "dep:reovim-module-vfs-local",
     "dep:reovim-module-clipboard",
+    "dep:reovim-module-codec-utf8",
     "dep:reovim-module-keymap",
     "dep:reovim-module-commands",
     "dep:reovim-module-editor",
@@ -124,6 +125,7 @@ reovim-module-search = { workspace = true, optional = true }
 reovim-module-scratch-buffer = { workspace = true, optional = true }
 reovim-module-vfs-local = { workspace = true, optional = true }
 reovim-module-clipboard = { workspace = true, optional = true }
+reovim-module-codec-utf8 = { workspace = true, optional = true }
 
 # Tier 2: Utility modules
 reovim-module-keymap = { workspace = true, optional = true }

@@ -2042,6 +2042,7 @@ dependencies = [
  "reovim-module-buffer-simple",
  "reovim-module-clipboard",
  "reovim-module-cmdline",
+ "reovim-module-codec-utf8",
  "reovim-module-commands",
  "reovim-module-completion",
  "reovim-module-editor",

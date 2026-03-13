@@ -44,6 +44,11 @@ tier = 1
 library = "reovim_module_clipboard"
 
 [[modules]]
+id = "codec-utf8"
+tier = 1
+library = "reovim_module_codec_utf8"
+
+[[modules]]
 id = "keymap"
 tier = 2
 library = "reovim_module_keymap"

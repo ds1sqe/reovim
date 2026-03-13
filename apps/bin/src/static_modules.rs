@@ -34,6 +34,9 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     });
     map.insert("vfs-local", || Box::new(reovim_module_vfs_local::VfsLocalModule::new()));
     map.insert("clipboard", || Box::new(reovim_module_clipboard::ClipboardModule::new()));
+    map.insert("codec-utf8", || {
+        Box::new(reovim_module_codec_utf8::CodecUtf8Module::new())
+    });
 
     // Tier 2: Utility modules
     map.insert("keymap", || Box::new(reovim_module_keymap::KeymapModule));
