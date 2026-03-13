@@ -270,22 +270,75 @@ pub fn render_frame<B: RenderBackend>(
         );
     }
 
-    // Render statusline
-    render_statusline(backend, state, width, height);
-
-    // Render chrome extensions (engine has ZERO knowledge of specific ones)
+    // Render chrome extensions with position-based bounds synthesis.
+    // Engine has ZERO knowledge of specific chrome modules.
     let caps = TuiPlatformCapabilities::for_test(width, height);
-    for ext in extensions {
-        if ext.has_chrome() {
-            let bounds = reovim_client_driver::Rect {
-                x: 0,
-                y: 0,
-                width,
-                height,
-            };
-            let mut surface = BackendSurfaceAdapter::new(backend);
-            ext.chrome_render(&mut surface, bounds, &caps);
-        }
+    render_chrome(backend, extensions, width, height, &caps);
+}
+
+/// Render all chrome modules with priority-based allocation.
+///
+/// Modules are sorted by priority (highest first). Each module gets a
+/// `Rect` synthesized from its `chrome_position()`:
+/// - `Bottom`: allocated from the bottom edge upward
+/// - `Left`: allocated from the left edge rightward
+/// - `Overlay`: full screen (overlays on top of everything)
+/// - `Top`/`Right`: allocated from top/right edges (not currently used)
+fn render_chrome<B: RenderBackend>(
+    backend: &mut B,
+    extensions: &[Box<dyn ClientModule>],
+    width: u16,
+    height: u16,
+    caps: &dyn reovim_client_driver::PlatformCapabilities,
+) {
+    use reovim_client_driver::ChromePosition;
+
+    // Collect chrome modules with their indices for stable sort
+    let mut chrome_modules: Vec<(usize, &Box<dyn ClientModule>)> = extensions
+        .iter()
+        .enumerate()
+        .filter(|(_, ext)| ext.has_chrome())
+        .collect();
+
+    // Sort by priority descending (highest priority gets allocated first)
+    chrome_modules.sort_by_key(|b| std::cmp::Reverse(b.1.chrome_priority()));
+
+    let mut allocated_bottom: u16 = 0;
+    let mut allocated_left: u16 = 0;
+    let mut allocated_top: u16 = 0;
+    let mut allocated_right: u16 = 0;
+
+    for (_, ext) in &chrome_modules {
+        let size = ext.chrome_requested_size(caps);
+        let bounds = match ext.chrome_position() {
+            ChromePosition::Bottom => {
+                let y = height.saturating_sub(allocated_bottom + size);
+                allocated_bottom += size;
+                reovim_client_driver::Rect { x: 0, y, width, height: size }
+            }
+            ChromePosition::Top => {
+                let y = allocated_top;
+                allocated_top += size;
+                reovim_client_driver::Rect { x: 0, y, width, height: size }
+            }
+            ChromePosition::Left => {
+                let x = allocated_left;
+                allocated_left += size;
+                reovim_client_driver::Rect { x, y: 0, width: size, height }
+            }
+            ChromePosition::Right => {
+                let x = width.saturating_sub(allocated_right + size);
+                allocated_right += size;
+                reovim_client_driver::Rect { x, y: 0, width: size, height }
+            }
+            ChromePosition::Overlay => {
+                // Overlays get full screen bounds
+                reovim_client_driver::Rect { x: 0, y: 0, width, height }
+            }
+        };
+
+        let mut surface = BackendSurfaceAdapter::new(backend);
+        ext.chrome_render(&mut surface, bounds, caps);
     }
 }
 
@@ -1139,50 +1192,7 @@ fn compute_cursor_visual_col(
     source_to_display_col(&concealed, source_col) as u16
 }
 
-/// Render the statusline at the bottom of the screen.
-#[allow(clippy::cast_possible_truncation)]
-fn render_statusline<B: RenderBackend>(
-    backend: &mut B,
-    state: &TuiCoreState,
-    width: u16,
-    height: u16,
-) {
-    let status_y = height.saturating_sub(1);
 
-    // Mode indicator
-    let mode_style = mode_style(&state.mode_display);
-    let mode_str = format!(" {} ", state.mode_display);
-    backend.write_str(0, status_y, &mode_str, &mode_style);
-
-    // Cursor position (right side) - use get_focused_cursor() as single source of truth
-    // Show "?:?" if no cursor data yet (e.g., before first CursorMoved notification)
-    let pos_str = state.get_focused_cursor().map_or_else(
-        || "?:?".to_string(),
-        |cursor| format!("{}:{}", cursor.line + 1, cursor.column + 1),
-    );
-    let pos_x = width.saturating_sub(pos_str.len() as u16 + 1);
-    let pos_style = Style::default();
-    backend.write_str(pos_x, status_y, &pos_str, &pos_style);
-}
-
-/// Get the style for a mode indicator.
-// TODO(#494): Theme integration — use theme palette instead of hardcoded colors
-fn mode_style(mode: &str) -> Style {
-    let mode_lower = mode.to_lowercase();
-    let (fg, bg) = if mode_lower.contains("insert") {
-        (Color::Black, Color::Green)
-    } else if mode_lower.contains("visual") {
-        (Color::Black, Color::Magenta)
-    } else if mode_lower.contains("command") || mode_lower.contains("cmdline") {
-        (Color::Black, Color::Yellow)
-    } else if mode_lower.contains("replace") {
-        (Color::Black, Color::Red)
-    } else {
-        // Normal mode
-        (Color::Black, Color::Blue)
-    };
-    Style::default().fg(fg).bg(bg)
-}
 
 #[cfg(test)]
 #[path = "render_engine_tests.rs"]

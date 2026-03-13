@@ -17,6 +17,20 @@ use {
     reovim_driver_display::render_backend::TuiExtension,
 };
 
+use reovim_client_driver::ClientModule;
+
+/// Create native `ClientModule` instances that bypass the bridge adapter.
+///
+/// These modules implement `ClientModule` directly (not wrapped via
+/// `TuiExtensionBridge`). Called alongside `create_extensions()` during
+/// engine startup.
+#[must_use]
+pub fn create_native_modules() -> Vec<Box<dyn ClientModule>> {
+    vec![
+        Box::new(reovim_tui_mod_statusline::StatuslineModule::new()),
+    ]
+}
+
 /// Create all default TUI extensions, sorted by dependency order (#583).
 ///
 /// Called once at engine startup. Extensions are topologically sorted via

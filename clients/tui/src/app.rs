@@ -188,9 +188,13 @@ impl<O: TuiOutput> TuiApp<O> {
             theme_loader,
             pending_token_refresh: std::collections::HashSet::new(),
             needs_display_options_refresh: false,
-            extensions: crate::bridge::wrap_extensions(
-                reovim_tui_ext_defaults::create_extensions(),
-            ),
+            extensions: {
+                let mut modules = reovim_tui_ext_defaults::create_native_modules();
+                modules.extend(crate::bridge::wrap_extensions(
+                    reovim_tui_ext_defaults::create_extensions(),
+                ));
+                modules
+            },
             capabilities: crate::render_engine_bridge::TuiPlatformCapabilities::new(
                 width,
                 height,
@@ -212,7 +216,9 @@ impl<O: TuiOutput> TuiApp<O> {
         &mut self,
         extensions: Vec<Box<dyn reovim_driver_display::render_backend::TuiExtension>>,
     ) {
-        self.extensions = crate::bridge::wrap_extensions(extensions);
+        let mut modules = reovim_tui_ext_defaults::create_native_modules();
+        modules.extend(crate::bridge::wrap_extensions(extensions));
+        self.extensions = modules;
     }
 
     /// Apply a theme by name.

@@ -65,6 +65,7 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "time"] }
 reovim-testing = { workspace = true }
 reovim-protocol = { workspace = true, features = ["grpc"] }
+reovim-tui-mod-statusline = { workspace = true }
 tempfile = "3"
 
 [lints]

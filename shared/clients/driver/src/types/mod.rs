@@ -120,6 +120,14 @@ pub struct Insets {
 }
 
 impl Insets {
+    /// Zero insets (no padding on any side).
+    pub const ZERO: Self = Self {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0,
+    };
+
     #[must_use]
     pub const fn new(top: u16, bottom: u16, left: u16, right: u16) -> Self {
         Self {
@@ -348,6 +356,55 @@ impl Style {
             bg: None,
             attributes: Attributes::new(),
         }
+    }
+
+    /// Set foreground color (builder pattern).
+    #[must_use]
+    pub const fn fg(mut self, color: Color) -> Self {
+        self.fg = Some(color);
+        self
+    }
+
+    /// Set background color (builder pattern).
+    #[must_use]
+    pub const fn bg(mut self, color: Color) -> Self {
+        self.bg = Some(color);
+        self
+    }
+
+    /// Enable bold attribute (builder pattern).
+    #[must_use]
+    pub const fn bold(mut self) -> Self {
+        self.attributes.set(Attributes::BOLD);
+        self
+    }
+
+    /// Enable italic attribute (builder pattern).
+    #[must_use]
+    pub const fn italic(mut self) -> Self {
+        self.attributes.set(Attributes::ITALIC);
+        self
+    }
+
+    /// Enable underline attribute (builder pattern).
+    #[must_use]
+    pub const fn underline(mut self) -> Self {
+        self.attributes.set(Attributes::UNDERLINE);
+        self
+    }
+
+    /// Enable dim attribute (builder pattern).
+    #[must_use]
+    pub const fn dim(mut self) -> Self {
+        self.attributes.set(Attributes::DIM);
+        self
+    }
+
+    /// Enable reverse attribute (builder pattern).
+    #[must_use]
+    pub const fn reverse(mut self) -> Self {
+        self.attributes.set(Attributes::REVERSE);
+        self
     }
 }
 

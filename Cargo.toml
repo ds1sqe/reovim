@@ -126,6 +126,9 @@ members = [
     "clients/tui/extensions/pair",
     "clients/tui/extensions/defaults",
 
+    # Client modules - TUI (native ClientModule implementations)
+    "clients/tui/modules/statusline",
+
     # Client layer - CLI
     "clients/cli",
 
@@ -340,6 +343,9 @@ reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-stru
 reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.12.0-dev" }
 reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.12.0-dev" }
 
+# Client modules - TUI (native ClientModule implementations)
+reovim-tui-mod-statusline = { path = "./clients/tui/modules/statusline", version = "0.12.0-dev" }
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 
@@ -355,6 +361,9 @@ arboard = "3"
 libloading = "0.8"
 sha2 = "0.10"
 hex = "0.4"
+
+# Unicode
+unicode-width = "0.2"
 
 # Fuzzy matching
 nucleo = "0.5"

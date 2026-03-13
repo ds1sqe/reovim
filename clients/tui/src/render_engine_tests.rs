@@ -74,24 +74,37 @@ fn test_render_frame_basic() {
     let config = RenderConfig::default();
 
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
 
-    // Should have rendered statusline
+    // Statusline is now a chrome module — include it
+    let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
+
+    // Should have rendered statusline via chrome dispatch
     let last_row = fb.row(23).unwrap();
     // At minimum, some cells should be non-empty
     assert!(last_row.iter().any(|c| c.char != ' '));
 }
 
 #[test]
-fn test_mode_style() {
-    let insert_style = mode_style("INSERT");
-    assert_eq!(insert_style.bg, Some(Color::Green));
+fn test_mode_style_moved_to_statusline_module() {
+    // mode_style is now in reovim-tui-mod-statusline.
+    // Tested there: statusline module has 20 tests covering all modes.
+    // This test verifies the statusline module renders via chrome dispatch.
+    let mut fb = FrameBuffer::new(80, 24);
+    let state = TuiCoreState::new(1);
+    let config = RenderConfig::default();
+    let (tc, tm) = test_syntax();
 
-    let normal_style = mode_style("NORMAL");
-    assert_eq!(normal_style.bg, Some(Color::Blue));
+    // StatuslineModule is a native ClientModule — need to pass it via extensions
+    let mut statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    statusline.on_mode_change("NORMAL");
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
-    let visual_style = mode_style("VISUAL");
-    assert_eq!(visual_style.bg, Some(Color::Magenta));
+    // Statusline renders at bottom via chrome dispatch
+    let cell = fb.get(1, 23).unwrap();
+    assert_eq!(cell.char, 'N'); // " NORMAL " - 'N' at x=1
 }
 
 #[test]
@@ -605,18 +618,7 @@ fn test_label_text_helper() {
     assert!(label_text("x", "NORMAL").contains("[N]"));
 }
 
-#[test]
-fn test_mode_style_command() {
-    let style = mode_style("COMMAND");
-    assert_eq!(style.bg, Some(Color::Yellow));
-    assert_eq!(style.fg, Some(Color::Black));
-}
-
-#[test]
-fn test_mode_style_cmdline() {
-    let style = mode_style("CMDLINE");
-    assert_eq!(style.bg, Some(Color::Yellow));
-}
+// mode_style_command and mode_style_cmdline tests moved to reovim-tui-mod-statusline
 
 #[test]
 fn test_mode_abbreviation_cmdline_without_command() {
@@ -625,22 +627,7 @@ fn test_mode_abbreviation_cmdline_without_command() {
     assert_eq!(abbrev, "[C]");
 }
 
-#[test]
-fn test_mode_style_replace() {
-    let style = mode_style("REPLACE");
-    assert_eq!(style.bg, Some(Color::Red));
-    assert_eq!(style.fg, Some(Color::Black));
-}
-
-#[test]
-fn test_mode_style_case_insensitive() {
-    // mode_style lowercases before checking
-    let insert = mode_style("Insert");
-    assert_eq!(insert.bg, Some(Color::Green));
-
-    let visual = mode_style("Visual Line");
-    assert_eq!(visual.bg, Some(Color::Magenta));
-}
+// mode_style_replace and mode_style_case_insensitive tests moved to reovim-tui-mod-statusline
 
 #[test]
 fn test_render_config_default() {
@@ -820,17 +807,18 @@ fn test_render_self_cursor_headless() {
 #[test]
 fn test_render_statusline_with_cursor() {
     let mut fb = FrameBuffer::new(40, 10);
-    let mut state = TuiCoreState::new(1);
-    state.mode_display = "NORMAL".to_string();
-    state.focused_window_id = 1;
-    state.update_local_cursor(1, 3, 7);
-
+    let state = TuiCoreState::new(1);
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+
+    // Create statusline module with cursor
+    let mut statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    statusline.on_mode_change("NORMAL");
+    statusline.on_cursor_update(reovim_client_driver::BufferId(0), 3, 7);
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
     // Statusline at row 9 (height - 1)
-    // Should contain mode indicator
     let cell = fb.get(1, 9).unwrap();
     assert_eq!(cell.char, 'N'); // " NORMAL " starts at x=0 with space, 'N' at x=1
 }
@@ -838,13 +826,14 @@ fn test_render_statusline_with_cursor() {
 #[test]
 fn test_render_statusline_without_cursor() {
     let mut fb = FrameBuffer::new(40, 10);
-    let mut state = TuiCoreState::new(1);
-    state.mode_display = "INSERT".to_string();
-    // No cursor set - should show "?:?"
-
+    let state = TuiCoreState::new(1);
     let config = RenderConfig::default();
     let (tc, tm) = test_syntax();
-    render_frame(&mut fb, &state, &config, &[], &tc, &tm);
+
+    // Create statusline module without cursor update (shows "?:?")
+    let statusline = reovim_tui_mod_statusline::StatuslineModule::new();
+    let extensions: Vec<Box<dyn ClientModule>> = vec![Box::new(statusline)];
+    render_frame(&mut fb, &state, &config, &extensions, &tc, &tm);
 
     // Statusline should be rendered (row 9)
     let last_row = fb.row(9).unwrap();

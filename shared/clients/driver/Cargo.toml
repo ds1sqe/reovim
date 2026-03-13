@@ -14,3 +14,4 @@ workspace = true
 
 [dependencies]
 reovim-arch = { workspace = true }
+unicode-width = { workspace = true }

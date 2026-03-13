@@ -2278,6 +2278,7 @@ name = "reovim-client-driver"
 version = "0.12.0-dev"
 dependencies = [
  "reovim-arch",
+ "unicode-width",
 ]
 
 [[package]]
@@ -2308,6 +2309,7 @@ dependencies = [
  "reovim-protocol",
  "reovim-testing",
  "reovim-tui-ext-defaults",
+ "reovim-tui-mod-statusline",
  "serde",
  "serde_json",
  "tempfile",
@@ -3605,6 +3607,7 @@ dependencies = [
 name = "reovim-tui-ext-defaults"
 version = "0.12.0-dev"
 dependencies = [
+ "reovim-client-driver",
  "reovim-depgraph",
  "reovim-driver-display",
  "reovim-tui-ext-cmdline",
@@ -3621,6 +3624,7 @@ dependencies = [
  "reovim-tui-ext-signature-help",
  "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
+ "reovim-tui-mod-statusline",
  "tracing",
 ]
 
@@ -3732,6 +3736,13 @@ dependencies = [
  "reovim-arch",
  "reovim-driver-display",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-mod-statusline"
+version = "0.12.0-dev"
+dependencies = [
+ "reovim-client-driver",
 ]
 
 [[package]]
