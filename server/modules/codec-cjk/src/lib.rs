@@ -5,7 +5,7 @@
 //! Provides CJK encoding support for the content codec pipeline:
 //! - EUC-KR (Korean)
 //! - Shift-JIS (Japanese)
-//! - GB2312/GBK (Simplified Chinese)
+//! - GBK (Simplified Chinese)
 //! - Big5 (Traditional Chinese)
 //!
 //! These are bidirectional codecs with round-trip guarantees for characters

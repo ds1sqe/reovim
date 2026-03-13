@@ -14,7 +14,7 @@ const CJK_ENCODINGS: &[(&str, &encoding_rs::Encoding)] = &[
 
 /// Factory for creating CJK encoding codecs.
 ///
-/// Creates [`CjkCodec`] instances for EUC-KR, Shift-JIS, GB2312, and Big5.
+/// Creates [`CjkCodec`] instances for EUC-KR, Shift-JIS, GBK, and Big5.
 pub struct CjkCodecFactory;
 
 impl CjkCodecFactory {
