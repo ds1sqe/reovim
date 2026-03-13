@@ -2,7 +2,13 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.11.0-dev
+## [Unreleased] - v0.12.0-dev
+
+### Changed
+
+- **Version bump**: Start CLM (Client Layer Model) epic (#628)
+
+## [0.11.0-dev] - 2026-03-13
 
 ### Changed
 
