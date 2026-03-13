@@ -99,6 +99,9 @@ members = [
     "server/modules/codec-hex",
     "server/modules/codec-cjk",
     "server/modules/codec-legacy",
+    "server/modules/codec-pdf",
+    "server/modules/codec-binary-struct",
+    "server/modules/codec-csv",
 
     # Client layer - TUI
     "clients/tui",
@@ -328,6 +331,9 @@ reovim-module-codec-utf8 = { path = "./server/modules/codec-utf8", version = "0.
 reovim-module-codec-hex = { path = "./server/modules/codec-hex", version = "0.11.0-dev" }
 reovim-module-codec-cjk = { path = "./server/modules/codec-cjk", version = "0.11.0-dev" }
 reovim-module-codec-legacy = { path = "./server/modules/codec-legacy", version = "0.11.0-dev" }
+reovim-module-codec-pdf = { path = "./server/modules/codec-pdf", version = "0.11.0-dev" }
+reovim-module-codec-binary-struct = { path = "./server/modules/codec-binary-struct", version = "0.11.0-dev" }
+reovim-module-codec-csv = { path = "./server/modules/codec-csv", version = "0.11.0-dev" }
 reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.11.0-dev" }
 
 # CLI
@@ -352,3 +358,11 @@ ignore = "0.4"
 
 # Encoding support
 encoding_rs = "0.8"
+
+# Document format support
+pdf-extract = "0.7"
+
+# Binary format parsing
+goblin = "0.9"
+zip = { version = "8", default-features = false }
+csv = "1.3"

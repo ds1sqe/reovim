@@ -74,6 +74,34 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Windows-1252 uses `encoding_rs`. Both are bidirectional with round-trip guarantees.
   `encoding_rs` is the only new external dependency.
 
+- **PDF content codec (#640, part of #627)**: New `reovim-module-codec-pdf` module provides
+  read-only text extraction from PDF files. `PdfClassifier` (priority 35) detects `%PDF-` magic
+  bytes at offset 0 with `.pdf` extension fast-path. `PdfCodec` extracts text via `pdf-extract`
+  crate, producing page-delimited content with `--- Page N ---` separators and
+  `content.pdf.page` annotations with page number payloads. One-way codec: `decode()` extracts
+  text, `encode()` returns `None`. `lossy: true`, `readonly: true`. Metadata includes
+  `page_count`. New workspace dependency: `pdf-extract = "0.7"`. 44 tests.
+
+- **ELF/ZIP structured binary codec (#641, part of #627)**: New
+  `reovim-module-codec-binary-struct` module provides structured summaries for ELF binaries and
+  ZIP archives. `ElfClassifier` (priority 33) detects `\x7fELF` magic, `ZipClassifier`
+  (priority 31) detects `PK\x03\x04` magic with extension fast-path for `.zip`, `.jar`, `.war`,
+  `.apk`, `.xlsx`, `.docx`, etc. `ElfCodec` produces header info, section table with
+  name/size/offset/type columns. `ZipCodec` produces entry listing. Annotations:
+  `content.elf.header`, `content.elf.section`, `content.zip.header`, `content.zip.entry`. Both
+  one-way codecs: `lossy: true`, `readonly: true`. New workspace dependencies: `goblin = "0.9"`,
+  `zip = "8"`. 76 tests.
+
+- **CSV/TSV/PSV content codec (#642, part of #627)**: New `reovim-module-codec-csv` module
+  provides bidirectional column-aligned tabular view for delimiter-separated files.
+  `CsvClassifier` (priority 15) detects CSV/TSV/PSV by delimiter analysis (consistent columns
+  across rows, minimum 2 columns and 2 rows) with extension fast-path for `.csv`, `.tsv`,
+  `.psv`, `.tab`. `CsvCodec` decodes into column-aligned text with 2-space separators, minimum
+  column width 3. Full round-trip: `encode()` reconstructs original delimiter/quoting/line
+  endings from metadata. Header detection via numeric-vs-text heuristic. Annotations:
+  `content.csv.header` (header row), `content.csv.column` (every row with column count payload).
+  `lossy: false`, `readonly: false`. New workspace dependency: `csv = "1.3"`. 71 tests.
+
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
   registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
   factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to

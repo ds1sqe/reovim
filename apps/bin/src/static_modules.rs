@@ -46,6 +46,15 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     map.insert("codec-legacy", || {
         Box::new(reovim_module_codec_legacy::CodecLegacyModule::new())
     });
+    map.insert("codec-pdf", || {
+        Box::new(reovim_module_codec_pdf::CodecPdfModule::new())
+    });
+    map.insert("codec-binary-struct", || {
+        Box::new(reovim_module_codec_binary_struct::CodecBinaryStructModule::new())
+    });
+    map.insert("codec-csv", || {
+        Box::new(reovim_module_codec_csv::CodecCsvModule::new())
+    });
 
     // Tier 2: Utility modules
     map.insert("keymap", || Box::new(reovim_module_keymap::KeymapModule));

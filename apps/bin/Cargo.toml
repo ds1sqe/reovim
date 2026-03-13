@@ -30,6 +30,9 @@ static-modules = [
     "dep:reovim-module-codec-hex",
     "dep:reovim-module-codec-cjk",
     "dep:reovim-module-codec-legacy",
+    "dep:reovim-module-codec-pdf",
+    "dep:reovim-module-codec-binary-struct",
+    "dep:reovim-module-codec-csv",
     "dep:reovim-module-keymap",
     "dep:reovim-module-commands",
     "dep:reovim-module-editor",
@@ -132,6 +135,9 @@ reovim-module-codec-utf8 = { workspace = true, optional = true }
 reovim-module-codec-hex = { workspace = true, optional = true }
 reovim-module-codec-cjk = { workspace = true, optional = true }
 reovim-module-codec-legacy = { workspace = true, optional = true }
+reovim-module-codec-pdf = { workspace = true, optional = true }
+reovim-module-codec-binary-struct = { workspace = true, optional = true }
+reovim-module-codec-csv = { workspace = true, optional = true }
 
 # Tier 2: Utility modules
 reovim-module-keymap = { workspace = true, optional = true }
