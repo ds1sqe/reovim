@@ -3,6 +3,7 @@ pub mod conceal;
 pub mod traits;
 pub mod types;
 pub mod ui;
+pub mod viewport;
 
 pub use {conceal::*, traits::*, types::*};
 

@@ -352,6 +352,48 @@ fn render_surface_object_safety() {
 }
 
 // =============================================================================
+// TokenProvider trait (verify trait is object-safe)
+// =============================================================================
+
+struct MockTokenProvider;
+
+impl TokenProvider for MockTokenProvider {
+    fn tokens_for_line(&self, _buffer_id: crate::BufferId, _line: u32) -> Vec<crate::SyntaxToken> {
+        Vec::new()
+    }
+}
+
+#[test]
+fn token_provider_object_safety() {
+    let provider: Box<dyn TokenProvider> = Box::new(MockTokenProvider);
+    let tokens = provider.tokens_for_line(crate::BufferId(0), 0);
+    assert!(tokens.is_empty());
+}
+
+#[test]
+fn token_provider_returns_tokens() {
+    struct FilledTokenProvider;
+    impl TokenProvider for FilledTokenProvider {
+        fn tokens_for_line(
+            &self,
+            _buffer_id: crate::BufferId,
+            _line: u32,
+        ) -> Vec<crate::SyntaxToken> {
+            vec![crate::SyntaxToken {
+                line: 0,
+                start_col: 0,
+                end_col: 5,
+                category: "keyword".to_owned(),
+            }]
+        }
+    }
+    let provider = FilledTokenProvider;
+    let tokens = provider.tokens_for_line(crate::BufferId(1), 0);
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].category, "keyword");
+}
+
+// =============================================================================
 // ViewportRenderer trait (verify trait is object-safe)
 // =============================================================================
 
@@ -369,7 +411,9 @@ impl ViewportRenderer for MockViewportRenderer {
         &self,
         _surface: &mut dyn RenderSurface,
         _viewport: Rect,
+        _ctx: &crate::ViewportContext<'_>,
         _modules: &[Box<dyn ClientModule>],
+        _tokens: &dyn TokenProvider,
         _theme: &dyn ThemeProvider,
         _caps: &dyn PlatformCapabilities,
     ) {

@@ -952,6 +952,326 @@ fn focus_event_debug() {
 }
 
 // =============================================================================
+// LineNumberMode
+// =============================================================================
+
+#[test]
+fn line_number_mode_default() {
+    let mode = LineNumberMode::default();
+    assert_eq!(mode, LineNumberMode::None);
+}
+
+#[test]
+fn line_number_mode_variants() {
+    let modes = [
+        LineNumberMode::None,
+        LineNumberMode::Absolute,
+        LineNumberMode::Relative,
+        LineNumberMode::Hybrid,
+    ];
+    for (i, m) in modes.iter().enumerate() {
+        for (j, other) in modes.iter().enumerate() {
+            if i == j {
+                assert_eq!(m, other);
+            } else {
+                assert_ne!(m, other);
+            }
+        }
+    }
+}
+
+#[test]
+fn line_number_mode_copy() {
+    let a = LineNumberMode::Relative;
+    let b = a;
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// CursorInfo
+// =============================================================================
+
+#[test]
+fn cursor_info_default() {
+    let c = CursorInfo::default();
+    assert_eq!(c.line, 0);
+    assert_eq!(c.column, 0);
+}
+
+#[test]
+fn cursor_info_construction() {
+    let c = CursorInfo {
+        line: 42,
+        column: 10,
+    };
+    assert_eq!(c.line, 42);
+    assert_eq!(c.column, 10);
+}
+
+#[test]
+fn cursor_info_equality() {
+    let a = CursorInfo { line: 1, column: 2 };
+    let b = CursorInfo { line: 1, column: 2 };
+    assert_eq!(a, b);
+    let c = CursorInfo { line: 1, column: 3 };
+    assert_ne!(a, c);
+}
+
+#[test]
+fn cursor_info_copy() {
+    let a = CursorInfo {
+        line: 5,
+        column: 10,
+    };
+    let b = a;
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// SelectionMode
+// =============================================================================
+
+#[test]
+fn selection_mode_variants() {
+    let modes = [
+        SelectionMode::Char,
+        SelectionMode::Line,
+        SelectionMode::Block,
+    ];
+    for (i, m) in modes.iter().enumerate() {
+        for (j, other) in modes.iter().enumerate() {
+            if i == j {
+                assert_eq!(m, other);
+            } else {
+                assert_ne!(m, other);
+            }
+        }
+    }
+}
+
+#[test]
+fn selection_mode_copy() {
+    let a = SelectionMode::Block;
+    let b = a;
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// SelectionInfo
+// =============================================================================
+
+#[test]
+fn selection_info_construction() {
+    let sel = SelectionInfo {
+        start_line: 1,
+        start_col: 0,
+        end_line: 3,
+        end_col: 5,
+        mode: SelectionMode::Char,
+        color: Color::Blue,
+    };
+    assert_eq!(sel.start_line, 1);
+    assert_eq!(sel.start_col, 0);
+    assert_eq!(sel.end_line, 3);
+    assert_eq!(sel.end_col, 5);
+    assert_eq!(sel.mode, SelectionMode::Char);
+}
+
+#[test]
+fn selection_info_clone() {
+    let sel = SelectionInfo {
+        start_line: 0,
+        start_col: 0,
+        end_line: 0,
+        end_col: 10,
+        mode: SelectionMode::Line,
+        color: Color::Red,
+    };
+    assert_eq!(Clone::clone(&sel).start_line, 0);
+    assert_eq!(Clone::clone(&sel).end_col, 10);
+    assert_eq!(Clone::clone(&sel).mode, SelectionMode::Line);
+}
+
+#[test]
+fn selection_info_block_mode() {
+    let sel = SelectionInfo {
+        start_line: 5,
+        start_col: 3,
+        end_line: 10,
+        end_col: 8,
+        mode: SelectionMode::Block,
+        color: Color::Rgb {
+            r: 50,
+            g: 50,
+            b: 100,
+        },
+    };
+    assert_eq!(sel.mode, SelectionMode::Block);
+}
+
+// =============================================================================
+// RemoteClientInfo
+// =============================================================================
+
+#[test]
+fn remote_client_info_construction() {
+    let remote = RemoteClientInfo {
+        client_id: 42,
+        display_name: "Alice".to_string(),
+        cursor_line: 10,
+        cursor_col: 5,
+        mode: "normal".to_string(),
+        cursor_color: Color::Blue,
+        selection: None,
+    };
+    assert_eq!(remote.client_id, 42);
+    assert_eq!(remote.display_name, "Alice");
+    assert_eq!(remote.cursor_line, 10);
+    assert_eq!(remote.cursor_col, 5);
+    assert_eq!(remote.mode, "normal");
+    assert!(remote.selection.is_none());
+}
+
+#[test]
+fn remote_client_info_with_selection() {
+    let remote = RemoteClientInfo {
+        client_id: 1,
+        display_name: "Bob".to_string(),
+        cursor_line: 5,
+        cursor_col: 0,
+        mode: "visual".to_string(),
+        cursor_color: Color::Green,
+        selection: Some(SelectionInfo {
+            start_line: 5,
+            start_col: 0,
+            end_line: 8,
+            end_col: 10,
+            mode: SelectionMode::Char,
+            color: Color::DarkBlue,
+        }),
+    };
+    assert!(remote.selection.is_some());
+    let sel = remote.selection.as_ref().unwrap();
+    assert_eq!(sel.end_line, 8);
+}
+
+#[test]
+fn remote_client_info_clone() {
+    let remote = RemoteClientInfo {
+        client_id: 99,
+        display_name: "Clone".to_string(),
+        cursor_line: 0,
+        cursor_col: 0,
+        mode: "insert".to_string(),
+        cursor_color: Color::Red,
+        selection: None,
+    };
+    assert_eq!(Clone::clone(&remote).client_id, 99);
+    assert_eq!(Clone::clone(&remote).display_name, "Clone");
+}
+
+// =============================================================================
+// ViewportContext
+// =============================================================================
+
+#[test]
+fn viewport_context_minimal() {
+    let ctx = ViewportContext {
+        buffer_id: None,
+        buffer_lines: None,
+        cursor: None,
+        scroll_top: 0,
+        local_selection: None,
+        remote_clients: &[],
+        fold_ranges: &[],
+        virtual_lines: &[],
+        opacity: 1.0,
+        line_number_mode: LineNumberMode::None,
+        gutter_width: 0,
+        sidebar_width: 0,
+        is_insert_mode: false,
+        render_self_cursor: false,
+        my_client_id: 0,
+    };
+    assert!(ctx.buffer_id.is_none());
+    assert!(ctx.buffer_lines.is_none());
+    assert!(ctx.cursor.is_none());
+    assert!(ctx.local_selection.is_none());
+    assert!(ctx.remote_clients.is_empty());
+    assert!(ctx.fold_ranges.is_empty());
+    assert!(ctx.virtual_lines.is_empty());
+    assert!((ctx.opacity - 1.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn viewport_context_with_content() {
+    let lines = vec!["hello".to_string(), "world".to_string()];
+    let remote = RemoteClientInfo {
+        client_id: 1,
+        display_name: "Peer".to_string(),
+        cursor_line: 0,
+        cursor_col: 3,
+        mode: "normal".to_string(),
+        cursor_color: Color::Blue,
+        selection: None,
+    };
+    let remotes = vec![remote];
+    let folds = vec![(5, 3)];
+
+    let ctx = ViewportContext {
+        buffer_id: Some(BufferId(1)),
+        buffer_lines: Some(&lines),
+        cursor: Some(CursorInfo {
+            line: 0,
+            column: 2,
+        }),
+        scroll_top: 0,
+        local_selection: None,
+        remote_clients: &remotes,
+        fold_ranges: &folds,
+        virtual_lines: &[],
+        opacity: 0.8,
+        line_number_mode: LineNumberMode::Absolute,
+        gutter_width: 4,
+        sidebar_width: 0,
+        is_insert_mode: false,
+        render_self_cursor: true,
+        my_client_id: 42,
+    };
+    assert_eq!(ctx.buffer_id, Some(BufferId(1)));
+    assert_eq!(ctx.buffer_lines.unwrap().len(), 2);
+    assert_eq!(ctx.cursor.unwrap().column, 2);
+    assert_eq!(ctx.remote_clients.len(), 1);
+    assert_eq!(ctx.fold_ranges.len(), 1);
+    assert_eq!(ctx.gutter_width, 4);
+    assert!(ctx.render_self_cursor);
+    assert_eq!(ctx.my_client_id, 42);
+}
+
+#[test]
+fn viewport_context_debug() {
+    let ctx = ViewportContext {
+        buffer_id: None,
+        buffer_lines: None,
+        cursor: None,
+        scroll_top: 0,
+        local_selection: None,
+        remote_clients: &[],
+        fold_ranges: &[],
+        virtual_lines: &[],
+        opacity: 1.0,
+        line_number_mode: LineNumberMode::None,
+        gutter_width: 0,
+        sidebar_width: 0,
+        is_insert_mode: false,
+        render_self_cursor: false,
+        my_client_id: 0,
+    };
+    let debug = format!("{ctx:?}");
+    assert!(debug.contains("ViewportContext"));
+}
+
+// =============================================================================
 // PointerButton
 // =============================================================================
 

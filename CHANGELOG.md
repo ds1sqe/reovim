@@ -40,6 +40,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Bridge `classify_extension()` cleaned: only 5 buffer-contrib extensions remain.
   11 native module crates total.
 
+- **ViewportRenderer extraction** (#635): Extract the buffer rendering pipeline from
+  `render_engine.rs` into a platform-agnostic `DefaultViewportRenderer` in the client-driver
+  crate. Port conceal system (`SyntaxToken`, `ConcealDecoration`, `ConcealedLine`,
+  `apply_conceals()`, `source_to_display_col()`, `dim_style()`, color blending) to
+  `shared/clients/driver/src/conceal.rs`. Add viewport types: `ViewportContext`,
+  `CursorInfo`, `SelectionInfo`, `SelectionMode`, `RemoteClientInfo`, `LineNumberMode`.
+  Add `TokenProvider` trait for syntax token abstraction. `DefaultViewportRenderer`
+  handles buffer content (syntax highlighting, conceals, folds, virtual lines, line
+  numbers, transformed lines), selections (local + remote, char/line/block modes),
+  and cursors (self + remote with CBF-8 colorblind-friendly palette and labels).
+  Expand `ViewportRenderer::render_viewport()` with `ViewportContext` + `TokenProvider`.
+  67 viewport tests, 27 conceal tests.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)

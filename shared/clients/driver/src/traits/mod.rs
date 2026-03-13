@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError, ColumnWidth,
     GutterCell, Insets, OptionValue, ProbeResult, Rect, RenderBehavior, RenderingModel, Style,
-    TransformedLine, Version, VirtualLine, WindowId, WindowLayout,
+    SyntaxToken, TransformedLine, Version, ViewportContext, VirtualLine, WindowId, WindowLayout,
     types::{Color, ColorDepth, InlineDecoration},
 };
 
@@ -339,14 +339,28 @@ pub trait ThemeProvider: Send + Sync {
 }
 
 // =============================================================================
+// TokenProvider
+// =============================================================================
+
+/// Provides syntax tokens for viewport rendering.
+///
+/// Abstracts over the annotation/syntax cache. The TUI implements this
+/// with `AnnotationCacheManager`, but other platforms can provide tokens
+/// from different sources.
+pub trait TokenProvider: Send + Sync {
+    /// Get syntax tokens for a specific line in a buffer.
+    fn tokens_for_line(&self, buffer_id: BufferId, line: u32) -> Vec<SyntaxToken>;
+}
+
+// =============================================================================
 // ViewportRenderer
 // =============================================================================
 
 /// Renders buffer content into a viewport region.
 ///
 /// The default implementation handles gutter, folds, virtual lines, token
-/// classification, and cursor rendering. Custom implementations can override
-/// for specialized rendering (e.g., hex editor).
+/// classification, conceals, selections, and cursor rendering. Custom
+/// implementations can override for specialized rendering (e.g., hex editor).
 pub trait ViewportRenderer: Send + Sync {
     /// Calculate the total gutter width from annotation modules.
     fn gutter_width(
@@ -356,11 +370,14 @@ pub trait ViewportRenderer: Send + Sync {
     ) -> u16;
 
     /// Render the buffer viewport into the surface.
+    #[allow(clippy::too_many_arguments)]
     fn render_viewport(
         &self,
         surface: &mut dyn RenderSurface,
         viewport: Rect,
+        ctx: &ViewportContext<'_>,
         modules: &[Box<dyn ClientModule>],
+        tokens: &dyn TokenProvider,
         theme: &dyn ThemeProvider,
         caps: &dyn PlatformCapabilities,
     );

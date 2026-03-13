@@ -276,6 +276,119 @@ pub struct WindowLayout {
 }
 
 // =============================================================================
+// Viewport Rendering
+// =============================================================================
+
+/// Line number display mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineNumberMode {
+    /// No line numbers.
+    #[default]
+    None,
+    /// Absolute line numbers (1, 2, 3...).
+    Absolute,
+    /// Relative line numbers (distance from cursor).
+    Relative,
+    /// Hybrid: absolute for cursor line, relative for others.
+    Hybrid,
+}
+
+/// Cursor position for viewport rendering.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CursorInfo {
+    /// Line number (0-indexed).
+    pub line: u64,
+    /// Column number (0-indexed).
+    pub column: u64,
+}
+
+/// Visual selection mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionMode {
+    /// Character-wise selection.
+    Char,
+    /// Line-wise selection.
+    Line,
+    /// Block (column) selection.
+    Block,
+}
+
+/// A visual selection range for viewport rendering.
+#[derive(Debug, Clone)]
+pub struct SelectionInfo {
+    /// Start line (0-indexed).
+    pub start_line: u64,
+    /// Start column (0-indexed).
+    pub start_col: u64,
+    /// End line (0-indexed).
+    pub end_line: u64,
+    /// End column (0-indexed).
+    pub end_col: u64,
+    /// Selection mode.
+    pub mode: SelectionMode,
+    /// Background color for this selection.
+    pub color: Color,
+}
+
+/// Presence information for a remote client in the viewport.
+#[derive(Debug, Clone)]
+pub struct RemoteClientInfo {
+    /// Client's unique ID.
+    pub client_id: u64,
+    /// User-friendly display name.
+    pub display_name: String,
+    /// Cursor line (0-indexed).
+    pub cursor_line: u64,
+    /// Cursor column (0-indexed).
+    pub cursor_col: u64,
+    /// Current mode name.
+    pub mode: String,
+    /// Cursor color from the palette.
+    pub cursor_color: Color,
+    /// Selection range (if in visual mode).
+    pub selection: Option<SelectionInfo>,
+}
+
+/// Read-only context for viewport rendering.
+///
+/// Carries all state the viewport renderer needs to produce a frame.
+/// Constructed by the compositor (render engine) from TUI core state
+/// and passed to `ViewportRenderer::render_viewport()`.
+#[derive(Debug)]
+pub struct ViewportContext<'a> {
+    /// Buffer being rendered.
+    pub buffer_id: Option<BufferId>,
+    /// Buffer content lines.
+    pub buffer_lines: Option<&'a [String]>,
+    /// Local cursor position.
+    pub cursor: Option<CursorInfo>,
+    /// First visible buffer line (0-indexed).
+    pub scroll_top: usize,
+    /// Local selection (if in visual mode).
+    pub local_selection: Option<SelectionInfo>,
+    /// Remote client presence info.
+    pub remote_clients: &'a [RemoteClientInfo],
+    /// Folded line ranges: `(start_line, line_count)`.
+    pub fold_ranges: &'a [(usize, usize)],
+    /// Virtual lines injected by modules.
+    pub virtual_lines: &'a [VirtualLine],
+    /// Window opacity (`1.0` = fully opaque).
+    pub opacity: f32,
+    /// Line number display mode.
+    pub line_number_mode: LineNumberMode,
+    /// Gutter width (for line numbers + annotations).
+    pub gutter_width: u16,
+    /// Sidebar width (from left-chrome modules).
+    pub sidebar_width: u16,
+    /// Whether in insert mode (affects conceal bypass).
+    pub is_insert_mode: bool,
+    /// Whether to render cursor in buffer (headless mode).
+    pub render_self_cursor: bool,
+    /// Local client ID (for excluding from remote rendering).
+    pub my_client_id: u64,
+}
+
+// =============================================================================
 // Style
 // =============================================================================
 
