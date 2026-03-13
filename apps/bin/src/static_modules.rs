@@ -34,27 +34,18 @@ pub fn builtin_registry() -> HashMap<&'static str, ModuleFactory> {
     });
     map.insert("vfs-local", || Box::new(reovim_module_vfs_local::VfsLocalModule::new()));
     map.insert("clipboard", || Box::new(reovim_module_clipboard::ClipboardModule::new()));
-    map.insert("codec-utf8", || {
-        Box::new(reovim_module_codec_utf8::CodecUtf8Module::new())
-    });
-    map.insert("codec-hex", || {
-        Box::new(reovim_module_codec_hex::CodecHexModule::new())
-    });
-    map.insert("codec-cjk", || {
-        Box::new(reovim_module_codec_cjk::CodecCjkModule::new())
-    });
-    map.insert("codec-legacy", || {
-        Box::new(reovim_module_codec_legacy::CodecLegacyModule::new())
-    });
-    map.insert("codec-pdf", || {
-        Box::new(reovim_module_codec_pdf::CodecPdfModule::new())
-    });
+    map.insert("codec-utf8", || Box::new(reovim_module_codec_utf8::CodecUtf8Module::new()));
+    map.insert("codec-hex", || Box::new(reovim_module_codec_hex::CodecHexModule::new()));
+    map.insert("codec-cjk", || Box::new(reovim_module_codec_cjk::CodecCjkModule::new()));
+    map.insert(
+        "codec-legacy",
+        || Box::new(reovim_module_codec_legacy::CodecLegacyModule::new()),
+    );
+    map.insert("codec-pdf", || Box::new(reovim_module_codec_pdf::CodecPdfModule::new()));
     map.insert("codec-binary-struct", || {
         Box::new(reovim_module_codec_binary_struct::CodecBinaryStructModule::new())
     });
-    map.insert("codec-csv", || {
-        Box::new(reovim_module_codec_csv::CodecCsvModule::new())
-    });
+    map.insert("codec-csv", || Box::new(reovim_module_codec_csv::CodecCsvModule::new()));
 
     // Tier 2: Utility modules
     map.insert("keymap", || Box::new(reovim_module_keymap::KeymapModule));

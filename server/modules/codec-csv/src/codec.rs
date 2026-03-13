@@ -136,10 +136,7 @@ fn detect_header(rows: &[Vec<String>]) -> bool {
 }
 
 /// Format parsed rows into a column-aligned table.
-fn format_table(
-    rows: &[Vec<String>],
-    has_header: bool,
-) -> (String, Vec<Annotation>) {
+fn format_table(rows: &[Vec<String>], has_header: bool) -> (String, Vec<Annotation>) {
     if rows.is_empty() {
         return (String::new(), Vec::new());
     }

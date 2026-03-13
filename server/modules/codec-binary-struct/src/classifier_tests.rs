@@ -16,10 +16,7 @@ fn elf_magic_detected() {
 #[test]
 fn elf_extension_fast_path() {
     let c = ElfClassifier::new();
-    assert_eq!(
-        c.classify(b"not elf content", "program.elf"),
-        Some(ContentType::new(ELF))
-    );
+    assert_eq!(c.classify(b"not elf content", "program.elf"), Some(ContentType::new(ELF)));
 }
 
 #[test]
@@ -70,46 +67,31 @@ fn zip_magic_detected() {
 #[test]
 fn zip_extension_fast_path() {
     let c = ZipClassifier::new();
-    assert_eq!(
-        c.classify(b"not zip content", "archive.zip"),
-        Some(ContentType::new(ZIP))
-    );
+    assert_eq!(c.classify(b"not zip content", "archive.zip"), Some(ContentType::new(ZIP)));
 }
 
 #[test]
 fn zip_jar_extension() {
     let c = ZipClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "app.jar"),
-        Some(ContentType::new(ZIP))
-    );
+    assert_eq!(c.classify(b"data", "app.jar"), Some(ContentType::new(ZIP)));
 }
 
 #[test]
 fn zip_docx_extension() {
     let c = ZipClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "doc.docx"),
-        Some(ContentType::new(ZIP))
-    );
+    assert_eq!(c.classify(b"data", "doc.docx"), Some(ContentType::new(ZIP)));
 }
 
 #[test]
 fn zip_apk_extension() {
     let c = ZipClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "app.apk"),
-        Some(ContentType::new(ZIP))
-    );
+    assert_eq!(c.classify(b"data", "app.apk"), Some(ContentType::new(ZIP)));
 }
 
 #[test]
 fn zip_extension_case_insensitive() {
     let c = ZipClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "archive.ZIP"),
-        Some(ContentType::new(ZIP))
-    );
+    assert_eq!(c.classify(b"data", "archive.ZIP"), Some(ContentType::new(ZIP)));
 }
 
 #[test]

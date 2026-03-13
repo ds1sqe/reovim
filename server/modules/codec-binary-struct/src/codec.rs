@@ -198,18 +198,22 @@ fn format_elf_summary(elf: &goblin::elf::Elf<'_>, file_size: usize) -> (String, 
         let _ = writeln!(output, "-------------");
         line_idx += 1;
 
-        let _ = writeln!(output, "{name:<30} {size:>12} {offset:>12}  Type",
-            name = "Name", size = "Size", offset = "Offset");
+        let _ = writeln!(
+            output,
+            "{name:<30} {size:>12} {offset:>12}  Type",
+            name = "Name",
+            size = "Size",
+            offset = "Offset"
+        );
         line_idx += 1;
 
         for sh in &elf.section_headers {
-            let name = elf
-                .shdr_strtab
-                .get_at(sh.sh_name)
-                .unwrap_or("<unknown>");
+            let name = elf.shdr_strtab.get_at(sh.sh_name).unwrap_or("<unknown>");
             let section_type = elf_section_type(sh.sh_type);
 
-            let _ = writeln!(output, "{name:<30} {size:>12} {offset:>12}  {stype}",
+            let _ = writeln!(
+                output,
+                "{name:<30} {size:>12} {offset:>12}  {stype}",
                 size = sh.sh_size,
                 offset = sh.sh_offset,
                 stype = section_type,
@@ -284,10 +288,7 @@ fn format_zip_summary<R: std::io::Read + std::io::Seek>(
     // Entries with metadata
     for i in 0..entry_count {
         // Capture name fallback before the mutable borrow.
-        let fallback_name = archive
-            .name_for_index(i)
-            .unwrap_or("<unknown>")
-            .to_string();
+        let fallback_name = archive.name_for_index(i).unwrap_or("<unknown>").to_string();
 
         let (name, size, compressed, method) = archive.by_index_raw(i).map_or_else(
             |_| (fallback_name, 0, 0, "?".to_string()),

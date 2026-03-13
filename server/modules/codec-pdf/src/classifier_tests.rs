@@ -29,28 +29,19 @@ fn magic_bytes_version_2_0() {
 fn pdf_extension_fast_path() {
     let c = PdfClassifier::new();
     // Even with non-PDF content, .pdf extension triggers classification
-    assert_eq!(
-        c.classify(b"not a pdf", "document.pdf"),
-        Some(ContentType::new(PDF))
-    );
+    assert_eq!(c.classify(b"not a pdf", "document.pdf"), Some(ContentType::new(PDF)));
 }
 
 #[test]
 fn pdf_extension_case_insensitive() {
     let c = PdfClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "doc.PDF"),
-        Some(ContentType::new(PDF))
-    );
+    assert_eq!(c.classify(b"data", "doc.PDF"), Some(ContentType::new(PDF)));
 }
 
 #[test]
 fn pdf_extension_with_path() {
     let c = PdfClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "/home/user/docs/report.pdf"),
-        Some(ContentType::new(PDF))
-    );
+    assert_eq!(c.classify(b"data", "/home/user/docs/report.pdf"), Some(ContentType::new(PDF)));
 }
 
 #[test]
@@ -62,7 +53,10 @@ fn non_pdf_content_no_extension() {
 #[test]
 fn binary_content_not_pdf() {
     let c = PdfClassifier::new();
-    assert!(c.classify(b"\x7fELF\x02\x01\x01\x00", "binary.bin").is_none());
+    assert!(
+        c.classify(b"\x7fELF\x02\x01\x01\x00", "binary.bin")
+            .is_none()
+    );
 }
 
 #[test]

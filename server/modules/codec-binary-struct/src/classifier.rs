@@ -21,7 +21,9 @@ const ZIP_MAGIC: &[u8] = &[0x50, 0x4B, 0x03, 0x04];
 const ELF_EXTENSIONS: &[&str] = &["elf"];
 
 /// Known ZIP file extensions (fast-path).
-const ZIP_EXTENSIONS: &[&str] = &["zip", "jar", "war", "ear", "apk", "ipa", "xlsx", "docx", "pptx"];
+const ZIP_EXTENSIONS: &[&str] = &[
+    "zip", "jar", "war", "ear", "apk", "ipa", "xlsx", "docx", "pptx",
+];
 
 /// ELF content classifier (priority 33).
 ///

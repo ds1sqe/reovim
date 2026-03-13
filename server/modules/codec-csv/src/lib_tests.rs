@@ -57,9 +57,11 @@ fn classifier_and_factory_integrate() {
 #[test]
 fn text_not_classified_as_csv() {
     let classifier = CsvClassifier::new();
-    assert!(classifier
-        .classify(b"Hello world\nSome text\n", "test.txt")
-        .is_none());
+    assert!(
+        classifier
+            .classify(b"Hello world\nSome text\n", "test.txt")
+            .is_none()
+    );
 }
 
 #[test]

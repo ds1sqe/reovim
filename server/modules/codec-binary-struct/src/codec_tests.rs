@@ -184,10 +184,12 @@ fn elf_decode_real_binary() {
     assert!(header_count >= 2); // Title + Section Table header
 
     // Should have section annotations
-    assert!(result
-        .annotations
-        .iter()
-        .any(|a| a.kind.name() == ELF_SECTION_KIND));
+    assert!(
+        result
+            .annotations
+            .iter()
+            .any(|a| a.kind.name() == ELF_SECTION_KIND)
+    );
 
     // All annotations in content namespace
     for a in &result.annotations {
@@ -225,8 +227,8 @@ fn zip_decode_real_archive() {
     let cursor = std::io::Cursor::new(buf);
     let mut writer = zip::ZipWriter::new(cursor);
 
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored);
+    let options =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
 
     writer.start_file("hello.txt", options).unwrap();
     std::io::Write::write_all(&mut writer, b"Hello, world!").unwrap();

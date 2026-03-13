@@ -2,8 +2,10 @@
 
 use reovim_driver_codec::{CodecMetadata, ContentCodec, ContentType};
 
-use super::*;
-use crate::classifier::{CSV, PSV, TSV};
+use {
+    super::*,
+    crate::classifier::{CSV, PSV, TSV},
+};
 
 #[test]
 fn decode_simple_csv() {
@@ -120,7 +122,10 @@ fn encode_simple_csv() {
     metadata.set("delimiter", ",");
     metadata.set("line_ending", "lf");
 
-    let result = codec.encode("Alice  30\nBob    25\n", &metadata).unwrap().unwrap();
+    let result = codec
+        .encode("Alice  30\nBob    25\n", &metadata)
+        .unwrap()
+        .unwrap();
     let text = String::from_utf8(result).unwrap();
     assert!(text.contains("Alice,30"));
     assert!(text.contains("Bob,25"));

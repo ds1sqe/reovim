@@ -35,52 +35,40 @@ fn semicolon_csv_by_content() {
 #[test]
 fn csv_extension_fast_path() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"not csv", "data.csv"),
-        Some(ContentType::new(CSV))
-    );
+    assert_eq!(c.classify(b"not csv", "data.csv"), Some(ContentType::new(CSV)));
 }
 
 #[test]
 fn tsv_extension_fast_path() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"not tsv", "data.tsv"),
-        Some(ContentType::new(TSV))
-    );
+    assert_eq!(c.classify(b"not tsv", "data.tsv"), Some(ContentType::new(TSV)));
 }
 
 #[test]
 fn tab_extension_fast_path() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"not tsv", "data.tab"),
-        Some(ContentType::new(TSV))
-    );
+    assert_eq!(c.classify(b"not tsv", "data.tab"), Some(ContentType::new(TSV)));
 }
 
 #[test]
 fn psv_extension_fast_path() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"not psv", "data.psv"),
-        Some(ContentType::new(PSV))
-    );
+    assert_eq!(c.classify(b"not psv", "data.psv"), Some(ContentType::new(PSV)));
 }
 
 #[test]
 fn extension_case_insensitive() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "file.CSV"),
-        Some(ContentType::new(CSV))
-    );
+    assert_eq!(c.classify(b"data", "file.CSV"), Some(ContentType::new(CSV)));
 }
 
 #[test]
 fn plain_text_not_csv() {
     let c = CsvClassifier::new();
-    assert!(c.classify(b"Hello, world!\nThis is text.\n", "test.txt").is_none());
+    assert!(
+        c.classify(b"Hello, world!\nThis is text.\n", "test.txt")
+            .is_none()
+    );
 }
 
 #[test]
@@ -175,8 +163,5 @@ fn is_consistent_delimiter_too_few_lines() {
 #[test]
 fn with_path() {
     let c = CsvClassifier::new();
-    assert_eq!(
-        c.classify(b"data", "/home/user/data.csv"),
-        Some(ContentType::new(CSV))
-    );
+    assert_eq!(c.classify(b"data", "/home/user/data.csv"), Some(ContentType::new(CSV)));
 }

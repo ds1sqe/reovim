@@ -27,12 +27,7 @@ const MIN_COLUMNS: usize = 2;
 const SAMPLE_SIZE: usize = 8192;
 
 /// Known CSV/TSV/PSV file extensions (fast-path).
-const CSV_EXTENSIONS: &[(&str, &str)] = &[
-    ("csv", CSV),
-    ("tsv", TSV),
-    ("tab", TSV),
-    ("psv", PSV),
-];
+const CSV_EXTENSIONS: &[(&str, &str)] = &[("csv", CSV), ("tsv", TSV), ("tab", TSV), ("psv", PSV)];
 
 /// Delimiters to try, in order of preference.
 const DELIMITERS: &[(u8, &str)] = &[

@@ -86,9 +86,7 @@ impl Module for CodecBinaryStructModule {
         classifier_store.add(Arc::new(ElfClassifier::new()));
         classifier_store.add(Arc::new(ZipClassifier::new()));
 
-        tracing::info!(
-            "CodecBinaryStructModule: registered ELF/ZIP codecs and classifiers"
-        );
+        tracing::info!("CodecBinaryStructModule: registered ELF/ZIP codecs and classifiers");
         ProbeResult::Success
     }
 
