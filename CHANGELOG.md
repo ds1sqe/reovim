@@ -2,7 +2,7 @@
 
 For old changelog, see `changelog/CHANGELOG-{version}.md`
 
-## [Unreleased] - v0.10.0-dev
+## [Unreleased] - v0.11.0-dev
 
 ### Changed
 
