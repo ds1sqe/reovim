@@ -846,10 +846,7 @@ impl ClientModule for StubExtension {
     fn version(&self) -> Version {
         Version::new(0, 1, 0)
     }
-    fn init(
-        &mut self,
-        _ctx: &reovim_client_driver::ModuleContext,
-    ) -> ProbeResult {
+    fn init(&mut self, _ctx: &reovim_client_driver::ModuleContext) -> ProbeResult {
         ProbeResult::Success
     }
     fn exit(&mut self) -> Result<(), ClientModuleError> {
@@ -867,8 +864,7 @@ async fn test_handle_extension_updated_dispatches_to_matching() {
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let (whichkey, whichkey_h) = StubExtension::new("whichkey");
-    let mut ctx =
-        MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "cmdline".to_string(),
@@ -909,8 +905,7 @@ async fn test_handle_extension_updated_unknown_kind_ignored() {
 
     let (cmdline, cmdline_h) = StubExtension::new("cmdline");
     let (whichkey, whichkey_h) = StubExtension::new("whichkey");
-    let mut ctx =
-        MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
+    let mut ctx = MockContext::new(1).with_extensions(vec![Box::new(cmdline), Box::new(whichkey)]);
 
     let notif = make_notif(Payload::ExtensionUpdated(ExtensionUpdatedPayload {
         kind: "unknown_ext".to_string(),

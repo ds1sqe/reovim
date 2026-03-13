@@ -1,5 +1,4 @@
-use super::*;
-use reovim_client_driver::types::Color;
+use {super::*, reovim_client_driver::types::Color};
 
 // =============================================================================
 // MockSurface
@@ -168,7 +167,12 @@ fn statusline_mode_change() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("insert");
     let mut surface = MockSurface::new(80, 1);
-    let bounds = Rect { x: 0, y: 0, width: 80, height: 1 };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 1,
+    };
     m.chrome_render(&mut surface, bounds, &test_caps());
     assert_eq!(surface.text_at(0, 0), Some(" INSERT "));
 }
@@ -178,7 +182,12 @@ fn statusline_cursor_update() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 10, 5);
     let mut surface = MockSurface::new(80, 1);
-    let bounds = Rect { x: 0, y: 0, width: 80, height: 1 };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 1,
+    };
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Cursor position should show "11:6" (1-indexed)
     let has_cursor_pos = surface.writes.iter().any(|(_, _, text, _)| text == "11:6");
@@ -189,7 +198,12 @@ fn statusline_cursor_update() {
 fn statusline_no_cursor_shows_question_marks() {
     let m = StatuslineModule::new();
     let mut surface = MockSurface::new(80, 1);
-    let bounds = Rect { x: 0, y: 0, width: 80, height: 1 };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 1,
+    };
     m.chrome_render(&mut surface, bounds, &test_caps());
     let has_question = surface.writes.iter().any(|(_, _, text, _)| text == "?:?");
     assert!(has_question, "Expected ?:? when no cursor data");
@@ -250,7 +264,12 @@ fn statusline_renders_mode_with_correct_style() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("visual");
     let mut surface = MockSurface::new(80, 1);
-    let bounds = Rect { x: 0, y: 0, width: 80, height: 1 };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: 80,
+        height: 1,
+    };
     m.chrome_render(&mut surface, bounds, &test_caps());
     let style = surface.style_at(0, 0).unwrap();
     assert_eq!(style.fg, Some(Color::Black));
@@ -261,7 +280,12 @@ fn statusline_renders_mode_with_correct_style() {
 fn statusline_renders_at_bounds_offset() {
     let m = StatuslineModule::new();
     let mut surface = MockSurface::new(80, 24);
-    let bounds = Rect { x: 0, y: 23, width: 80, height: 1 };
+    let bounds = Rect {
+        x: 0,
+        y: 23,
+        width: 80,
+        height: 1,
+    };
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Mode should render at y=23
     assert_eq!(surface.text_at(0, 23), Some(" NORMAL "));

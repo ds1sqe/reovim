@@ -5,9 +5,8 @@
 
 use reovim_client_driver::{
     BufferId, ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
 };
-use reovim_client_driver::types::Color;
 
 /// Statusline chrome module.
 ///

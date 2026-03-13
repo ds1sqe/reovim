@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use super::*;
-use crate::{
-    BufferId, ChromePosition, ClientModuleError, ColorDepth, ColumnWidth, Insets, ProbeResult,
-    Rect, RenderingModel, Style, Version,
+use {
+    super::*,
+    crate::{
+        BufferId, ChromePosition, ClientModuleError, ColorDepth, ColumnWidth, Insets, ProbeResult,
+        Rect, RenderingModel, Style, Version,
+    },
 };
 
 // =============================================================================
@@ -117,8 +119,7 @@ impl ThemeProvider for MockThemeProvider {
 
 fn make_module_context() -> ModuleContext<'static> {
     // Use leaked references for test simplicity — tests are short-lived.
-    let caps: &'static dyn PlatformCapabilities =
-        Box::leak(Box::new(MockPlatformCapabilities));
+    let caps: &'static dyn PlatformCapabilities = Box::leak(Box::new(MockPlatformCapabilities));
     let theme: &'static dyn ThemeProvider = Box::leak(Box::new(MockThemeProvider));
     ModuleContext {
         capabilities: caps,

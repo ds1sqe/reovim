@@ -15,9 +15,8 @@ use std::{
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
 };
-use reovim_client_driver::types::Color;
 
 // Re-export the Clock trait from arch for constructor usage.
 pub use reovim_client_driver::reovim_arch::clock::{Clock, SystemClock};
@@ -110,7 +109,12 @@ fn render_hint_row(
 ) {
     let row_y = py + 1 + row_offset;
     surface.fill(
-        Rect { x: content_x, y: row_y, width: content_width, height: 1 },
+        Rect {
+            x: content_x,
+            y: row_y,
+            width: content_width,
+            height: 1,
+        },
         ' ',
         Style::new(),
     );
@@ -331,7 +335,12 @@ impl ClientModule for WhichKeyModule {
 
         // Draw border
         reovim_client_driver::chrome_utils::render_box_border(
-            surface, px, py, pw, popup_height, &border_style,
+            surface,
+            px,
+            py,
+            pw,
+            popup_height,
+            &border_style,
         );
 
         // Draw title in the top border: "--- g ---"
@@ -357,7 +366,12 @@ impl ClientModule for WhichKeyModule {
                 // Draw category header
                 let header_y = py + 1 + row_offset;
                 surface.fill(
-                    Rect { x: content_x, y: header_y, width: content_width, height: 1 },
+                    Rect {
+                        x: content_x,
+                        y: header_y,
+                        width: content_width,
+                        height: 1,
+                    },
                     ' ',
                     Style::new(),
                 );

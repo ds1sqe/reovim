@@ -1,6 +1,7 @@
-use super::*;
-use reovim_client_driver::{Insets, RenderingModel};
-use reovim_client_driver::types::ColorDepth;
+use {
+    super::*,
+    reovim_client_driver::{Insets, RenderingModel, types::ColorDepth},
+};
 
 // =============================================================================
 // Mock infrastructure
@@ -26,7 +27,9 @@ impl MockSurface {
     }
 
     fn has_content(&self) -> bool {
-        self.cells.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '))
+        self.cells
+            .iter()
+            .any(|row| row.iter().any(|(ch, _)| *ch != ' '))
     }
 }
 
@@ -67,20 +70,48 @@ impl RenderSurface for MockSurface {
 struct TestCaps;
 
 impl PlatformCapabilities for TestCaps {
-    fn rendering_model(&self) -> RenderingModel { RenderingModel::CellGrid }
-    fn grid_size(&self) -> Option<(u16, u16)> { Some((80, 24)) }
-    fn color_depth(&self) -> ColorDepth { ColorDepth::TrueColor }
-    fn pixel_size(&self) -> Option<(u32, u32)> { None }
-    fn reliable_unicode_width(&self) -> bool { true }
-    fn dark_mode(&self) -> bool { true }
-    fn smooth_scroll(&self) -> bool { false }
-    fn pointer_events(&self) -> bool { true }
-    fn touch_input(&self) -> bool { false }
-    fn haptic(&self) -> bool { false }
-    fn safe_area(&self) -> Insets { Insets::ZERO }
-    fn has_focus(&self) -> bool { true }
-    fn clipboard_available(&self) -> bool { true }
-    fn screen_reader_active(&self) -> bool { false }
+    fn rendering_model(&self) -> RenderingModel {
+        RenderingModel::CellGrid
+    }
+    fn grid_size(&self) -> Option<(u16, u16)> {
+        Some((80, 24))
+    }
+    fn color_depth(&self) -> ColorDepth {
+        ColorDepth::TrueColor
+    }
+    fn pixel_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn reliable_unicode_width(&self) -> bool {
+        true
+    }
+    fn dark_mode(&self) -> bool {
+        true
+    }
+    fn smooth_scroll(&self) -> bool {
+        false
+    }
+    fn pointer_events(&self) -> bool {
+        true
+    }
+    fn touch_input(&self) -> bool {
+        false
+    }
+    fn haptic(&self) -> bool {
+        false
+    }
+    fn safe_area(&self) -> Insets {
+        Insets::ZERO
+    }
+    fn has_focus(&self) -> bool {
+        true
+    }
+    fn clipboard_available(&self) -> bool {
+        true
+    }
+    fn screen_reader_active(&self) -> bool {
+        false
+    }
 }
 
 // =============================================================================
@@ -89,7 +120,12 @@ impl PlatformCapabilities for TestCaps {
 
 fn render(module: &LandingModule, w: u16, h: u16) -> MockSurface {
     let mut surface = MockSurface::new(w, h);
-    let bounds = Rect { x: 0, y: 0, width: w, height: h };
+    let bounds = Rect {
+        x: 0,
+        y: 0,
+        width: w,
+        height: h,
+    };
     module.chrome_render(&mut surface, bounds, &TestCaps);
     surface
 }

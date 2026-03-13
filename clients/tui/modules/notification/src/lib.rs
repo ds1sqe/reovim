@@ -12,9 +12,8 @@ use std::{
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
 };
-use reovim_client_driver::types::Color;
 
 // Re-export the Clock trait from arch for constructor usage.
 pub use reovim_client_driver::reovim_arch::clock::{Clock, SystemClock};
@@ -297,7 +296,12 @@ impl ClientModule for NotificationModule {
 
             // Draw border
             reovim_client_driver::chrome_utils::render_box_border(
-                surface, toast_x, y, toast_w, toast_height, &border_style,
+                surface,
+                toast_x,
+                y,
+                toast_w,
+                toast_height,
+                &border_style,
             );
 
             let content_x = toast_x + 2;
@@ -306,7 +310,12 @@ impl ClientModule for NotificationModule {
             // Clear interior
             for row in 1..toast_height.saturating_sub(1) {
                 surface.fill(
-                    Rect { x: content_x, y: y + row, width: content_width, height: 1 },
+                    Rect {
+                        x: content_x,
+                        y: y + row,
+                        width: content_width,
+                        height: 1,
+                    },
                     ' ',
                     Style::new(),
                 );
@@ -328,10 +337,8 @@ impl ClientModule for NotificationModule {
             // Body line
             if has_body {
                 let body_style = Style::new().fg(Color::DarkGrey);
-                let body_display = reovim_client_driver::ui::truncate_end(
-                    &toast.body,
-                    content_width as usize,
-                );
+                let body_display =
+                    reovim_client_driver::ui::truncate_end(&toast.body, content_width as usize);
                 surface.write_styled(content_x, current_row, &body_display, body_style);
                 current_row += 1;
             }

@@ -7,9 +7,8 @@
 
 use reovim_client_driver::{
     BufferId, BufferUpdateEvent, ChromePosition, ClientModule, ClientModuleError, ModuleContext,
-    PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version,
+    PlatformCapabilities, ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
 };
-use reovim_client_driver::types::Color;
 
 /// ASCII art logo lines (compact, ~40 chars wide).
 const LOGO: &[&str] = &[
@@ -153,19 +152,33 @@ impl ClientModule for LandingModule {
         let box_y = height.saturating_sub(box_height) / 2;
 
         let border_style = Style::new().fg(Color::Cyan);
-        let bg = Color::Rgb { r: 30, g: 30, b: 46 };
+        let bg = Color::Rgb {
+            r: 30,
+            g: 30,
+            b: 46,
+        };
         let bg_style = Style::new().bg(bg);
 
         // Fill background inside box.
         surface.fill(
-            Rect { x: box_x, y: box_y, width: BOX_WIDTH, height: box_height },
+            Rect {
+                x: box_x,
+                y: box_y,
+                width: BOX_WIDTH,
+                height: box_height,
+            },
             ' ',
             bg_style,
         );
 
         // Draw border.
         reovim_client_driver::chrome_utils::render_box_border(
-            surface, box_x, box_y, BOX_WIDTH, box_height, &border_style,
+            surface,
+            box_x,
+            box_y,
+            BOX_WIDTH,
+            box_height,
+            &border_style,
         );
 
         // Content starts inside the box (1 border + 1 padding).
@@ -205,7 +218,12 @@ impl ClientModule for LandingModule {
             surface.write_styled(content_x, y, &line[..key_end], key_style.clone());
             #[allow(clippy::cast_possible_truncation)]
             let key_end_u16 = key_end as u16;
-            surface.write_styled(content_x + key_end_u16, y, &line[key_end..], action_style.clone());
+            surface.write_styled(
+                content_x + key_end_u16,
+                y,
+                &line[key_end..],
+                action_style.clone(),
+            );
             y += 1;
         }
 

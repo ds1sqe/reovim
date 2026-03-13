@@ -6,9 +6,8 @@
 
 use reovim_client_driver::{
     ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+    ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
 };
-use reovim_client_driver::types::Color;
 
 /// Maximum number of visible items in the popup.
 const MAX_VISIBLE_ITEMS: usize = 10;
@@ -194,7 +193,12 @@ impl ClientModule for CompletionModule {
         // Draw background.
         let bg_style = Style::new().bg(Color::DarkGrey);
         surface.fill(
-            Rect { x: px, y: py, width: popup_width, height: popup_height },
+            Rect {
+                x: px,
+                y: py,
+                width: popup_width,
+                height: popup_height,
+            },
             ' ',
             bg_style,
         );
@@ -226,7 +230,12 @@ impl ClientModule for CompletionModule {
 
             // Clear row.
             surface.fill(
-                Rect { x: content_x, y: row_y, width: content_width, height: 1 },
+                Rect {
+                    x: content_x,
+                    y: row_y,
+                    width: content_width,
+                    height: 1,
+                },
                 ' ',
                 row_style.clone(),
             );
@@ -239,7 +248,9 @@ impl ClientModule for CompletionModule {
             };
 
             let mut x = content_x;
-            let kind_display: String = item.kind_abbrev.chars()
+            let kind_display: String = item
+                .kind_abbrev
+                .chars()
                 .take((content_x + content_width).saturating_sub(x) as usize)
                 .collect();
             let written = surface.write_styled(x, row_y, &kind_display, kind_style);

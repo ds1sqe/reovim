@@ -3,12 +3,13 @@
 //! Displays LSP hover information in a bordered popup near the cursor.
 //! Native `ClientModule` implementation (no `TuiExtension` bridge).
 
-use reovim_client_driver::{
-    ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
-    ProbeResult, Rect, RenderSurface, Style, Version,
+use {
+    reovim_client_driver::{
+        ChromePosition, ClientModule, ClientModuleError, ModuleContext, PlatformCapabilities,
+        ProbeResult, Rect, RenderSurface, Style, Version, types::Color,
+    },
+    serde::Deserialize,
 };
-use reovim_client_driver::types::Color;
-use serde::Deserialize;
 
 const KIND: &str = "hover";
 const MAX_WIDTH_RATIO: f32 = 0.6;
@@ -195,7 +196,12 @@ impl ClientModule for HoverModule {
         let border_style = Style::new().fg(border_color);
 
         reovim_client_driver::chrome_utils::render_box_border(
-            surface, px, py, popup_w, popup_h, &border_style,
+            surface,
+            px,
+            py,
+            popup_w,
+            popup_h,
+            &border_style,
         );
 
         let content_x = px + 1;
@@ -207,7 +213,12 @@ impl ClientModule for HoverModule {
 
             // Clear interior row
             surface.fill(
-                Rect { x: content_x, y: row, width: content_w, height: 1 },
+                Rect {
+                    x: content_x,
+                    y: row,
+                    width: content_w,
+                    height: 1,
+                },
                 ' ',
                 Style::new(),
             );

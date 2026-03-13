@@ -822,11 +822,7 @@ impl<O: TuiOutput> TuiApp<O> {
                 .iter()
                 .filter(|e| e.has_buffer_contrib())
                 .find_map(|e| {
-                    e.map_cursor_column(
-                        bid,
-                        cursor_pos.line as usize,
-                        cursor_pos.column as usize,
-                    )
+                    e.map_cursor_column(bid, cursor_pos.line as usize, cursor_pos.column as usize)
                 })
                 .map_or_else(
                     || rect.x as u16 + gutter_width + cursor_pos.column as u16,

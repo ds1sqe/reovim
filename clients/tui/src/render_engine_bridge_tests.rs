@@ -78,11 +78,7 @@ fn backend_surface_adapter_apply_style() {
     let mut backend = MockBackend::new(80, 24);
     let mut adapter = BackendSurfaceAdapter::new(&mut backend);
     let style = reovim_client_driver::Style {
-        fg: Some(Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0,
-        }),
+        fg: Some(Color::Rgb { r: 255, g: 0, b: 0 }),
         bg: None,
         attributes: reovim_client_driver::Attributes::BOLD,
     };
@@ -91,31 +87,22 @@ fn backend_surface_adapter_apply_style() {
     assert_eq!(backend.apply_calls.len(), 1);
     assert_eq!(backend.apply_calls[0].0, 3);
     assert_eq!(backend.apply_calls[0].1, 7);
-    assert!(backend.apply_calls[0]
-        .2
-        .attributes
-        .contains(DisplayAttributes::BOLD));
+    assert!(
+        backend.apply_calls[0]
+            .2
+            .attributes
+            .contains(DisplayAttributes::BOLD)
+    );
 }
 
 #[test]
 fn backend_surface_adapter_overlay_bg() {
     let mut backend = MockBackend::new(80, 24);
     let mut adapter = BackendSurfaceAdapter::new(&mut backend);
-    adapter.overlay_bg(1, 2, Color::Rgb {
-        r: 0,
-        g: 255,
-        b: 0,
-    });
+    adapter.overlay_bg(1, 2, Color::Rgb { r: 0, g: 255, b: 0 });
     let _ = adapter;
     assert_eq!(backend.overlay_calls.len(), 1);
-    assert_eq!(
-        backend.overlay_calls[0].2,
-        Color::Rgb {
-            r: 0,
-            g: 255,
-            b: 0
-        }
-    );
+    assert_eq!(backend.overlay_calls[0].2, Color::Rgb { r: 0, g: 255, b: 0 });
 }
 
 #[test]
@@ -287,7 +274,7 @@ fn tui_platform_capabilities_safe_area_default() {
 
 #[test]
 fn tui_platform_capabilities_with_display_caps() {
-    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    use reovim_driver_display::{ColorMode, DisplayCapabilities};
     let display = DisplayCapabilities {
         color_mode: ColorMode::Color256,
         supports_underline_color: true,
@@ -304,7 +291,7 @@ fn tui_platform_capabilities_with_display_caps() {
 
 #[test]
 fn tui_platform_capabilities_color_depth_ansi16() {
-    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    use reovim_driver_display::{ColorMode, DisplayCapabilities};
     let display = DisplayCapabilities {
         color_mode: ColorMode::Ansi16,
         supports_underline_color: false,
@@ -320,7 +307,7 @@ fn tui_platform_capabilities_color_depth_ansi16() {
 
 #[test]
 fn tui_platform_capabilities_color_depth_truecolor() {
-    use reovim_driver_display::{DisplayCapabilities, ColorMode};
+    use reovim_driver_display::{ColorMode, DisplayCapabilities};
     let display = DisplayCapabilities {
         color_mode: ColorMode::TrueColor,
         supports_underline_color: false,
@@ -384,35 +371,13 @@ fn convert_style_default() {
 #[test]
 fn convert_style_with_colors() {
     let driver_style = reovim_client_driver::Style {
-        fg: Some(Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0,
-        }),
-        bg: Some(Color::Rgb {
-            r: 0,
-            g: 0,
-            b: 255,
-        }),
+        fg: Some(Color::Rgb { r: 255, g: 0, b: 0 }),
+        bg: Some(Color::Rgb { r: 0, g: 0, b: 255 }),
         attributes: reovim_client_driver::Attributes::new(),
     };
     let display_style = convert_driver_style_to_display_style(&driver_style);
-    assert_eq!(
-        display_style.fg,
-        Some(Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0
-        })
-    );
-    assert_eq!(
-        display_style.bg,
-        Some(Color::Rgb {
-            r: 0,
-            g: 0,
-            b: 255
-        })
-    );
+    assert_eq!(display_style.fg, Some(Color::Rgb { r: 255, g: 0, b: 0 }));
+    assert_eq!(display_style.bg, Some(Color::Rgb { r: 0, g: 0, b: 255 }));
 }
 
 #[test]
@@ -428,24 +393,24 @@ fn convert_style_all_attributes() {
             | reovim_client_driver::Attributes::DIM,
     };
     let display_style = convert_driver_style_to_display_style(&driver_style);
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::BOLD));
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::ITALIC));
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::UNDERLINE));
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::STRIKETHROUGH));
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::REVERSE));
-    assert!(display_style
-        .attributes
-        .contains(DisplayAttributes::DIM));
+    assert!(display_style.attributes.contains(DisplayAttributes::BOLD));
+    assert!(display_style.attributes.contains(DisplayAttributes::ITALIC));
+    assert!(
+        display_style
+            .attributes
+            .contains(DisplayAttributes::UNDERLINE)
+    );
+    assert!(
+        display_style
+            .attributes
+            .contains(DisplayAttributes::STRIKETHROUGH)
+    );
+    assert!(
+        display_style
+            .attributes
+            .contains(DisplayAttributes::REVERSE)
+    );
+    assert!(display_style.attributes.contains(DisplayAttributes::DIM));
 }
 
 #[test]
@@ -491,10 +456,7 @@ fn convert_render_behavior_full_width_line() {
         style: reovim_client_driver::Style::default(),
     };
     let display_rb = convert_driver_rb_to_display(&rb);
-    assert!(matches!(
-        display_rb,
-        DisplayRenderBehavior::FullWidthLine { ch: '-' }
-    ));
+    assert!(matches!(display_rb, DisplayRenderBehavior::FullWidthLine { ch: '-' }));
 }
 
 #[test]
@@ -511,11 +473,7 @@ fn convert_transformed_line_single_segment() {
 #[test]
 fn convert_transformed_line_multiple_segments() {
     let bold_style = reovim_client_driver::Style {
-        fg: Some(Color::Rgb {
-            r: 255,
-            g: 0,
-            b: 0,
-        }),
+        fg: Some(Color::Rgb { r: 255, g: 0, b: 0 }),
         bg: None,
         attributes: reovim_client_driver::Attributes::BOLD,
     };
@@ -954,7 +912,10 @@ fn convert_key_event_modifiers() {
     let event = convert_key_event(&tui_key);
     if let reovim_client_driver::InputEvent::Key(ke) = event {
         assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::CTRL));
-        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::SHIFT));
+        assert!(
+            ke.modifiers
+                .contains(reovim_client_driver::Modifiers::SHIFT)
+        );
         assert!(!ke.modifiers.contains(reovim_client_driver::Modifiers::ALT));
     } else {
         panic!("Expected Key event");
@@ -989,7 +950,10 @@ fn convert_key_event_backtab() {
     let event = convert_key_event(&tui_key);
     if let reovim_client_driver::InputEvent::Key(ke) = event {
         assert_eq!(ke.code, reovim_client_driver::KeyCode::Tab);
-        assert!(ke.modifiers.contains(reovim_client_driver::Modifiers::SHIFT));
+        assert!(
+            ke.modifiers
+                .contains(reovim_client_driver::Modifiers::SHIFT)
+        );
     } else {
         panic!("Expected Key event");
     }

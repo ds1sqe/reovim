@@ -957,7 +957,11 @@ fn focus_event_debug() {
 
 #[test]
 fn pointer_button_all_variants() {
-    let buttons = [PointerButton::Left, PointerButton::Right, PointerButton::Middle];
+    let buttons = [
+        PointerButton::Left,
+        PointerButton::Right,
+        PointerButton::Middle,
+    ];
     for b in buttons {
         assert!(!format!("{b:?}").is_empty());
     }

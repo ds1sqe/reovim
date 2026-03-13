@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError,
-    ColumnWidth, GutterCell, Insets, OptionValue, ProbeResult, Rect, RenderBehavior,
-    RenderingModel, Style, TransformedLine, Version, VirtualLine, WindowId, WindowLayout,
+    AnnotationContext, BufferId, BufferUpdateEvent, ChromePosition, ClientModuleError, ColumnWidth,
+    GutterCell, Insets, OptionValue, ProbeResult, Rect, RenderBehavior, RenderingModel, Style,
+    TransformedLine, Version, VirtualLine, WindowId, WindowLayout,
+    types::{Color, ColorDepth, InlineDecoration},
 };
-use crate::types::{Color, ColorDepth, InlineDecoration};
 
 // =============================================================================
 // ClientModule — the single trait CORE interacts with
@@ -160,12 +160,7 @@ pub trait ClientModule: Send + Sync + 'static {
     }
 
     /// Transform a line before rendering.
-    fn transform_line(
-        &self,
-        buf: BufferId,
-        line: usize,
-        text: &str,
-    ) -> Option<TransformedLine> {
+    fn transform_line(&self, buf: BufferId, line: usize, text: &str) -> Option<TransformedLine> {
         None
     }
 
@@ -378,12 +373,7 @@ pub trait ViewportRenderer: Send + Sync {
 /// Determines how windows are arranged in the viewport.
 pub trait LayoutPolicy: Send + Sync {
     /// Compute window positions given the available viewport and window list.
-    fn layout(
-        &self,
-        viewport: Rect,
-        windows: &[WindowId],
-        focused: WindowId,
-    ) -> Vec<WindowLayout>;
+    fn layout(&self, viewport: Rect, windows: &[WindowId], focused: WindowId) -> Vec<WindowLayout>;
 }
 
 #[cfg(test)]

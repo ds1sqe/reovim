@@ -1,5 +1,4 @@
-use super::*;
-use crate::types::Color;
+use {super::*, crate::types::Color};
 
 // =============================================================================
 // MockSurface for testing chrome_utils

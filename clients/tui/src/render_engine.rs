@@ -22,10 +22,10 @@ use reovim_client_driver::ClientModule;
 
 use crate::{
     LineNumberMode, SelectionState, TuiCoreState,
-    render_backend::{RenderBackend, RenderBehavior, TransformedLine, VirtualLine, VirtualLinePosition},
-    render_engine_bridge::{
-        self, BackendSurfaceAdapter, TuiPlatformCapabilities,
+    render_backend::{
+        RenderBackend, RenderBehavior, TransformedLine, VirtualLine, VirtualLinePosition,
     },
+    render_engine_bridge::{self, BackendSurfaceAdapter, TuiPlatformCapabilities},
 };
 
 // =============================================================================
@@ -314,26 +314,51 @@ fn render_chrome<B: RenderBackend>(
             ChromePosition::Bottom => {
                 let y = height.saturating_sub(allocated_bottom + size);
                 allocated_bottom += size;
-                reovim_client_driver::Rect { x: 0, y, width, height: size }
+                reovim_client_driver::Rect {
+                    x: 0,
+                    y,
+                    width,
+                    height: size,
+                }
             }
             ChromePosition::Top => {
                 let y = allocated_top;
                 allocated_top += size;
-                reovim_client_driver::Rect { x: 0, y, width, height: size }
+                reovim_client_driver::Rect {
+                    x: 0,
+                    y,
+                    width,
+                    height: size,
+                }
             }
             ChromePosition::Left => {
                 let x = allocated_left;
                 allocated_left += size;
-                reovim_client_driver::Rect { x, y: 0, width: size, height }
+                reovim_client_driver::Rect {
+                    x,
+                    y: 0,
+                    width: size,
+                    height,
+                }
             }
             ChromePosition::Right => {
                 let x = width.saturating_sub(allocated_right + size);
                 allocated_right += size;
-                reovim_client_driver::Rect { x, y: 0, width: size, height }
+                reovim_client_driver::Rect {
+                    x,
+                    y: 0,
+                    width: size,
+                    height,
+                }
             }
             ChromePosition::Overlay => {
                 // Overlays get full screen bounds
-                reovim_client_driver::Rect { x: 0, y: 0, width, height }
+                reovim_client_driver::Rect {
+                    x: 0,
+                    y: 0,
+                    width,
+                    height,
+                }
             }
         };
 
@@ -468,8 +493,12 @@ fn render_buffer_content<B: RenderBackend>(
                 let line = &lines[line_idx];
 
                 // Check if any extension wants to transform this line
-                let transform =
-                    render_engine_bridge::transform_line(extensions, buffer_id.unwrap_or(0), line_idx, line);
+                let transform = render_engine_bridge::transform_line(
+                    extensions,
+                    buffer_id.unwrap_or(0),
+                    line_idx,
+                    line,
+                );
 
                 if let Some(transformed) = transform {
                     render_transformed_line(
@@ -879,14 +908,20 @@ fn render_selection_range<B: RenderBackend>(
         // Map a buffer column through extensions (table column mapping)
         let map_col = |buf_col: u64| -> u16 {
             #[allow(clippy::cast_possible_truncation)]
-            render_engine_bridge::map_cursor_column(extensions, buffer_id, line_idx, buf_col as usize)
-                .unwrap_or(buf_col as u16)
+            render_engine_bridge::map_cursor_column(
+                extensions,
+                buffer_id,
+                line_idx,
+                buf_col as usize,
+            )
+            .unwrap_or(buf_col as u16)
         };
 
         // Visual line length: transformed text length or buffer text length
         let line_text = lines.and_then(|l| l.get(line_idx));
-        let visual_line_len = render_engine_bridge::visual_line_len(extensions, buffer_id, line_idx, line_text)
-            .unwrap_or(content_width);
+        let visual_line_len =
+            render_engine_bridge::visual_line_len(extensions, buffer_id, line_idx, line_text)
+                .unwrap_or(content_width);
 
         let (col_start, col_end) = match sel.mode.as_str() {
             "line" => (0u16, content_width),
@@ -1099,20 +1134,20 @@ fn render_self_cursor<B: RenderBackend>(
         cursor.line as usize,
         cursor.column as usize,
     )
-        .unwrap_or_else(|| {
-            if state.is_insert_mode() {
-                cursor.column as u16
-            } else {
-                compute_cursor_visual_col(
-                    state,
-                    cursor.line as usize,
-                    cursor.column as usize,
-                    token_cache,
-                    theme,
-                    extensions,
-                )
-            }
-        });
+    .unwrap_or_else(|| {
+        if state.is_insert_mode() {
+            cursor.column as u16
+        } else {
+            compute_cursor_visual_col(
+                state,
+                cursor.line as usize,
+                cursor.column as usize,
+                token_cache,
+                theme,
+                extensions,
+            )
+        }
+    });
     let screen_col = visual_col + gutter_width;
 
     if screen_line < u64::from(content_height) && screen_col < width {
@@ -1191,8 +1226,6 @@ fn compute_cursor_visual_col(
     let concealed = apply_conceals(line, line_u32, &conceal_refs);
     source_to_display_col(&concealed, source_col) as u16
 }
-
-
 
 #[cfg(test)]
 #[path = "render_engine_tests.rs"]

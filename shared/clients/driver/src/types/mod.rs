@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-use std::ops::Range;
+use std::{borrow::Cow, ops::Range};
 
 pub use reovim_arch::Color;
 

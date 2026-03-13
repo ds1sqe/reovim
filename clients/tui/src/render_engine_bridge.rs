@@ -7,16 +7,18 @@
 //! Temporary -- deleted in Phase 12.4 when the render engine is rewritten
 //! to use client-driver types natively.
 
-use reovim_client_driver::{
-    ChromePosition, ClientModule, ColorDepth, Insets, PlatformCapabilities, Rect, RenderSurface,
-    RenderingModel,
-};
-use reovim_driver_display::{
-    Attributes as DisplayAttributes, ColorMode, DisplayCapabilities, Style as DisplayStyle,
-    render_backend::{
-        RenderBackend, RenderBehavior as DisplayRenderBehavior,
-        TransformedLine as DisplayTransformedLine, VirtualLine as DisplayVirtualLine,
-        VirtualLinePosition as DisplayVirtualLinePosition,
+use {
+    reovim_client_driver::{
+        ChromePosition, ClientModule, ColorDepth, Insets, PlatformCapabilities, Rect,
+        RenderSurface, RenderingModel,
+    },
+    reovim_driver_display::{
+        Attributes as DisplayAttributes, ColorMode, DisplayCapabilities, Style as DisplayStyle,
+        render_backend::{
+            RenderBackend, RenderBehavior as DisplayRenderBehavior,
+            TransformedLine as DisplayTransformedLine, VirtualLine as DisplayVirtualLine,
+            VirtualLinePosition as DisplayVirtualLinePosition,
+        },
     },
 };
 
@@ -350,12 +352,8 @@ pub fn transform_line(
         .iter()
         .filter(|e| e.has_buffer_contrib())
         .find_map(|e| {
-            e.transform_line(
-                reovim_client_driver::BufferId(buffer_id as usize),
-                line_idx,
-                line,
-            )
-            .map(|tl| convert_driver_tl_to_display(&tl))
+            e.transform_line(reovim_client_driver::BufferId(buffer_id as usize), line_idx, line)
+                .map(|tl| convert_driver_tl_to_display(&tl))
         })
 }
 
@@ -368,13 +366,12 @@ pub fn map_cursor_column(
     line_idx: usize,
     col: usize,
 ) -> Option<u16> {
-    extensions.iter().filter(|e| e.has_buffer_contrib()).find_map(|e| {
-        e.map_cursor_column(
-            reovim_client_driver::BufferId(buffer_id as usize),
-            line_idx,
-            col,
-        )
-    })
+    extensions
+        .iter()
+        .filter(|e| e.has_buffer_contrib())
+        .find_map(|e| {
+            e.map_cursor_column(reovim_client_driver::BufferId(buffer_id as usize), line_idx, col)
+        })
 }
 
 /// Get visual line length (from `transform_line` or raw text).
@@ -398,7 +395,11 @@ pub fn visual_line_len(
         })
         .map(|t| {
             #[allow(clippy::cast_possible_truncation)]
-            let len = t.segments.iter().map(|(s, _)| s.chars().count()).sum::<usize>() as u16;
+            let len = t
+                .segments
+                .iter()
+                .map(|(s, _)| s.chars().count())
+                .sum::<usize>() as u16;
             len
         })
         .or_else(|| {
@@ -438,7 +439,9 @@ fn convert_driver_tl_to_display(
     let mut styles = Vec::new();
 
     for (seg_text, seg_style) in &tl.segments {
-        let display_style = seg_style.as_ref().map(convert_driver_style_to_display_style);
+        let display_style = seg_style
+            .as_ref()
+            .map(convert_driver_style_to_display_style);
         for ch in seg_text.chars() {
             text.push(ch);
             styles.push(display_style.clone());
@@ -449,9 +452,7 @@ fn convert_driver_tl_to_display(
 }
 
 /// Convert client-driver `Style` to display `Style`.
-fn convert_driver_style_to_display_style(
-    style: &reovim_client_driver::Style,
-) -> DisplayStyle {
+fn convert_driver_style_to_display_style(style: &reovim_client_driver::Style) -> DisplayStyle {
     let mut attrs = DisplayAttributes::new();
 
     if style
@@ -505,9 +506,13 @@ fn convert_driver_style_to_display_style(
 
 /// Convert a TUI driver `KeyEvent` to a platform-agnostic `InputEvent`.
 #[must_use]
-pub const fn convert_key_event(key: &reovim_driver_tui::KeyEvent) -> reovim_client_driver::InputEvent {
-    use crossterm::event::{KeyCode as CK, KeyModifiers as CM};
-    use reovim_client_driver::{KeyCode as DK, KeyEvent as DE, Modifiers as DM};
+pub const fn convert_key_event(
+    key: &reovim_driver_tui::KeyEvent,
+) -> reovim_client_driver::InputEvent {
+    use {
+        crossterm::event::{KeyCode as CK, KeyModifiers as CM},
+        reovim_client_driver::{KeyCode as DK, KeyEvent as DE, Modifiers as DM},
+    };
 
     let code = match key.code {
         CK::Char(c) => DK::Char(c),
@@ -548,8 +553,10 @@ pub const fn convert_key_event(key: &reovim_driver_tui::KeyEvent) -> reovim_clie
 pub fn convert_mouse_event(
     mouse: &reovim_driver_tui::MouseEvent,
 ) -> reovim_client_driver::InputEvent {
-    use crossterm::event::{MouseButton as CB, MouseEventKind as MK};
-    use reovim_client_driver::{Modifiers, PointerButton as PB, PointerEvent, PointerKind};
+    use {
+        crossterm::event::{MouseButton as CB, MouseEventKind as MK},
+        reovim_client_driver::{Modifiers, PointerButton as PB, PointerEvent, PointerKind},
+    };
 
     let button_map = |b: CB| match b {
         CB::Left => PB::Left,
