@@ -22,9 +22,17 @@
 //! }
 //! ```
 
+use std::sync::Arc;
+
 use reovim_kernel::api::v1::{MultiServiceRegistry, ServiceKey};
 
 use crate::Style;
+
+// Re-export display-agnostic types from the statusline driver.
+pub use reovim_driver_statusline::{
+    ComponentData, ComponentDataContext, ComponentDataProvider, ComponentDataProviderKey,
+    ComponentDataProviderRegistry,
+};
 
 /// Immutable snapshot of editor state for component rendering.
 ///
@@ -73,36 +81,16 @@ pub struct ComponentContext {
     // === Extended (optional, provided by other modules) ===
     /// Git branch name (if git module provides).
     pub git_branch: Option<String>,
+    /// Scope breadcrumb (if context module provides).
+    pub breadcrumb: Option<String>,
     /// Diagnostic counts (if LSP module provides).
     pub diagnostics: Option<DiagnosticCounts>,
 }
 
-/// Diagnostic counts from LSP or other sources.
-#[derive(Debug, Clone, Default)]
-pub struct DiagnosticCounts {
-    /// Error count.
-    pub errors: usize,
-    /// Warning count.
-    pub warnings: usize,
-    /// Info count.
-    pub info: usize,
-    /// Hint count.
-    pub hints: usize,
-}
-
-impl DiagnosticCounts {
-    /// Check if there are any diagnostics.
-    #[must_use]
-    pub const fn is_empty(&self) -> bool {
-        self.errors == 0 && self.warnings == 0 && self.info == 0 && self.hints == 0
-    }
-
-    /// Total count of all diagnostics.
-    #[must_use]
-    pub const fn total(&self) -> usize {
-        self.errors + self.warnings + self.info + self.hints
-    }
-}
+/// Re-export diagnostic counts from the statusline driver.
+///
+/// Both server modules and the display layer use the same type.
+pub use reovim_driver_statusline::DiagnosticCounts;
 
 /// Output from a component render.
 #[derive(Debug, Clone)]
@@ -318,6 +306,87 @@ impl ServiceKey for ComponentProviderKey {
 /// ```
 pub type ComponentProviderRegistry =
     MultiServiceRegistry<ComponentProviderKey, dyn ComponentProvider>;
+
+// ========================================================================
+// DataProviderAdapter — bridges server-side data providers to
+// display-side component providers.
+// ========================================================================
+
+/// Convert display-side [`ComponentContext`] into the driver-side
+/// [`ComponentDataContext`] for server modules that implement
+/// [`ComponentDataProvider`].
+impl From<&ComponentContext> for ComponentDataContext {
+    fn from(ctx: &ComponentContext) -> Self {
+        Self {
+            mode: ctx.mode.clone(),
+            mode_subtype: ctx.mode_subtype.clone(),
+            filename: ctx.filename.clone(),
+            filepath: ctx.filepath.clone(),
+            modified: ctx.modified,
+            readonly: ctx.readonly,
+            filetype: ctx.filetype.clone(),
+            line: ctx.line,
+            column: ctx.column,
+            total_lines: ctx.total_lines,
+            encoding: ctx.encoding.clone(),
+            line_ending: ctx.line_ending.clone(),
+            terminal_width: ctx.terminal_width,
+            terminal_height: ctx.terminal_height,
+            git_branch: ctx.git_branch.clone(),
+            breadcrumb: ctx.breadcrumb.clone(),
+            diagnostics: ctx.diagnostics.as_ref().map(|d| {
+                reovim_driver_statusline::DiagnosticCounts {
+                    errors: d.errors,
+                    warnings: d.warnings,
+                    info: d.info,
+                    hints: d.hints,
+                }
+            }),
+        }
+    }
+}
+
+/// Adapter that wraps a server-side [`ComponentDataProvider`] into a
+/// display-side [`ComponentProvider`].
+///
+/// Server modules produce raw text via `ComponentDataProvider::data()`.
+/// This adapter converts the display-side `ComponentContext` to a
+/// `ComponentDataContext`, calls the inner provider, and converts the
+/// resulting `ComponentData` into a `ComponentOutput` (with `style: None`,
+/// letting the theme decide).
+pub struct DataProviderAdapter {
+    inner: Arc<dyn ComponentDataProvider>,
+}
+
+impl DataProviderAdapter {
+    /// Wrap a data provider in a display-side adapter.
+    #[must_use]
+    pub fn new(inner: Arc<dyn ComponentDataProvider>) -> Self {
+        Self { inner }
+    }
+}
+
+impl ComponentProvider for DataProviderAdapter {
+    fn id(&self) -> &'static str {
+        self.inner.id()
+    }
+
+    fn render(&self, ctx: &ComponentContext) -> ComponentOutput {
+        let data_ctx = ComponentDataContext::from(ctx);
+        let data = self.inner.data(&data_ctx);
+        if data.visible {
+            ComponentOutput {
+                text: data.text,
+                style: None,
+                visible: true,
+                min_width: data.min_width,
+                truncation_priority: data.truncation_priority,
+            }
+        } else {
+            ComponentOutput::hidden()
+        }
+    }
+}
 
 #[cfg(test)]
 #[path = "component_tests.rs"]

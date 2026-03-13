@@ -1,6 +1,12 @@
 use {
     super::*,
-    reovim_kernel::api::v1::{OptionSpec, OptionValue},
+    reovim_driver_lsp::{DiagnosticCache, LspProvider, LspRequest, lsp_types::ServerInfo},
+    reovim_driver_module_loader::report::ModuleLoadReport,
+    reovim_kernel::api::v1::{ModuleId, OptionSpec, OptionValue},
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
 };
 
 // ========================================================================
@@ -101,6 +107,168 @@ fn test_collect_lsp_empty_registry() {
     let section = collect_lsp(&kernel);
     assert_eq!(section.entries.len(), 1);
     assert!(section.entries[0].detail.contains("no providers"));
+}
+
+// ========================================================================
+// collect_lsp - multiple servers
+// ========================================================================
+
+/// Mock LSP provider for testing diagnostics with registered providers.
+struct MockLspProvider {
+    active: bool,
+    info: Option<ServerInfo>,
+    cache: DiagnosticCache,
+}
+
+impl MockLspProvider {
+    fn new(active: bool, info: Option<ServerInfo>) -> Self {
+        Self {
+            active,
+            info,
+            cache: DiagnosticCache::new(),
+        }
+    }
+}
+
+impl LspProvider for MockLspProvider {
+    fn send_request(&self, _request: LspRequest) -> bool {
+        false
+    }
+
+    fn is_active(&self) -> bool {
+        self.active
+    }
+
+    fn capabilities(&self) -> Option<Arc<reovim_driver_lsp::lsp_types::ServerCapabilities>> {
+        None
+    }
+
+    fn diagnostics(&self) -> &DiagnosticCache {
+        &self.cache
+    }
+
+    fn root_path(&self) -> &Path {
+        Path::new("/tmp")
+    }
+
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn language_id(&self) -> &str {
+        "test"
+    }
+
+    fn server_info(&self) -> Option<&ServerInfo> {
+        self.info.as_ref()
+    }
+}
+
+#[test]
+fn test_collect_lsp_single_active_server() {
+    let kernel = test_kernel();
+    let registry = LspProviderRegistry::new();
+    registry.register(
+        LspKey::Default,
+        Arc::new(MockLspProvider::new(
+            true,
+            Some(ServerInfo {
+                name: "rust-analyzer".to_string(),
+                version: Some("1.0.0".to_string()),
+            }),
+        )),
+    );
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_lsp(&kernel);
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert!(section.entries[0].detail.contains("rust-analyzer"));
+    assert!(section.entries[0].detail.contains("1.0.0"));
+    assert!(section.entries[0].detail.contains("active"));
+}
+
+#[test]
+fn test_collect_lsp_multiple_servers() {
+    let kernel = test_kernel();
+    let registry = LspProviderRegistry::new();
+
+    // Register a default server
+    registry.register(
+        LspKey::Default,
+        Arc::new(MockLspProvider::new(
+            true,
+            Some(ServerInfo {
+                name: "generic-lsp".to_string(),
+                version: Some("2.0.0".to_string()),
+            }),
+        )),
+    );
+
+    // Register a per-language server
+    registry.register(
+        LspKey::Language("rust".to_string()),
+        Arc::new(MockLspProvider::new(
+            true,
+            Some(ServerInfo {
+                name: "rust-analyzer".to_string(),
+                version: Some("1.5.0".to_string()),
+            }),
+        )),
+    );
+
+    // Register an inactive per-language server
+    registry.register(
+        LspKey::Language("python".to_string()),
+        Arc::new(MockLspProvider::new(
+            false,
+            Some(ServerInfo {
+                name: "pyright".to_string(),
+                version: None,
+            }),
+        )),
+    );
+
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_lsp(&kernel);
+    assert_eq!(section.entries.len(), 3);
+
+    // Verify counts (order may vary due to HashMap keys)
+    let active_count = section
+        .entries
+        .iter()
+        .filter(|e| e.status == Status::Ok)
+        .count();
+    let warning_count = section
+        .entries
+        .iter()
+        .filter(|e| e.status == Status::Warning)
+        .count();
+
+    assert_eq!(active_count, 2);
+    assert_eq!(warning_count, 1);
+
+    // The inactive server should be a warning
+    let inactive = section
+        .entries
+        .iter()
+        .find(|e| e.status == Status::Warning)
+        .expect("should have a warning entry");
+    assert!(inactive.detail.contains("pyright"));
+    assert!(inactive.detail.contains("inactive"));
+    assert!(inactive.detail.contains("unknown")); // version is None
+}
+
+#[test]
+fn test_collect_lsp_server_with_no_info() {
+    let kernel = test_kernel();
+    let registry = LspProviderRegistry::new();
+    registry.register(LspKey::Default, Arc::new(MockLspProvider::new(false, None)));
+    kernel.services.register(Arc::new(registry));
+
+    let section = collect_lsp(&kernel);
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Warning);
+    assert!(section.entries[0].detail.contains("inactive"));
+    assert!(section.entries[0].detail.contains("no server info"));
 }
 
 // ========================================================================
@@ -212,16 +380,196 @@ fn test_collect_options_with_overrides() {
 // collect_all
 // ========================================================================
 
+// ========================================================================
+// collect_modules (#610)
+// ========================================================================
+
+#[test]
+fn test_collect_modules_no_report() {
+    let kernel = test_kernel();
+    let section = collect_modules(&kernel);
+    assert_eq!(section.title, "Modules");
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Info);
+    assert!(section.entries[0].detail.contains("no load report"));
+}
+
+#[test]
+fn test_collect_modules_with_report() {
+    let kernel = test_kernel();
+    let mut report = ModuleLoadReport::new();
+    report.loaded.push(ModuleId::new("vim"));
+    report.loaded.push(ModuleId::new("editor"));
+    report
+        .failed
+        .push((ModuleId::new("tetris"), "init error".to_string()));
+    report.disabled.push(ModuleId::new("snippet"));
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_modules(&kernel);
+    assert_eq!(section.entries.len(), 4);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert_eq!(section.entries[0].detail, "loaded");
+    assert_eq!(section.entries[2].status, Status::Warning);
+    assert!(section.entries[2].detail.contains("init error"));
+    assert_eq!(section.entries[3].status, Status::Info);
+    assert!(section.entries[3].detail.contains("disabled"));
+}
+
+#[test]
+fn test_collect_modules_empty_report() {
+    let kernel = test_kernel();
+    let report = ModuleLoadReport::new();
+    kernel.services.register(std::sync::Arc::new(report));
+    let section = collect_modules(&kernel);
+    assert!(section.entries.is_empty());
+}
+
+// ========================================================================
+// collect_dependencies (#610)
+// ========================================================================
+
+#[test]
+fn test_collect_dependencies_no_report() {
+    let kernel = test_kernel();
+    let section = collect_dependencies(&kernel);
+    assert_eq!(section.title, "Dependencies");
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Info);
+}
+
+#[test]
+fn test_collect_dependencies_all_satisfied() {
+    let kernel = test_kernel();
+    let report = ModuleLoadReport::new();
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_dependencies(&kernel);
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Ok);
+    assert!(section.entries[0].detail.contains("all satisfied"));
+}
+
+#[test]
+fn test_collect_dependencies_missing() {
+    let kernel = test_kernel();
+    let mut report = ModuleLoadReport::new();
+    report
+        .missing_deps
+        .push((ModuleId::new("snippet"), ModuleId::new("vim")));
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_dependencies(&kernel);
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Warning);
+    assert!(section.entries[0].detail.contains("requires 'vim'"));
+}
+
+// ========================================================================
+// collect_configuration (#610)
+// ========================================================================
+
+#[test]
+fn test_collect_configuration_no_report() {
+    let kernel = test_kernel();
+    let section = collect_configuration(&kernel);
+    assert_eq!(section.title, "Configuration");
+    assert_eq!(section.entries.len(), 1);
+    assert_eq!(section.entries[0].status, Status::Info);
+}
+
+#[test]
+fn test_collect_configuration_with_config_path() {
+    let kernel = test_kernel();
+    let mut report = ModuleLoadReport::new();
+    report.config_path = Some(PathBuf::from("/home/user/.config/reovim/modules.toml"));
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_configuration(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Config file" && e.status == Status::Ok)
+    );
+}
+
+#[test]
+fn test_collect_configuration_no_config_path() {
+    let kernel = test_kernel();
+    let report = ModuleLoadReport::new();
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_configuration(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Config file" && e.detail.contains("not found"))
+    );
+}
+
+#[test]
+fn test_collect_configuration_with_search_paths() {
+    let kernel = test_kernel();
+    let mut report = ModuleLoadReport::new();
+    report
+        .search_paths
+        .push(PathBuf::from("/usr/lib/reovim/modules"));
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_configuration(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Module search path")
+    );
+}
+
+#[test]
+fn test_collect_configuration_isolation_active() {
+    let kernel = test_kernel();
+    let mut report = ModuleLoadReport::new();
+    report.isolation_active = true;
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_configuration(&kernel);
+    assert!(
+        section
+            .entries
+            .iter()
+            .any(|e| e.label == "Isolation" && e.status == Status::Ok)
+    );
+}
+
+#[test]
+fn test_collect_configuration_isolation_not_shown_when_inactive() {
+    let kernel = test_kernel();
+    let report = ModuleLoadReport::new();
+    kernel.services.register(std::sync::Arc::new(report));
+
+    let section = collect_configuration(&kernel);
+    assert!(!section.entries.iter().any(|e| e.label == "Isolation"));
+}
+
+// ========================================================================
+// collect_all (updated for new sections)
+// ========================================================================
+
 #[test]
 fn test_collect_all_returns_all_sections() {
     let kernel = test_kernel();
     let sections = collect_all(&kernel);
-    assert_eq!(sections.len(), 5);
+    assert_eq!(sections.len(), 8);
     assert_eq!(sections[0].title, "System");
-    assert_eq!(sections[1].title, "Language Servers");
-    assert_eq!(sections[2].title, "Syntax Highlighting");
-    assert_eq!(sections[3].title, "Clipboard");
-    assert_eq!(sections[4].title, "Options");
+    assert_eq!(sections[1].title, "Modules");
+    assert_eq!(sections[2].title, "Dependencies");
+    assert_eq!(sections[3].title, "Configuration");
+    assert_eq!(sections[4].title, "Language Servers");
+    assert_eq!(sections[5].title, "Syntax Highlighting");
+    assert_eq!(sections[6].title, "Clipboard");
+    assert_eq!(sections[7].title, "Options");
 }
 
 // ========================================================================

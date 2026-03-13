@@ -57,6 +57,7 @@ mod key;
 mod keybinding_store;
 mod lifecycle;
 mod lookup;
+mod lookup_policy_store;
 mod mode;
 mod mode_key;
 mod mode_registry;
@@ -124,6 +125,9 @@ pub use mode_store::{ModeInfo, ModeInfoStore};
 
 // Re-export keybinding store (Epic #417 Part 3 - module self-registration)
 pub use keybinding_store::KeybindingStore;
+
+// Re-export lookup policy store (#620 - decouple bootstrap from vim module)
+pub use lookup_policy_store::LookupPolicyStore;
 
 // Re-export pending bindings extension (#468 - Which-Key bridge)
 pub use pending::PendingBindings;

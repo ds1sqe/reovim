@@ -17,6 +17,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "microscope";
+
 /** Maximum visible items in the results list. */
 const MAX_VISIBLE_ITEMS = 20;
 
@@ -68,7 +70,7 @@ export class MicroscopeExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "microscope";
+    return KIND;
   }
 
   isActive(): boolean {

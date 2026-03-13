@@ -66,7 +66,7 @@ fn test_dismiss_is_permanent() {
     ext.on_cursor_update(0, 0, 0);
     assert!(!ext.is_active());
     // Cannot re-activate.
-    assert!(ext.dismissed);
+    assert!(!ext.is_active());
 }
 
 // ========================================================================

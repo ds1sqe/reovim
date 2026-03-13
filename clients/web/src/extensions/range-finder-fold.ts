@@ -12,6 +12,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "range-finder-fold";
+
 interface CollapsedFold {
   start_line: number;
   hidden_count: number;
@@ -27,7 +29,7 @@ export class RangeFinderFoldExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "range-finder-fold";
+    return KIND;
   }
 
   isActive(): boolean {

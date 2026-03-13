@@ -79,7 +79,8 @@ jobs:
         run: |
           export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
           eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
-          cargo +${{ env.NIGHTLY }} build -p reovim-module-defaults --features dynamic
+          cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-rust --features dynamic
+          cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-markdown --features dynamic
       - name: Save build cache
         uses: actions/cache/save@v4
         with:

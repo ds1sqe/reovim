@@ -78,6 +78,8 @@ struct Toast {
 ///   v
 /// No toasts: is_active() = false
 /// ```
+const KIND: &str = "notification";
+
 pub struct NotificationExtension {
     /// Active toasts being displayed.
     toasts: Vec<Toast>,
@@ -147,7 +149,7 @@ impl Default for NotificationExtension {
 
 impl TuiExtension for NotificationExtension {
     fn kind(&self) -> &'static str {
-        "notification"
+        KIND
     }
 
     fn is_active(&self) -> bool {

@@ -20,7 +20,7 @@
 //! the correct client's state.
 
 use {
-    reovim_driver_display::layout::RootCompositor,
+    reovim_driver_layout::RootCompositor,
     reovim_kernel::api::v1::{
         BufferId, HistoryRing, MarkBank, ModeId, ModeStack, Position, RegisterBank, WindowId,
     },

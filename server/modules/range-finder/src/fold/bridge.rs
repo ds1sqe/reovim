@@ -7,7 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use super::state::FoldSessionState;
+use {super::state::FoldSessionState, crate::KIND_FOLD};
 
 /// Bridge for fold state.
 ///
@@ -18,7 +18,7 @@ pub struct FoldBridge;
 
 impl ExtensionStateBridge for FoldBridge {
     fn kind(&self) -> &'static str {
-        "range-finder-fold"
+        KIND_FOLD
     }
 
     fn scope(&self) -> ExtensionScope {

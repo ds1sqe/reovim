@@ -181,6 +181,10 @@ impl SyntaxSessionState {
         if let Some(factory) = &self.factory
             && let Some(mut driver) = factory.create(language_id)
         {
+            // Configure injection support: pass the factory so the driver
+            // can create child drivers for embedded languages.
+            driver.set_injection_factory(factory.clone());
+
             // Parse initial content
             driver.parse(content);
             self.drivers.insert(buffer_id.as_usize(), driver);

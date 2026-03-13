@@ -4,9 +4,16 @@
 //! syntax highlighting implementations. Implementations handle parsing and
 //! highlighting for specific languages.
 
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
-use crate::{edit::SyntaxEdit, fold::FoldRange, highlight::Annotation, injection::Injection};
+use crate::{
+    edit::SyntaxEdit,
+    factory::SyntaxDriverFactory,
+    fold::FoldRange,
+    highlight::{Annotation, SyntaxContext},
+    injection::Injection,
+    scope::ContextHierarchy,
+};
 
 /// Main parsing interface for syntax highlighting.
 ///
@@ -132,6 +139,59 @@ pub trait SyntaxDriver: Send + Sync {
     /// Returns None. Override to provide indentation hints.
     fn indent_for(&self, _line: usize) -> Option<usize> {
         None
+    }
+
+    /// Configure injection support with the given factory.
+    ///
+    /// Called by the runtime after driver creation to enable recursive
+    /// injection highlighting. Implementations that support injections
+    /// use this factory to create child drivers for embedded languages.
+    ///
+    /// # Default
+    ///
+    /// No-op. Override for drivers that support injection highlighting.
+    fn set_injection_factory(&mut self, _factory: Arc<dyn SyntaxDriverFactory>) {}
+
+    /// Set the injection nesting depth for this driver.
+    ///
+    /// Used to propagate depth through the injection hierarchy so that
+    /// `MAX_INJECTION_DEPTH` is correctly enforced. Depth 0 = root driver,
+    /// depth 1 = direct child, etc.
+    ///
+    /// # Default
+    ///
+    /// No-op. Override for drivers that support injection highlighting.
+    fn set_injection_depth(&mut self, _depth: u8) {}
+
+    /// Get the enclosing scope hierarchy at a position.
+    ///
+    /// Returns the scope boundaries (function, class, module, etc.)
+    /// that contain the given line and column. Items are ordered
+    /// outermost-first.
+    ///
+    /// # Arguments
+    ///
+    /// * `line` - 0-indexed line number
+    /// * `col` - 0-indexed column number
+    ///
+    /// # Default
+    ///
+    /// Returns an empty hierarchy. Override for scope-aware behavior.
+    fn scopes(&self, _line: u32, _col: u32) -> ContextHierarchy {
+        ContextHierarchy::empty()
+    }
+
+    /// Get the syntax context at a byte position.
+    ///
+    /// Returns the syntactic context (code, string, comment) at the given
+    /// byte offset. Used by features like auto-pair to skip insertion
+    /// inside strings or comments.
+    ///
+    /// # Default
+    ///
+    /// Returns `SyntaxContext::Code`. Override for context-aware behavior.
+    fn context_at_byte(&self, _byte_offset: usize) -> SyntaxContext {
+        SyntaxContext::Code
     }
 
     /// Check if the driver has valid parse state.

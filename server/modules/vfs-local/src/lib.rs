@@ -124,6 +124,10 @@ impl Module for VfsLocalModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::VFS_PROVIDER]
+    }
 }
 
 impl VfsProviderModule for VfsLocalModule {

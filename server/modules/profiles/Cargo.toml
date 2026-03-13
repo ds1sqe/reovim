@@ -2,9 +2,12 @@
 name = "reovim-module-profiles"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 description = "Configuration profiles module - POLICY: save/load/list named option snapshots"
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -1,0 +1,19 @@
+[package]
+name = "reovim-tui-ext-pair"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "TUI extension for bracket pair highlighting (rainbow, matched-pair)"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-driver-display = { workspace = true }
+reovim-arch = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

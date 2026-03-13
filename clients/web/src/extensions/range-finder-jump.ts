@@ -12,6 +12,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "range-finder-jump";
+
 interface JumpLabel {
   line: number;
   col: number;
@@ -28,7 +30,7 @@ export class RangeFinderJumpExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "range-finder-jump";
+    return KIND;
   }
 
   isActive(): boolean {

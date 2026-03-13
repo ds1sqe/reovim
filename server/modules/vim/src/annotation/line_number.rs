@@ -1,4 +1,4 @@
-//! Line number annotation source and presenter.
+//! Line number annotation source.
 //!
 //! Implements line numbers using the generic annotation system,
 //! supporting absolute, relative, and hybrid modes.
@@ -6,10 +6,9 @@
 use std::sync::Arc;
 
 use {
-    reovim_driver_display::{
-        Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationPresenter,
-        AnnotationSource, AnnotationTarget, ColumnWidth, KindPattern, LineNumberMode,
-        PresentedOutput, PresenterContext, Style,
+    reovim_driver_annotation::{
+        Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
+        AnnotationTarget, LineNumberMode,
     },
     reovim_kernel::api::v1::BufferId,
 };
@@ -114,115 +113,10 @@ impl AnnotationSource for LineNumberSource {
     }
 }
 
-/// Line number presenter.
-///
-/// Renders line number annotations as right-aligned numbers with
-/// appropriate styling for cursor line vs other lines.
-#[derive(Debug, Clone, Default)]
-pub struct LineNumberPresenter {
-    /// Style for regular line numbers.
-    line_number_style: Style,
-    /// Style for the cursor line number.
-    cursor_line_style: Style,
-}
-
-impl LineNumberPresenter {
-    /// Create a new presenter with default styles.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Create a presenter with custom styles.
-    #[must_use]
-    pub const fn with_styles(line_number_style: Style, cursor_line_style: Style) -> Self {
-        Self {
-            line_number_style,
-            cursor_line_style,
-        }
-    }
-
-    /// Set styles from a theme manager.
-    #[must_use]
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    pub fn from_theme(manager: &reovim_driver_display::ThemeManager) -> Self {
-        use reovim_driver_display::style::groups;
-        Self {
-            line_number_style: manager.get_style(groups::LINE_NUMBER),
-            cursor_line_style: manager.get_style(groups::LINE_NUMBER_ACTIVE),
-        }
-    }
-}
-
-impl AnnotationPresenter for LineNumberPresenter {
-    fn id(&self) -> &'static str {
-        "builtin.line_number"
-    }
-
-    fn handles(&self) -> KindPattern {
-        KindPattern::exact("line_number")
-    }
-
-    #[cfg_attr(coverage_nightly, coverage(off))]
-    fn present(&self, annotation: &Annotation, ctx: &PresenterContext) -> PresentedOutput {
-        let Some(num) = annotation.payload.as_number() else {
-            return PresentedOutput::Hidden;
-        };
-
-        let is_cursor_line = match annotation.target {
-            AnnotationTarget::Line(l) => l == ctx.cursor_line,
-            _ => false,
-        };
-
-        let style = if is_cursor_line {
-            &self.cursor_line_style
-        } else {
-            &self.line_number_style
-        };
-
-        // Format with dynamic width based on total lines
-        let digits = Self::digits_needed(ctx.total_lines);
-        let text = format!("{num:>digits$} ");
-
-        PresentedOutput::text(&text, style)
-    }
-
-    fn column_width(&self, ctx: &PresenterContext) -> ColumnWidth {
-        // digits + 1 space padding
-        let digits = Self::digits_needed(ctx.total_lines);
-        #[allow(clippy::cast_possible_truncation)]
-        let width = (digits + 1) as u16;
-        ColumnWidth::fixed(width)
-    }
-}
-
-impl LineNumberPresenter {
-    /// Calculate digits needed to display a number.
-    fn digits_needed(n: usize) -> usize {
-        if n == 0 {
-            1
-        } else {
-            #[allow(
-                clippy::cast_precision_loss,
-                clippy::cast_sign_loss,
-                clippy::cast_possible_truncation
-            )]
-            let d = (n as f64).log10().floor() as usize + 1;
-            d
-        }
-    }
-}
-
 /// Create a shared line number source.
 #[must_use]
 pub fn create_line_number_source(mode: LineNumberMode) -> Arc<LineNumberSource> {
     Arc::new(LineNumberSource::new(mode))
-}
-
-/// Create a shared line number presenter.
-#[must_use]
-pub fn create_line_number_presenter() -> Arc<LineNumberPresenter> {
-    Arc::new(LineNumberPresenter::new())
 }
 
 #[cfg(test)]

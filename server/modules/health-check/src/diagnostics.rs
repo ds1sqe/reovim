@@ -3,6 +3,7 @@
 use {
     reovim_driver_clipboard::{ClipboardKey, ClipboardProviderRegistry},
     reovim_driver_lsp::{LspKey, LspProviderRegistry},
+    reovim_driver_module_loader::report::ModuleLoadReport,
     reovim_driver_syntax::{LanguageInfoStore, SyntaxFactoryStore},
     reovim_kernel::api::v1::{API_VERSION_STR, KernelContext},
     std::fmt::{self, Write},
@@ -266,11 +267,128 @@ pub fn collect_options(kernel: &KernelContext) -> DiagnosticSection {
     section
 }
 
+/// Collect loaded module status from `ModuleLoadReport`.
+#[must_use]
+pub fn collect_modules(kernel: &KernelContext) -> DiagnosticSection {
+    let mut section = DiagnosticSection::new("Modules");
+
+    let Some(report) = kernel.services.get::<ModuleLoadReport>() else {
+        section.entries.push(DiagnosticEntry::new(
+            Status::Info,
+            "Modules",
+            "no load report available",
+        ));
+        return section;
+    };
+
+    for id in &report.loaded {
+        section
+            .entries
+            .push(DiagnosticEntry::new(Status::Ok, id.as_str(), "loaded"));
+    }
+    for (id, reason) in &report.failed {
+        section
+            .entries
+            .push(DiagnosticEntry::new(Status::Warning, id.as_str(), reason));
+    }
+    for id in &report.disabled {
+        section
+            .entries
+            .push(DiagnosticEntry::new(Status::Info, id.as_str(), "disabled by config"));
+    }
+
+    section
+}
+
+/// Collect dependency issues from `ModuleLoadReport`.
+#[must_use]
+pub fn collect_dependencies(kernel: &KernelContext) -> DiagnosticSection {
+    let mut section = DiagnosticSection::new("Dependencies");
+
+    let Some(report) = kernel.services.get::<ModuleLoadReport>() else {
+        section.entries.push(DiagnosticEntry::new(
+            Status::Info,
+            "Dependencies",
+            "no load report available",
+        ));
+        return section;
+    };
+
+    if report.missing_deps.is_empty() {
+        section
+            .entries
+            .push(DiagnosticEntry::new(Status::Ok, "Dependencies", "all satisfied"));
+    } else {
+        for (module, dep) in &report.missing_deps {
+            section.entries.push(DiagnosticEntry::new(
+                Status::Warning,
+                module.as_str(),
+                format!("requires '{}' which is not loaded", dep.as_str()),
+            ));
+        }
+    }
+
+    section
+}
+
+/// Collect configuration path status from `ModuleLoadReport`.
+#[must_use]
+pub fn collect_configuration(kernel: &KernelContext) -> DiagnosticSection {
+    let mut section = DiagnosticSection::new("Configuration");
+
+    let Some(report) = kernel.services.get::<ModuleLoadReport>() else {
+        section.entries.push(DiagnosticEntry::new(
+            Status::Info,
+            "Configuration",
+            "no load report available",
+        ));
+        return section;
+    };
+
+    match &report.config_path {
+        Some(path) => {
+            section.entries.push(DiagnosticEntry::new(
+                Status::Ok,
+                "Config file",
+                path.display().to_string(),
+            ));
+        }
+        None => {
+            section.entries.push(DiagnosticEntry::new(
+                Status::Info,
+                "Config file",
+                "not found (using defaults)",
+            ));
+        }
+    }
+
+    for path in &report.search_paths {
+        section.entries.push(DiagnosticEntry::new(
+            Status::Info,
+            "Module search path",
+            path.display().to_string(),
+        ));
+    }
+
+    if report.isolation_active {
+        section.entries.push(DiagnosticEntry::new(
+            Status::Ok,
+            "Isolation",
+            "active (env override)",
+        ));
+    }
+
+    section
+}
+
 /// Collect all diagnostic sections.
 #[must_use]
 pub fn collect_all(kernel: &KernelContext) -> Vec<DiagnosticSection> {
     vec![
         collect_system(),
+        collect_modules(kernel),
+        collect_dependencies(kernel),
+        collect_configuration(kernel),
         collect_lsp(kernel),
         collect_treesitter(kernel),
         collect_clipboard(kernel),

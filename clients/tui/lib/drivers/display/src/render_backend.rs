@@ -383,6 +383,41 @@ pub trait TuiExtension: Send + Sync {
     ///
     /// Default: no-op.
     fn on_mode_change(&mut self, _mode_name: &str, _is_insert: bool) {}
+
+    /// Extension kinds that this extension depends on.
+    ///
+    /// Extensions listed here will be initialized before this one.
+    /// Used by `create_extensions()` to topologically sort the extension list.
+    ///
+    /// Default: empty (no dependencies).
+    fn dependencies(&self) -> &[&'static str] {
+        &[]
+    }
+
+    /// Called once after all extensions have been created and sorted.
+    ///
+    /// Use for initialization that depends on the extension system being ready.
+    /// Called in dependency order (dependencies first).
+    ///
+    /// Default: no-op.
+    fn init(&mut self) {}
+
+    /// Called during shutdown in reverse dependency order.
+    ///
+    /// Use for cleanup that must happen before the extension system tears down.
+    ///
+    /// Default: no-op.
+    fn exit(&mut self) {}
+
+    /// Server extension kinds this extension expects to receive data from (#584).
+    ///
+    /// Used by client startup validation to check if the server has matching
+    /// modules loaded. Logs warnings for unmatched kinds (graceful degradation).
+    ///
+    /// Default: `vec![self.kind()]` (1:1 mapping for most extensions).
+    fn server_kinds(&self) -> Vec<&'static str> {
+        vec![self.kind()]
+    }
 }
 
 #[cfg(test)]

@@ -11,6 +11,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+declare const __APP_VERSION__: string;
+
 const ASCII_LOGO = [
   "  ____                  _            ",
   " |  _ \\ ___  _____   _(_)_ __ ___   ",
@@ -64,7 +66,7 @@ export class LandingExtension implements WebExtension {
     // Version.
     const versionDiv = document.createElement("div");
     versionDiv.className = "landing-version";
-    versionDiv.textContent = "reovim";
+    versionDiv.textContent = `reovim v${__APP_VERSION__}`;
     overlay.appendChild(versionDiv);
 
     // Actions.

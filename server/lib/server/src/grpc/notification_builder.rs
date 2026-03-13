@@ -298,7 +298,7 @@ fn build_layout_notification(session: &Session, timestamp: u64, client_id: u64) 
             // Per-client compositor: IDs match per-client windows
             // Per-client terminal_size and active_buffer (#471)
             let (tw, th) = state.terminal_size;
-            let screen = reovim_driver_display::Rect::new(0, 0, tw, th);
+            let screen = reovim_driver_layout::Rect::new(0, 0, tw, th);
             let composite = compositor.composite(screen);
 
             let active_buffer = state.active_buffer;

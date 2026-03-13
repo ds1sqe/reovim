@@ -8,7 +8,7 @@
 //! The bootstrap process follows the Linux kernel module loading pattern:
 //! 1. Create a `ServiceRegistry` for cross-module service discovery
 //! 2. Create a `ModuleContext` for module initialization
-//! 3. Load default modules (`DefaultsModule::create_modules()`)
+//! 3. Load default modules (static factories or dynamic `.so` loading)
 //! 4. Initialize each module (calls `Module::init()`)
 //! 5. Create `SessionState` that uses services from the registry
 //!
@@ -22,29 +22,153 @@
 //!
 //! The `SessionState` then queries these registries via `ServiceRegistry`.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use {
     parking_lot::RwLock,
+    reovim_depgraph::{DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies},
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
     reovim_driver_input::{
-        BindingLayer, KeySequence, KeybindingStore, ModeInfoStore, ResolverRegistry,
+        BindingLayer, EagerLookupPolicy, KeySequence, KeybindingStore, LookupPolicyStore,
+        ModeInfoStore, ResolverRegistry,
     },
+    reovim_driver_module_config::{BuiltinManifest, ModulesConfig},
+    reovim_driver_module_loader::{handle::ModuleHandle, loader::ModuleLoader},
     reovim_driver_syntax::{
         CompositeFactory, DefaultLanguageRegistry, LanguageInfoStore, SyntaxDriverFactory,
         SyntaxFactoryStore,
     },
     reovim_driver_vfs::VfsInstance,
     reovim_kernel::api::v1::{
-        EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId, MotionEngine,
-        OptionRegistry, ProbeResult, ServiceRegistry, TextObjectEngine,
+        ConfigPaths, EventBus, KernelContext, MarkBank, ModeId, Module, ModuleContext, ModuleId,
+        ModuleState, MotionEngine, OptionRegistry, ServiceRegistry, TextObjectEngine,
     },
-    reovim_module_defaults::DefaultsModule,
     reovim_server::{
         CommandQuerySnapshot, CommandRegistry, KeymapRegistry, ModeEntry, ModeRegistry,
         SessionState, SyntaxSessionState,
     },
 };
+
+// #620: Static module factories — only available when static-modules feature is on.
+// Replaces the DefaultsModule god-crate with direct, feature-gated imports.
+#[cfg(feature = "static-modules")]
+#[path = "static_modules.rs"]
+mod static_modules;
+
+/// Embedded builtin module manifest (canonical module list and ordering).
+const BUILTINS_TOML: &str = include_str!("../../../server/data/builtins.toml");
+
+/// Parse the embedded builtin module manifest.
+///
+/// Panics if the embedded TOML is malformed (compile-time guarantee).
+fn parse_builtin_manifest() -> BuiltinManifest {
+    BuiltinManifest::parse(BUILTINS_TOML).expect("embedded builtins.toml must be valid")
+}
+
+/// Module with tracked lifecycle state (#582, #620).
+///
+/// Wraps a [`ModuleHandle`] with `ModuleState` FSM tracking.
+/// Used during bootstrap to track init results and enable
+/// `on_all_loaded()` to skip failed modules.
+///
+/// `ModuleHandle` unifies static (`Box<dyn Module>`) and dynamic
+/// (FFI trampoline) modules behind a single interface.
+struct TrackedModule {
+    handle: ModuleHandle,
+    state: ModuleState,
+}
+
+/// Load user module configuration from `~/.config/reovim/modules.toml`.
+///
+/// Returns the official preset (all enabled) if:
+/// - The config file does not exist (normal case)
+/// - The config directory cannot be determined
+/// - The config file has parse errors (logged as warning)
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn load_module_config() -> ModulesConfig {
+    let Ok(config_dir) = ConfigPaths::config_dir() else {
+        tracing::debug!("Cannot determine config directory, using official preset");
+        return ModulesConfig::official();
+    };
+    let config_path = config_dir.join("modules.toml");
+
+    match ModulesConfig::load(&config_path) {
+        Ok(config) => {
+            let disabled = config.disabled_modules();
+            if !disabled.is_empty() {
+                tracing::info!(?disabled, "User module config: disabled modules");
+            }
+            let disabled_ext = config.disabled_extensions();
+            if !disabled_ext.is_empty() {
+                tracing::info!(?disabled_ext, "User module config: disabled extensions");
+            }
+            // Validate against known builtin module IDs (#620: from manifest)
+            let manifest = parse_builtin_manifest();
+            let known = manifest.module_ids();
+            for warning in config.validate_modules(&known) {
+                tracing::warn!(%warning, "Module config validation");
+            }
+            config
+        }
+        Err(e) => {
+            tracing::warn!(%e, "Failed to load modules.toml, using official preset");
+            ModulesConfig::official()
+        }
+    }
+}
+
+/// Register `ModuleConfigStore` in `ServiceRegistry` from config settings.
+///
+/// Extracts per-module settings from `ModulesConfig` and registers them
+/// as a `ModuleConfigStore` service so modules can query their config
+/// during `init()`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn register_module_config_store(config: &ModulesConfig, services: &Arc<ServiceRegistry>) {
+    let store = config.build_config_store();
+    if !store.is_empty() {
+        tracing::info!("Registering ModuleConfigStore with per-module settings");
+        services.register(Arc::new(store));
+    }
+}
+
+/// Compute the set of extension kinds that should be disabled on the client.
+///
+/// For each disabled server module, looks up its `extension_kinds()` and
+/// collects them into a `HashSet`. This set is passed to the TUI so it
+/// can skip loading extensions for disabled server modules.
+#[must_use]
+#[cfg_attr(coverage_nightly, coverage(off))]
+pub fn compute_disabled_extension_kinds() -> std::collections::HashSet<String> {
+    #[cfg(feature = "static-modules")]
+    {
+        let config = load_module_config();
+        let mut disabled_kinds = std::collections::HashSet::new();
+
+        // #620: Use static factory map instead of DefaultsModule
+        let registry = static_modules::builtin_registry();
+        for (id, factory) in &registry {
+            if !config.is_module_enabled(id) {
+                let module = factory();
+                for kind in module.extension_kinds() {
+                    disabled_kinds.insert((*kind).to_string());
+                }
+            }
+        }
+
+        if !disabled_kinds.is_empty() {
+            tracing::info!(?disabled_kinds, "Computed disabled extension kinds from module config");
+        }
+        disabled_kinds
+    }
+
+    #[cfg(not(feature = "static-modules"))]
+    {
+        // Dynamic path: cannot query extension_kinds without loading .so files.
+        // Extension filtering requires static modules or dynamic loader (Phase 5).
+        tracing::debug!("Static modules disabled, extension kind filtering unavailable");
+        std::collections::HashSet::new()
+    }
+}
 
 /// Collect extension bridges from modules via `BridgeProvider`.
 ///
@@ -58,22 +182,44 @@ use {
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
-    use reovim_driver_session::bridges::{BridgeProvider, BridgeRegistry};
+    use reovim_driver_session::bridges::BridgeRegistry;
 
-    // Initialize modules in a temporary ServiceRegistry just for bridge collection.
-    let services = Arc::new(ServiceRegistry::new());
-    let kernel = create_kernel_context(Arc::clone(&services));
-    let module_ctx = create_module_context(kernel, Arc::clone(&services));
-    initialize_modules(&module_ctx);
+    #[cfg(feature = "static-modules")]
+    {
+        use reovim_driver_session::bridges::BridgeProvider;
+        // Load user config to filter modules (#586)
+        let config = load_module_config();
 
-    let mut registry = BridgeRegistry::new();
-    if let Some(provider) = services.get::<BridgeProvider>() {
-        for bridge in provider.take_bridges() {
-            registry.register_boxed(bridge);
+        // Initialize modules in dependency order (#582).
+        // This is a separate init pass (bridges are collected once globally,
+        // sessions are created per-connection).
+        let services = Arc::new(ServiceRegistry::new());
+        register_module_config_store(&config, &services);
+        let kernel = create_kernel_context(Arc::clone(&services));
+        let module_ctx = create_module_context(kernel, Arc::clone(&services));
+        let (tracked, _external) = initialize_modules(&config, &module_ctx);
+
+        let mut registry = BridgeRegistry::new();
+        if let Some(provider) = services.get::<BridgeProvider>() {
+            for bridge in provider.take_bridges() {
+                registry.register_boxed(bridge);
+            }
         }
+
+        // Collect module-declared extension kinds and validate contracts (#584)
+        let available_kinds = collect_available_kinds(&tracked);
+        validate_extension_contracts(&tracked, &registry);
+        registry.set_available_kinds(available_kinds);
+
+        registry
     }
 
-    registry
+    #[cfg(not(feature = "static-modules"))]
+    {
+        // Dynamic path: bridge collection requires module init (Phase 5).
+        tracing::debug!("Static modules disabled, bridge collection unavailable");
+        BridgeRegistry::new()
+    }
 }
 
 /// Create a session state with fully-initialized module registries.
@@ -98,8 +244,14 @@ pub fn collect_bridges() -> reovim_driver_session::bridges::BridgeRegistry {
 #[must_use]
 #[cfg_attr(coverage_nightly, coverage(off))]
 pub fn create_session_state() -> SessionState {
+    // Load user config (#586)
+    let config = load_module_config();
+
     // Create shared service registry
     let services = Arc::new(ServiceRegistry::new());
+
+    // Register per-module settings before module init (#586)
+    register_module_config_store(&config, &services);
 
     // Create kernel context with service registry
     let kernel = create_kernel_context(Arc::clone(&services));
@@ -107,8 +259,22 @@ pub fn create_session_state() -> SessionState {
     // Create module context for initialization
     let module_ctx = create_module_context(kernel.clone(), Arc::clone(&services));
 
-    // Initialize all default modules
-    initialize_modules(&module_ctx);
+    // Initialize enabled modules in dependency order (#582, #586, #587)
+    let (mut tracked, mut external) = initialize_modules(&config, &module_ctx);
+
+    // Wire on_all_loaded lifecycle hook (#582)
+    call_on_all_loaded(&mut tracked, &mut external, &module_ctx);
+
+    // Check modules.lock staleness (#587) — warning only, missing lock is fine
+    check_lockfile_staleness();
+
+    // #610: Construct and register ModuleLoadReport for health-check diagnostics
+    build_and_register_load_report(&config, &tracked, &services);
+
+    // Modules are dropped here — exit() lifecycle requires a ManagedSession
+    // wrapper (future work: no module currently overrides exit() meaningfully).
+    drop(tracked);
+    drop(external);
 
     // Extract registries from ServiceRegistry (populated by modules during init)
     let (mode_registry, command_registry, keymap_registry, resolver_registry) =
@@ -128,8 +294,12 @@ pub fn create_session_state() -> SessionState {
     tracing::info!(count = name_index.count(), "Built command name index");
     services.register(name_index);
 
-    // Create session state with populated registries
-    let initial_mode = ModeId::new(ModuleId::new("vim"), "normal");
+    // #623: Read initial mode from personality module, fallback to vim:normal
+    let initial_mode = services
+        .get::<reovim_driver_session::InitialModeProvider>()
+        .and_then(|p| p.get())
+        .unwrap_or_else(|| ModeId::new(ModuleId::new("vim"), "normal"));
+    tracing::info!(mode = %initial_mode, "Selected initial mode from personality module");
     // Use StandardVfs for real file system operations (required for :e command)
     let vfs: Arc<dyn reovim_driver_vfs::VfsDriver> =
         Arc::new(reovim_driver_vfs::StandardVfs::new());
@@ -144,6 +314,50 @@ pub fn create_session_state() -> SessionState {
         services.register(Arc::new(theme_manager));
         let theme_loader = ThemeLoader::new();
         services.register(Arc::new(theme_loader));
+    }
+
+    // Build GutterRenderer from registered annotation sources + display presenters.
+    // Server modules register data sources in AnnotationSourceRegistry during init().
+    // The display layer creates presenters (Style, Color) and pairs them with sources.
+    {
+        use reovim_driver_display::{
+            AnnotationSourceRegistry, BlamePresenter, GitSignsPresenter, GutterRenderer,
+            GutterRendererKey, GutterRendererRegistry, LineNumberPresenter,
+        };
+        if let Some(source_registry) = services.get::<AnnotationSourceRegistry>() {
+            let renderer = GutterRenderer::new();
+            for source in source_registry.values() {
+                renderer.register_source(source);
+            }
+            renderer.register_presenter(Arc::new(LineNumberPresenter::new()));
+            renderer.register_presenter(Arc::new(GitSignsPresenter::new()));
+            renderer.register_presenter(Arc::new(BlamePresenter::new()));
+
+            let renderer_registry = services.get_or_create::<GutterRendererRegistry>();
+            renderer_registry.register(GutterRendererKey::Default, Arc::new(renderer));
+            tracing::info!("Built GutterRenderer from annotation sources");
+        }
+    }
+
+    // Wrap server-side ComponentDataProviders into display-side ComponentProviders.
+    // Server modules register data providers in ComponentDataProviderRegistry during init().
+    // The display layer wraps each with a DataProviderAdapter (adds Style from theme).
+    {
+        use reovim_driver_display::statusline::{
+            ComponentDataProviderRegistry, ComponentProviderKey, ComponentProviderRegistry,
+            DataProviderAdapter,
+        };
+        if let Some(data_registry) = services.get::<ComponentDataProviderRegistry>() {
+            let provider_registry = services.get_or_create::<ComponentProviderRegistry>();
+            for data_provider in data_registry.values() {
+                let key = ComponentProviderKey::new(data_provider.id());
+                provider_registry.register(key, Arc::new(DataProviderAdapter::new(data_provider)));
+            }
+            tracing::info!(
+                "Wrapped {} data providers into ComponentProviders",
+                data_registry.len()
+            );
+        }
     }
 
     let mut state = SessionState::with_registries(
@@ -207,8 +421,17 @@ fn extract_registries(
     //    Each KeybindingRegistration declares modes as "module:name" strings
     //    (e.g., "vim:normal"). We resolve these to ModeId via mode_registry.
     let mut keymap_registry = KeymapRegistry::new();
-    // Wire Vim-style lookup policy (#542): wait for longer sequences (dd after d)
-    keymap_registry.set_default_policy(Arc::new(reovim_module_vim::VimLookupPolicy));
+    // #620: Extract lookup policy from ServiceRegistry (registered by VimModule during init).
+    // Falls back to EagerLookupPolicy if no module registered a policy.
+    if let Some(policy_store) = services.get::<LookupPolicyStore>() {
+        if let Some(policy) = policy_store.take() {
+            keymap_registry.set_default_policy(policy);
+        } else {
+            keymap_registry.set_default_policy(Arc::new(EagerLookupPolicy));
+        }
+    } else {
+        keymap_registry.set_default_policy(Arc::new(EagerLookupPolicy));
+    }
     if let Some(store) = services.get::<KeybindingStore>() {
         let mut wired = 0usize;
         for binding in store.take_keybindings() {
@@ -343,7 +566,11 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
     ModuleContext::new(kernel, services, data_dir, cache_dir)
 }
 
-/// Initialize all default modules plus any extra modules from environment.
+/// Initialize enabled modules in dependency-resolved order (#582, #586).
+///
+/// Collects default + extra modules (filtered by user config), resolves
+/// dependencies via Kahn's topological sort, and initializes in dependency
+/// order. Returns tracked modules for the `on_all_loaded()` lifecycle hook.
 ///
 /// Modules self-register their services during `init()`:
 /// - Resolvers → `ResolverRegistry`
@@ -351,86 +578,426 @@ fn create_module_context(kernel: KernelContext, services: Arc<ServiceRegistry>) 
 /// - Keybindings → `KeybindingStore`
 /// - Mode info → `ModeInfoStore`
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_modules(ctx: &ModuleContext) {
-    let modules = DefaultsModule::create_modules();
+fn initialize_modules(
+    config: &ModulesConfig,
+    ctx: &ModuleContext,
+) -> (Vec<TrackedModule>, ModuleLoader) {
+    // #620: Create builtin modules from static factory map (or empty for dynamic path)
+    #[cfg(feature = "static-modules")]
+    let all_modules: Vec<Box<dyn Module>> = {
+        let manifest = parse_builtin_manifest();
+        let registry = static_modules::builtin_registry();
+        manifest
+            .module_ids()
+            .into_iter()
+            .filter(|id| config.is_module_enabled(id))
+            .filter_map(|id| registry.get(id).map(|factory| factory()))
+            .collect()
+    };
 
-    tracing::info!(count = modules.len(), "Initializing default modules");
+    #[cfg(not(feature = "static-modules"))]
+    let all_modules: Vec<Box<dyn Module>> = Vec::new();
 
-    for mut module in modules {
-        init_single_module(&mut *module, ctx);
+    // Convert Box<dyn Module> → ModuleHandle for unified static/dynamic interface (#620)
+    let all_handles: Vec<ModuleHandle> = all_modules
+        .into_iter()
+        .map(ModuleHandle::from_boxed)
+        .collect();
+
+    // Collect builtin IDs before external discovery (for dedup)
+    let builtin_ids: Vec<ModuleId> = all_handles.iter().map(|h| h.id().clone()).collect();
+
+    // Discover and load external .so modules (#587)
+    let external = discover_and_load_externals(config, &builtin_ids);
+
+    tracing::info!(builtin = all_handles.len(), external = external.len(), "Initializing modules");
+
+    // Save hardcoded order for shadow-mode comparison (reuse builtin_ids)
+    let hardcoded_order = builtin_ids;
+
+    // Build dependency entries from module handles
+    let mut entries: Vec<DepEntry<ModuleId>> = all_handles
+        .iter()
+        .map(|h| DepEntry {
+            key: h.id().clone(),
+            required: h.dependencies(),
+            optional: h.optional_dependencies(),
+            provides_caps: h.provides().to_vec(),
+            requires_caps: h.requires().to_vec(),
+        })
+        .collect();
+
+    // Add dependency entries from external modules (#587)
+    {
+        let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+        for id in &ext_ids {
+            if let Some(handle) = external.get(id) {
+                entries.push(DepEntry {
+                    key: handle.id().clone(),
+                    required: handle.dependencies(),
+                    optional: handle.optional_dependencies(),
+                    provides_caps: handle.provides().to_vec(),
+                    requires_caps: handle.requires().to_vec(),
+                });
+            }
+        }
     }
 
-    // Load extra modules from REOVIM_EXTRA_MODULES env var
-    initialize_extra_modules(ctx);
+    // Resolve dependency order via Kahn's topological sort
+    let dep_order = match resolve_dependencies(&entries) {
+        Ok(order) => {
+            tracing::info!(count = order.order.len(), "Resolved module dependency order");
+            order
+        }
+        Err(e) => {
+            // TRANSITION SAFETY: Fallback to input order. This is UNSAFE for
+            // Tier 4 modules (vim-snippet, vim-range-finder, snippet,
+            // range-finder) which call .expect() during init and will panic
+            // if their deps aren't init'd first. Remove this fallback after
+            // integration tests verify toposort (#582).
+            tracing::error!(%e, "Dependency resolution failed, using input order");
+            DependencyOrder {
+                order: hardcoded_order.clone(),
+                dependents: HashMap::new(),
+            }
+        }
+    };
 
-    tracing::info!("Module initialization complete");
+    // Shadow-mode: compare relative ordering of dependent pairs (#582)
+    log_shadow_comparison(&hardcoded_order, &dep_order.order, &entries);
+
+    // Check version constraints (#619)
+    check_module_version_constraints(&all_handles, &external);
+
+    // Index handles by ID for O(1) lookup during ordered init
+    let mut module_map: HashMap<ModuleId, ModuleHandle> = all_handles
+        .into_iter()
+        .map(|h| {
+            let id = h.id().clone();
+            (id, h)
+        })
+        .collect();
+
+    // Initialize in dependency order
+    let mut tracked = Vec::with_capacity(dep_order.order.len());
+    for id in &dep_order.order {
+        if let Some(handle) = module_map.remove(id) {
+            let mut tm = TrackedModule {
+                handle,
+                state: ModuleState::Loaded,
+            };
+            tm.state = ModuleState::Initializing;
+            let success = init_single_handle(&mut tm.handle, ctx);
+            tm.state = if success {
+                ModuleState::Running
+            } else {
+                ModuleState::Failed("init returned non-success".into())
+            };
+            tracked.push(tm);
+        } else if external.get(id).is_some() {
+            // External module discovered in depgraph (#587).
+            // Init is deferred — bootstrap currently only initializes builtins.
+            // External modules are initialized when the full ModuleRegistry
+            // orchestrator is used (e.g., via `reovim module` CLI commands).
+            tracing::info!(%id, "External module registered (init deferred)");
+        }
+    }
+
+    let running = tracked
+        .iter()
+        .filter(|t| t.state == ModuleState::Running)
+        .count();
+    tracing::info!(
+        total = tracked.len(),
+        running,
+        external = external.len(),
+        "Module initialization complete"
+    );
+
+    (tracked, external)
 }
 
-/// Initialize a single module, logging the result.
+/// Initialize a single module handle, logging the result.
+///
+/// Works with both static and dynamic modules via `ModuleHandle`.
+/// Returns `true` if the module initialized successfully.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn init_single_module(module: &mut dyn Module, ctx: &ModuleContext) {
-    let id = module.id();
-    let name = module.name();
+fn init_single_handle(handle: &mut ModuleHandle, ctx: &ModuleContext) -> bool {
+    let id = handle.id().clone();
+    let name = handle.name().to_owned();
 
     tracing::debug!(%id, name, "Initializing module");
 
-    match module.init(ctx) {
-        ProbeResult::Success => {
+    match handle.init(ctx) {
+        Ok(reovim_driver_module_loader::handle::InitResult::Success) => {
             tracing::info!(%id, name, "Module initialized successfully");
+            true
         }
-        ProbeResult::Defer(msg) => {
+        Ok(reovim_driver_module_loader::handle::InitResult::Defer(msg)) => {
             tracing::warn!(%id, name, %msg, "Module deferred initialization");
+            false
         }
-        ProbeResult::Failed(err) => {
+        Err(err) => {
             tracing::error!(%id, name, ?err, "Module initialization failed");
+            false
         }
     }
 }
 
-/// Initialize extra modules from `REOVIM_EXTRA_MODULES` environment variable.
+/// Call `on_all_loaded()` on all running modules (#582).
 ///
-/// Parses a comma-separated list of module names and initializes each.
-/// Unknown names are logged as warnings and skipped.
-///
-/// # Example
-///
-/// ```bash
-/// REOVIM_EXTRA_MODULES=textobjects cargo run -- server --grpc 0
-/// ```
+/// Invoked after all modules have completed `init()`. Currently a no-op
+/// for all modules (none override this hook), but wires the mechanism
+/// so future modules can use it for cross-module queries.
 #[cfg_attr(coverage_nightly, coverage(off))]
-fn initialize_extra_modules(ctx: &ModuleContext) {
-    let Ok(extra) = std::env::var("REOVIM_EXTRA_MODULES") else {
-        return;
-    };
+fn call_on_all_loaded(
+    modules: &mut [TrackedModule],
+    external: &mut ModuleLoader,
+    ctx: &ModuleContext,
+) {
+    for tm in modules.iter_mut() {
+        if tm.state == ModuleState::Running {
+            tm.handle.on_all_loaded(ctx);
+        }
+    }
+    // Call on_all_loaded for external modules (#587)
+    let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+    for id in &ext_ids {
+        if let Some(handle) = external.get_mut(id) {
+            handle.on_all_loaded(ctx);
+        }
+    }
+    tracing::info!(builtin = modules.len(), external = ext_ids.len(), "on_all_loaded complete");
+}
 
-    let names: Vec<&str> = extra
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+/// Discover and load external `.so` modules from search paths (#587).
+///
+/// Scans default search paths (`$REOVIM_MODULE_PATH`, XDG dirs, system dirs)
+/// for module shared libraries, probes each one for metadata and API version
+/// compatibility, and loads enabled modules.
+///
+/// External modules that duplicate a builtin module ID are skipped — builtins
+/// always take priority. Modules disabled by user config are also skipped.
+///
+/// This function never fails — individual module load failures are logged
+/// as warnings but don't prevent other modules from loading.
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[allow(unsafe_code)]
+fn discover_and_load_externals(config: &ModulesConfig, builtin_ids: &[ModuleId]) -> ModuleLoader {
+    let mut loader = ModuleLoader::new();
+
+    let discovered = loader.discover();
+    if discovered.is_empty() {
+        return loader;
+    }
+
+    tracing::info!(count = discovered.len(), "Discovered external module files");
+
+    for path in &discovered {
+        // SAFETY: We trust .so files found in system search paths (XDG user dir,
+        // /usr/local/lib, /usr/lib). Users control which paths are searched via
+        // the REOVIM_MODULE_PATH environment variable.
+        match unsafe { loader.load_dynamic(path) } {
+            Ok(id) => {
+                // Builtins always take priority — skip external duplicates
+                if builtin_ids.iter().any(|b| b == &id) {
+                    tracing::debug!(
+                        %id,
+                        "External module duplicates builtin, skipping"
+                    );
+                    loader.unload(&id).ok();
+                } else if config.is_module_enabled(id.as_str()) {
+                    tracing::info!(%id, ?path, "Loaded external module");
+                } else {
+                    tracing::info!(
+                        %id,
+                        "External module disabled by user config, unloading"
+                    );
+                    loader.unload(&id).ok();
+                }
+            }
+            Err(e) => {
+                tracing::warn!(?path, %e, "Failed to load external module, skipping");
+            }
+        }
+    }
+
+    let ext_count = loader.len();
+    if ext_count > 0 {
+        tracing::info!(count = ext_count, "External modules loaded");
+    }
+
+    loader
+}
+
+/// Compare relative ordering of dependent pairs between hardcoded and
+/// Check version constraints across all modules (#619).
+///
+/// Collects `version_constraints()` from each module and validates them
+/// against actual module versions. Violations are logged as warnings.
+/// Non-fatal — modules still load but constraints are surfaced.
+fn check_module_version_constraints(builtins: &[ModuleHandle], external: &ModuleLoader) {
+    // Build version map: module_id -> (major, minor, patch)
+    let mut versions: Vec<(ModuleId, (u32, u32, u32))> = builtins
+        .iter()
+        .map(|h| {
+            let v = h.version();
+            (h.id().clone(), (v.major, v.minor, v.patch))
+        })
         .collect();
-    if names.is_empty() {
+
+    let ext_ids: Vec<ModuleId> = external.loaded_ids().cloned().collect();
+    for id in &ext_ids {
+        if let Some(handle) = external.get(id) {
+            let v = handle.version();
+            versions.push((handle.id().clone(), (v.major, v.minor, v.patch)));
+        }
+    }
+
+    // Collect all constraints: (source_id, target_id, range_str)
+    let mut constraints: Vec<(ModuleId, ModuleId, &str)> = Vec::new();
+    for h in builtins {
+        for (target, range_str) in h.version_constraints() {
+            constraints.push((h.id().clone(), target, range_str));
+        }
+    }
+
+    if constraints.is_empty() {
         return;
     }
 
-    tracing::info!(count = names.len(), ?names, "Loading extra modules");
+    let violations = check_version_constraints(&constraints, &versions);
+    for v in &violations {
+        tracing::warn!(
+            source = %v.source,
+            target = %v.target,
+            required = %v.required,
+            actual = format_args!("{}.{}.{}", v.actual.0, v.actual.1, v.actual.2),
+            "Version constraint violation"
+        );
+    }
 
-    for name in names {
-        if let Some(mut module) = create_extra_module(name) {
-            init_single_module(&mut *module, ctx);
-        } else {
-            tracing::warn!(name, "Unknown extra module, skipping");
+    if !violations.is_empty() {
+        tracing::warn!(
+            count = violations.len(),
+            "Version constraint violations detected — modules may not work correctly"
+        );
+    }
+}
+
+/// computed orderings (#582 shadow-mode).
+///
+/// Only logs violations — does NOT compare absolute positions (which
+/// produces false positives from valid toposort reorderings of independent
+/// modules). Will be removed after transition is verified.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn log_shadow_comparison(
+    hardcoded: &[ModuleId],
+    computed: &[ModuleId],
+    entries: &[DepEntry<ModuleId>],
+) {
+    let hardcoded_pos: HashMap<&ModuleId, usize> = hardcoded
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id, i))
+        .collect();
+    let computed_pos: HashMap<&ModuleId, usize> =
+        computed.iter().enumerate().map(|(i, id)| (id, i)).collect();
+
+    for entry in entries {
+        for dep in &entry.required {
+            if let (Some(&h_dep), Some(&h_mod), Some(&c_dep), Some(&c_mod)) = (
+                hardcoded_pos.get(dep),
+                hardcoded_pos.get(&entry.key),
+                computed_pos.get(dep),
+                computed_pos.get(&entry.key),
+            ) {
+                if c_dep >= c_mod {
+                    tracing::error!(
+                        dep = %dep,
+                        module = %entry.key,
+                        "ORDERING BUG: dep not before module in computed order"
+                    );
+                }
+                if h_dep < h_mod && c_dep >= c_mod {
+                    tracing::warn!(
+                        dep = %dep,
+                        module = %entry.key,
+                        "Regression: hardcoded order was correct, computed is wrong"
+                    );
+                }
+            }
         }
     }
 }
 
-/// Create an extra module by name.
+/// Collect the union of all `extension_kinds()` from running modules (#584).
 ///
-/// Returns `None` for unknown module names.
-fn create_extra_module(name: &str) -> Option<Box<dyn Module>> {
-    match name {
-        "textobjects" => Some(Box::new(reovim_module_textobjects::TextObjectsModule::new())),
-        _ => None,
+/// Returns a sorted, deduplicated list of extension kind identifiers
+/// declared by loaded server modules. Used to populate `BridgeRegistry`
+/// and expose to clients via the `ListExtensions` RPC.
+#[cfg(feature = "static-modules")]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn collect_available_kinds(modules: &[TrackedModule]) -> Vec<&'static str> {
+    use std::collections::BTreeSet;
+
+    let kinds: BTreeSet<&'static str> = modules
+        .iter()
+        .filter(|tm| tm.state == ModuleState::Running)
+        .flat_map(|tm| tm.handle.extension_kinds().iter().copied())
+        .collect();
+
+    kinds.into_iter().collect()
+}
+
+/// Validate that bridge registry kinds match module `extension_kinds()` declarations (#584).
+///
+/// Logs warnings for:
+/// - Orphaned bridges: bridge kind registered but no module declares it
+/// - Orphaned module kinds: module declares a kind but no bridge matches
+///
+/// This is non-fatal — the system continues with graceful degradation.
+#[cfg(feature = "static-modules")]
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn validate_extension_contracts(
+    modules: &[TrackedModule],
+    bridge_registry: &reovim_driver_session::bridges::BridgeRegistry,
+) {
+    use std::collections::HashSet;
+
+    let module_kinds: HashSet<&str> = modules
+        .iter()
+        .filter(|tm| tm.state == ModuleState::Running)
+        .flat_map(|tm| tm.handle.extension_kinds().iter().copied())
+        .collect();
+
+    let bridge_kinds: HashSet<&str> = bridge_registry.kinds().into_iter().collect();
+
+    for kind in &bridge_kinds {
+        if !module_kinds.contains(kind) {
+            tracing::warn!(
+                kind,
+                "Orphaned bridge: registered but no module declares this extension_kind"
+            );
+        }
     }
+
+    for kind in &module_kinds {
+        if !bridge_kinds.contains(kind) {
+            tracing::warn!(
+                kind,
+                "Orphaned module kind: declared in extension_kinds() but no bridge registered"
+            );
+        }
+    }
+
+    let matched = module_kinds.intersection(&bridge_kinds).count();
+    tracing::info!(
+        matched,
+        module_kinds = module_kinds.len(),
+        bridge_kinds = bridge_kinds.len(),
+        "Extension contract validation complete"
+    );
 }
 
 /// Configure syntax highlighting from `SyntaxFactoryStore`.
@@ -481,44 +1048,122 @@ fn configure_syntax_highlighting(state: &mut SessionState, services: &Arc<Servic
 
 /// Get the default data directory for modules.
 ///
-/// Returns `~/.local/share/reovim/modules/` on Unix,
-/// or equivalent on other platforms.
+/// Uses `ConfigPaths::data_dir()` with `/modules/` subdirectory.
+/// Respects `$REOVIM_DATA_DIR` override (#610).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn default_data_dir() -> std::path::PathBuf {
-    // Use XDG_DATA_HOME or fallback to ~/.local/share
-    std::env::var("XDG_DATA_HOME")
-        .map_or_else(
-            |_| {
-                std::env::var("HOME").map_or_else(
-                    |_| std::path::PathBuf::from("."),
-                    |h| std::path::PathBuf::from(h).join(".local").join("share"),
-                )
-            },
-            std::path::PathBuf::from,
-        )
-        .join("reovim")
+    ConfigPaths::data_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from(".").join("reovim"))
         .join("modules")
 }
 
 /// Get the default cache directory for modules.
 ///
-/// Returns `~/.cache/reovim/modules/` on Unix,
-/// or equivalent on other platforms.
+/// Uses `ConfigPaths::cache_dir()` with `/modules/` subdirectory.
+/// Respects `$REOVIM_CACHE_DIR` override (#610).
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn default_cache_dir() -> std::path::PathBuf {
-    // Use XDG_CACHE_HOME or fallback to ~/.cache
-    std::env::var("XDG_CACHE_HOME")
-        .map_or_else(
-            |_| {
-                std::env::var("HOME").map_or_else(
-                    |_| std::path::PathBuf::from("."),
-                    |h| std::path::PathBuf::from(h).join(".cache"),
-                )
-            },
-            std::path::PathBuf::from,
-        )
-        .join("reovim")
+    ConfigPaths::cache_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from(".").join("reovim"))
         .join("modules")
+}
+
+/// Build and register a `ModuleLoadReport` for health-check diagnostics (#610).
+///
+/// Populates the report from tracked module states and user config,
+/// then registers it in `ServiceRegistry` for `collect_modules()` etc.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn build_and_register_load_report(
+    config: &ModulesConfig,
+    tracked: &[TrackedModule],
+    services: &Arc<ServiceRegistry>,
+) {
+    use reovim_driver_module_loader::report::ModuleLoadReport;
+
+    let mut report = ModuleLoadReport::new();
+
+    for tm in tracked {
+        let id = tm.handle.id().clone();
+        match &tm.state {
+            ModuleState::Running => report.loaded.push(id),
+            ModuleState::Failed(reason) => report.failed.push((id, reason.clone())),
+            _ => {}
+        }
+    }
+
+    // Record disabled modules from config
+    for name in config.disabled_modules() {
+        report
+            .disabled
+            .push(ModuleId::from_string(name.to_string()));
+    }
+
+    // Check required deps: warn if a loaded module's required dep is not loaded
+    let loaded_ids: Vec<&str> = report.loaded.iter().map(ModuleId::as_str).collect();
+    for tm in tracked {
+        if tm.state != ModuleState::Running {
+            continue;
+        }
+        for dep in tm.handle.dependencies() {
+            if !loaded_ids.contains(&dep.as_str()) {
+                report.missing_deps.push((tm.handle.id().clone(), dep));
+            }
+        }
+    }
+
+    // Record config path
+    if let Ok(config_dir) = ConfigPaths::config_dir() {
+        let config_path = config_dir.join("modules.toml");
+        if config_path.exists() {
+            report.config_path = Some(config_path);
+        }
+    }
+
+    // Record module search paths
+    report.search_paths = reovim_driver_module_loader::discovery::default_search_paths();
+
+    // Record isolation status
+    report.isolation_active =
+        std::env::var("REOVIM_DATA_DIR").is_ok() || std::env::var("REOVIM_CONFIG_DIR").is_ok();
+
+    services.register(Arc::new(report));
+}
+
+/// Check `modules.lock` staleness at startup (#587).
+///
+/// Warns if the lock file was generated by a different reovim version.
+/// Missing lock file is normal (first run or no external modules) and
+/// is silently ignored.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn check_lockfile_staleness() {
+    use reovim_driver_module_loader::lockfile::ModulesLock;
+
+    // Lock file lives alongside module data: ~/.local/share/reovim/modules.lock
+    let lock_path = default_data_dir()
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default()
+        .join("modules.lock");
+
+    match ModulesLock::load(&lock_path) {
+        Ok(lock) => {
+            let current_version = env!("CARGO_PKG_VERSION");
+            if lock.is_stale(current_version) {
+                tracing::warn!(
+                    lock_version = %lock.meta.reovim_version,
+                    current_version,
+                    "modules.lock is stale — run `reovim module resolve` to regenerate"
+                );
+            } else {
+                tracing::debug!("modules.lock is up to date");
+            }
+        }
+        Err(_) => {
+            // Missing lock file is expected on first run or when no
+            // external modules are installed.
+            tracing::debug!("No modules.lock found (normal for first run)");
+        }
+    }
 }
 
 #[cfg(test)]

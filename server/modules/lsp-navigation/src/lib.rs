@@ -25,6 +25,9 @@ use {
 
 use picker::LspLocationPicker;
 
+pub(crate) const KIND_HOVER: &str = "hover";
+pub(crate) const KIND_SIGNATURE_HELP: &str = "signature-help";
+
 /// LSP navigation module.
 ///
 /// Registers command handlers for `gd` and `gr`, and the
@@ -79,6 +82,10 @@ impl Module for LspNavigationModule {
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[KIND_HOVER, KIND_SIGNATURE_HELP]
     }
 }
 

@@ -21,11 +21,10 @@ use std::sync::Arc;
 use crate::highlight::Style;
 
 use super::{
+    AnnotationKind, AnnotationStore,
     config::GutterConfig,
     presenter::{AnnotationPresenter, GutterCell, PresentedOutput, PresenterContext},
     registry::PresenterRegistry,
-    store::AnnotationStore,
-    types::AnnotationKind,
 };
 
 /// Result of composing a single line's gutter.
@@ -223,7 +222,7 @@ impl<'a> GutterComposer<'a> {
     /// Render an annotation using the appropriate presenter.
     fn render_annotation(
         &self,
-        annotation: &super::types::Annotation,
+        annotation: &super::Annotation,
         ctx: &PresenterContext,
     ) -> PresentedOutput {
         self.registry

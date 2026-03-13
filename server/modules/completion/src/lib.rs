@@ -21,9 +21,12 @@ pub mod state;
 
 pub use {bridge::CompletionBridge, state::CompletionState};
 
+const KIND: &str = "completion";
+
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_completion::CompletionSourceRegistry,
+    reovim_driver_module_config::ModuleConfigStore,
     reovim_driver_session::bridges::BridgeProvider,
     reovim_kernel::api::v1::{
         Module, ModuleContext, ModuleError, ModuleId, OptionConstraint, OptionSpec, OptionValue,
@@ -104,11 +107,22 @@ impl Module for CompletionModule {
             }
         }
 
+        // #610: Apply user config overrides from modules.toml
+        apply_completion_config(ctx);
+
         ProbeResult::Success
     }
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::COMPLETION_PROVIDER]
+    }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[KIND]
     }
 }
 
@@ -131,6 +145,41 @@ fn completion_option_specs() -> Vec<OptionSpec> {
             .with_constraint(OptionConstraint::range(5, 80))
             .with_owner(ids::MODULE),
     ]
+}
+
+/// Apply user config overrides from `modules.toml` to completion options.
+///
+/// Reads `pumheight` and `pumwidth` from the module's config section and
+/// overrides the option defaults via `set_global()`. Type mismatches are
+/// logged as warnings but do not fail init.
+fn apply_completion_config(ctx: &ModuleContext) {
+    let Some(store) = ctx.services.get::<ModuleConfigStore>() else {
+        return;
+    };
+
+    if let Ok(Some(height)) = store.get_int("completion", "pumheight") {
+        if let Err(e) = ctx
+            .kernel
+            .options
+            .set_global("pumheight", OptionValue::int(height))
+        {
+            tracing::warn!("completion config: failed to set pumheight: {e}");
+        }
+    } else if let Err(e) = store.get_int("completion", "pumheight") {
+        tracing::warn!("completion config: {e}");
+    }
+
+    if let Ok(Some(width)) = store.get_int("completion", "pumwidth") {
+        if let Err(e) = ctx
+            .kernel
+            .options
+            .set_global("pumwidth", OptionValue::int(width))
+        {
+            tracing::warn!("completion config: failed to set pumwidth: {e}");
+        }
+    } else if let Err(e) = store.get_int("completion", "pumwidth") {
+        tracing::warn!("completion config: {e}");
+    }
 }
 
 #[cfg(feature = "dynamic")]

@@ -2,15 +2,15 @@
 #![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 //! Git statusline module for reovim.
 //!
-//! Provides a `ComponentProvider` that renders the current git branch
-//! name for the statusline. Registers into `ComponentProviderRegistry`
-//! so the statusline provider can display it.
+//! Provides a `ComponentDataProvider` that produces the current git branch
+//! name for the statusline. Registers into `ComponentDataProviderRegistry`
+//! so the display-side adapter can wrap it for rendering.
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_display::statusline::{ComponentProviderKey, ComponentProviderRegistry},
     reovim_driver_git::GitProviderStore,
+    reovim_driver_statusline::{ComponentDataProviderKey, ComponentDataProviderRegistry},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -20,7 +20,7 @@ pub use branch::BranchComponent;
 
 /// Git statusline module.
 ///
-/// Registers a `BranchComponent` into the `ComponentProviderRegistry`
+/// Registers a `BranchComponent` into the `ComponentDataProviderRegistry`
 /// under the key `"branch"`.
 pub struct GitStatuslineModule;
 
@@ -51,7 +51,6 @@ impl Module for GitStatuslineModule {
         Version::new(0, 1, 0)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let Some(store) = ctx.services.get::<GitProviderStore>() else {
             return ProbeResult::Success;
@@ -60,9 +59,11 @@ impl Module for GitStatuslineModule {
             return ProbeResult::Success;
         };
 
-        let registry = ctx.services.get_or_create::<ComponentProviderRegistry>();
+        let registry = ctx
+            .services
+            .get_or_create::<ComponentDataProviderRegistry>();
         registry.register(
-            ComponentProviderKey::new("branch"),
+            ComponentDataProviderKey::new("branch"),
             Arc::new(BranchComponent::new(provider)),
         );
 

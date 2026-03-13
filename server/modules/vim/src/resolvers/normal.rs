@@ -915,6 +915,10 @@ impl ModeKeyResolver for VimNormalResolver {
         None
     }
 
+    fn pending_keys(&self) -> KeySequence {
+        self.get_pending_keys()
+    }
+
     fn reset(&mut self) {
         *self.pending_count.write().expect("lock poisoned") = None;
         *self.pending_register.write().expect("lock poisoned") = None;

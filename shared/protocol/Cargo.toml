@@ -17,7 +17,6 @@ grpc = ["dep:tonic", "dep:prost", "dep:tonic-build"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 rmp-serde = "1.3"
-reovim-kernel = { workspace = true }
 reovim-arch = { workspace = true }
 
 # gRPC dependencies (feature-gated)

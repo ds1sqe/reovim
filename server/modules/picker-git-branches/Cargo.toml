@@ -2,9 +2,12 @@
 name = "reovim-picker-git-branches"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 description = "Git branches picker module for reovim"
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

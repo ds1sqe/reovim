@@ -3,27 +3,26 @@
 //! Git blame module for reovim.
 //!
 //! Provides gutter annotations for git blame information: hash, author,
-//! and commit summary per line. Implements `AnnotationSource` and
-//! `AnnotationPresenter` from `reovim-driver-display`.
+//! and commit summary per line. Implements `AnnotationSource` from
+//! `reovim-driver-annotation`.
 
 use std::sync::Arc;
 
 use {
-    reovim_driver_display::{GutterRendererKey, GutterRendererRegistry},
+    reovim_driver_annotation::{AnnotationSourceKey, AnnotationSourceRegistry},
     reovim_driver_git::GitProviderStore,
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
 mod format;
-mod presenter;
 mod source;
 
-pub use {presenter::BlamePresenter, source::BlameAnnotationSource};
+pub use source::BlameAnnotationSource;
 
 /// Git blame module.
 ///
-/// Registers a `BlameAnnotationSource` and `BlamePresenter` into the
-/// default `GutterRenderer` so git blame info appears in the gutter.
+/// Registers a `BlameAnnotationSource` into the `AnnotationSourceRegistry`
+/// so git blame info appears in the gutter.
 pub struct GitBlameModule;
 
 impl GitBlameModule {
@@ -53,17 +52,13 @@ impl Module for GitBlameModule {
         Version::new(0, 1, 0)
     }
 
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
-        let renderer_registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-
-        if let Some(renderer) = renderer_registry.get(&GutterRendererKey::Default) {
-            let store = ctx.services.get_or_create::<GitProviderStore>();
-            if let Some(provider) = store.get() {
-                let source = BlameAnnotationSource::new(provider);
-                renderer.register_source(Arc::new(source));
-                renderer.register_presenter(Arc::new(BlamePresenter::new()));
-            }
+        // Register only the data source (display-side creates presenters)
+        let store = ctx.services.get_or_create::<GitProviderStore>();
+        if let Some(provider) = store.get() {
+            let source = BlameAnnotationSource::new(provider);
+            let source_registry = ctx.services.get_or_create::<AnnotationSourceRegistry>();
+            source_registry.register(AnnotationSourceKey::new("git-blame"), Arc::new(source));
         }
 
         ProbeResult::Success

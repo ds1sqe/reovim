@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_display::layout::{
+    reovim_driver_layout::{
         CompositeResult, Layer, LayerConfig, LayerId, RootCompositor, WindowLayerCompositor,
     },
     reovim_kernel::testing::test_mode,
@@ -715,7 +715,7 @@ impl MockCompositor {
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 impl RootCompositor for MockCompositor {
-    fn composite(&self, screen: reovim_driver_display::Rect) -> CompositeResult {
+    fn composite(&self, screen: reovim_driver_layout::Rect) -> CompositeResult {
         CompositeResult::empty(screen)
     }
     fn create_layer(&mut self, _config: LayerConfig) -> LayerId {
@@ -751,7 +751,7 @@ impl RootCompositor for MockCompositor {
     fn window_count(&self) -> usize {
         0
     }
-    fn set_screen(&mut self, _screen: reovim_driver_display::Rect) {}
+    fn set_screen(&mut self, _screen: reovim_driver_layout::Rect) {}
     fn layer_of(&self, _window: WindowId) -> Option<LayerId> {
         None
     }

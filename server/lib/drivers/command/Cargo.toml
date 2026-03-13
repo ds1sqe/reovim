@@ -19,5 +19,4 @@ reovim-kernel = { workspace = true }
 # Driver layer
 reovim-driver-command-types = { workspace = true }
 reovim-driver-vfs = { workspace = true }
-reovim-driver-display = { workspace = true }
 reovim-driver-session = { workspace = true }

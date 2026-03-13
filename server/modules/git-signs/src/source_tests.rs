@@ -4,7 +4,7 @@ use std::{
 };
 
 use {
-    reovim_driver_display::annotation::{AnnotationContext, AnnotationSource},
+    reovim_driver_annotation::{AnnotationContext, AnnotationSource},
     reovim_driver_git::{
         GitProvider, GitProviderStore,
         types::{BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},

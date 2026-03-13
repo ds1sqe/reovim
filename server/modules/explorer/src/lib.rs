@@ -22,6 +22,8 @@ pub mod tree;
 
 pub use {bridge::ExplorerBridge, state::ExplorerState};
 
+const KIND: &str = "explorer";
+
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
@@ -95,6 +97,10 @@ impl Module for ExplorerModule {
 
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
+    }
+
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[KIND]
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {

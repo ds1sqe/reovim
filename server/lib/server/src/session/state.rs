@@ -20,8 +20,8 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandContext, CommandResult},
-    reovim_driver_display::layout::RootCompositor,
     reovim_driver_input::{FallbackContext, PendingBindings, ResolverRegistry},
+    reovim_driver_layout::RootCompositor,
     reovim_driver_session::{ClientId, Session as DriverSession},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
@@ -166,7 +166,7 @@ impl SessionState {
             && let Some(active_layer) = compositor.active_layer()
             && let Some(layer) = compositor.layer_compositor_mut(active_layer)
             && layer
-                .windows_in_zone(reovim_driver_display::layout::Zone::Tiled)
+                .windows_in_zone(reovim_driver_layout::Zone::Tiled)
                 .is_empty()
         {
             let _window_id = layer.add_tiled();

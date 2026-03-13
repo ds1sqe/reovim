@@ -4,7 +4,168 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Changed
+
+- **Server-to-display boundary refactor (#625)**: Extract 3 new server-side driver crates
+  from the display driver to enforce mechanism-vs-policy separation. `reovim-driver-layout`
+  (compositor types, window layout), `reovim-driver-annotation` (annotation data types,
+  `AnnotationSource` trait, `AnnotationStore`), and `reovim-driver-statusline`
+  (`ComponentDataProvider` trait, `ComponentData`, `ComponentDataContext`). Server modules now
+  register data sources only -- the display layer creates presenters (Style, Color) and pairs
+  them with sources via bootstrap bridges. `DataProviderAdapter` wraps server-side
+  `ComponentDataProvider` into display-side `ComponentProvider`. `LineNumberPresenter`,
+  `GitSignsPresenter`, and `BlamePresenter` moved from server modules to display driver.
+  12 server crates no longer depend on `reovim-driver-display`. Only `reovim-module-commands`
+  retains the display dependency (colorscheme needs `ThemeManager`).
+
+- **Eliminate shared/extension-kinds crate (#625)**: Replace centralized
+  `reovim-extension-kinds` closed registry with local `const KIND: &str` constants in each
+  consumer. Server modules (12 crates), TUI extensions (14 crates + defaults), and web
+  extensions (8 files) now define their own kind strings locally. Multi-kind modules
+  (range-finder, lsp-navigation) use `pub(crate)` constants. The `shared/extension-kinds/`
+  crate and `clients/web/src/extensions/extension-kinds.ts` are deleted. Runtime extension
+  discovery via `collect_available_kinds()` is unchanged. Any module (builtin or third-party)
+  can now define its own extension kind without modifying a central registry.
+
+- **Decouple protocol crate from kernel (#625)**: Move undo tree kernel↔serializable
+  conversion code (`from_undo_tree`, `to_undo_tree`, and 7 From/Into impls) from
+  `shared/protocol/src/v1/undo.rs` to `server/modules/undo/src/conversion.rs`. Remove
+  unused `WireWindowId↔WindowId` From impls from `shared/protocol/src/v1/types.rs`.
+  Delete `reovim-kernel` dependency from `shared/protocol/Cargo.toml`. Conversion
+  functions use explicit functions instead of From/Into impls (orphan rule). Protocol
+  crate is now kernel-agnostic — TUI/web clients no longer transitively depend on
+  the kernel.
+
 ### Added
+
+- **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
+  registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
+  factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to
+  unify static and dynamic module loading behind a single interface. Textobjects module
+  promoted from `REOVIM_EXTRA_MODULES` env var special case to regular builtin (41 modules
+  total). `collect_extra_modules()` and `create_extra_module()` removed. CI updated to build
+  treesitter modules as `.so` files. Build script paths fixed for `server/modules/` layout.
+  Both static (`--features static-modules`) and dynamic (`--no-default-features`) compilation
+  paths verified clean.
+
+- **Extension manager phases 10-12 (#562)**: Four new crates completing the extension manager
+  system. Phase 10 (#621): `reovim-driver-module-registry` with `ModuleManifest` parser for
+  third-party `module.toml` files, `ModuleSource` (Git/Path) enum for install provenance, and
+  `InstalledModules` JSON persistence for tracking installed modules. Workflow operations
+  (install, remove, update, check, resolve, info, list) for offline module lifecycle. CLI
+  subcommands via `reovim module <subcommand>` for all workflow operations. Phase 10.5 (#622):
+  `reovim-module-module-manager` with interactive panel: `ModuleManagerState` (per-client
+  state with filter/navigation), `ModuleManagerBridge` (extension state bridge for JSON
+  serialization), `ManagerMode` (navigation-only mode with Block cursor), `ManagerResolver`
+  (keymap-based key resolver), and navigation command handlers (open/close/next/prev/
+  toggle-filter/toggle-detail). Keybindings: j/k/Up/Down for navigation, Tab for filter
+  cycling, Enter for detail toggle, q/Esc to close. `MODULE_MANAGER` extension kind constant
+  in `reovim-extension-kinds`. Phase 11 (#623): Cross-personality initial mode support via
+  `InitialModeProvider` service in session driver. VimModule registers `vim:normal`, EmacsModule
+  registers `emacs:default` during init(). Bootstrap reads from provider with `vim:normal`
+  fallback, replacing hardcoded mode. Personality selection via module enable/disable in
+  `modules.toml`. Also includes `reovim-module-emacs` skeleton personality module with
+  `MODE_MANAGEMENT` capability and emacs keybindings. Phase 12 (#624):
+  `reovim-driver-extension-loader` for TUI `.so` dynamic loading via `libloading` with
+  `probe_extension_kind()` and `load_extension()` APIs; `declare_extension!` proc macro in
+  `reovim-module-macros` generating FFI entry points with double-box fat-pointer pattern.
+  Also adds `BuiltinManifest` filtering to module-config, `ModuleLoadReport` type to kernel API,
+  and wires module-manager into the 40-module defaults bundle.
+
+- **Language-aware bracket pair highlighting (#613)**: New `reovim-module-pair` server module
+  and `reovim-tui-ext-pair` TUI extension providing rainbow bracket coloring (6-color depth
+  cycling), matched-pair highlighting (bold + underline for innermost pair around cursor),
+  unmatched bracket warning (red + underline), and context-aware auto-pair insertion (skips
+  strings/comments). Language-agnostic design: treesitter language modules register per-language
+  `BracketConfig` via `BracketConfigStore` in `reovim-driver-syntax`. Adds `SyntaxContext` enum
+  (Code/String/Comment) and `context_at_byte()` to `SyntaxDriver` trait for syntax-aware
+  auto-pairing. Extension bridge serializes bracket state to JSON for client rendering via
+  `ExtensionStateBridge` with per-client scope.
+
+- **Module/config/setting separation and integration (#610)**: Unifies three disconnected
+  systems -- personality manifests (#585), user config (#586), and kernel OptionRegistry --
+  into a coherent three-layer architecture (L1 loading, L2 config, L3 options). Phase 1
+  removes legacy `SnippetParentMode`/`JumpParentMode` fallback paths, making `ModeBridgeStore`
+  the sole cross-module mode parent mechanism. Phase 2 moves 9 vim options (scrolloff,
+  ignorecase, number, etc.) from hardcoded `vim_option_specs()` into `vim.toml` personality
+  manifest via new `ManifestOptionSpec` types in `reovim-driver-manifest`. Phase 3 adds typed
+  extraction helpers (`get_bool`/`get_int`/`get_str`) with verbose `ConfigFieldError`
+  diagnostics to `ModuleConfigStore`, and wires completion (pumheight/pumwidth overrides) and
+  LSP (auto_start toggle) modules as config consumers. Phase 4 adds `$REOVIM_CONFIG_DIR`,
+  `$REOVIM_DATA_DIR`, `$REOVIM_CACHE_DIR` environment variable overrides to `ConfigPaths`
+  for worktree isolation, and consolidates bootstrap path helpers. Phase 5 introduces
+  `ModuleLoadReport` service in `reovim-driver-module-loader` and three new `:checkhealth`
+  diagnostic sections (Modules, Dependencies, Configuration). Phase 6 adds extension kind
+  filtering to web client `createExtensions()`.
+
+- **Treesitter language modules: Python, C, JavaScript, TypeScript (#525), JSON, TOML, Bash, Go
+  (#526)**: Eight new treesitter syntax modules following the established self-registration pattern.
+  Each module provides a `{Lang}SyntaxFactory` implementing `SyntaxDriverFactory` with pre-compiled
+  highlight and fold queries, and a `Treesitter{Lang}Module` implementing `Module` for
+  self-registration into `SyntaxFactoryStore` and `LanguageInfoStore`. TypeScript module handles
+  dual grammars (TypeScript + TSX). All modules registered in `DefaultsModule` (47 total modules).
+  Grammar versions pinned to tree-sitter 0.23.x for compatibility with workspace tree-sitter 0.24.
+
+- **Recursive injection highlighting (#611)**: Replace flat `InjectionLayer` / `InjectionLayerStore`
+  system with recursive `Box<dyn SyntaxDriver>` children managed by `InjectionManager`. Child
+  drivers are created on-demand via `SyntaxDriverFactory` and can recursively detect and highlight
+  their own injections (e.g., Rust doc comments -> Markdown -> fenced code blocks). Depth capped
+  at `MAX_INJECTION_DEPTH` (4). Add `injection.combined` support for consecutive doc comment lines
+  (`///`, `//!`) that are concatenated with prefix stripping before parsing as a single Markdown
+  document, with coordinate translation back to parent document space. Add `set_injection_factory()`
+  and `set_injection_depth()` to `SyntaxDriver` trait for configuring child driver creation and
+  depth propagation. Delete `InjectionLayer`, `InjectionLayerFactory`, and `InjectionLayerStore`
+  types.
+
+- **Dynamic .so module loading with search paths and lock file (#587)**: New
+  `reovim-driver-module-loader` crate provides safe dynamic loading of server modules from
+  `.so` files. Search paths follow XDG conventions. Lock file prevents concurrent loading.
+  Hot-reload support via file watcher with debounce. Integration with module-config for
+  filtering. Full test coverage including error paths.
+
+- **User module enable/disable and settings configuration (#586)**: New
+  `reovim-driver-module-config` crate provides TOML parsing for
+  `~/.config/reovim/modules.toml`. Controls which server modules and TUI extensions are loaded.
+  Config file optional — missing file uses "official" preset (all enabled). Per-module settings
+  accessible via `ModuleConfigStore` service in `ServiceRegistry`. `DefaultsModule` gains
+  `builtin_registry()` factory map (29 modules), `builtin_order()` canonical ordering, and
+  `create_modules_filtered()` predicate-based creation. Bootstrap wires config loading, store
+  registration, and filtered initialization. Disabled modules do not register extension kinds.
+  TUI extensions filtered consistently via `create_extensions_filtered()`. Full backwards
+  compatibility: existing `create_modules()` and `create_extensions()` APIs unchanged.
+
+- **Personality manifests replace vim adapter crates (#585)**: Introduce TOML-based personality
+  manifests that declare keybinding tables and mode bridges as data, collapsing the O(N x M) adapter
+  problem to O(M). New `reovim-driver-manifest` crate provides TOML parser, `ModeBridgeStore`, and
+  validation. VimModule loads embedded `vim.toml` (20 keybindings, 2 mode bridges) via
+  `include_str!`. Feature modules (snippet, range-finder) self-register parent modes by reading
+  `ModeBridgeStore` with `optional_dependencies` on vim. `EnhancedFindCharCommand` relocated from
+  `vim-range-finder` to `range-finder`. Six adapter crates deleted: vim-completion, vim-lsp,
+  vim-explorer, vim-microscope, vim-range-finder, vim-snippet (-2145 lines, 35 -> 29 modules).
+
+- **Cross-boundary extension contracts (#584)**: Server modules declare `extension_kinds()` on the
+  `Module` trait (kernel-pure `&[&'static str]`). TUI extensions declare `server_kinds()`, web
+  extensions declare `serverKinds()`. Server startup validates bridge-module contracts and logs
+  warnings for orphaned bridges or module kinds (non-fatal, graceful degradation). `ListExtensions`
+  RPC response includes `available_kinds` for client-side validation. TUI `validate_extensions()`
+  and web `validateExtensions()` compare client extensions against server-declared kinds.
+  Documentation at `docs/architecture/modules/extension-contracts.md`.
+
+- **Client extension lifecycle and shared kinds (#583)**: Add `dependencies()`, `init()`, `exit()`
+  lifecycle methods to `TuiExtension` trait and `WebExtension` interface. Both TUI and web clients
+  topologically sort extensions via Kahn's algorithm before initialization. `shutdown_extensions()`
+  calls `exit()` in reverse dependency order. New `shared/extension-kinds/` crate provides 13
+  shared kind constants (`WHICHKEY`, `CMDLINE`, etc.) as single source of truth, replacing 50+
+  magic string literals across 13 TUI extensions, 12 server bridges, TUI defaults, and 8 web
+  extensions. Web equivalent `extension-kinds.ts` for TypeScript client.
+
+- **Server module dependency resolution (#582)**: New `reovim-driver-depgraph` crate providing
+  generic Kahn's topological sort for dependency resolution. 9 modules declare explicit
+  `dependencies()` (vim, vim-microscope, vim-lsp, vim-completion, vim-explorer, vim-snippet,
+  vim-range-finder, snippet, range-finder). Bootstrap uses toposort-ordered initialization
+  instead of hardcoded Vec position. `on_all_loaded()` lifecycle hook wired for all Running
+  modules. `TrackedModule` with `ModuleState` FSM tracks init state. Shadow-mode logging
+  compares relative ordering of dependent pairs during transition.
 
 - **Dot repeat command (#577)**: Implement the `.` (dot) command for replaying operator
   changes. Records the actual key sequence during operator+motion and operator+insert
@@ -73,6 +234,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   Editor Customization Epic (#527).
 
 ### Changed
+
+- **Depgraph crate relocation (#625)**: Move `reovim-driver-depgraph` from
+  `server/lib/drivers/depgraph/` to `shared/depgraph/` and rename to `reovim-depgraph`.
+  The crate is a zero-dependency generic topological sort algorithm used by both server
+  (module loading) and client (extension ordering) — it belongs in `shared/`, not under
+  `server/lib/drivers/`. No API changes.
 
 - **Test helper deduplication (#569)**: Create `reovim_kernel::testing` module with
   shared `TestBufferManager`, `create_test_context()`, `setup_buffer()`, and

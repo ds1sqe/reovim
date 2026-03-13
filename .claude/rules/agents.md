@@ -30,6 +30,7 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
 | `final-approach` | `/final-approach [issue] [plan]` | Landing sequence with Go Poll, landing doc, and commit script |
 | `stop` | `/stop [issue]` | Clean session handoff with flight log update and commit script |
 | `rebase` | `/rebase [target]` | Rebase current branch onto specified target |
+| `e2e` | `/e2e [scenario]` | Ad-hoc E2E verification with real server + headless TUI + CLI |
 
 ## Agent Files
 
@@ -56,7 +57,8 @@ Custom agents and skills in `.claude/` provide specialized workflows for this pr
     ├── countdown/SKILL.md       # /countdown command
     ├── final-approach/SKILL.md  # /final-approach command
     ├── rebase/SKILL.md          # /rebase command
-    └── stop/SKILL.md            # /stop command
+    ├── stop/SKILL.md            # /stop command
+    └── e2e/SKILL.md             # /e2e ad-hoc E2E verification
 ```
 
 ## Output Structure

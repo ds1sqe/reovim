@@ -2,9 +2,12 @@
 name = "reovim-module-health-check"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 description = "Health-check diagnostic command for reovim - POLICY module"
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -22,6 +25,8 @@ reovim-driver-clipboard = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-driver-syntax = { workspace = true }
 reovim-module-macros = { workspace = true }
+reovim-driver-module-loader = { workspace = true }
+reovim-driver-module-config = { workspace = true }
 
 [lints]
 workspace = true

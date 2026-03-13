@@ -325,34 +325,18 @@ fn test_utf8_safety() {
 }
 
 // ========================================================================
-// Injection Layer Factory Tests
+// Factory creates drivers for injection use
 // ========================================================================
 
 #[test]
-fn test_injection_layer_factory() {
+fn test_factory_creates_drivers_for_injection() {
     let factory = MarkdownSyntaxFactory::new();
 
-    let layer = factory.create_layer();
-    assert!(layer.is_some(), "Should create Markdown injection layer");
-
-    let layer = layer.unwrap();
-    assert_eq!(layer.language_id(), "markdown");
-}
-
-#[test]
-fn test_injection_layer_factory_language_id() {
-    let factory = MarkdownSyntaxFactory::new();
-    assert_eq!(factory.language_id(), "markdown");
-}
-
-#[test]
-fn test_injection_layer_factory_creates_independent_layers() {
-    let factory = MarkdownSyntaxFactory::new();
-
-    let layer1 = factory.create_layer();
-    let layer2 = factory.create_layer();
-    assert!(layer1.is_some());
-    assert!(layer2.is_some());
+    // Factory should create drivers usable as injection children
+    let driver1 = factory.create("markdown");
+    let driver2 = factory.create("markdown");
+    assert!(driver1.is_some(), "Should create Markdown driver for injection");
+    assert!(driver2.is_some(), "Should create independent Markdown drivers");
 }
 
 // ========================================================================
@@ -872,15 +856,13 @@ fn test_inline_and_block_decorations_coexist() {
 #[test]
 #[cfg_attr(coverage_nightly, coverage(off))]
 fn test_markdown_with_rust_injection_highlighting() {
-    use reovim_module_treesitter_rust::RustSyntaxFactory;
+    use {
+        reovim_driver_syntax::SyntaxDriverFactory, reovim_module_treesitter_rust::RustSyntaxFactory,
+    };
 
     let md_lang: Language = tree_sitter_md::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&md_lang, MARKDOWN_HIGHLIGHTS_QUERY).unwrap());
     let injections_query = Arc::new(Query::new(&md_lang, MARKDOWN_INJECTIONS_QUERY).unwrap());
-
-    // Register Rust factory in injection store
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(RustSyntaxFactory::new()));
 
     // Create concrete Markdown driver with injections support
     let mut driver = TreeSitterDriver::with_queries(
@@ -892,7 +874,10 @@ fn test_markdown_with_rust_injection_highlighting() {
         None,
     )
     .unwrap();
-    driver.set_injection_layer_store(store);
+
+    // Set Rust factory for dynamic injection child creation
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(RustSyntaxFactory::new());
+    driver.set_injection_factory(factory);
 
     // Parse Markdown with embedded Rust code block
     driver.parse("# Title\n\n```rust\nfn main() {}\n```\n");
@@ -917,15 +902,13 @@ fn test_markdown_with_rust_injection_highlighting() {
 
 #[test]
 fn test_markdown_with_multiple_language_injections() {
-    use reovim_module_treesitter_rust::RustSyntaxFactory;
+    use {
+        reovim_driver_syntax::SyntaxDriverFactory, reovim_module_treesitter_rust::RustSyntaxFactory,
+    };
 
     let md_lang: Language = tree_sitter_md::LANGUAGE.into();
     let highlight_query = Arc::new(Query::new(&md_lang, MARKDOWN_HIGHLIGHTS_QUERY).unwrap());
     let injections_query = Arc::new(Query::new(&md_lang, MARKDOWN_INJECTIONS_QUERY).unwrap());
-
-    // Only Rust is available — Python injection should be silently skipped
-    let store = Arc::new(InjectionLayerStore::new());
-    store.add(Arc::new(RustSyntaxFactory::new()));
 
     let mut driver = TreeSitterDriver::with_queries(
         "markdown",
@@ -936,7 +919,10 @@ fn test_markdown_with_multiple_language_injections() {
         None,
     )
     .unwrap();
-    driver.set_injection_layer_store(store);
+
+    // Only Rust is available — Python injection should be silently skipped
+    let factory: Arc<dyn SyntaxDriverFactory> = Arc::new(RustSyntaxFactory::new());
+    driver.set_injection_factory(factory);
 
     driver.parse("```rust\nfn main() {}\n```\n\n```python\nprint('hello')\n```\n");
 

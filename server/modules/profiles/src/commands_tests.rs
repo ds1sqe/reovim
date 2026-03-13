@@ -176,7 +176,6 @@ fn test_load_valid() {
     assert_eq!(test.kernel().options.get_global("tabwidth"), Some(OptionValue::int(4)));
 }
 
-#[cfg_attr(coverage_nightly, coverage(off))]
 #[test]
 fn test_load_missing_profile() {
     let mut test = TestSessionRuntime::new();

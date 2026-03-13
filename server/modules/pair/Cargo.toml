@@ -1,0 +1,32 @@
+[package]
+name = "reovim-module-pair"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Bracket pair highlighting module for reovim (rainbow, match, auto-pair)"
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+dynamic = []
+
+[lints]
+workspace = true
+
+[dependencies]
+reovim-kernel = { workspace = true }
+reovim-driver-syntax = { workspace = true }
+reovim-driver-session = { workspace = true }
+reovim-module-macros = { workspace = true }
+parking_lot = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim-testing = { workspace = true }

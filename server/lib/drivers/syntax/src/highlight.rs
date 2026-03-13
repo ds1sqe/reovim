@@ -11,7 +11,7 @@
 //! [`Annotation`] is a pure semantic marker: byte range + category.
 //! The server emits only WHAT to annotate; clients decide HOW to render.
 
-use std::{ops::Range, sync::Arc};
+use std::{fmt, ops::Range, sync::Arc};
 
 // ============================================================================
 // Annotation Model (#540)
@@ -203,6 +203,34 @@ impl Annotation {
     #[must_use]
     pub const fn byte_range(&self) -> Range<usize> {
         self.start_byte..self.end_byte
+    }
+}
+
+// ============================================================================
+// Syntax Context
+// ============================================================================
+
+/// Syntax context at a byte position.
+///
+/// Used by consumers (e.g., auto-pair) to determine if a position
+/// is inside a string literal, comment, or normal code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyntaxContext {
+    /// Normal code (default for unparsed content).
+    Code,
+    /// Inside a string literal.
+    String,
+    /// Inside a comment.
+    Comment,
+}
+
+impl fmt::Display for SyntaxContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Code => f.write_str("code"),
+            Self::String => f.write_str("string"),
+            Self::Comment => f.write_str("comment"),
+        }
     }
 }
 

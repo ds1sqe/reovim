@@ -37,7 +37,6 @@ fn get_cursor_position(runtime: &SessionRuntime<'_>) -> Option<Position> {
 }
 
 /// Helper to set cursor position on the active window.
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn set_cursor_position(runtime: &mut SessionRuntime<'_>, pos: Position) {
     if let Some(window) = runtime.windows_mut().active_mut() {
         window.cursor = pos.into();

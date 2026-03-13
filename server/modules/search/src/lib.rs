@@ -68,6 +68,10 @@ impl Module for SearchModule {
         pr_info!("Search module exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::SEARCH_PROVIDER]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

@@ -19,6 +19,8 @@ use {
 /// Cmdline popup extension.
 ///
 /// Shows a command-line input popup with prompt, cursor, and completions.
+const KIND: &str = "cmdline";
+
 pub struct CmdlineExtension {
     /// Whether the popup is currently visible.
     active: bool,
@@ -57,7 +59,7 @@ impl Default for CmdlineExtension {
 
 impl TuiExtension for CmdlineExtension {
     fn kind(&self) -> &'static str {
-        "cmdline"
+        KIND
     }
 
     fn is_active(&self) -> bool {

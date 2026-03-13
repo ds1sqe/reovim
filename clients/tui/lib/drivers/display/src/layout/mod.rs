@@ -1,68 +1,39 @@
-//! Window layout subsystem for nested compositor architecture.
+//! Window layout subsystem - re-exported from `reovim-driver-layout`.
 //!
-//! This module provides the trait contracts for a Hyprland-inspired
-//! nested compositor window management system. Each layer is a
-//! self-contained mini-compositor with three zones.
-//!
-//! # Architecture
-//!
-//! ```text
-//! RootCompositor (manages layers)
-//! │
-//! ├── Layer 1 ("main", z=100)
-//! │   └── WindowLayerCompositor
-//! │       ├── Tiled Zone  (binary split tree)
-//! │       ├── Float Zone  (free positioning)
-//! │       └── Overlay Zone (popups, menus)
-//! │
-//! └── Layer 2 ("term", z=200)
-//!     └── WindowLayerCompositor
-//!         └── ...
-//! ```
-//!
-//! # Mechanism vs Policy
-//!
-//! - **This module (Mechanism)**: Defines WHAT can be done via traits
-//! - **server/modules/layout/ (Policy)**: Implements HOW things behave
-//!
-//! # Modules
-//!
-//! - [`layer`] - Core types: `Layer`, `Zone`, `WindowPlacement`, `Anchor`
-//! - [`compositor`] - `RootCompositor`, `WindowLayerCompositor` traits
-//! - [`tiled`] - `TiledLayer` trait for vim-style splits
-//! - [`floating`] - `FloatingLayer` trait for free windows (Phase 2)
-//! - [`overlay`] - `OverlayLayer` trait for popups (Phase 3)
-//! - [`view`] - `ViewManager` trait for per-window content state
+//! All layout types (compositor traits, layer types, view management)
+//! now live in `server/lib/drivers/layout/` as server-side mechanism.
+//! This module re-exports everything for backward compatibility.
 
-mod compositor;
-mod compositor_key;
-mod compositor_registry;
-mod floating;
-mod layer;
-mod overlay;
-mod tiled;
-mod view;
-
-// Re-export all public types
-
-// Layer types
-pub use layer::{
-    Anchor, CLICK_THROUGH_THRESHOLD, Layer, LayerConfig, LayerId, OverlayConstraints,
-    WindowPlacement, ZOrder, Zone,
+pub use reovim_driver_layout::{
+    // Layer types
+    Anchor,
+    CLICK_THROUGH_THRESHOLD,
+    // View management and index types
+    ColIndex,
+    // Compositor traits and types
+    CompositeResult,
+    CompositorKey,
+    CompositorRegistry,
+    // Zone-specific traits
+    FloatingLayer,
+    FloatingWindow,
+    Layer,
+    LayerConfig,
+    LayerId,
+    LineIndex,
+    MIN_WINDOW_HEIGHT,
+    MIN_WINDOW_WIDTH,
+    OverlayConstraints,
+    OverlayLayer,
+    OverlayWindow,
+    Position,
+    RootCompositor,
+    TiledLayer,
+    View,
+    ViewManager,
+    WindowError,
+    WindowLayerCompositor,
+    WindowPlacement,
+    ZOrder,
+    Zone,
 };
-
-// Compositor traits and types
-pub use compositor::{CompositeResult, RootCompositor, WindowError, WindowLayerCompositor};
-
-// Zone-specific traits
-pub use {
-    floating::{FloatingLayer, FloatingWindow},
-    overlay::{OverlayLayer, OverlayWindow},
-    tiled::{MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, TiledLayer},
-};
-
-// View management and index types
-pub use view::{ColIndex, LineIndex, Position, View, ViewManager};
-
-// Re-export typed key and registry (Epic #417 - UniqueProvider abstraction)
-pub use {compositor_key::CompositorKey, compositor_registry::CompositorRegistry};

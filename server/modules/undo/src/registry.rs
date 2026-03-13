@@ -13,13 +13,14 @@
 use std::path::{Path, PathBuf};
 
 use {
+    crate::conversion::{from_undo_tree, to_undo_tree},
     reovim_arch::sync::RwLock,
     reovim_driver_undo::{UndoPersistError, UndoProvider},
     reovim_driver_vfs::VfsDriver,
     reovim_kernel::api::v1::{
         BufferId, Edit, EditOrigin, Position, UndoResult, UndoTree, transform_position,
     },
-    reovim_protocol::v1::undo::{UndoFileError, UndoFileFormat, from_undo_tree, to_undo_tree},
+    reovim_protocol::v1::undo::{UndoFileError, UndoFileFormat},
     std::collections::HashMap,
 };
 

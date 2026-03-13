@@ -37,6 +37,8 @@ use {
 /// - `virtual_lines()`: table top/bottom borders
 /// - `transform_line()`: expanded table rows with box-drawing
 /// - `map_cursor_column()`: cursor positioning inside table rows
+const KIND: &str = "markdown";
+
 pub struct MarkdownRenderExtension {
     /// Detected tables per buffer.
     tables: HashMap<u64, Vec<TableRegion>>,
@@ -109,7 +111,7 @@ impl Default for MarkdownRenderExtension {
 
 impl TuiExtension for MarkdownRenderExtension {
     fn kind(&self) -> &'static str {
-        "markdown"
+        KIND
     }
 
     fn is_active(&self) -> bool {

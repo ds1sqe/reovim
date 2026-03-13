@@ -1,11 +1,11 @@
 use std::{path::Path, sync::Arc};
 
 use {
-    reovim_driver_display::statusline::{ComponentContext, ComponentProvider},
     reovim_driver_git::{
         GitProvider,
         types::{BranchInfo, DiffHunk, LogEntry, StashEntry, StatusEntry},
     },
+    reovim_driver_statusline::{ComponentDataContext, ComponentDataProvider},
 };
 
 use super::*;
@@ -42,10 +42,10 @@ fn mock_provider(branch: Option<&str>) -> Arc<dyn GitProvider> {
     })
 }
 
-fn context_with_filepath(path: &str) -> ComponentContext {
-    ComponentContext {
+fn context_with_filepath(path: &str) -> ComponentDataContext {
+    ComponentDataContext {
         filepath: Some(path.to_string()),
-        ..ComponentContext::default()
+        ..ComponentDataContext::default()
     }
 }
 
@@ -56,44 +56,44 @@ fn test_id() {
 }
 
 #[test]
-fn test_render_with_branch() {
+fn test_data_with_branch() {
     let comp = BranchComponent::new(mock_provider(Some("main")));
     let ctx = context_with_filepath("/home/user/project/src/lib.rs");
-    let output = comp.render(&ctx);
-    assert!(output.visible);
-    assert_eq!(output.text, " main ");
+    let data = comp.data(&ctx);
+    assert!(data.visible);
+    assert_eq!(data.text, " main ");
 }
 
 #[test]
-fn test_render_no_filepath() {
+fn test_data_no_filepath() {
     let comp = BranchComponent::new(mock_provider(Some("main")));
-    let ctx = ComponentContext::default();
-    let output = comp.render(&ctx);
-    assert!(!output.visible);
+    let ctx = ComponentDataContext::default();
+    let data = comp.data(&ctx);
+    assert!(!data.visible);
 }
 
 #[test]
-fn test_render_no_branch() {
+fn test_data_no_branch() {
     let comp = BranchComponent::new(mock_provider(None));
     let ctx = context_with_filepath("/home/user/project/src/lib.rs");
-    let output = comp.render(&ctx);
-    assert!(!output.visible);
+    let data = comp.data(&ctx);
+    assert!(!data.visible);
 }
 
 #[test]
-fn test_render_filepath_no_parent() {
+fn test_data_filepath_no_parent() {
     let comp = BranchComponent::new(mock_provider(Some("main")));
     let ctx = context_with_filepath("file.rs");
-    let output = comp.render(&ctx);
+    let data = comp.data(&ctx);
     // "file.rs" has parent "" which is empty, so hidden
-    assert!(!output.visible);
+    assert!(!data.visible);
 }
 
 #[test]
-fn test_render_feature_branch() {
+fn test_data_feature_branch() {
     let comp = BranchComponent::new(mock_provider(Some("feature/git-provider")));
     let ctx = context_with_filepath("/tmp/src/main.rs");
-    let output = comp.render(&ctx);
-    assert!(output.visible);
-    assert_eq!(output.text, " feature/git-provider ");
+    let data = comp.data(&ctx);
+    assert!(data.visible);
+    assert_eq!(data.text, " feature/git-provider ");
 }

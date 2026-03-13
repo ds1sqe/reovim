@@ -228,6 +228,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
+name = "block-buffer"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
+dependencies = [
+ "generic-array",
+]
+
+[[package]]
 name = "bstr"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -404,6 +413,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "cpufeatures"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,7 +512,7 @@ dependencies = [
  "document-features",
  "filedescriptor",
  "futures-core",
- "mio",
+ "mio 1.1.1",
  "parking_lot",
  "rustix",
  "signal-hook",
@@ -516,6 +534,16 @@ name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
+
+[[package]]
+name = "crypto-common"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78c8292055d1c1df0cce5d180393dc8cce0abec0a7102adb6c7b1eef6016d60a"
+dependencies = [
+ "generic-array",
+ "typenum",
+]
 
 [[package]]
 name = "deranged"
@@ -546,6 +574,16 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn",
+]
+
+[[package]]
+name = "digest"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
+dependencies = [
+ "block-buffer",
+ "crypto-common",
 ]
 
 [[package]]
@@ -663,6 +701,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetime"
+version = "0.2.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f98844151eee8917efc50bd9e8318cb963ae8b297431495d3f758616ea5c57db"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "libredox",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -704,6 +753,15 @@ name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+
+[[package]]
+name = "fsevent-sys"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "futures"
@@ -791,6 +849,16 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "generic-array"
+version = "0.14.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
+dependencies = [
+ "typenum",
+ "version_check",
 ]
 
 [[package]]
@@ -915,6 +983,12 @@ name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "http"
@@ -1109,6 +1183,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "inotify"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8069d3ec154eb856955c1c0fbffefbf5f3c40a104ec912d4797314c1801abff"
+dependencies = [
+ "bitflags 1.3.2",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
+name = "inotify-sys"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e05c02b5e89bff3b946cedeca278abc628fe811e604f027c45a8aa3cf793d0eb"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "is-terminal"
 version = "0.4.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1160,6 +1254,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "kqueue"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eac30106d7dce88daf4a3fcb4879ea939476d5074a9b7ddd0fb97fa4bed5596a"
+dependencies = [
+ "kqueue-sys",
+ "libc",
+]
+
+[[package]]
+name = "kqueue-sys"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed9625ffda8729b85e45cf04090035ac368927b8cebc34898e7c120f52e4838b"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1178,12 +1292,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
 
 [[package]]
+name = "libloading"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1744e39d1d6a9948f4f388969627434e31128196de472883b39f148769bfe30a"
 dependencies = [
+ "bitflags 2.11.0",
  "libc",
+ "plain",
+ "redox_syscall 0.7.3",
 ]
 
 [[package]]
@@ -1274,6 +1401,18 @@ dependencies = [
 
 [[package]]
 name = "mio"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
+dependencies = [
+ "libc",
+ "log",
+ "wasi",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "mio"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a69bcab0ad47271a0234d9422b131806bf3968021e5dc9328caf2d4cd58557fc"
@@ -1299,6 +1438,25 @@ name = "multimap"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
+
+[[package]]
+name = "notify"
+version = "6.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6205bd8bb1e454ad2e27422015fb5e4f2bcc7e08fa8f27058670d208324a4d2d"
+dependencies = [
+ "bitflags 2.11.0",
+ "crossbeam-channel",
+ "filetime",
+ "fsevent-sys",
+ "inotify",
+ "kqueue",
+ "libc",
+ "log",
+ "mio 0.8.11",
+ "walkdir",
+ "windows-sys 0.48.0",
+]
 
 [[package]]
 name = "nu-ansi-term"
@@ -1460,7 +1618,7 @@ checksum = "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.18",
  "smallvec",
  "windows-link",
 ]
@@ -1524,6 +1682,12 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
+
+[[package]]
+name = "plain"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plotters"
@@ -1806,6 +1970,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_syscall"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce70a74e890531977d37e532c34d45e9055d2409ed08ddba14529471ed0be16"
+dependencies = [
+ "bitflags 2.11.0",
+]
+
+[[package]]
 name = "redox_users"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1853,18 +2026,60 @@ dependencies = [
  "parking_lot",
  "reovim-client-cli",
  "reovim-client-tui",
+ "reovim-depgraph",
  "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
+ "reovim-driver-module-config",
+ "reovim-driver-module-loader",
+ "reovim-driver-module-registry",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-driver-vfs",
  "reovim-kernel",
- "reovim-module-defaults",
+ "reovim-module-buffer-simple",
+ "reovim-module-clipboard",
+ "reovim-module-cmdline",
+ "reovim-module-commands",
+ "reovim-module-completion",
+ "reovim-module-editor",
+ "reovim-module-explorer",
+ "reovim-module-git",
+ "reovim-module-git-blame",
+ "reovim-module-git-signs",
+ "reovim-module-git-statusline",
+ "reovim-module-health-check",
+ "reovim-module-keymap",
+ "reovim-module-lsp",
+ "reovim-module-lsp-navigation",
+ "reovim-module-microscope",
+ "reovim-module-module-manager",
+ "reovim-module-motions",
+ "reovim-module-notification",
+ "reovim-module-profiles",
+ "reovim-module-range-finder",
+ "reovim-module-scratch-buffer",
+ "reovim-module-search",
+ "reovim-module-snippet",
+ "reovim-module-tetromino",
  "reovim-module-textobjects",
+ "reovim-module-treesitter-markdown",
+ "reovim-module-treesitter-rust",
+ "reovim-module-undo",
+ "reovim-module-vfs-local",
  "reovim-module-vim",
+ "reovim-module-whichkey",
+ "reovim-picker-buffers",
+ "reovim-picker-commands",
+ "reovim-picker-files",
+ "reovim-picker-git-branches",
+ "reovim-picker-git-log",
+ "reovim-picker-git-stash",
+ "reovim-picker-git-status",
+ "reovim-picker-grep",
+ "reovim-picker-options",
  "reovim-server",
  "tokio",
  "tracing",
@@ -1898,6 +2113,10 @@ dependencies = [
  "reovim-driver-vfs",
  "serde_json",
 ]
+
+[[package]]
+name = "reovim-capabilities"
+version = "0.10.0-dev"
 
 [[package]]
 name = "reovim-client-cli"
@@ -1948,6 +2167,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-depgraph"
+version = "0.10.0-dev"
+
+[[package]]
+name = "reovim-driver-annotation"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "smallvec",
+]
+
+[[package]]
 name = "reovim-driver-buffer"
 version = "0.10.0-dev"
 dependencies = [
@@ -1967,7 +2198,6 @@ name = "reovim-driver-command"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-command-types",
- "reovim-driver-display",
  "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
@@ -1996,12 +2226,24 @@ dependencies = [
  "dirs",
  "reovim-arch",
  "reovim-client-model",
+ "reovim-driver-annotation",
+ "reovim-driver-layout",
+ "reovim-driver-statusline",
  "reovim-kernel",
  "serde",
  "smallvec",
  "tempfile",
  "toml 0.8.23",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-driver-extension-loader"
+version = "0.10.0-dev"
+dependencies = [
+ "libloading",
+ "reovim-driver-display",
+ "tracing",
 ]
 
 [[package]]
@@ -2047,6 +2289,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-layout"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-client-model",
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-log"
 version = "0.10.0-dev"
 dependencies = [
@@ -2067,6 +2317,54 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-driver-manifest"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-driver-module-config"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
+ "serde",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "reovim-driver-module-loader"
+version = "0.10.0-dev"
+dependencies = [
+ "chrono",
+ "hex",
+ "libloading",
+ "notify",
+ "reovim-arch",
+ "reovim-depgraph",
+ "reovim-kernel",
+ "serde",
+ "sha2",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-driver-module-registry"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.8.23",
  "tracing",
 ]
 
@@ -2105,12 +2403,19 @@ dependencies = [
  "reovim-arch",
  "reovim-driver-clipboard",
  "reovim-driver-command-types",
- "reovim-driver-display",
+ "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-driver-statusline"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-kernel",
 ]
 
 [[package]]
@@ -2192,6 +2497,7 @@ name = "reovim-module-buffer-simple"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-capabilities",
  "reovim-driver-buffer",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2204,6 +2510,7 @@ version = "0.10.0-dev"
 dependencies = [
  "arboard",
  "reovim-arch",
+ "reovim-capabilities",
  "reovim-driver-clipboard",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2229,6 +2536,7 @@ name = "reovim-module-commands"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-capabilities",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-display",
@@ -2246,70 +2554,33 @@ version = "0.10.0-dev"
 dependencies = [
  "lsp-types",
  "parking_lot",
+ "reovim-capabilities",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-completion",
  "reovim-driver-lsp",
+ "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
  "tokio",
+ "toml 0.8.23",
  "tracing",
 ]
 
 [[package]]
-name = "reovim-module-defaults"
+name = "reovim-module-context"
 version = "0.10.0-dev"
 dependencies = [
- "reovim-driver-command",
+ "reovim-driver-session",
+ "reovim-driver-statusline",
+ "reovim-driver-syntax",
  "reovim-kernel",
- "reovim-module-buffer-simple",
- "reovim-module-clipboard",
- "reovim-module-cmdline",
- "reovim-module-commands",
- "reovim-module-completion",
- "reovim-module-editor",
- "reovim-module-explorer",
- "reovim-module-git",
- "reovim-module-git-blame",
- "reovim-module-git-signs",
- "reovim-module-git-statusline",
- "reovim-module-health-check",
- "reovim-module-keymap",
- "reovim-module-lsp",
- "reovim-module-lsp-navigation",
  "reovim-module-macros",
- "reovim-module-microscope",
- "reovim-module-motions",
- "reovim-module-notification",
- "reovim-module-profiles",
- "reovim-module-range-finder",
- "reovim-module-scratch-buffer",
- "reovim-module-search",
- "reovim-module-snippet",
- "reovim-module-tetromino",
- "reovim-module-treesitter-markdown",
- "reovim-module-treesitter-rust",
- "reovim-module-undo",
- "reovim-module-vfs-local",
- "reovim-module-vim",
- "reovim-module-vim-completion",
- "reovim-module-vim-explorer",
- "reovim-module-vim-lsp",
- "reovim-module-vim-microscope",
- "reovim-module-vim-range-finder",
- "reovim-module-vim-snippet",
- "reovim-module-whichkey",
- "reovim-picker-buffers",
- "reovim-picker-commands",
- "reovim-picker-files",
- "reovim-picker-git-branches",
- "reovim-picker-git-log",
- "reovim-picker-git-stash",
- "reovim-picker-git-status",
- "reovim-picker-grep",
- "reovim-picker-options",
+ "reovim-testing",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2317,14 +2588,25 @@ name = "reovim-module-editor"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-command",
- "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
  "unicode-width",
+]
+
+[[package]]
+name = "reovim-module-emacs"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-editor",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2351,17 +2633,17 @@ dependencies = [
 name = "reovim-module-git"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-capabilities",
  "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
- "tracing",
 ]
 
 [[package]]
 name = "reovim-module-git-blame"
 version = "0.10.0-dev"
 dependencies = [
- "reovim-driver-display",
+ "reovim-driver-annotation",
  "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2371,7 +2653,7 @@ dependencies = [
 name = "reovim-module-git-signs"
 version = "0.10.0-dev"
 dependencies = [
- "reovim-driver-display",
+ "reovim-driver-annotation",
  "reovim-driver-git",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2381,8 +2663,8 @@ dependencies = [
 name = "reovim-module-git-statusline"
 version = "0.10.0-dev"
 dependencies = [
- "reovim-driver-display",
  "reovim-driver-git",
+ "reovim-driver-statusline",
  "reovim-kernel",
  "reovim-module-macros",
 ]
@@ -2395,10 +2677,24 @@ dependencies = [
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-lsp",
+ "reovim-driver-module-config",
+ "reovim-driver-module-loader",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-indent-guide"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2415,12 +2711,15 @@ version = "0.10.0-dev"
 dependencies = [
  "lsp-types",
  "parking_lot",
+ "reovim-capabilities",
  "reovim-driver-lsp",
+ "reovim-driver-module-config",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2473,16 +2772,32 @@ dependencies = [
 name = "reovim-module-mode-manager"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-capabilities",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-module-manager"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-command",
+ "reovim-driver-command-types",
+ "reovim-driver-input",
+ "reovim-driver-module-loader",
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
 ]
 
 [[package]]
 name = "reovim-module-motions"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-capabilities",
  "reovim-driver-command",
- "reovim-driver-display",
+ "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-kernel",
@@ -2498,6 +2813,20 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-module-pair"
+version = "0.10.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2523,6 +2852,7 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-syntax",
  "reovim-kernel",
@@ -2548,9 +2878,22 @@ name = "reovim-module-search"
 version = "0.10.0-dev"
 dependencies = [
  "regex",
+ "reovim-capabilities",
  "reovim-driver-search",
  "reovim-kernel",
  "reovim-module-macros",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-settings"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -2559,8 +2902,10 @@ name = "reovim-module-snippet"
 version = "0.10.0-dev"
 dependencies = [
  "regex",
+ "reovim-capabilities",
  "reovim-driver-command",
  "reovim-driver-input",
+ "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-vfs",
  "reovim-kernel",
@@ -2570,6 +2915,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-sticky-context"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-kernel",
+ "reovim-module-context",
+ "reovim-module-macros",
+ "reovim-testing",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2591,19 +2951,81 @@ name = "reovim-module-textobjects"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-command",
- "reovim-driver-display",
+ "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
 ]
 
 [[package]]
-name = "reovim-module-treesitter-markdown"
+name = "reovim-module-treesitter-bash"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-syntax",
  "reovim-driver-syntax-treesitter",
  "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-bash",
+]
+
+[[package]]
+name = "reovim-module-treesitter-c"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-c",
+]
+
+[[package]]
+name = "reovim-module-treesitter-go"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-go",
+]
+
+[[package]]
+name = "reovim-module-treesitter-javascript"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-javascript",
+]
+
+[[package]]
+name = "reovim-module-treesitter-json"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-json",
+]
+
+[[package]]
+name = "reovim-module-treesitter-markdown"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-module-macros",
  "reovim-module-treesitter-rust",
  "reovim-testing",
  "streaming-iterator",
@@ -2614,7 +3036,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-module-treesitter-rust"
+name = "reovim-module-treesitter-python"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-syntax",
@@ -2622,7 +3044,45 @@ dependencies = [
  "reovim-kernel",
  "reovim-testing",
  "tracing",
+ "tree-sitter-python",
+]
+
+[[package]]
+name = "reovim-module-treesitter-rust"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
  "tree-sitter-rust",
+]
+
+[[package]]
+name = "reovim-module-treesitter-toml"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-toml-ng",
+]
+
+[[package]]
+name = "reovim-module-treesitter-typescript"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-syntax",
+ "reovim-driver-syntax-treesitter",
+ "reovim-kernel",
+ "reovim-testing",
+ "tracing",
+ "tree-sitter-typescript",
 ]
 
 [[package]]
@@ -2630,6 +3090,7 @@ name = "reovim-module-undo"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
+ "reovim-capabilities",
  "reovim-driver-undo",
  "reovim-driver-vfs",
  "reovim-kernel",
@@ -2642,6 +3103,7 @@ dependencies = [
 name = "reovim-module-vfs-local"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-capabilities",
  "reovim-driver-vfs",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2651,11 +3113,14 @@ dependencies = [
 name = "reovim-module-vim"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-annotation",
  "reovim-driver-clipboard",
  "reovim-driver-command",
  "reovim-driver-command-types",
- "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-layout",
+ "reovim-driver-manifest",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-undo",
@@ -2670,70 +3135,6 @@ dependencies = [
  "reovim-testing",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "reovim-module-vim-completion"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-completion",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-explorer"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-explorer",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-lsp"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-lsp-navigation",
- "reovim-module-macros",
-]
-
-[[package]]
-name = "reovim-module-vim-microscope"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-microscope",
-]
-
-[[package]]
-name = "reovim-module-vim-range-finder"
-version = "0.10.0-dev"
-dependencies = [
- "parking_lot",
- "reovim-driver-buffer",
- "reovim-driver-command",
- "reovim-driver-input",
- "reovim-driver-session",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-range-finder",
-]
-
-[[package]]
-name = "reovim-module-vim-snippet"
-version = "0.10.0-dev"
-dependencies = [
- "reovim-driver-input",
- "reovim-kernel",
- "reovim-module-macros",
- "reovim-module-snippet",
 ]
 
 [[package]]
@@ -2752,7 +3153,7 @@ name = "reovim-module-window-ops"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-command",
- "reovim-driver-display",
+ "reovim-driver-layout",
  "reovim-driver-session",
  "reovim-kernel",
  "reovim-module-macros",
@@ -2861,7 +3262,6 @@ version = "0.10.0-dev"
 dependencies = [
  "prost",
  "reovim-arch",
- "reovim-kernel",
  "rmp-serde",
  "serde",
  "serde_json",
@@ -2884,8 +3284,8 @@ dependencies = [
  "reovim-driver-buffer",
  "reovim-driver-command",
  "reovim-driver-command-types",
- "reovim-driver-display",
  "reovim-driver-input",
+ "reovim-driver-layout",
  "reovim-driver-search",
  "reovim-driver-session",
  "reovim-driver-syntax",
@@ -2904,6 +3304,14 @@ dependencies = [
  "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "reovim-test-dynamic-module"
+version = "1.0.0"
+dependencies = [
+ "reovim-kernel",
+ "reovim-module-macros",
 ]
 
 [[package]]
@@ -2941,6 +3349,7 @@ dependencies = [
 name = "reovim-tui-ext-defaults"
 version = "0.10.0-dev"
 dependencies = [
+ "reovim-depgraph",
  "reovim-driver-display",
  "reovim-tui-ext-cmdline",
  "reovim-tui-ext-completion",
@@ -2951,10 +3360,12 @@ dependencies = [
  "reovim-tui-ext-markdown",
  "reovim-tui-ext-microscope",
  "reovim-tui-ext-notification",
+ "reovim-tui-ext-pair",
  "reovim-tui-ext-range-finder",
  "reovim-tui-ext-signature-help",
  "reovim-tui-ext-tetromino",
  "reovim-tui-ext-whichkey",
+ "tracing",
 ]
 
 [[package]]
@@ -3017,6 +3428,16 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
+ "serde_json",
+]
+
+[[package]]
+name = "reovim-tui-ext-pair"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-arch",
+ "reovim-driver-display",
+ "serde",
  "serde_json",
 ]
 
@@ -3220,6 +3641,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2"
+version = "0.10.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3251,7 +3683,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc"
 dependencies = [
  "libc",
- "mio",
+ "mio 1.1.1",
  "signal-hook",
 ]
 
@@ -3463,7 +3895,7 @@ checksum = "27ad5e34374e03cfffefc301becb44e9dc3c17584f414349ebe29ed26661822d"
 dependencies = [
  "bytes",
  "libc",
- "mio",
+ "mio 1.1.1",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
@@ -3829,6 +4261,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-bash"
+version = "0.23.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "329a4d48623ac337d42b1df84e81a1c9dbb2946907c102ca72db158c1964a52e"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-c"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afd2b1bf1585dc2ef6d69e87d01db8adb059006649dd5f96f31aa789ee6e9c71"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-go"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b13d476345220dbe600147dd444165c5791bf85ef53e28acbedd46112ee18431"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-javascript"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf40bf599e0416c16c125c3cec10ee5ddc7d1bb8b0c60fa5c4de249ad34dc1b1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-json"
+version = "0.24.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d727acca406c0020cffc6cf35516764f36c8e3dc4408e5ebe2cb35a947ec471"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-language"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3845,10 +4327,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "tree-sitter-python"
+version = "0.23.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d065aaa27f3aaceaf60c1f0e0ac09e1cb9eb8ed28e7bcdaa52129cffc7f4b04"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
 name = "tree-sitter-rust"
 version = "0.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca8ccb3e3a3495c8a943f6c3fd24c3804c471fd7f4f16087623c7fa4c0068e8a"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-toml-ng"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9adc2c898ae49730e857d75be403da3f92bb81d8e37a2f918a08dd10de5ebb1"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -3885,6 +4397,12 @@ dependencies = [
  "serde_derive_internals",
  "syn",
 ]
+
+[[package]]
+name = "typenum"
+version = "1.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
 
 [[package]]
 name = "unicode-ident"
@@ -3927,6 +4445,12 @@ name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
+
+[[package]]
+name = "version_check"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "walkdir"

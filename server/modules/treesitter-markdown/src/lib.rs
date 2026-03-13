@@ -46,13 +46,10 @@ use std::sync::Arc;
 
 use {
     reovim_driver_syntax::{
-        DecorationRule, HighlightCategory, LanguageInfo, LanguageInfoStore, SyntaxDriver,
-        SyntaxDriverFactory, SyntaxFactoryStore,
+        BracketConfig, BracketConfigStore, DecorationRule, HighlightCategory, LanguageInfo,
+        LanguageInfoStore, SyntaxDriver, SyntaxDriverFactory, SyntaxFactoryStore,
     },
-    reovim_driver_syntax_treesitter::{
-        InjectionLayer, InjectionLayerFactory, InjectionLayerStore, Language, Query,
-        TreeSitterDriver,
-    },
+    reovim_driver_syntax_treesitter::{Language, Query, TreeSitterDriver},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
@@ -67,6 +64,9 @@ const MARKDOWN_DECORATIONS_QUERY: &str = include_str!("queries/decorations.scm")
 
 /// Markdown inline decorations query (embedded from `queries_inline/decorations.scm`)
 const MARKDOWN_INLINE_DECORATIONS_QUERY: &str = include_str!("queries_inline/decorations.scm");
+
+/// Markdown context query (embedded from queries/context.scm)
+const MARKDOWN_CONTEXT_QUERY: &str = include_str!("queries/context.scm");
 
 /// Factory for creating Markdown syntax drivers.
 ///
@@ -91,6 +91,8 @@ pub struct MarkdownSyntaxFactory {
     table_query: Arc<Query>,
     /// Pre-compiled list marker query for `ListDecorationProvider`
     list_query: Arc<Query>,
+    /// Pre-compiled context query (scope hierarchy)
+    context_query: Arc<Query>,
 }
 
 impl MarkdownSyntaxFactory {
@@ -129,6 +131,9 @@ impl MarkdownSyntaxFactory {
         )
         .expect("Failed to compile Markdown list query");
 
+        let context_query = Query::new(&language, MARKDOWN_CONTEXT_QUERY)
+            .expect("Failed to compile Markdown context query");
+
         Self {
             highlight_query: Arc::new(highlight_query),
             injections_query: Arc::new(injections_query),
@@ -139,6 +144,7 @@ impl MarkdownSyntaxFactory {
             inline_decoration_rules: markdown_inline_decoration_rules(),
             table_query: Arc::new(table_query),
             list_query: Arc::new(list_query),
+            context_query: Arc::new(context_query),
         }
     }
 }
@@ -159,6 +165,7 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
         let language: Language = tree_sitter_md::LANGUAGE.into();
 
         TreeSitterDriver::builder("markdown", &language, self.highlight_query.clone())
+            .context_query(self.context_query.clone())
             .injections_query(self.injections_query.clone())
             .decoration(self.decoration_query.clone(), self.decoration_rules.clone())
             .inline_decoration(
@@ -182,17 +189,6 @@ impl SyntaxDriverFactory for MarkdownSyntaxFactory {
 
     fn supports(&self, language_id: &str) -> bool {
         language_id == "markdown"
-    }
-}
-
-impl InjectionLayerFactory for MarkdownSyntaxFactory {
-    fn create_layer(&self) -> Option<InjectionLayer> {
-        let language: Language = tree_sitter_md::LANGUAGE.into();
-        InjectionLayer::new("markdown", &language, self.highlight_query.clone())
-    }
-
-    fn language_id(&self) -> &'static str {
-        "markdown"
     }
 }
 
@@ -339,19 +335,24 @@ impl Module for TreesitterMarkdownModule {
     fn init(&mut self, ctx: &ModuleContext) -> ProbeResult {
         let factory = Arc::new(MarkdownSyntaxFactory::new());
 
-        // Register as SyntaxDriverFactory (for creating Markdown drivers)
+        // Register as SyntaxDriverFactory (for creating Markdown drivers and injection children)
         let syntax_store = ctx.services.get_or_create::<SyntaxFactoryStore>();
-        syntax_store.add(factory.clone());
-
-        // Register as InjectionLayerFactory (for embedding Markdown in other languages)
-        // This enables Rust doc comments to inject Markdown highlighting
-        let injection_store = ctx.services.get_or_create::<InjectionLayerStore>();
-        injection_store.add(factory);
+        syntax_store.add(factory);
 
         // Register language metadata for detection
         let lang_store = ctx.services.get_or_create::<LanguageInfoStore>();
         lang_store.add(
             LanguageInfo::new("markdown", "Markdown").with_extensions(["md", "markdown", "mdx"]),
+        );
+
+        // Register bracket config for Markdown
+        // Note: {} not used in prose
+        let bracket_store = ctx.services.get_or_create::<BracketConfigStore>();
+        bracket_store.add(
+            BracketConfig::new("markdown")
+                .with_rainbow([('(', ')'), ('[', ']')])
+                .with_autopair([('(', ')'), ('[', ']'), ('"', '"'), ('`', '`')])
+                .with_highlight([('(', ')'), ('[', ']')]),
         );
 
         tracing::info!(
@@ -364,7 +365,15 @@ impl Module for TreesitterMarkdownModule {
         tracing::info!("TreesitterMarkdownModule: exiting");
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::SYNTAX_HIGHLIGHTING]
+    }
 }
+
+// Generate FFI entry points for dynamic loading (only when building standalone cdylib)
+#[cfg(feature = "dynamic")]
+reovim_module_macros::declare_module!(TreesitterMarkdownModule);
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]

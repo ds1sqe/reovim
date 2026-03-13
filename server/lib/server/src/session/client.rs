@@ -42,7 +42,7 @@
 use std::{collections::HashMap, time::SystemTime};
 
 use {
-    reovim_driver_display::layout::RootCompositor,
+    reovim_driver_layout::RootCompositor,
     reovim_driver_session::{
         CursorPosition, ExtensionMap, KeySequence, Selection, SelectionMode, TabPageSet, Viewport,
         Window, WindowLayout,

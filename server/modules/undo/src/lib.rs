@@ -17,6 +17,7 @@
 //! Runner no longer needs `UndoPersistence` - it queries `dyn UndoProvider`
 //! from `ServiceRegistry`.
 
+mod conversion;
 mod registry;
 
 pub use registry::{UndoRegistry, decode_path_component, encode_path_component};
@@ -77,6 +78,10 @@ impl Module for UndoModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         pr_info!("Undo module exiting");
         Ok(())
+    }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::UNDO_PROVIDER]
     }
 }
 

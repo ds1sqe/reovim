@@ -1,0 +1,30 @@
+[package]
+name = "reovim-module-treesitter-typescript"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "TypeScript syntax highlighting module for reovim"
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Kernel layer - for Module trait
+reovim-kernel = { workspace = true }
+
+# Driver layer - implements SyntaxDriverFactory
+reovim-driver-syntax = { workspace = true }
+reovim-driver-syntax-treesitter = { workspace = true }
+
+# Tree-sitter TypeScript grammar (provides both TS and TSX languages)
+tree-sitter-typescript = "0.23"
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+reovim-testing = { workspace = true }

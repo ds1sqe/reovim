@@ -46,26 +46,14 @@
 //! renderer.render(&content, bounds, &mut buffer, &default_style);
 //! ```
 
+pub use crate::annotation::LineNumberMode;
+
 use crate::{
     annotation::{ComposedLine, GutterComposer, PresenterContext},
     compositor::Style,
     frame::{Cell, FrameBuffer},
     window::Rect,
 };
-
-/// Line number display mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LineNumberMode {
-    /// No line numbers.
-    #[default]
-    None,
-    /// Absolute line numbers (1, 2, 3...).
-    Absolute,
-    /// Relative line numbers (distance from cursor).
-    Relative,
-    /// Hybrid: absolute for cursor line, relative for others.
-    Hybrid,
-}
 
 /// Configuration for window rendering.
 #[derive(Debug, Clone)]

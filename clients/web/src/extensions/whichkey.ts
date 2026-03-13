@@ -17,6 +17,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "whichkey";
+
 interface WhichKeyHint {
   key: string;
   command: string;
@@ -61,7 +63,7 @@ export class WhichKeyExtension implements WebExtension {
   }
 
   kind(): string {
-    return "whichkey";
+    return KIND;
   }
 
   isActive(): boolean {

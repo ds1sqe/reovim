@@ -14,10 +14,12 @@
 //! │  LineNumberSource, DiagnosticSource, GitSource, etc.            │
 //! │  LineNumberPresenter, DiagnosticPresenter, etc.                 │
 //! ├─────────────────────────────────────────────────────────────────┤
-//! │  DISPLAY DRIVER (Mechanism) ← this module                       │
+//! │  ANNOTATION DRIVER (Data) ← reovim-driver-annotation            │
 //! │  Annotation, AnnotationKind, AnnotationTarget, AnnotationPayload│
-//! │  AnnotationSource trait, AnnotationPresenter trait              │
-//! │  AnnotationStore, GutterComposer                                │
+//! │  AnnotationSource trait, AnnotationStore                        │
+//! ├─────────────────────────────────────────────────────────────────┤
+//! │  DISPLAY DRIVER (Presentation) ← this module                    │
+//! │  AnnotationPresenter trait, GutterComposer                      │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -59,28 +61,39 @@
 //! assert_eq!(diagnostic.kind.namespace(), Some("diagnostic"));
 //! ```
 
+// Presenter implementations (moved from server modules in D2 Phase 3)
+mod blame_presenter;
+mod git_signs_presenter;
+mod line_number_presenter;
+
+// Presentation-only modules (stay in display driver)
 mod composer;
 mod config;
 mod integration;
 mod presenter;
 mod registry;
-mod source;
-mod store;
-mod types;
 
+// Re-export data types from annotation driver (backward compatibility)
+pub use reovim_driver_annotation::{
+    Annotation, AnnotationContext, AnnotationKind, AnnotationLayer, AnnotationPayload,
+    AnnotationSource, AnnotationSourceKey, AnnotationSourceRegistry, AnnotationStore,
+    AnnotationTarget, BufferAnnotationStore, LineNumberMode, SourceId,
+};
+
+// Presentation types (local to display)
 pub use {
     composer::{ComposedLine, ComposerBuilder, GutterComposer},
     config::{ColumnConfig, GutterConfig, VisibilityMode},
-    integration::{
-        AnnotationSourceKey, AnnotationSourceRegistry, GutterRenderer, GutterRendererKey,
-        GutterRendererRegistry,
-    },
+    integration::{GutterRenderer, GutterRendererKey, GutterRendererRegistry},
     presenter::{
         AnnotationPresenter, ColumnWidth, GutterCell, KindPattern, PresentedOutput,
         PresenterContext,
     },
     registry::PresenterRegistry,
-    source::{AnnotationContext, AnnotationSource},
-    store::{AnnotationLayer, AnnotationStore, BufferAnnotationStore, SourceId},
-    types::{Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget},
+};
+
+// Concrete presenter implementations
+pub use {
+    blame_presenter::BlamePresenter, git_signs_presenter::GitSignsPresenter,
+    line_number_presenter::LineNumberPresenter,
 };

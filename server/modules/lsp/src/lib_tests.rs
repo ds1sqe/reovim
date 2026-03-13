@@ -609,3 +609,176 @@ fn test_file_opened_no_extension() {
         path: "/tmp/Makefile".to_string(),
     });
 }
+
+#[test]
+fn test_extension_kinds() {
+    let module = LspModule::new();
+    assert_eq!(module.extension_kinds(), &["diagnostics"]);
+}
+
+// ========================================================================
+// Config consumer (#610)
+// ========================================================================
+
+#[test]
+fn should_auto_start_true_when_no_config_store() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    assert!(should_auto_start(&ctx));
+}
+
+#[test]
+fn should_auto_start_true_when_field_absent() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let settings: toml::Value = toml::from_str("timeout = 5000").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    assert!(should_auto_start(&ctx));
+}
+
+#[test]
+fn should_auto_start_false_when_config_says_false() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let settings: toml::Value = toml::from_str("auto_start = false").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    assert!(!should_auto_start(&ctx));
+}
+
+#[test]
+fn should_auto_start_true_when_config_says_true() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let settings: toml::Value = toml::from_str("auto_start = true").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    assert!(should_auto_start(&ctx));
+}
+
+#[test]
+fn should_auto_start_true_on_wrong_type_with_warning() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let settings: toml::Value = toml::from_str(r#"auto_start = "yes""#).unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    // Wrong type → logs warning, returns default true
+    assert!(should_auto_start(&ctx));
+}
+
+#[test]
+fn should_auto_start_true_when_module_not_in_config() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    // Config store exists but has no "lsp" entry
+    let configs = HashMap::new();
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    assert!(should_auto_start(&ctx));
+}
+
+#[test]
+fn init_with_auto_start_false_skips_file_opened_sub() {
+    use {
+        reovim_kernel::api::v1::{KernelContext, ModuleContext, ServiceRegistry},
+        std::{collections::HashMap, path::PathBuf, sync::Arc},
+    };
+
+    let services = Arc::new(ServiceRegistry::new());
+    let settings: toml::Value = toml::from_str("auto_start = false").unwrap();
+    let mut configs = HashMap::new();
+    configs.insert("lsp".to_string(), settings);
+    services.register(Arc::new(ModuleConfigStore::new(configs)));
+
+    let ctx = ModuleContext::new(
+        KernelContext::default(),
+        services,
+        PathBuf::from("/tmp"),
+        PathBuf::from("/tmp"),
+    );
+
+    let mut module = LspModule::new();
+    let result = module.init(&ctx);
+    assert_eq!(result, ProbeResult::Success);
+
+    // file_opened_sub should be None (auto_start disabled)
+    assert!(module.file_opened_sub.is_none());
+    // buffer_saved_sub should still be set
+    assert!(module.buffer_saved_sub.is_some());
+}

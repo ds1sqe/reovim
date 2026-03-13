@@ -1,9 +1,8 @@
 use {
     super::*,
     reovim_driver_command::Command,
-    reovim_driver_display::{
-        Rect, WindowId,
-        layout::{Layer, LayerConfig, LayerId, OverlayConstraints, WindowPlacement, Zone},
+    reovim_driver_layout::{
+        Layer, LayerConfig, LayerId, OverlayConstraints, Rect, WindowId, WindowPlacement, Zone,
     },
     reovim_driver_session::testing::TestSessionRuntime,
 };
@@ -33,7 +32,7 @@ impl MockLayerCompositor {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_display::layout::WindowLayerCompositor for MockLayerCompositor {
+impl reovim_driver_layout::WindowLayerCompositor for MockLayerCompositor {
     fn id(&self) -> LayerId {
         self.id
     }
@@ -139,9 +138,9 @@ impl MockRootCompositor {
 }
 
 #[cfg_attr(coverage_nightly, coverage(off))]
-impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
-    fn composite(&self, screen: Rect) -> reovim_driver_display::layout::CompositeResult {
-        reovim_driver_display::layout::CompositeResult::empty(screen)
+impl reovim_driver_layout::RootCompositor for MockRootCompositor {
+    fn composite(&self, screen: Rect) -> reovim_driver_layout::CompositeResult {
+        reovim_driver_layout::CompositeResult::empty(screen)
     }
 
     fn create_layer(&mut self, _config: LayerConfig) -> LayerId {
@@ -169,7 +168,7 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
 
     fn set_focus(&mut self, window: WindowId) {
         self.focused = Some(window);
-        reovim_driver_display::layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
+        reovim_driver_layout::WindowLayerCompositor::set_focus(&mut self.layer, window);
     }
 
     fn focused(&self) -> Option<WindowId> {
@@ -183,14 +182,14 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
     fn layer_compositor(
         &self,
         _layer: LayerId,
-    ) -> Option<&dyn reovim_driver_display::layout::WindowLayerCompositor> {
+    ) -> Option<&dyn reovim_driver_layout::WindowLayerCompositor> {
         Some(&self.layer)
     }
 
     fn layer_compositor_mut(
         &mut self,
         _layer: LayerId,
-    ) -> Option<&mut dyn reovim_driver_display::layout::WindowLayerCompositor> {
+    ) -> Option<&mut dyn reovim_driver_layout::WindowLayerCompositor> {
         Some(&mut self.layer)
     }
 
@@ -204,7 +203,7 @@ impl reovim_driver_display::layout::RootCompositor for MockRootCompositor {
         Some(LayerId::new(0))
     }
 
-    fn boxed_clone(&self) -> Box<dyn reovim_driver_display::layout::RootCompositor> {
+    fn boxed_clone(&self) -> Box<dyn reovim_driver_layout::RootCompositor> {
         Box::new(Self {
             layer: MockLayerCompositor {
                 id: self.layer.id,

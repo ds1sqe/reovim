@@ -18,3 +18,4 @@ reovim-driver-display = { workspace = true }
 
 # Platform abstraction (Color)
 reovim-arch = { workspace = true }
+

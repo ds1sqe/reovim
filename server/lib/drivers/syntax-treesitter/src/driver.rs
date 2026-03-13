@@ -27,8 +27,9 @@ use std::{
 use {
     parking_lot::{Mutex, RwLock},
     reovim_driver_syntax::{
-        Annotation, DecorationCapture, DecorationRule, FoldKind, FoldRange, HighlightCategory,
-        Injection, SyntaxDriver, SyntaxEdit, decoration::apply_rules,
+        Annotation, ContextHierarchy, DecorationCapture, DecorationRule, FoldKind, FoldRange,
+        HighlightCategory, Injection, ScopeKind, ScopeRange, SyntaxContext, SyntaxDriver,
+        SyntaxEdit, decoration::apply_rules,
     },
     streaming_iterator::StreamingIterator,
     tree_sitter::{InputEdit, Node, Parser, Point, Query, QueryCursor, Tree},
@@ -83,6 +84,9 @@ pub struct TreeSitterDriver {
     /// Present when `injections_query` is provided. Coordinates highlighting
     /// of embedded languages (e.g., Rust code in Markdown fenced blocks).
     injection_manager: Option<Mutex<InjectionManager>>,
+
+    /// Optional context query for scope boundaries
+    context_query: Option<Arc<Query>>,
 
     /// Optional decoration query for conceal/background/virtual text
     decoration_query: Option<Arc<Query>>,
@@ -145,6 +149,7 @@ impl TreeSitterDriver {
             injections_query: None,
             indents_query: None,
             injection_manager: None,
+            context_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -194,6 +199,7 @@ impl TreeSitterDriver {
             injections_query,
             indents_query,
             injection_manager,
+            context_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -229,6 +235,12 @@ impl TreeSitterDriver {
         TreeSitterDriverBuilder::new(language_id, language, highlight_query)
     }
 
+    /// Check if this driver supports scope context queries.
+    #[must_use]
+    pub const fn supports_context(&self) -> bool {
+        self.context_query.is_some()
+    }
+
     /// Check if this driver supports decorations.
     #[must_use]
     pub const fn supports_decorations(&self) -> bool {
@@ -260,25 +272,13 @@ impl TreeSitterDriver {
         self.injections_query.is_some() && self.injection_manager.is_some()
     }
 
-    /// Get a reference to the injection manager (for registering layers).
+    /// Get a reference to the injection manager.
     ///
     /// Returns `None` if the driver was not created with an injections query.
+    #[cfg(test)]
     #[must_use]
-    pub const fn injection_manager(&self) -> Option<&Mutex<InjectionManager>> {
+    pub(crate) const fn injection_manager(&self) -> Option<&Mutex<InjectionManager>> {
         self.injection_manager.as_ref()
-    }
-
-    /// Set the injection layer store for dynamic layer creation.
-    ///
-    /// When set, the injection manager will lazily create layers for embedded
-    /// languages by querying the store during `highlight_injections()`.
-    ///
-    /// Does nothing if this driver has no injection manager (i.e., was not
-    /// created with an injections query).
-    pub fn set_injection_layer_store(&self, store: Arc<crate::InjectionLayerStore>) {
-        if let Some(ref manager_mutex) = self.injection_manager {
-            manager_mutex.lock().set_store(store);
-        }
     }
 
     /// Check if this driver supports folds.
@@ -560,6 +560,7 @@ impl SyntaxDriver for TreeSitterDriver {
         highlights
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn injections(&self) -> Vec<Injection> {
         let Some(injections_query) = &self.injections_query else {
             return Vec::new();
@@ -584,7 +585,6 @@ impl SyntaxDriver for TreeSitterDriver {
         let mut language_idx: Option<u32> = None;
 
         for (i, name) in capture_names.iter().enumerate() {
-            #[allow(clippy::cast_possible_truncation)]
             if *name == "injection.content" {
                 content_idx = Some(i as u32);
             } else if *name == "injection.language" {
@@ -595,6 +595,23 @@ impl SyntaxDriver for TreeSitterDriver {
         let Some(content_idx) = content_idx else {
             return Vec::new(); // No @injection.content capture
         };
+
+        // Detect combined patterns (patterns with #set! injection.combined)
+        let mut combined_patterns = std::collections::HashSet::new();
+        for pattern_idx in 0..injections_query.pattern_count() {
+            for property in injections_query.property_settings(pattern_idx) {
+                if &*property.key == "injection.combined" {
+                    combined_patterns.insert(pattern_idx);
+                }
+            }
+        }
+
+        // Accumulate combined injections by language
+        #[allow(clippy::type_complexity)]
+        let mut combined_injections: std::collections::HashMap<
+            String,
+            Vec<(std::ops::Range<usize>, u32, u32, u32, u32)>,
+        > = std::collections::HashMap::new();
 
         // Query injections
         let mut matches = cursor.matches(injections_query, tree.root_node(), content.as_bytes());
@@ -626,21 +643,46 @@ impl SyntaxDriver for TreeSitterDriver {
             }
 
             // Create injection if we have both content and language
-            #[allow(clippy::cast_possible_truncation)]
             if let (Some(content_node), Some(language_id)) = (injection_content, injection_language)
             {
                 let start_point = content_node.start_position();
                 let end_point = content_node.end_position();
+                let byte_range = content_node.start_byte()..content_node.end_byte();
 
-                injections.push(Injection::new(
-                    language_id,
-                    content_node.start_byte()..content_node.end_byte(),
-                    start_point.row as u32,
-                    start_point.column as u32,
-                    end_point.row as u32,
-                    end_point.column as u32,
-                ));
+                if combined_patterns.contains(&match_.pattern_index) {
+                    // Accumulate into combined map
+                    combined_injections.entry(language_id).or_default().push((
+                        byte_range,
+                        start_point.row as u32,
+                        start_point.column as u32,
+                        end_point.row as u32,
+                        end_point.column as u32,
+                    ));
+                } else {
+                    // Normal (non-combined) injection -- emit immediately
+                    injections.push(Injection::new(
+                        language_id,
+                        byte_range,
+                        start_point.row as u32,
+                        start_point.column as u32,
+                        end_point.row as u32,
+                        end_point.column as u32,
+                    ));
+                }
             }
+        }
+
+        // Flush combined injections as single entries with multiple ranges
+        for (language_id, entries) in combined_injections {
+            if entries.is_empty() {
+                continue;
+            }
+            let ranges: Vec<std::ops::Range<usize>> =
+                entries.iter().map(|(r, ..)| r.clone()).collect();
+            let (_, sr, sc, ..) = &entries[0];
+            let (.., er, ec) = entries.last().expect("entries is not empty");
+
+            injections.push(Injection::combined(language_id, ranges, *sr, *sc, *er, *ec));
         }
 
         // Drop locks before tracing to avoid holding them during logging
@@ -851,8 +893,219 @@ impl SyntaxDriver for TreeSitterDriver {
         result
     }
 
+    fn set_injection_factory(
+        &mut self,
+        factory: Arc<dyn reovim_driver_syntax::SyntaxDriverFactory>,
+    ) {
+        if let Some(ref manager_mutex) = self.injection_manager {
+            let mut manager = manager_mutex.lock();
+            manager.set_factory(factory);
+        }
+    }
+
+    fn set_injection_depth(&mut self, depth: u8) {
+        if let Some(ref manager_mutex) = self.injection_manager {
+            let mut manager = manager_mutex.lock();
+            manager.set_depth(depth);
+        }
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn scopes(&self, line: u32, col: u32) -> ContextHierarchy {
+        let Some(context_query) = &self.context_query else {
+            return ContextHierarchy::empty();
+        };
+
+        let Some(scopes) = self.with_tree(|tree, content| {
+            let mut cursor = QueryCursor::new();
+
+            let capture_names = context_query.capture_names();
+            let context_idx = capture_names.iter().position(|n| *n == "context");
+            let name_idx = capture_names.iter().position(|n| *n == "name");
+
+            let Some(context_idx) = context_idx else {
+                return Vec::new();
+            };
+
+            let mut scopes = Vec::new();
+            let cursor_point = Point::new(line as usize, col as usize);
+
+            let mut matches = cursor.matches(context_query, tree.root_node(), content.as_bytes());
+            while let Some(match_) = matches.next() {
+                let mut context_node = None;
+                let mut name_text = None;
+
+                for capture in match_.captures {
+                    if capture.index == context_idx as u32 {
+                        context_node = Some(capture.node);
+                    } else if Some(capture.index as usize) == name_idx {
+                        let node = capture.node;
+                        let text = &content[node.start_byte()..node.end_byte()];
+                        name_text = Some(text.to_string());
+                    }
+                }
+
+                let Some(node) = context_node else {
+                    continue;
+                };
+
+                // Filter: only include nodes that contain the cursor position
+                let start = node.start_position();
+                let end = node.end_position();
+                if cursor_point < start || cursor_point > end {
+                    continue;
+                }
+
+                let kind = node_to_scope_kind(node.kind());
+                let display = build_scope_display_text(node, name_text.as_deref(), content);
+                let start_line = node.start_position().row as u32;
+                let end_line = node.end_position().row as u32;
+
+                scopes.push(ScopeRange::new(start_line, end_line, kind, display, name_text));
+            }
+
+            // Sort: outermost first (start_line asc, then end_line desc for same start)
+            scopes.sort_by(|a, b| {
+                a.start_line
+                    .cmp(&b.start_line)
+                    .then(b.end_line.cmp(&a.end_line))
+            });
+
+            // Dedup: remove duplicates at same start_line
+            scopes.dedup_by_key(|s| s.start_line);
+
+            scopes
+        }) else {
+            return ContextHierarchy::empty();
+        };
+
+        ContextHierarchy::new(0, line, col, scopes)
+    }
+
+    fn context_at_byte(&self, byte_offset: usize) -> SyntaxContext {
+        // Use highlights to determine context — parser-agnostic approach.
+        // Check if any highlight annotation at this byte has a category
+        // starting with "string" or "comment".
+        let range = byte_offset..byte_offset.saturating_add(1);
+        let highlights = self.highlights(range);
+
+        for ann in &highlights {
+            if ann.contains(byte_offset) {
+                let cat = ann.category.as_str();
+                if cat.starts_with("string") || cat == "character" {
+                    return SyntaxContext::String;
+                }
+                if cat.starts_with("comment") {
+                    return SyntaxContext::Comment;
+                }
+            }
+        }
+
+        SyntaxContext::Code
+    }
+
     fn is_parsed(&self) -> bool {
         self.tree.read().is_some()
+    }
+}
+
+// ============================================================================
+// Scope Helpers
+// ============================================================================
+
+/// Map a tree-sitter node kind to a `ScopeKind`.
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn node_to_scope_kind(node_kind: &str) -> ScopeKind {
+    match node_kind {
+        "function_item"
+        | "function_definition"
+        | "closure_expression"
+        | "method_definition"
+        | "arrow_function"
+        | "method_declaration"
+        | "function_declaration" => ScopeKind::Function,
+
+        "struct_item"
+        | "enum_item"
+        | "impl_item"
+        | "trait_item"
+        | "union_item"
+        | "class_definition"
+        | "class_declaration"
+        | "class_specifier"
+        | "interface_declaration" => ScopeKind::Class,
+
+        "mod_item" | "module" => ScopeKind::Module,
+
+        "atx_heading" | "setext_heading" => ScopeKind::Heading,
+
+        "namespace_definition" => ScopeKind::Namespace,
+
+        _ => ScopeKind::Block,
+    }
+}
+
+/// Simplify a tree-sitter node kind for display.
+fn simplify_kind(kind: &str) -> &str {
+    match kind {
+        "function_item"
+        | "function_definition"
+        | "function_declaration"
+        | "method_definition"
+        | "method_declaration"
+        | "arrow_function" => "fn",
+        "closure_expression" => "closure",
+        "struct_item" => "struct",
+        "enum_item" => "enum",
+        "impl_item" => "impl",
+        "trait_item" => "trait",
+        "union_item" => "union",
+        "class_definition" | "class_declaration" | "class_specifier" => "class",
+        "interface_declaration" => "interface",
+        "mod_item" | "module" => "mod",
+        "namespace_definition" => "namespace",
+        "atx_heading" | "setext_heading" => "heading",
+        other => other,
+    }
+}
+
+/// Build display text for a scope node.
+///
+/// Produces human-readable text like "fn main", "impl Foo", "struct Bar".
+#[cfg_attr(coverage_nightly, coverage(off))]
+fn build_scope_display_text(node: Node, name_text: Option<&str>, content: &str) -> String {
+    let simplified = simplify_kind(node.kind());
+
+    if let Some(name) = name_text {
+        return format!("{simplified} {name}");
+    }
+
+    // For impl items, try to find the type identifier child
+    if node.kind() == "impl_item" {
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i)
+                && (child.kind() == "type_identifier" || child.kind() == "generic_type")
+            {
+                let text = &content[child.start_byte()..child.end_byte()];
+                return format!("impl {text}");
+            }
+        }
+    }
+
+    // Fallback: first line of node text, truncated
+    let start = node.start_byte();
+    let end = node.end_byte().min(content.len());
+    if start < end {
+        let text = &content[start..end];
+        let first_line = text.lines().next().unwrap_or("").trim();
+        let truncated: String = first_line.chars().take(60).collect();
+        if truncated.len() < first_line.len() {
+            format!("{truncated}...")
+        } else {
+            truncated
+        }
+    } else {
+        simplified.to_string()
     }
 }
 
@@ -871,6 +1124,7 @@ pub struct TreeSitterDriverBuilder {
     folds_query: Option<Arc<Query>>,
     injections_query: Option<Arc<Query>>,
     indents_query: Option<Arc<Query>>,
+    context_query: Option<Arc<Query>>,
     decoration_query: Option<Arc<Query>>,
     decoration_rules: Vec<DecorationRule>,
     inline_parser: Option<Mutex<Parser>>,
@@ -893,6 +1147,7 @@ impl TreeSitterDriverBuilder {
             folds_query: None,
             injections_query: None,
             indents_query: None,
+            context_query: None,
             decoration_query: None,
             decoration_rules: Vec::new(),
             inline_parser: None,
@@ -900,6 +1155,13 @@ impl TreeSitterDriverBuilder {
             inline_decoration_rules: Vec::new(),
             decoration_providers: Vec::new(),
         }
+    }
+
+    /// Set the context query for scope boundaries.
+    #[must_use]
+    pub fn context_query(mut self, query: Arc<Query>) -> Self {
+        self.context_query = Some(query);
+        self
     }
 
     /// Set the folds query.
@@ -993,6 +1255,7 @@ impl TreeSitterDriverBuilder {
             injections_query: self.injections_query,
             indents_query: self.indents_query,
             injection_manager,
+            context_query: self.context_query,
             decoration_query: self.decoration_query,
             decoration_rules: self.decoration_rules,
             inline_parser: self.inline_parser,

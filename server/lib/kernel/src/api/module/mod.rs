@@ -156,6 +156,79 @@ pub trait Module: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// Extension kinds pushed by this module via `ExtensionStateBridge` (#584).
+    ///
+    /// Returns the extension kind identifiers that this module registers
+    /// bridges for. Used by server startup validation to detect orphaned
+    /// bridges (bridge registered but no module claims to push that kind).
+    ///
+    /// Modules that register bridges in `init()` should override this to
+    /// declare the kinds they push. Define kind constants locally in each
+    /// module crate.
+    ///
+    /// # Kernel Purity
+    ///
+    /// The kernel defines this with `&[&'static str]` return type. Modules
+    /// define their own kind constants locally — no shared crate needed.
+    fn extension_kinds(&self) -> &[&'static str] {
+        &[]
+    }
+
+    /// Capabilities provided by this module (#618).
+    ///
+    /// Returns capability identifiers that this module provides (e.g.,
+    /// `"syntax-highlighting"`, `"undo-provider"`). Used for abstract
+    /// dependency matching: a module that `requires` a capability is
+    /// satisfied by any module that `provides` it.
+    ///
+    /// Use constants from `reovim-capabilities`.
+    ///
+    /// # Kernel Purity
+    ///
+    /// Same as `extension_kinds()`: the kernel defines the method with
+    /// `&[&'static str]` return type. Capability constants live in
+    /// `shared/capabilities/`, not in the kernel.
+    fn provides(&self) -> &[&'static str] {
+        &[]
+    }
+
+    /// Capabilities required by this module (#618).
+    ///
+    /// Returns capability identifiers that this module requires (e.g.,
+    /// `"lsp-provider"`). During dependency resolution, the depgraph
+    /// resolver matches these against `provides()` from other modules
+    /// and adds implicit ordering edges.
+    ///
+    /// If no module provides a required capability, the module may fail
+    /// to initialize or operate in degraded mode.
+    ///
+    /// Use constants from `reovim-capabilities`.
+    fn requires(&self) -> &[&'static str] {
+        &[]
+    }
+
+    /// Version constraints on dependencies (#619).
+    ///
+    /// Returns `(module_id, version_range_string)` pairs declaring minimum
+    /// version requirements on specific dependencies. The version range
+    /// follows Cargo semver syntax:
+    ///
+    /// - `"^1.2.3"` — compatible (same major, `>=1.2.3, <2.0.0`)
+    /// - `"=1.2.3"` — exact match only
+    /// - `">=1.2.3"` — at least this version
+    /// - `"1.2.3"` — shorthand for `"^1.2.3"`
+    ///
+    /// Constraints are checked after dependency resolution but before init.
+    /// Violations are logged and the constrained module may be skipped.
+    ///
+    /// # Kernel Purity
+    ///
+    /// The kernel carries opaque `(ModuleId, &'static str)` pairs.
+    /// The depgraph driver parses and evaluates the version range strings.
+    fn version_constraints(&self) -> Vec<(ModuleId, &'static str)> {
+        Vec::new()
+    }
+
     // ========================================================================
     // Lifecycle (Linux: module_init / module_exit)
     // ========================================================================
@@ -361,3 +434,7 @@ pub trait Module: Send + Sync + 'static {
         Err(ModuleError::InitFailed("hot reload not supported".into()))
     }
 }
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod tests;

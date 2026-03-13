@@ -22,6 +22,15 @@ reovim-arch = { workspace = true }
 # Common client model (provides Rect, Size, Direction, SplitDirection)
 reovim-client-model = { workspace = true }
 
+# Layout driver (compositor traits, layer types - server-side mechanism)
+reovim-driver-layout = { workspace = true }
+
+# Annotation driver (annotation data types, sources, stores - server-side mechanism)
+reovim-driver-annotation = { workspace = true }
+
+# Statusline driver (component data types, providers - server-side mechanism)
+reovim-driver-statusline = { workspace = true }
+
 # Unicode width detection for wide characters (CJK, emoji)
 unicode-width = "0.2"
 

@@ -10,6 +10,7 @@ use reovim_driver_session::{
 };
 
 use crate::{
+    KIND,
     state::{ExplorerInputMode, ExplorerState},
     tree::node::NodeType,
 };
@@ -22,7 +23,7 @@ pub struct ExplorerBridge;
 
 impl ExtensionStateBridge for ExplorerBridge {
     fn kind(&self) -> &'static str {
-        "explorer"
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

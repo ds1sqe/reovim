@@ -4,20 +4,14 @@ use {
     crate::{profile::Profile, validate::validate_profile_name},
     reovim_driver_command::{Command, CommandHandler},
     reovim_driver_command_types::{ArgKind, ArgSpec, CommandContext, CommandResult},
-    reovim_driver_session::SessionRuntime,
+    reovim_driver_session::{BufferApi, SessionRuntime},
     reovim_kernel::api::v1::{CommandId, ModuleId},
-    std::path::PathBuf,
+    std::{fmt::Write, path::PathBuf},
 };
 
 const PROFILES_MODULE: ModuleId = ModuleId::new("profiles");
 
 /// Serialize a profile to TOML and write it to disk.
-///
-/// Absorbs three genuinely untestable error branches:
-/// - `to_toml()` serialization failure (infallible for our data types)
-/// - `create_dir_all` error (`MockVfs` always returns `Ok(())`)
-/// - `write_str` error (`MockVfs` always returns `Ok(())`)
-#[cfg_attr(coverage_nightly, coverage(off))]
 fn write_profile(
     vfs: &dyn reovim_driver_vfs::VfsDriver,
     dir: &std::path::Path,
@@ -218,7 +212,7 @@ impl Command for ProfileListCommand {
 }
 
 impl CommandHandler for ProfileListCommand {
-    fn execute(&self, _runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
+    fn execute(&self, runtime: &mut SessionRuntime<'_>, args: &CommandContext) -> CommandResult {
         let Some(vfs) = args.vfs() else {
             return CommandResult::error("filesystem not available");
         };
@@ -245,8 +239,14 @@ impl CommandHandler for ProfileListCommand {
             return CommandResult::error("no profiles saved");
         }
 
-        // Output via tracing::info — the runner captures this for display
-        tracing::info!("profiles: {}", names.join(", "));
+        let mut report = String::from("Saved profiles:\n\n");
+        for name in &names {
+            let _ = writeln!(report, "  - {name}");
+        }
+
+        let buf_id = runtime.create_buffer(Some("[profiles]"), &report);
+        runtime.set_buffer_modified(buf_id, false);
+        runtime.set_active_buffer(Some(buf_id));
 
         CommandResult::Success
     }

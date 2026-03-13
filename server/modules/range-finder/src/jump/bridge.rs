@@ -7,7 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use super::state::JumpSessionState;
+use {super::state::JumpSessionState, crate::KIND_JUMP};
 
 /// Bridge for jump navigation state.
 ///
@@ -17,7 +17,7 @@ pub struct JumpBridge;
 
 impl ExtensionStateBridge for JumpBridge {
     fn kind(&self) -> &'static str {
-        "range-finder-jump"
+        KIND_JUMP
     }
 
     fn scope(&self) -> ExtensionScope {

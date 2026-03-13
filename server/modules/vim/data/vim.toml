@@ -1,0 +1,240 @@
+[personality]
+name = "vim"
+
+# ===========================================================================
+# Completion bindings (from vim-completion)
+# ===========================================================================
+
+[[keybinding]]
+key = "<C-y>"
+command = "completion:confirm"
+modes = ["vim:insert"]
+category = "completion"
+description = "Confirm completion"
+
+[[keybinding]]
+key = "<C-e>"
+command = "completion:dismiss"
+modes = ["vim:insert"]
+category = "completion"
+description = "Dismiss completion"
+
+# ===========================================================================
+# LSP bindings (from vim-lsp)
+# ===========================================================================
+
+[[keybinding]]
+key = "gd"
+command = "lsp-navigation:goto-definition"
+modes = ["vim:normal"]
+category = "lsp"
+description = "Go to definition (LSP)"
+
+[[keybinding]]
+key = "gr"
+command = "lsp-navigation:references"
+modes = ["vim:normal"]
+category = "lsp"
+description = "Find references (LSP)"
+
+[[keybinding]]
+key = "K"
+command = "lsp-navigation:hover"
+modes = ["vim:normal"]
+category = "lsp"
+description = "Show hover information (LSP)"
+
+[[keybinding]]
+key = "<C-k>"
+command = "lsp-navigation:signature-help"
+modes = ["vim:insert"]
+category = "lsp"
+description = "Show signature help (LSP)"
+
+# ===========================================================================
+# Explorer bindings (from vim-explorer)
+# ===========================================================================
+
+[[keybinding]]
+key = "<Space>e"
+command = "explorer:toggle"
+modes = ["vim:normal"]
+category = "explorer"
+description = "Toggle file explorer"
+
+# ===========================================================================
+# Microscope/picker bindings (from vim-microscope)
+# ===========================================================================
+
+[[keybinding]]
+key = "<Space>f"
+command = "microscope:open-files"
+modes = ["vim:normal"]
+category = "picker"
+description = "Open file picker"
+
+[[keybinding]]
+key = "<Space>b"
+command = "microscope:open-buffers"
+modes = ["vim:normal"]
+category = "picker"
+description = "Open buffer picker"
+
+[[keybinding]]
+key = "<Space>g"
+command = "microscope:open-grep"
+modes = ["vim:normal"]
+category = "picker"
+description = "Open grep picker"
+
+[[keybinding]]
+key = "<Space>;"
+command = "microscope:open-commands"
+modes = ["vim:normal"]
+category = "picker"
+description = "Open command picker"
+
+# ===========================================================================
+# Snippet bindings (from vim-snippet)
+# ===========================================================================
+
+[[keybinding]]
+key = "<C-s>"
+command = "snippet:expand"
+modes = ["vim:insert"]
+category = "snippet"
+description = "Expand snippet at cursor"
+
+[[keybinding]]
+key = "<Space>sc"
+command = "snippet:catalog"
+modes = ["vim:normal"]
+category = "snippet"
+description = "List available snippets"
+
+[[keybinding]]
+key = "<Space>sr"
+command = "snippet:reload"
+modes = ["vim:normal"]
+category = "snippet"
+description = "Reload snippet files"
+
+# ===========================================================================
+# Range-finder bindings (from vim-range-finder)
+# ===========================================================================
+
+[[keybinding]]
+key = "s"
+command = "range-finder:jump-search"
+modes = ["vim:normal"]
+category = "jump"
+description = "Jump search (two-char pattern)"
+
+[[keybinding]]
+key = "za"
+command = "range-finder:fold-toggle"
+modes = ["vim:normal"]
+category = "folding"
+description = "Toggle fold at cursor"
+
+[[keybinding]]
+key = "zo"
+command = "range-finder:fold-open"
+modes = ["vim:normal"]
+category = "folding"
+description = "Open fold at cursor"
+
+[[keybinding]]
+key = "zc"
+command = "range-finder:fold-close"
+modes = ["vim:normal"]
+category = "folding"
+description = "Close fold at cursor"
+
+[[keybinding]]
+key = "zR"
+command = "range-finder:fold-open-all"
+modes = ["vim:normal"]
+category = "folding"
+description = "Open all folds"
+
+[[keybinding]]
+key = "zM"
+command = "range-finder:fold-close-all"
+modes = ["vim:normal"]
+category = "folding"
+description = "Close all folds"
+
+# ===========================================================================
+# Mode bridges
+# ===========================================================================
+
+[[mode-bridge]]
+feature_mode = "snippet:navigating"
+parent_mode = "vim:insert"
+
+[[mode-bridge]]
+feature_mode = "range-finder:jump-input"
+parent_mode = "vim:normal"
+
+# ===========================================================================
+# Vim options (#610)
+# ===========================================================================
+
+[[option]]
+name = "number"
+short = "nu"
+description = "Show line numbers"
+scope = "window"
+default = false
+
+[[option]]
+name = "relativenumber"
+short = "rnu"
+description = "Show relative line numbers"
+scope = "window"
+default = false
+
+[[option]]
+name = "scrolloff"
+short = "so"
+description = "Minimum lines above/below cursor"
+default = 0
+constraint = { min = 0 }
+
+[[option]]
+name = "sidescrolloff"
+short = "siso"
+description = "Minimum columns left/right of cursor"
+default = 0
+constraint = { min = 0 }
+
+[[option]]
+name = "ignorecase"
+short = "ic"
+description = "Ignore case in search patterns"
+default = false
+
+[[option]]
+name = "smartcase"
+short = "scs"
+description = "Override ignorecase if pattern has uppercase"
+default = false
+
+[[option]]
+name = "hlsearch"
+short = "hls"
+description = "Highlight search matches"
+default = false
+
+[[option]]
+name = "incsearch"
+short = "is"
+description = "Show search matches incrementally"
+default = false
+
+[[option]]
+name = "wrapscan"
+short = "ws"
+description = "Wrap search around end of file"
+default = true

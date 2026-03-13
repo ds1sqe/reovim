@@ -189,6 +189,15 @@ impl<O: TuiOutput> TuiApp<O> {
         }
     }
 
+    /// Replace extensions with a filtered set (#586).
+    ///
+    /// Called by the app layer after construction to apply user config.
+    /// Must be called before `run()`. Extensions are already initialized
+    /// by `create_extensions_filtered()`.
+    pub fn set_extensions(&mut self, extensions: Vec<Box<dyn TuiExtension>>) {
+        self.extensions = extensions;
+    }
+
     /// Apply a theme by name.
     fn apply_theme_internal(loader: &ThemeLoader, manager: &mut ThemeManager, theme_name: &str) {
         // Try user theme first

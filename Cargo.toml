@@ -25,7 +25,15 @@ members = [
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
     "server/lib/drivers/completion",
+    "shared/depgraph",
+    "server/lib/drivers/manifest",
+    "server/lib/drivers/module-config",
+    "server/lib/drivers/module-loader",
     "server/lib/drivers/git",
+    "server/lib/drivers/module-registry",
+    "server/lib/drivers/layout",
+    "server/lib/drivers/annotation",
+    "server/lib/drivers/statusline",
 
     # Server modules
     "server/modules/vim",
@@ -43,8 +51,15 @@ members = [
     "server/modules/undo",
     "server/modules/vfs-local",
     "server/modules/window-ops",
-    "server/modules/defaults",
     "server/modules/treesitter-rust",
+    "server/modules/treesitter-python",
+    "server/modules/treesitter-c",
+    "server/modules/treesitter-javascript",
+    "server/modules/treesitter-typescript",
+    "server/modules/treesitter-json",
+    "server/modules/treesitter-toml",
+    "server/modules/treesitter-bash",
+    "server/modules/treesitter-go",
     "server/modules/cmdline",
     "server/modules/whichkey",
     "server/modules/notification",
@@ -61,12 +76,6 @@ members = [
     "server/modules/range-finder",
     "server/modules/completion",
     "server/modules/lsp-navigation",
-    "server/modules/vim-lsp",
-    "server/modules/vim-microscope",
-    "server/modules/vim-explorer",
-    "server/modules/vim-completion",
-    "server/modules/vim-range-finder",
-    "server/modules/vim-snippet",
     "server/modules/profiles",
     "server/modules/tetromino",
     "server/modules/health-check",
@@ -78,11 +87,19 @@ members = [
     "server/modules/git-signs",
     "server/modules/git-statusline",
     "server/modules/git-blame",
+    "server/modules/module-manager",
+    "server/modules/emacs",
+    "server/modules/pair",
+    "server/modules/context",
+    "server/modules/sticky-context",
+    "server/modules/indent-guide",
+    "server/modules/settings",
 
     # Client layer - TUI
     "clients/tui",
     "clients/tui/lib/drivers/tui",
     "clients/tui/lib/drivers/display",
+    "clients/tui/lib/drivers/extension-loader",
 
     # Client extensions - TUI
     "clients/tui/extensions/which-key",
@@ -98,6 +115,7 @@ members = [
     "clients/tui/extensions/diagnostics",
     "clients/tui/extensions/markdown",
     "clients/tui/extensions/landing",
+    "clients/tui/extensions/pair",
     "clients/tui/extensions/defaults",
 
     # Client layer - CLI
@@ -110,6 +128,7 @@ members = [
     "shared/log",
     "shared/trace",
     "shared/module-macros",
+    "shared/capabilities",
     "shared/testing",
 
     # Shared clients layer
@@ -121,6 +140,9 @@ members = [
     # Tools (Rust only - reovim-testing is Python)
     "tools/bench",
     "tools/perf-report",
+
+    # Test fixtures (cdylib modules for integration testing)
+    "server/lib/drivers/module-loader/tests/fixtures/test_module",
 ]
 exclude = [
     # Python projects (not Rust)
@@ -166,6 +188,7 @@ rand = "0.8"
 regex = "1"
 
 tokio = { version = "1.25", features = ["full"] }
+notify = "6.1"
 tonic = "0.12"
 rustix = { version="0.38.42", features = ["std", "stdio", "termios"]}
 crossterm = {version="0.29", features = ["event-stream","filedescriptor"]}
@@ -180,6 +203,7 @@ chrono = "0.4"
 reovim-arch = { path = "./shared/arch", version = "0.10.0-dev" }
 reovim-protocol = { path = "./shared/protocol", version = "0.10.0-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.10.0-dev" }
+reovim-capabilities = { path = "./shared/capabilities", version = "0.10.0-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.10.0-dev" }
 reovim-bench-utils = { path = "./shared/bench", version = "0.10.0-dev" }
 reovim-net = { path = "./shared/net", version = "0.10.0-dev" }
@@ -207,11 +231,20 @@ reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.10.0-dev" 
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.10.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.10.0-dev" }
 reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.10.0-dev" }
+reovim-depgraph = { path = "./shared/depgraph", version = "0.10.0-dev" }
+reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.10.0-dev" }
+reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.10.0-dev" }
+reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.10.0-dev" }
 reovim-driver-git = { path = "./server/lib/drivers/git", version = "0.10.0-dev" }
+reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry", version = "0.10.0-dev" }
+reovim-driver-layout = { path = "./server/lib/drivers/layout", version = "0.10.0-dev" }
+reovim-driver-annotation = { path = "./server/lib/drivers/annotation", version = "0.10.0-dev" }
+reovim-driver-statusline = { path = "./server/lib/drivers/statusline", version = "0.10.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.10.0-dev" }
 reovim-driver-display = { path = "./clients/tui/lib/drivers/display", version = "0.10.0-dev" }
+reovim-driver-extension-loader = { path = "./clients/tui/lib/drivers/extension-loader", version = "0.10.0-dev" }
 
 # Client crates
 reovim-client-tui = { path = "./clients/tui", version = "0.10.0-dev" }
@@ -242,8 +275,15 @@ reovim-module-search = { path = "./server/modules/search", version = "0.10.0-dev
 reovim-module-undo = { path = "./server/modules/undo", version = "0.10.0-dev" }
 reovim-module-vfs-local = { path = "./server/modules/vfs-local", version = "0.10.0-dev" }
 reovim-module-window-ops = { path = "./server/modules/window-ops", version = "0.10.0-dev" }
-reovim-module-defaults = { path = "./server/modules/defaults", version = "0.10.0-dev" }
 reovim-module-treesitter-rust = { path = "./server/modules/treesitter-rust", version = "0.10.0-dev" }
+reovim-module-treesitter-python = { path = "./server/modules/treesitter-python", version = "0.10.0-dev" }
+reovim-module-treesitter-c = { path = "./server/modules/treesitter-c", version = "0.10.0-dev" }
+reovim-module-treesitter-javascript = { path = "./server/modules/treesitter-javascript", version = "0.10.0-dev" }
+reovim-module-treesitter-typescript = { path = "./server/modules/treesitter-typescript", version = "0.10.0-dev" }
+reovim-module-treesitter-json = { path = "./server/modules/treesitter-json", version = "0.10.0-dev" }
+reovim-module-treesitter-toml = { path = "./server/modules/treesitter-toml", version = "0.10.0-dev" }
+reovim-module-treesitter-bash = { path = "./server/modules/treesitter-bash", version = "0.10.0-dev" }
+reovim-module-treesitter-go = { path = "./server/modules/treesitter-go", version = "0.10.0-dev" }
 reovim-module-cmdline = { path = "./server/modules/cmdline", version = "0.10.0-dev" }
 reovim-module-whichkey = { path = "./server/modules/whichkey", version = "0.10.0-dev" }
 reovim-module-notification = { path = "./server/modules/notification", version = "0.10.0-dev" }
@@ -260,12 +300,6 @@ reovim-module-snippet = { path = "./server/modules/snippet", version = "0.10.0-d
 reovim-module-range-finder = { path = "./server/modules/range-finder", version = "0.10.0-dev" }
 reovim-module-completion = { path = "./server/modules/completion", version = "0.10.0-dev" }
 reovim-module-lsp-navigation = { path = "./server/modules/lsp-navigation", version = "0.10.0-dev" }
-reovim-module-vim-lsp = { path = "./server/modules/vim-lsp", version = "0.10.0-dev" }
-reovim-module-vim-microscope = { path = "./server/modules/vim-microscope", version = "0.10.0-dev" }
-reovim-module-vim-explorer = { path = "./server/modules/vim-explorer", version = "0.10.0-dev" }
-reovim-module-vim-completion = { path = "./server/modules/vim-completion", version = "0.10.0-dev" }
-reovim-module-vim-range-finder = { path = "./server/modules/vim-range-finder", version = "0.10.0-dev" }
-reovim-module-vim-snippet = { path = "./server/modules/vim-snippet", version = "0.10.0-dev" }
 reovim-module-profiles = { path = "./server/modules/profiles", version = "0.10.0-dev" }
 reovim-module-tetromino = { path = "./server/modules/tetromino", version = "0.10.0-dev" }
 reovim-module-health-check = { path = "./server/modules/health-check", version = "0.10.0-dev" }
@@ -277,6 +311,14 @@ reovim-picker-git-stash = { path = "./server/modules/picker-git-stash", version 
 reovim-module-git-signs = { path = "./server/modules/git-signs", version = "0.10.0-dev" }
 reovim-module-git-statusline = { path = "./server/modules/git-statusline", version = "0.10.0-dev" }
 reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10.0-dev" }
+reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.10.0-dev" }
+reovim-module-emacs = { path = "./server/modules/emacs", version = "0.10.0-dev" }
+reovim-module-pair = { path = "./server/modules/pair", version = "0.10.0-dev" }
+reovim-module-context = { path = "./server/modules/context", version = "0.10.0-dev" }
+reovim-module-sticky-context = { path = "./server/modules/sticky-context", version = "0.10.0-dev" }
+reovim-module-indent-guide = { path = "./server/modules/indent-guide", version = "0.10.0-dev" }
+reovim-module-settings = { path = "./server/modules/settings", version = "0.10.0-dev" }
+reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.10.0-dev" }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -288,6 +330,11 @@ toml = "0.8"
 
 # Clipboard
 arboard = "3"
+
+# Dynamic module loading
+libloading = "0.8"
+sha2 = "0.10"
+hex = "0.4"
 
 # Fuzzy matching
 nucleo = "0.5"

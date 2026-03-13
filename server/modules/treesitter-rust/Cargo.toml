@@ -9,16 +9,23 @@ description = "Rust syntax highlighting module for reovim"
 repository.workspace = true
 homepage.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [lints]
 workspace = true
 
 [dependencies]
 # Kernel layer - for Module trait
 reovim-kernel = { workspace = true }
+reovim-capabilities = { workspace = true }
 
 # Driver layer - implements SyntaxDriverFactory
 reovim-driver-syntax = { workspace = true }
 reovim-driver-syntax-treesitter = { workspace = true }
+
+# Module macros for FFI entry points
+reovim-module-macros = { workspace = true }
 
 # Tree-sitter Rust grammar - this is where language-specific deps live
 tree-sitter-rust = "0.23"
@@ -28,3 +35,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 reovim-testing = { workspace = true }
+
+[features]
+# Enable for building as standalone dynamic library
+dynamic = []

@@ -18,6 +18,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "explorer";
+
 interface NodeData {
   name: string;
   depth: number;
@@ -96,7 +98,7 @@ export class ExplorerExtension implements WebExtension {
   private sidebarElement: HTMLElement | null = null;
 
   kind(): string {
-    return "explorer";
+    return KIND;
   }
 
   isActive(): boolean {

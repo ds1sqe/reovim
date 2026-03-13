@@ -161,6 +161,35 @@ fn test_extension_default_tick() {
 }
 
 #[test]
+fn test_extension_default_dependencies_empty() {
+    let ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    assert!(ext.dependencies().is_empty());
+}
+
+#[test]
+fn test_extension_default_init_noop() {
+    let mut ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    // Should not panic
+    ext.init();
+}
+
+#[test]
+fn test_extension_default_exit_noop() {
+    let mut ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    // Should not panic
+    ext.exit();
+}
+
+#[test]
 fn test_extension_trait_object() {
     let ext: Box<dyn TuiExtension> = Box::new(MockExtension {
         active: true,
@@ -448,4 +477,13 @@ fn test_viewport_aware_extension_scrolled() {
     ext.render_with_viewport(&mut fb, &viewport);
     // Line 0 is above viewport, nothing rendered
     assert_eq!(fb.get(5, 0).unwrap().char, ' ');
+}
+
+#[test]
+fn test_extension_default_server_kinds_returns_own_kind() {
+    let ext = MockExtension {
+        active: false,
+        rendered: AtomicBool::new(false),
+    };
+    assert_eq!(ext.server_kinds(), vec!["mock"]);
 }

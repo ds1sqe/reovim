@@ -1,4 +1,9 @@
-use {super::*, reovim_kernel::api::v1::Module};
+use {
+    super::*,
+    reovim_driver_statusline::ComponentDataProviderKey,
+    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
+    std::sync::Arc,
+};
 
 #[test]
 fn test_module_id() {
@@ -32,4 +37,76 @@ fn test_module_default() {
 fn test_exit_succeeds() {
     let mut module = GitStatuslineModule::new();
     assert!(module.exit().is_ok());
+}
+
+// ========================================================================
+// init() coverage
+// ========================================================================
+
+/// No `GitProviderStore` in services → early return, nothing registered.
+#[test]
+fn test_init_no_git_provider_store() {
+    let mut module = GitStatuslineModule::new();
+    let ctx = ModuleContext::default();
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+}
+
+/// `GitProviderStore` exists but no provider set → early return.
+#[test]
+fn test_init_git_provider_store_empty() {
+    let mut module = GitStatuslineModule::new();
+    let ctx = ModuleContext::default();
+    ctx.services.register(Arc::new(GitProviderStore::new()));
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+}
+
+/// `GitProviderStore` with a provider → registers branch component.
+#[test]
+fn test_init_registers_branch_component() {
+    use {reovim_driver_git::GitProvider, reovim_driver_statusline::ComponentDataProviderRegistry};
+
+    struct StubGitProvider;
+    impl GitProvider for StubGitProvider {
+        fn current_branch(&self, _: &std::path::Path) -> Option<String> {
+            Some("main".to_string())
+        }
+        fn branches(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::BranchInfo> {
+            vec![]
+        }
+        fn status(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StatusEntry> {
+            vec![]
+        }
+        fn log(
+            &self,
+            _: &std::path::Path,
+            _: &str,
+            _: usize,
+        ) -> Vec<reovim_driver_git::types::LogEntry> {
+            vec![]
+        }
+        fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StashEntry> {
+            vec![]
+        }
+        fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::DiffHunk> {
+            vec![]
+        }
+    }
+
+    let mut module = GitStatuslineModule::new();
+    let ctx = ModuleContext::default();
+
+    let store = ctx.services.get_or_create::<GitProviderStore>();
+    store.register(Arc::new(StubGitProvider));
+
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+
+    let registry = ctx.services.get::<ComponentDataProviderRegistry>();
+    assert!(registry.is_some(), "ComponentDataProviderRegistry should exist");
+    let registry = registry.unwrap();
+    assert!(
+        registry
+            .get(&ComponentDataProviderKey::new("branch"))
+            .is_some(),
+        "branch component should be registered"
+    );
 }

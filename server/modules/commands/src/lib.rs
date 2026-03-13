@@ -96,6 +96,10 @@ impl Module for CommandsModule {
     fn exit(&mut self) -> Result<(), ModuleError> {
         Ok(())
     }
+
+    fn provides(&self) -> &[&'static str] {
+        &[reovim_capabilities::COMMAND_DISPATCH]
+    }
 }
 
 // Generate FFI entry points for dynamic loading (only when building standalone cdylib)

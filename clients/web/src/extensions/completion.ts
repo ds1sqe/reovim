@@ -15,6 +15,8 @@
 
 import type { WebExtension } from "./interface.js";
 
+const KIND = "completion";
+
 /** Maximum visible items in the popup (matches TUI constant). */
 const MAX_VISIBLE_ITEMS = 10;
 
@@ -59,7 +61,7 @@ export class CompletionExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return "completion";
+    return KIND;
   }
 
   isActive(): boolean {

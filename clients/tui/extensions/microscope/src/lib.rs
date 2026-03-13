@@ -58,6 +58,8 @@ struct PreviewData {
 /// Microscope TUI extension.
 ///
 /// Renders the fuzzy finder overlay when active.
+const KIND: &str = "microscope";
+
 pub struct MicroscopeExtension {
     data: MicroscopeData,
 }
@@ -80,7 +82,7 @@ impl Default for MicroscopeExtension {
 
 impl TuiExtension for MicroscopeExtension {
     fn kind(&self) -> &'static str {
-        "microscope"
+        KIND
     }
 
     fn is_active(&self) -> bool {

@@ -1,4 +1,10 @@
-use {super::*, reovim_kernel::api::v1::Module};
+use {
+    super::*,
+    reovim_driver_annotation::AnnotationSourceRegistry,
+    reovim_driver_git::{GitProvider, GitProviderStore},
+    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
+    std::sync::Arc,
+};
 
 #[test]
 fn test_module_id() {
@@ -32,4 +38,65 @@ fn test_module_default() {
 fn test_exit_succeeds() {
     let mut module = GitBlameModule::new();
     assert!(module.exit().is_ok());
+}
+
+// ========================================================================
+// init() coverage
+// ========================================================================
+
+struct StubGitProvider;
+impl GitProvider for StubGitProvider {
+    fn current_branch(&self, _: &std::path::Path) -> Option<String> {
+        None
+    }
+    fn branches(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::BranchInfo> {
+        vec![]
+    }
+    fn status(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StatusEntry> {
+        vec![]
+    }
+    fn log(
+        &self,
+        _: &std::path::Path,
+        _: &str,
+        _: usize,
+    ) -> Vec<reovim_driver_git::types::LogEntry> {
+        vec![]
+    }
+    fn stash_list(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::StashEntry> {
+        vec![]
+    }
+    fn diff_hunks(&self, _: &std::path::Path) -> Vec<reovim_driver_git::types::DiffHunk> {
+        vec![]
+    }
+}
+
+/// No git provider → nothing registered, returns Success.
+#[test]
+fn test_init_no_git_provider() {
+    let mut module = GitBlameModule::new();
+    let ctx = ModuleContext::default();
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+
+    // No source should be registered without a git provider
+    let registry = ctx.services.get::<AnnotationSourceRegistry>();
+    assert!(registry.is_none() || registry.unwrap().is_empty(), "no source without provider");
+}
+
+/// Git provider exists → registers source in `AnnotationSourceRegistry`.
+#[test]
+fn test_init_with_git_provider() {
+    let mut module = GitBlameModule::new();
+    let ctx = ModuleContext::default();
+
+    let store = ctx.services.get_or_create::<GitProviderStore>();
+    store.register(Arc::new(StubGitProvider));
+
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+
+    let registry = ctx
+        .services
+        .get::<AnnotationSourceRegistry>()
+        .expect("AnnotationSourceRegistry should be created");
+    assert_eq!(registry.len(), 1, "should register one source");
 }

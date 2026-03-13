@@ -1,4 +1,8 @@
-use {super::*, reovim_kernel::api::v1::Module};
+use {
+    super::*,
+    reovim_driver_annotation::AnnotationSourceRegistry,
+    reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
+};
 
 #[test]
 fn test_module_id() {
@@ -32,4 +36,23 @@ fn test_module_default() {
 fn test_exit_succeeds() {
     let mut module = GitSignsModule::new();
     assert!(module.exit().is_ok());
+}
+
+// ========================================================================
+// init() coverage
+// ========================================================================
+
+/// Registers annotation source in `AnnotationSourceRegistry`.
+#[test]
+fn test_init_registers_source() {
+    let mut module = GitSignsModule::new();
+    let ctx = ModuleContext::default();
+
+    assert_eq!(module.init(&ctx), ProbeResult::Success);
+
+    let registry = ctx
+        .services
+        .get::<AnnotationSourceRegistry>()
+        .expect("AnnotationSourceRegistry should be created");
+    assert_eq!(registry.len(), 1, "should register one source");
 }

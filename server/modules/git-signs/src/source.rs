@@ -3,7 +3,7 @@
 use std::{ops::Range, sync::Arc};
 
 use {
-    reovim_driver_display::annotation::{
+    reovim_driver_annotation::{
         Annotation, AnnotationContext, AnnotationKind, AnnotationPayload, AnnotationSource,
         AnnotationTarget,
     },

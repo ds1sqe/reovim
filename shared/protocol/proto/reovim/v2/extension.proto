@@ -32,6 +32,8 @@ message ListExtensionsRequest {}
 
 message ListExtensionsResponse {
   repeated ExtensionInfo extensions = 1;
+  // All extension kinds declared by loaded server modules (#584).
+  repeated string available_kinds = 2;
 }
 
 message ExtensionInfo {
