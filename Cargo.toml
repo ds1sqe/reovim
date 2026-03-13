@@ -34,6 +34,7 @@ members = [
     "server/lib/drivers/layout",
     "server/lib/drivers/annotation",
     "server/lib/drivers/statusline",
+    "server/lib/drivers/codec",
 
     # Server modules
     "server/modules/vim",
@@ -94,6 +95,7 @@ members = [
     "server/modules/sticky-context",
     "server/modules/indent-guide",
     "server/modules/settings",
+    "server/modules/codec-utf8",
 
     # Client layer - TUI
     "clients/tui",
@@ -240,6 +242,7 @@ reovim-driver-module-registry = { path = "./server/lib/drivers/module-registry",
 reovim-driver-layout = { path = "./server/lib/drivers/layout", version = "0.11.0-dev" }
 reovim-driver-annotation = { path = "./server/lib/drivers/annotation", version = "0.11.0-dev" }
 reovim-driver-statusline = { path = "./server/lib/drivers/statusline", version = "0.11.0-dev" }
+reovim-driver-codec = { path = "./server/lib/drivers/codec", version = "0.11.0-dev" }
 
 # Client drivers (TUI-specific)
 reovim-driver-tui = { path = "./clients/tui/lib/drivers/tui", version = "0.11.0-dev" }
@@ -318,6 +321,7 @@ reovim-module-context = { path = "./server/modules/context", version = "0.11.0-d
 reovim-module-sticky-context = { path = "./server/modules/sticky-context", version = "0.11.0-dev" }
 reovim-module-indent-guide = { path = "./server/modules/indent-guide", version = "0.11.0-dev" }
 reovim-module-settings = { path = "./server/modules/settings", version = "0.11.0-dev" }
+reovim-module-codec-utf8 = { path = "./server/modules/codec-utf8", version = "0.11.0-dev" }
 reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.11.0-dev" }
 
 # CLI

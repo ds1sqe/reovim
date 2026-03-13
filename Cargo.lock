@@ -2194,6 +2194,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-driver-codec"
+version = "0.11.0-dev"
+dependencies = [
+ "parking_lot",
+ "reovim-driver-annotation",
+ "reovim-driver-session",
+ "reovim-kernel",
+]
+
+[[package]]
 name = "reovim-driver-command"
 version = "0.11.0-dev"
 dependencies = [
@@ -2532,11 +2542,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-codec-utf8"
+version = "0.11.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-commands"
 version = "0.11.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-capabilities",
+ "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-display",
