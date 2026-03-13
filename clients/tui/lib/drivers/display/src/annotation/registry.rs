@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use super::{
+    AnnotationKind,
     presenter::{AnnotationPresenter, KindPattern},
-    types::AnnotationKind,
 };
 
 /// Entry in the presenter registry.

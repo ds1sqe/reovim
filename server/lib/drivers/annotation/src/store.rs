@@ -7,11 +7,11 @@
 //!
 //! ```text
 //! BufferAnnotationStore (global)
-//! └── HashMap<BufferId, AnnotationStore>
-//!     └── AnnotationStore (per-buffer)
-//!         └── HashMap<SourceId, AnnotationLayer>
-//!             └── AnnotationLayer (per-source)
-//!                 └── BTreeMap<line, SmallVec<Annotation>>
+//! +-- HashMap<BufferId, AnnotationStore>
+//!     +-- AnnotationStore (per-buffer)
+//!         +-- HashMap<SourceId, AnnotationLayer>
+//!             +-- AnnotationLayer (per-source)
+//!                 +-- BTreeMap<line, SmallVec<Annotation>>
 //! ```
 //!
 //! # Design Decisions
@@ -80,7 +80,7 @@ impl From<String> for SourceId {
 /// - No interference between sources
 #[derive(Debug, Default)]
 pub struct AnnotationLayer {
-    /// Primary index: line → annotations
+    /// Primary index: line -> annotations
     /// `BTreeMap` for O(log N) range queries
     by_line: BTreeMap<usize, SmallVec<[Annotation; 2]>>,
     /// Version for cache invalidation (incremented on changes)
@@ -184,11 +184,11 @@ impl AnnotationLayer {
 ///
 /// # Query Performance
 ///
-/// - Single line query: O(sources × log N)
-/// - Range query: O(sources × (log N + M)) where M is matching annotations
+/// - Single line query: O(sources x log N)
+/// - Range query: O(sources x (log N + M)) where M is matching annotations
 #[derive(Debug, Default)]
 pub struct AnnotationStore {
-    /// Source ID → Layer
+    /// Source ID -> Layer
     layers: HashMap<SourceId, AnnotationLayer>,
     /// Aggregate version (sum of all layer versions, for cache invalidation)
     aggregate_version: u64,
@@ -315,7 +315,7 @@ impl AnnotationStore {
 /// This is the top-level container for all annotation data.
 #[derive(Debug, Default)]
 pub struct BufferAnnotationStore {
-    /// Buffer ID → Annotation store
+    /// Buffer ID -> Annotation store
     buffers: HashMap<BufferId, AnnotationStore>,
 }
 

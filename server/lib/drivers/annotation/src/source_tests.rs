@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::annotation::{AnnotationPayload, AnnotationTarget},
+    crate::{AnnotationPayload, AnnotationTarget},
 };
 
 // Mock source for testing
@@ -151,7 +151,6 @@ fn test_source_is_send_sync() {
 
 #[test]
 fn test_source_default_on_buffer_change() {
-    // Covers lines 251, 253: on_buffer_change default impl
     let source = MockSource::empty();
     // Should not panic - default impl does nothing
     source.on_buffer_change(BufferId::new());
@@ -159,8 +158,7 @@ fn test_source_default_on_buffer_change() {
 
 #[test]
 fn test_annotation_context_with_line_number_mode() {
-    // Covers the with_line_number_mode constructor
-    use crate::window_renderer::LineNumberMode;
+    use crate::LineNumberMode;
 
     let ctx = AnnotationContext::with_line_number_mode(100, 50, "NORMAL", LineNumberMode::Absolute);
     assert_eq!(ctx.total_lines, 100);

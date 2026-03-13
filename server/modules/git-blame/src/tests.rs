@@ -1,6 +1,6 @@
 use {
     super::*,
-    reovim_driver_display::{GutterRenderer, GutterRendererKey, GutterRendererRegistry},
+    reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_driver_git::{GitProvider, GitProviderStore},
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
     std::sync::Arc,
@@ -71,49 +71,32 @@ impl GitProvider for StubGitProvider {
     }
 }
 
-/// No default renderer registered → nothing registered, returns Success.
+/// No git provider → nothing registered, returns Success.
 #[test]
-fn test_init_no_default_renderer() {
+fn test_init_no_git_provider() {
     let mut module = GitBlameModule::new();
     let ctx = ModuleContext::default();
     assert_eq!(module.init(&ctx), ProbeResult::Success);
+
+    // No source should be registered without a git provider
+    let registry = ctx.services.get::<AnnotationSourceRegistry>();
+    assert!(registry.is_none() || registry.unwrap().is_empty(), "no source without provider");
 }
 
-/// Default renderer exists but no git provider → returns Success, no source.
+/// Git provider exists → registers source in `AnnotationSourceRegistry`.
 #[test]
-fn test_init_renderer_no_git_provider() {
+fn test_init_with_git_provider() {
     let mut module = GitBlameModule::new();
     let ctx = ModuleContext::default();
-
-    let registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-    registry.register(GutterRendererKey::Default, Arc::new(GutterRenderer::new()));
-
-    assert_eq!(module.init(&ctx), ProbeResult::Success);
-
-    let renderer = registry
-        .get(&GutterRendererKey::Default)
-        .expect("default renderer");
-    assert_eq!(renderer.source_count(), 0, "no source without provider");
-    assert_eq!(renderer.presenter_count(), 0, "no presenter without provider");
-}
-
-/// Default renderer and git provider both exist → registers source and presenter.
-#[test]
-fn test_init_with_renderer_and_provider() {
-    let mut module = GitBlameModule::new();
-    let ctx = ModuleContext::default();
-
-    let registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-    registry.register(GutterRendererKey::Default, Arc::new(GutterRenderer::new()));
 
     let store = ctx.services.get_or_create::<GitProviderStore>();
     store.register(Arc::new(StubGitProvider));
 
     assert_eq!(module.init(&ctx), ProbeResult::Success);
 
-    let renderer = registry
-        .get(&GutterRendererKey::Default)
-        .expect("default renderer");
-    assert_eq!(renderer.source_count(), 1, "should register one source");
-    assert_eq!(renderer.presenter_count(), 1, "should register one presenter");
+    let registry = ctx
+        .services
+        .get::<AnnotationSourceRegistry>()
+        .expect("AnnotationSourceRegistry should be created");
+    assert_eq!(registry.len(), 1, "should register one source");
 }

@@ -3,8 +3,8 @@ use {
     crate::{
         Style,
         annotation::{
-            Annotation, AnnotationKind, AnnotationPayload, AnnotationTarget, ColumnWidth,
-            KindPattern, PresentedOutput,
+            Annotation, AnnotationKind, AnnotationPayload, AnnotationSourceKey, AnnotationTarget,
+            ColumnWidth, KindPattern, PresentedOutput,
         },
     },
 };

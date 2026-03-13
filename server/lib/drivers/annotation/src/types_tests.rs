@@ -296,7 +296,6 @@ fn test_annotation_clone() {
 
 #[test]
 fn test_payload_as_severity_none_for_non_severity() {
-    // Covers line 297: _ => None branch of as_severity
     assert_eq!(AnnotationPayload::Number(42).as_severity(), None);
     assert_eq!(AnnotationPayload::text("hello").as_severity(), None);
     assert_eq!(AnnotationPayload::State(true).as_severity(), None);
@@ -305,7 +304,6 @@ fn test_payload_as_severity_none_for_non_severity() {
 
 #[test]
 fn test_payload_as_state_none_for_non_state() {
-    // Covers line 306: _ => None branch of as_state
     assert_eq!(AnnotationPayload::Number(42).as_state(), None);
     assert_eq!(AnnotationPayload::text("hello").as_state(), None);
     assert_eq!(AnnotationPayload::Severity(0).as_state(), None);

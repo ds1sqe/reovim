@@ -99,7 +99,7 @@ impl ColumnConfig {
 
     /// Check if this column matches the given kind.
     #[must_use]
-    pub fn matches(&self, kind: &super::types::AnnotationKind) -> bool {
+    pub fn matches(&self, kind: &super::AnnotationKind) -> bool {
         self.pattern.matches(kind)
     }
 }
@@ -207,10 +207,7 @@ impl GutterConfig {
 
     /// Find the column that matches the given kind.
     #[must_use]
-    pub fn column_for_kind(
-        &self,
-        kind: &super::types::AnnotationKind,
-    ) -> Option<(usize, &ColumnConfig)> {
+    pub fn column_for_kind(&self, kind: &super::AnnotationKind) -> Option<(usize, &ColumnConfig)> {
         self.columns
             .iter()
             .enumerate()

@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::annotation::{AnnotationKind, AnnotationPayload, AnnotationTarget},
+    crate::{AnnotationKind, AnnotationPayload, AnnotationTarget},
 };
 
 fn make_annotation(line: usize, priority: u8) -> Annotation {
@@ -444,7 +444,7 @@ fn test_buffer_store_get_mut() {
 #[test]
 fn test_clear_source_nonexistent() {
     let mut store = AnnotationStore::new();
-    // clear_source with a source_id that was never added (line 232 else branch)
+    // clear_source with a source_id that was never added
     store.clear_source(&SourceId::new("nonexistent"));
     // Should be a no-op without panic
     assert!(store.is_empty());

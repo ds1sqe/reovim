@@ -26,7 +26,7 @@
 
 use crate::highlight::Style;
 
-use super::types::{Annotation, AnnotationKind};
+use super::{Annotation, AnnotationKind};
 
 /// A single cell in the gutter.
 ///

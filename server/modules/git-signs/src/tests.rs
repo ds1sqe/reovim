@@ -1,8 +1,7 @@
 use {
     super::*,
-    reovim_driver_display::GutterRenderer,
+    reovim_driver_annotation::AnnotationSourceRegistry,
     reovim_kernel::api::v1::{Module, ModuleContext, ProbeResult},
-    std::sync::Arc,
 };
 
 #[test]
@@ -43,28 +42,17 @@ fn test_exit_succeeds() {
 // init() coverage
 // ========================================================================
 
-/// No default renderer registered → nothing registered, returns Success.
+/// Registers annotation source in `AnnotationSourceRegistry`.
 #[test]
-fn test_init_no_default_renderer() {
-    let mut module = GitSignsModule::new();
-    let ctx = ModuleContext::default();
-    assert_eq!(module.init(&ctx), ProbeResult::Success);
-}
-
-/// Default renderer registered → registers source and presenter.
-#[test]
-fn test_init_with_default_renderer() {
+fn test_init_registers_source() {
     let mut module = GitSignsModule::new();
     let ctx = ModuleContext::default();
 
-    let registry = ctx.services.get_or_create::<GutterRendererRegistry>();
-    registry.register(GutterRendererKey::Default, Arc::new(GutterRenderer::new()));
-
     assert_eq!(module.init(&ctx), ProbeResult::Success);
 
-    let renderer = registry
-        .get(&GutterRendererKey::Default)
-        .expect("default renderer");
-    assert_eq!(renderer.source_count(), 1, "should register one source");
-    assert_eq!(renderer.presenter_count(), 1, "should register one presenter");
+    let registry = ctx
+        .services
+        .get::<AnnotationSourceRegistry>()
+        .expect("AnnotationSourceRegistry should be created");
+    assert_eq!(registry.len(), 1, "should register one source");
 }

@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! AnnotationSource (mechanism trait - this module)
-//!        ↓ implements
+//!        |  implements
 //! LineNumberSource (policy - in server/modules/vim)
 //! DiagnosticSource (policy - in server/modules/lsp)
 //! GitDiffSource    (policy - in server/modules/git)
@@ -17,7 +17,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use reovim_driver_display::annotation::{
+//! use reovim_driver_annotation::{
 //!     Annotation, AnnotationContext, AnnotationKind, AnnotationSource,
 //!     AnnotationTarget, AnnotationPayload,
 //! };
@@ -59,7 +59,7 @@
 
 use {
     super::types::{Annotation, AnnotationKind},
-    crate::window_renderer::LineNumberMode,
+    crate::LineNumberMode,
     reovim_kernel::api::v1::BufferId,
     std::{ops::Range, path::PathBuf},
 };
@@ -72,7 +72,7 @@ use {
 /// # Example
 ///
 /// ```
-/// use reovim_driver_display::annotation::AnnotationContext;
+/// use reovim_driver_annotation::AnnotationContext;
 ///
 /// let context = AnnotationContext::new(100, 50, "NORMAL");
 ///
@@ -165,7 +165,8 @@ impl AnnotationContext {
 /// # Design
 ///
 /// Sources are part of the mechanism layer - they define *what* annotations
-/// exist, not *how* they look. Presentation is handled by [`AnnotationPresenter`].
+/// exist, not *how* they look. Presentation is handled by `AnnotationPresenter`
+/// in the display driver.
 ///
 /// # Thread Safety
 ///
@@ -181,8 +182,6 @@ impl AnnotationContext {
 /// 2. Spawn background tasks to fetch fresh data
 /// 3. Update internal cache when data arrives
 /// 4. Signal that annotations changed (triggering re-render)
-///
-/// [`AnnotationPresenter`]: super::presenter::AnnotationPresenter
 pub trait AnnotationSource: Send + Sync {
     /// Unique identifier for this source.
     ///
