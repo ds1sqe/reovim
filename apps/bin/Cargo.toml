@@ -76,7 +76,7 @@ reovim-driver-command = { workspace = true }
 reovim-driver-session = { workspace = true }
 
 # Dependency resolution for module init ordering (#582)
-reovim-driver-depgraph = { workspace = true }
+reovim-depgraph = { workspace = true }
 
 # Module configuration for user enable/disable and per-module settings (#586)
 reovim-driver-module-config = { workspace = true }

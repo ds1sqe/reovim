@@ -27,7 +27,7 @@ use std::{collections::HashMap, sync::Arc};
 use {
     parking_lot::RwLock,
     reovim_driver_command::{CommandHandlerStore, CommandQueryService},
-    reovim_driver_depgraph::{
+    reovim_depgraph::{
         DepEntry, DependencyOrder, check_version_constraints, resolve_dependencies,
     },
     reovim_driver_input::{

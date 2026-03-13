@@ -13,14 +13,14 @@
 use std::collections::{HashMap, HashSet};
 
 use {
-    reovim_driver_depgraph::{DepEntry, resolve_dependencies},
+    reovim_depgraph::{DepEntry, resolve_dependencies},
     reovim_driver_display::render_backend::TuiExtension,
 };
 
 /// Create all default TUI extensions, sorted by dependency order (#583).
 ///
 /// Called once at engine startup. Extensions are topologically sorted via
-/// `reovim-driver-depgraph` and `init()` is called on each in dependency
+/// `reovim-depgraph` and `init()` is called on each in dependency
 /// order. The engine stores these and dispatches notifications/rendering
 /// generically — zero extension knowledge.
 ///

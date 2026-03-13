@@ -2026,9 +2026,9 @@ dependencies = [
  "parking_lot",
  "reovim-client-cli",
  "reovim-client-tui",
+ "reovim-depgraph",
  "reovim-driver-buffer",
  "reovim-driver-command",
- "reovim-driver-depgraph",
  "reovim-driver-display",
  "reovim-driver-input",
  "reovim-driver-log",
@@ -2167,6 +2167,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-depgraph"
+version = "0.10.0-dev"
+
+[[package]]
 name = "reovim-driver-buffer"
 version = "0.10.0-dev"
 dependencies = [
@@ -2207,10 +2211,6 @@ dependencies = [
  "nucleo",
  "reovim-kernel",
 ]
-
-[[package]]
-name = "reovim-driver-depgraph"
-version = "0.10.0-dev"
 
 [[package]]
 name = "reovim-driver-display"
@@ -2329,7 +2329,7 @@ dependencies = [
  "libloading",
  "notify",
  "reovim-arch",
- "reovim-driver-depgraph",
+ "reovim-depgraph",
  "reovim-kernel",
  "serde",
  "sha2",
@@ -2551,6 +2551,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-context"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-display",
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-extension-kinds",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-editor"
 version = "0.10.0-dev"
 dependencies = [
@@ -2651,6 +2666,19 @@ dependencies = [
  "reovim-driver-syntax",
  "reovim-kernel",
  "reovim-module-macros",
+]
+
+[[package]]
+name = "reovim-module-indent-guide"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-extension-kinds",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -2849,6 +2877,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "reovim-module-settings"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-extension-kinds",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "reovim-module-snippet"
 version = "0.10.0-dev"
 dependencies = [
@@ -2866,6 +2907,21 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-sticky-context"
+version = "0.10.0-dev"
+dependencies = [
+ "reovim-driver-session",
+ "reovim-driver-syntax",
+ "reovim-extension-kinds",
+ "reovim-kernel",
+ "reovim-module-context",
+ "reovim-module-macros",
+ "reovim-testing",
+ "serde_json",
  "tracing",
 ]
 
@@ -3290,7 +3346,7 @@ dependencies = [
 name = "reovim-tui-ext-defaults"
 version = "0.10.0-dev"
 dependencies = [
- "reovim-driver-depgraph",
+ "reovim-depgraph",
  "reovim-driver-display",
  "reovim-extension-kinds",
  "reovim-tui-ext-cmdline",

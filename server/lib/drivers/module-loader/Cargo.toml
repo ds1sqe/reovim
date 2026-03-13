@@ -15,7 +15,7 @@ workspace = true
 [dependencies]
 reovim-kernel = { workspace = true }
 reovim-arch = { workspace = true }
-reovim-driver-depgraph = { workspace = true }
+reovim-depgraph = { workspace = true }
 libloading = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

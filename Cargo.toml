@@ -25,7 +25,7 @@ members = [
     "server/lib/drivers/ffi-python",
     "server/lib/drivers/picker",
     "server/lib/drivers/completion",
-    "server/lib/drivers/depgraph",
+    "shared/depgraph",
     "server/lib/drivers/manifest",
     "server/lib/drivers/module-config",
     "server/lib/drivers/module-loader",
@@ -87,6 +87,10 @@ members = [
     "server/modules/module-manager",
     "server/modules/emacs",
     "server/modules/pair",
+    "server/modules/context",
+    "server/modules/sticky-context",
+    "server/modules/indent-guide",
+    "server/modules/settings",
 
     # Client layer - TUI
     "clients/tui",
@@ -226,7 +230,7 @@ reovim-driver-ffi = { path = "./server/lib/drivers/ffi", version = "0.10.0-dev" 
 reovim-driver-ffi-python = { path = "./server/lib/drivers/ffi-python", version = "0.10.0-dev" }
 reovim-driver-picker = { path = "./server/lib/drivers/picker", version = "0.10.0-dev" }
 reovim-driver-completion = { path = "./server/lib/drivers/completion", version = "0.10.0-dev" }
-reovim-driver-depgraph = { path = "./server/lib/drivers/depgraph", version = "0.10.0-dev" }
+reovim-depgraph = { path = "./shared/depgraph", version = "0.10.0-dev" }
 reovim-driver-manifest = { path = "./server/lib/drivers/manifest", version = "0.10.0-dev" }
 reovim-driver-module-config = { path = "./server/lib/drivers/module-config", version = "0.10.0-dev" }
 reovim-driver-module-loader = { path = "./server/lib/drivers/module-loader", version = "0.10.0-dev" }
@@ -306,6 +310,10 @@ reovim-module-git-blame = { path = "./server/modules/git-blame", version = "0.10
 reovim-module-module-manager = { path = "./server/modules/module-manager", version = "0.10.0-dev" }
 reovim-module-emacs = { path = "./server/modules/emacs", version = "0.10.0-dev" }
 reovim-module-pair = { path = "./server/modules/pair", version = "0.10.0-dev" }
+reovim-module-context = { path = "./server/modules/context", version = "0.10.0-dev" }
+reovim-module-sticky-context = { path = "./server/modules/sticky-context", version = "0.10.0-dev" }
+reovim-module-indent-guide = { path = "./server/modules/indent-guide", version = "0.10.0-dev" }
+reovim-module-settings = { path = "./server/modules/settings", version = "0.10.0-dev" }
 reovim-tui-ext-pair = { path = "./clients/tui/extensions/pair", version = "0.10.0-dev" }
 
 # CLI

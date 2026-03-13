@@ -203,6 +203,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Changed
 
+- **Depgraph crate relocation (#625)**: Move `reovim-driver-depgraph` from
+  `server/lib/drivers/depgraph/` to `shared/depgraph/` and rename to `reovim-depgraph`.
+  The crate is a zero-dependency generic topological sort algorithm used by both server
+  (module loading) and client (extension ordering) — it belongs in `shared/`, not under
+  `server/lib/drivers/`. No API changes.
+
 - **Test helper deduplication (#569)**: Create `reovim_kernel::testing` module with
   shared `TestBufferManager`, `create_test_context()`, `setup_buffer()`, and
   `test_mode()`. Replaced 32 copies of `TestBufferManager`, 30 copies of

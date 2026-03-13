@@ -6,7 +6,7 @@
 //! # Usage
 //!
 //! ```
-//! use reovim_driver_depgraph::{DepEntry, resolve_dependencies};
+//! use reovim_depgraph::{DepEntry, resolve_dependencies};
 //!
 //! let entries = vec![
 //!     DepEntry { key: "a", required: vec![], optional: vec![], provides_caps: vec![], requires_caps: vec![] },

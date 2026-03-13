@@ -15,7 +15,7 @@ use std::{
 
 use {
     reovim_arch::sync::Mutex,
-    reovim_driver_depgraph::{DepEntry, resolve_dependencies},
+    reovim_depgraph::{DepEntry, resolve_dependencies},
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ModuleState},
 };
 
