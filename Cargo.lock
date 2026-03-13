@@ -633,6 +633,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2042,6 +2051,9 @@ dependencies = [
  "reovim-module-buffer-simple",
  "reovim-module-clipboard",
  "reovim-module-cmdline",
+ "reovim-module-codec-cjk",
+ "reovim-module-codec-hex",
+ "reovim-module-codec-legacy",
  "reovim-module-codec-utf8",
  "reovim-module-commands",
  "reovim-module-completion",
@@ -2540,6 +2552,45 @@ dependencies = [
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
+]
+
+[[package]]
+name = "reovim-module-codec-cjk"
+version = "0.11.0-dev"
+dependencies = [
+ "encoding_rs",
+ "reovim-capabilities",
+ "reovim-driver-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-codec-hex"
+version = "0.11.0-dev"
+dependencies = [
+ "reovim-capabilities",
+ "reovim-driver-annotation",
+ "reovim-driver-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
+]
+
+[[package]]
+name = "reovim-module-codec-legacy"
+version = "0.11.0-dev"
+dependencies = [
+ "encoding_rs",
+ "reovim-capabilities",
+ "reovim-driver-codec",
+ "reovim-kernel",
+ "reovim-module-macros",
+ "reovim-testing",
+ "tracing",
 ]
 
 [[package]]

@@ -52,6 +52,28 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   `codec_metadata` fields (backward-compatible via `skip_serializing_if`). v2 protobuf
   `BufferInfo` and `CodecMetadata` messages extended with corresponding optional fields.
 
+- **Binary hex-dump codec (#630, part of #627)**: New `reovim-module-codec-hex` module provides
+  binary file detection and hex dump viewing. `BinaryClassifier` (priority 20) detects binary
+  files via null byte detection, non-printable character ratio (>30%), and known binary extension
+  fast-path (.exe, .dll, .so, .png, .zip, .pdf, .wasm, etc.). `HexCodec` formats raw bytes as
+  standard hex dump output (8-digit offset, 16 bytes/line in two groups of 8, ASCII sidebar).
+  One-way codec: `decode()` produces readonly/lossy hex view, `encode()` returns `None`. Emits
+  `content.hex.address`, `content.hex.byte`, and `content.hex.ascii` annotations per line for
+  syntax highlighting. Binary files open in read-only hex view; `:w` blocked with clear error.
+
+- **CJK encoding codecs (#631, part of #627)**: New `reovim-module-codec-cjk` module adds
+  EUC-KR, Shift-JIS, GB2312/GBK, and Big5 encoding support. `CjkClassifier` (priority 50)
+  detects CJK-encoded files by attempting decode with `encoding_rs` and checking for zero
+  replacement characters, with UTF-8 boundary-safe sampling. `CjkCodec` provides bidirectional
+  encode/decode with round-trip guarantees for all supported CJK character sets.
+
+- **Legacy encoding codecs (#631, part of #627)**: New `reovim-module-codec-legacy` module adds
+  Latin-1 (ISO-8859-1) and Windows-1252 encoding support. `LegacyClassifier` (priority 40)
+  distinguishes Windows-1252 from Latin-1 by detecting CP1252-specific bytes (0x80-0x9F range:
+  smart quotes, em-dash, Euro sign). Latin-1 codec uses direct byte-to-Unicode mapping;
+  Windows-1252 uses `encoding_rs`. Both are bidirectional with round-trip guarantees.
+  `encoding_rs` is the only new external dependency.
+
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module
   registry with data-driven `builtins.toml` manifest and feature-gated `static_modules.rs`
   factory map. `TrackedModule` now uses `ModuleHandle` from `reovim-driver-module-loader` to

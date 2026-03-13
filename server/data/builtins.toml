@@ -49,6 +49,21 @@ tier = 1
 library = "reovim_module_codec_utf8"
 
 [[modules]]
+id = "codec-hex"
+tier = 1
+library = "reovim_module_codec_hex"
+
+[[modules]]
+id = "codec-cjk"
+tier = 1
+library = "reovim_module_codec_cjk"
+
+[[modules]]
+id = "codec-legacy"
+tier = 1
+library = "reovim_module_codec_legacy"
+
+[[modules]]
 id = "keymap"
 tier = 2
 library = "reovim_module_keymap"
