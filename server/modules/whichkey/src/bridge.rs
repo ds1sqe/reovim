@@ -18,7 +18,7 @@ use {
     },
 };
 
-use crate::filter::WhichKeyFilterConfig;
+use crate::{KIND, filter::WhichKeyFilterConfig};
 
 /// Bridge for which-key popup state.
 ///
@@ -32,7 +32,7 @@ pub struct WhichKeyBridge;
 
 impl ExtensionStateBridge for WhichKeyBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::WHICHKEY
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

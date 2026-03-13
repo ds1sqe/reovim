@@ -10,8 +10,9 @@
  * ```
  */
 
-import { RANGE_FINDER_JUMP } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
+
+const KIND = "range-finder-jump";
 
 interface JumpLabel {
   line: number;
@@ -29,7 +30,7 @@ export class RangeFinderJumpExtension implements WebExtension {
   private containerElement: HTMLElement | null = null;
 
   kind(): string {
-    return RANGE_FINDER_JUMP;
+    return KIND;
   }
 
   isActive(): boolean {

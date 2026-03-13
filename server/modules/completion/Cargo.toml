@@ -22,7 +22,6 @@ reovim-driver-command = { workspace = true }
 reovim-driver-command-types = { workspace = true }
 reovim-driver-lsp = { workspace = true }
 reovim-module-macros = { workspace = true }
-reovim-extension-kinds = { workspace = true }
 reovim-driver-module-config = { workspace = true }
 lsp-types = "0.97"
 tokio = { workspace = true, features = ["rt"] }

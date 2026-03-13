@@ -53,6 +53,8 @@ struct DiagnosticItemPayload {
 ///
 /// Renders diagnostic underlines at buffer positions and shows the first
 /// error/warning message as virtual text at the end of the line.
+const KIND: &str = "diagnostics";
+
 pub struct DiagnosticsExtension {
     /// Whether diagnostics are active.
     active: bool,
@@ -101,7 +103,7 @@ fn severity_prefix(severity: &str) -> &'static str {
 
 impl TuiExtension for DiagnosticsExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::DIAGNOSTICS
+        KIND
     }
 
     fn is_active(&self) -> bool {

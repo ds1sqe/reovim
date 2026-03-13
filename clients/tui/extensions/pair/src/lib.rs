@@ -60,6 +60,8 @@ const UNMATCHED_COLOR: Color = Color::Rgb {
 const RAINBOW_COUNT: usize = RAINBOW_COLORS.len();
 
 /// TUI extension for bracket pair highlighting.
+const KIND: &str = "pair";
+
 pub struct PairExtension {
     active: bool,
     rainbow_enabled: bool,
@@ -130,7 +132,7 @@ impl Default for PairExtension {
 
 impl TuiExtension for PairExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::PAIR
+        KIND
     }
 
     fn is_active(&self) -> bool {

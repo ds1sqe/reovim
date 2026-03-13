@@ -7,14 +7,14 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::state::PairState;
+use crate::{KIND, state::PairState};
 
 /// Bridge that serializes pair state to clients.
 pub struct PairBridge;
 
 impl ExtensionStateBridge for PairBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::PAIR
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

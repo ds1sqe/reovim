@@ -60,6 +60,8 @@ pub(crate) struct NodeData {
 /// Explorer sidebar TUI extension.
 ///
 /// Renders the file tree sidebar when active.
+const KIND: &str = "explorer";
+
 pub struct ExplorerExtension {
     data: ExplorerData,
 }
@@ -82,7 +84,7 @@ impl Default for ExplorerExtension {
 
 impl TuiExtension for ExplorerExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::EXPLORER
+        KIND
     }
 
     fn is_active(&self) -> bool {

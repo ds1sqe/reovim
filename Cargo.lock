@@ -2453,10 +2453,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reovim-extension-kinds"
-version = "0.10.0-dev"
-
-[[package]]
 name = "reovim-kernel"
 version = "0.10.0-dev"
 dependencies = [
@@ -2505,7 +2501,6 @@ dependencies = [
  "parking_lot",
  "reovim-driver-buffer",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2541,7 +2536,6 @@ dependencies = [
  "reovim-driver-lsp",
  "reovim-driver-module-config",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2557,7 +2551,6 @@ dependencies = [
  "reovim-driver-display",
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
@@ -2602,7 +2595,6 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-session",
  "reovim-driver-vfs",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-protocol",
@@ -2674,7 +2666,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2699,7 +2690,6 @@ dependencies = [
  "reovim-driver-lsp",
  "reovim-driver-module-config",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2720,7 +2710,6 @@ dependencies = [
  "reovim-driver-picker",
  "reovim-driver-session",
  "reovim-driver-vfs",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-module-microscope",
@@ -2749,7 +2738,6 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-picker",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2773,7 +2761,6 @@ dependencies = [
  "reovim-driver-input",
  "reovim-driver-module-loader",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2798,7 +2785,6 @@ name = "reovim-module-notification"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -2811,7 +2797,6 @@ dependencies = [
  "parking_lot",
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
@@ -2845,7 +2830,6 @@ dependencies = [
  "reovim-driver-manifest",
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "reovim-testing",
@@ -2881,7 +2865,6 @@ name = "reovim-module-settings"
 version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde",
@@ -2916,7 +2899,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-session",
  "reovim-driver-syntax",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-context",
  "reovim-module-macros",
@@ -2934,7 +2916,6 @@ dependencies = [
  "reovim-driver-command-types",
  "reovim-driver-input",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -3136,7 +3117,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-driver-input",
  "reovim-driver-session",
- "reovim-extension-kinds",
  "reovim-kernel",
  "reovim-module-macros",
  "serde_json",
@@ -3328,7 +3308,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3338,7 +3317,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3348,7 +3326,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-depgraph",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "reovim-tui-ext-cmdline",
  "reovim-tui-ext-completion",
  "reovim-tui-ext-diagnostics",
@@ -3372,7 +3349,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde",
  "serde_json",
 ]
@@ -3383,7 +3359,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3393,7 +3368,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde",
  "serde_json",
 ]
@@ -3412,7 +3386,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
 ]
 
 [[package]]
@@ -3421,7 +3394,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3431,7 +3403,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3441,7 +3412,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde",
  "serde_json",
 ]
@@ -3452,7 +3422,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3462,7 +3431,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde",
  "serde_json",
 ]
@@ -3473,7 +3441,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 
@@ -3483,7 +3450,6 @@ version = "0.10.0-dev"
 dependencies = [
  "reovim-arch",
  "reovim-driver-display",
- "reovim-extension-kinds",
  "serde_json",
 ]
 

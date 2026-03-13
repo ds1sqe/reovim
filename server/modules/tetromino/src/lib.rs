@@ -16,6 +16,8 @@ pub mod state;
 
 pub use {bridge::TetrominoBridge, state::TetrominoState};
 
+const KIND: &str = "polyblocks";
+
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
@@ -101,7 +103,7 @@ impl Module for TetrominoModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::POLYBLOCKS]
+        &[KIND]
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {

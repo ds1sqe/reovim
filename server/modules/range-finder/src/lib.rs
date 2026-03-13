@@ -28,6 +28,8 @@ use {
     },
 };
 
+pub(crate) const KIND_JUMP: &str = "range-finder-jump";
+pub(crate) const KIND_FOLD: &str = "range-finder-fold";
 const MODULE_ID: ModuleId = ModuleId::new("range-finder");
 
 /// Range-finder module providing jump navigation and code folding.
@@ -126,10 +128,7 @@ impl Module for RangeFinderModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[
-            reovim_extension_kinds::RANGE_FINDER_JUMP,
-            reovim_extension_kinds::RANGE_FINDER_FOLD,
-        ]
+        &[KIND_JUMP, KIND_FOLD]
     }
 }
 

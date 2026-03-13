@@ -30,6 +30,7 @@ use {
     std::sync::Arc,
 };
 
+const KIND: &str = "notification";
 const MODULE_ID: ModuleId = ModuleId::new("notification");
 
 /// Notification module.
@@ -80,7 +81,7 @@ impl Module for NotificationModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::NOTIFICATION]
+        &[KIND]
     }
 }
 

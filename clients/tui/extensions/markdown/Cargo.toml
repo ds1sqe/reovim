@@ -19,5 +19,3 @@ reovim-driver-display = { workspace = true }
 # Platform abstraction (Color)
 reovim-arch = { workspace = true }
 
-# Shared extension kind constants (#583)
-reovim-extension-kinds = { workspace = true }

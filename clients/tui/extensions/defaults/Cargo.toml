@@ -19,9 +19,6 @@ reovim-driver-display = { workspace = true }
 # Dependency resolution for extension sort order (#583)
 reovim-depgraph = { workspace = true }
 
-# Shared extension kind constants (#583)
-reovim-extension-kinds = { workspace = true }
-
 # Logging for validation warnings (#584)
 tracing = { workspace = true }
 

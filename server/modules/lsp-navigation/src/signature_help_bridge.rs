@@ -7,7 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::signature_help_state::SignatureHelpState;
+use crate::{KIND_SIGNATURE_HELP, signature_help_state::SignatureHelpState};
 
 /// Bridge for signature help popup state.
 ///
@@ -17,7 +17,7 @@ pub struct SignatureHelpBridge;
 
 impl ExtensionStateBridge for SignatureHelpBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::SIGNATURE_HELP
+        KIND_SIGNATURE_HELP
     }
 
     fn scope(&self) -> ExtensionScope {

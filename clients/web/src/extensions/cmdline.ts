@@ -11,8 +11,9 @@
  * ```
  */
 
-import { CMDLINE } from "./extension-kinds.js";
 import type { WebExtension } from "./interface.js";
+
+const KIND = "cmdline";
 
 interface CmdlineState {
   active: boolean;
@@ -34,7 +35,7 @@ export class CmdlineExtension implements WebExtension {
   };
 
   kind(): string {
-    return CMDLINE;
+    return KIND;
   }
 
   isActive(): boolean {

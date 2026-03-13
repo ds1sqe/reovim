@@ -21,6 +21,8 @@ pub mod state;
 
 pub use {bridge::CompletionBridge, state::CompletionState};
 
+const KIND: &str = "completion";
+
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_completion::CompletionSourceRegistry,
@@ -120,7 +122,7 @@ impl Module for CompletionModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::COMPLETION]
+        &[KIND]
     }
 }
 

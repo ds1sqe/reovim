@@ -9,7 +9,7 @@ use reovim_driver_session::{
 };
 
 use crate::{
-    game,
+    KIND, game,
     state::{PlayerStatus, TetrominoLobbyState, TetrominoScreen, TetrominoState},
 };
 
@@ -21,7 +21,7 @@ pub struct TetrominoBridge;
 
 impl ExtensionStateBridge for TetrominoBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::POLYBLOCKS
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

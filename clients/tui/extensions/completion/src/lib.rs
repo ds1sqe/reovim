@@ -33,6 +33,8 @@ struct CompletionRow {
 ///
 /// Shows a popup with completion items near the cursor. Each row displays
 /// `[kind] label  (source)`.
+const KIND: &str = "completion";
+
 pub struct CompletionExtension {
     /// Whether the popup is currently visible.
     active: bool,
@@ -65,7 +67,7 @@ impl Default for CompletionExtension {
 
 impl TuiExtension for CompletionExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::COMPLETION
+        KIND
     }
 
     fn is_active(&self) -> bool {

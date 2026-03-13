@@ -23,7 +23,6 @@ workspace = true
 reovim-kernel = { workspace = true }
 reovim-driver-syntax = { workspace = true }
 reovim-driver-session = { workspace = true }
-reovim-extension-kinds = { workspace = true }
 reovim-module-macros = { workspace = true }
 parking_lot = { workspace = true }
 serde_json = { workspace = true }

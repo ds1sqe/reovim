@@ -27,6 +27,7 @@ use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
+const KIND: &str = "whichkey";
 const MODULE_ID: ModuleId = ModuleId::new("whichkey");
 
 /// Which-key popup module.
@@ -73,7 +74,7 @@ impl Module for WhichKeyModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::WHICHKEY]
+        &[KIND]
     }
 }
 

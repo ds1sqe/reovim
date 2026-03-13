@@ -7,14 +7,14 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::state::ModuleManagerState;
+use crate::{KIND, state::ModuleManagerState};
 
 /// Bridge for module manager state.
 pub struct ModuleManagerBridge;
 
 impl ExtensionStateBridge for ModuleManagerBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::MODULE_MANAGER
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

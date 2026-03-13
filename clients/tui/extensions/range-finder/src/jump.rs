@@ -27,6 +27,8 @@ struct JumpLabel {
 /// at match positions using viewport context for coordinate mapping.
 ///
 /// Kind: `"range-finder-jump"` (matches `JumpBridge::kind()`).
+const KIND: &str = "range-finder-jump";
+
 pub struct RangeFinderJumpExtension {
     active: bool,
     labels: Vec<JumpLabel>,
@@ -71,7 +73,7 @@ fn label_dim_style() -> Style {
 
 impl TuiExtension for RangeFinderJumpExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::RANGE_FINDER_JUMP
+        KIND
     }
 
     fn is_active(&self) -> bool {

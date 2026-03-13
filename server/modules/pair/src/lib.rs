@@ -37,6 +37,8 @@ use {
 
 use crate::bridge::PairBridge;
 
+/// Extension kind string.
+const KIND: &str = "pair";
 /// Module ID constant.
 const MODULE_ID: &str = "pair";
 
@@ -97,7 +99,7 @@ impl Module for PairModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::PAIR]
+        &[KIND]
     }
 }
 

@@ -63,6 +63,8 @@ struct HoverPayload {
 ///
 /// Renders LSP hover content in a bordered popup positioned near the
 /// origin buffer position.
+const KIND: &str = "hover";
+
 pub struct HoverExtension {
     /// Whether the popup is visible.
     active: bool,
@@ -117,7 +119,7 @@ impl Default for HoverExtension {
 
 impl TuiExtension for HoverExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::HOVER
+        KIND
     }
 
     fn is_active(&self) -> bool {

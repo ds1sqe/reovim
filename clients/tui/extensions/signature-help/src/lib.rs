@@ -46,6 +46,8 @@ struct SignatureHelpPayload {
 ///
 /// Renders a single-line bordered popup showing the active function
 /// signature near the origin buffer position.
+const KIND: &str = "signature-help";
+
 pub struct SignatureHelpExtension {
     /// Whether the popup is visible.
     active: bool,
@@ -78,7 +80,7 @@ impl Default for SignatureHelpExtension {
 
 impl TuiExtension for SignatureHelpExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::SIGNATURE_HELP
+        KIND
     }
 
     fn is_active(&self) -> bool {

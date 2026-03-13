@@ -5,7 +5,7 @@
 //! display toast popups with auto-dismiss and progress indicators.
 
 use {
-    crate::{NotificationLevel, NotificationState},
+    crate::{KIND, NotificationLevel, NotificationState},
     reovim_driver_session::{
         ExtensionMap,
         bridges::{ExtensionScope, ExtensionStateBridge},
@@ -30,7 +30,7 @@ pub struct NotificationBridge;
 
 impl ExtensionStateBridge for NotificationBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::NOTIFICATION
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

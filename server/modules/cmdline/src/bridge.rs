@@ -7,7 +7,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::CmdlineState;
+use crate::{CmdlineState, KIND};
 
 /// Bridge for command-line state.
 ///
@@ -17,7 +17,7 @@ pub struct CmdlineBridge;
 
 impl ExtensionStateBridge for CmdlineBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::CMDLINE
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

@@ -102,7 +102,7 @@ fn test_init_registers_resolver() {
 fn test_extension_kinds() {
     let module = ModuleManagerModule::new();
     let kinds = module.extension_kinds();
-    assert_eq!(kinds, &[reovim_extension_kinds::MODULE_MANAGER]);
+    assert_eq!(kinds, &["module-manager"]);
 }
 
 #[test]

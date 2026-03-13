@@ -158,6 +158,8 @@ fn render_hint_row(
 ///   v
 /// IDLE
 /// ```
+const KIND: &str = "whichkey";
+
 pub struct WhichKeyExtension {
     /// Whether the server says a prefix is pending.
     server_active: bool,
@@ -232,7 +234,7 @@ impl Default for WhichKeyExtension {
 
 impl TuiExtension for WhichKeyExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::WHICHKEY
+        KIND
     }
 
     fn is_active(&self) -> bool {

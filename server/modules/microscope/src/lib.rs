@@ -24,6 +24,8 @@ pub mod state;
 
 pub use {bridge::MicroscopeBridge, state::MicroscopeState};
 
+const KIND: &str = "microscope";
+
 use {
     reovim_driver_command::CommandHandlerStore,
     reovim_driver_input::{KeybindingStore, ModeInfo, ModeInfoStore, ResolverRegistry},
@@ -110,7 +112,7 @@ impl Module for MicroscopeModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::MICROSCOPE]
+        &[KIND]
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {

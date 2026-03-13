@@ -29,6 +29,7 @@ use {
     reovim_kernel::api::v1::{Module, ModuleContext, ModuleError, ModuleId, ProbeResult, Version},
 };
 
+const KIND: &str = "cmdline";
 const MODULE_ID: ModuleId = ModuleId::new("cmdline");
 
 /// Command-line mode module.
@@ -75,7 +76,7 @@ impl Module for CmdlineModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::CMDLINE]
+        &[KIND]
     }
 }
 

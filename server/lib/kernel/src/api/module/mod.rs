@@ -163,13 +163,13 @@ pub trait Module: Send + Sync + 'static {
     /// bridges (bridge registered but no module claims to push that kind).
     ///
     /// Modules that register bridges in `init()` should override this to
-    /// declare the kinds they push. Use constants from `reovim-extension-kinds`.
+    /// declare the kinds they push. Define kind constants locally in each
+    /// module crate.
     ///
     /// # Kernel Purity
     ///
-    /// The kernel defines this method with a generic `&[&'static str]` return
-    /// type. The kernel MUST NOT depend on `reovim-extension-kinds`. Only
-    /// module implementations (in `server/modules/`) import the constants.
+    /// The kernel defines this with `&[&'static str]` return type. Modules
+    /// define their own kind constants locally — no shared crate needed.
     fn extension_kinds(&self) -> &[&'static str] {
         &[]
     }

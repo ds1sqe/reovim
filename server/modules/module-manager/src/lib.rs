@@ -25,6 +25,8 @@ use {
 
 pub use {bridge::ModuleManagerBridge, command::ModulesCommand, state::ModuleManagerState};
 
+const KIND: &str = "module-manager";
+
 /// Module manager module instance.
 pub struct ModuleManagerModule;
 
@@ -56,7 +58,7 @@ impl Module for ModuleManagerModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::MODULE_MANAGER]
+        &[KIND]
     }
 
     fn keybindings(&self) -> Vec<KeybindingRegistration> {

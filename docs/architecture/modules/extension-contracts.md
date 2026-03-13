@@ -66,20 +66,19 @@ the same check. Uses `serverKinds()` override or falls back to
 
 ## Adding a New Cross-Boundary Pair
 
-1. **Server module**: Override `extension_kinds()` returning the kind
-   constants from `reovim-extension-kinds`.
+1. **Server module**: Override `extension_kinds()` returning kind string
+   constants defined locally in the module.
 2. **Bridge**: Register via `BridgeProvider` during `init()` with matching
    kind.
 3. **Client extension**: Implement `TuiExtension` (TUI) or
    `WebExtension` (web) with matching `kind()`.
 4. **Override `server_kinds()`** if the extension consumes from multiple
    bridges or has a different kind than its own.
-5. **Add kind constant** to `shared/extension-kinds/src/lib.rs` if new.
 
 The startup validation will automatically detect mismatches.
 
 ## Kernel Purity
 
 The `Module` trait in `server/lib/kernel/` returns `&[&'static str]` —
-the kernel has zero dependency on `reovim-extension-kinds`. Only module
-implementations (in `server/modules/`) import the constants.
+the kernel has zero dependency on extension kind constants. Modules
+define their own kind strings locally — no shared crate needed.

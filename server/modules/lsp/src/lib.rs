@@ -33,6 +33,8 @@ mod auto_starter;
 pub mod diagnostic_bridge;
 pub mod diagnostic_state;
 
+const KIND: &str = "diagnostics";
+
 /// LSP module instance.
 ///
 /// Registers the `LspProviderRegistry` in `ServiceRegistry` during init.
@@ -211,7 +213,7 @@ impl Module for LspModule {
     }
 
     fn extension_kinds(&self) -> &[&'static str] {
-        &[reovim_extension_kinds::DIAGNOSTICS]
+        &[KIND]
     }
 }
 

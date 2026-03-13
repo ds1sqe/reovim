@@ -30,6 +30,8 @@ struct CollapsedFold {
 /// as overlays at collapsed fold start lines.
 ///
 /// Kind: `"range-finder-fold"` (matches `FoldBridge::kind()`).
+const KIND: &str = "range-finder-fold";
+
 pub struct RangeFinderFoldExtension {
     active: bool,
     /// Per-buffer fold info. Key is `buffer_id` as string (from JSON).
@@ -88,7 +90,7 @@ fn fold_marker_style() -> Style {
 
 impl TuiExtension for RangeFinderFoldExtension {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::RANGE_FINDER_FOLD
+        KIND
     }
 
     fn is_active(&self) -> bool {

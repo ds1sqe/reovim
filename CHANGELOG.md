@@ -4,6 +4,17 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.10.0-dev
 
+### Changed
+
+- **Eliminate shared/extension-kinds crate (#625)**: Replace centralized
+  `reovim-extension-kinds` closed registry with local `const KIND: &str` constants in each
+  consumer. Server modules (12 crates), TUI extensions (14 crates + defaults), and web
+  extensions (8 files) now define their own kind strings locally. Multi-kind modules
+  (range-finder, lsp-navigation) use `pub(crate)` constants. The `shared/extension-kinds/`
+  crate and `clients/web/src/extensions/extension-kinds.ts` are deleted. Runtime extension
+  discovery via `collect_available_kinds()` is unchanged. Any module (builtin or third-party)
+  can now define its own extension kind without modifying a central registry.
+
 ### Added
 
 - **Defaults god-crate removal (#620)**: Replace `reovim-module-defaults` centralized module

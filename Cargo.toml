@@ -125,7 +125,6 @@ members = [
     "shared/log",
     "shared/trace",
     "shared/module-macros",
-    "shared/extension-kinds",
     "shared/capabilities",
     "shared/testing",
 
@@ -201,7 +200,6 @@ chrono = "0.4"
 reovim-arch = { path = "./shared/arch", version = "0.10.0-dev" }
 reovim-protocol = { path = "./shared/protocol", version = "0.10.0-dev" }
 reovim-module-macros = { path = "./shared/module-macros", version = "0.10.0-dev" }
-reovim-extension-kinds = { path = "./shared/extension-kinds", version = "0.10.0-dev" }
 reovim-capabilities = { path = "./shared/capabilities", version = "0.10.0-dev" }
 reovim-testing = { path = "./shared/testing", version = "0.10.0-dev" }
 reovim-bench-utils = { path = "./shared/bench", version = "0.10.0-dev" }

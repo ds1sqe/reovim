@@ -8,7 +8,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::hover_state::{HoverContentType, HoverState};
+use crate::{KIND_HOVER, hover_state::{HoverContentType, HoverState}};
 
 /// Bridge for hover popup state.
 ///
@@ -18,7 +18,7 @@ pub struct HoverBridge;
 
 impl ExtensionStateBridge for HoverBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::HOVER
+        KIND_HOVER
     }
 
     fn scope(&self) -> ExtensionScope {

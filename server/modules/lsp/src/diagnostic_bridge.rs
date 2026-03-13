@@ -15,8 +15,11 @@ use {
     reovim_kernel::api::v1::{Service, ServiceRegistry},
 };
 
-use crate::diagnostic_state::{
-    BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
+use crate::{
+    KIND,
+    diagnostic_state::{
+        BufferDiagnosticEntry, DiagnosticItem, DiagnosticSeverity, DiagnosticSnapshot,
+    },
 };
 
 // ============================================================================
@@ -93,7 +96,7 @@ pub struct DiagnosticBridge;
 
 impl ExtensionStateBridge for DiagnosticBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::DIAGNOSTICS
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

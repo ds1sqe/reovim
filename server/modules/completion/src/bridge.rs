@@ -8,7 +8,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::state::CompletionState;
+use crate::{KIND, state::CompletionState};
 
 /// Bridge for completion popup state.
 ///
@@ -18,7 +18,7 @@ pub struct CompletionBridge;
 
 impl ExtensionStateBridge for CompletionBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::COMPLETION
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {

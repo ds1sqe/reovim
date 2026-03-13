@@ -8,7 +8,7 @@ use reovim_driver_session::{
     bridges::{ExtensionScope, ExtensionStateBridge},
 };
 
-use crate::state::MicroscopeState;
+use crate::{KIND, state::MicroscopeState};
 
 /// Bridge for microscope picker state.
 ///
@@ -18,7 +18,7 @@ pub struct MicroscopeBridge;
 
 impl ExtensionStateBridge for MicroscopeBridge {
     fn kind(&self) -> &'static str {
-        reovim_extension_kinds::MICROSCOPE
+        KIND
     }
 
     fn scope(&self) -> ExtensionScope {
