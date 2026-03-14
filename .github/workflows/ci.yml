@@ -193,6 +193,14 @@ jobs:
           key: v2-mcdc-${{ hashFiles('Cargo.lock') }}
       - name: Clean stale profraw files
         run: find target -name '*.profraw' -delete 2>/dev/null || true
+      - name: Ensure server binary + FFI modules exist
+        run: |
+          export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} build -p reovim-app --bins
+          cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-rust --features dynamic
+          cargo +${{ env.NIGHTLY }} build -p reovim-module-treesitter-markdown --features dynamic
+          ls -la target/debug/reovim
       - name: Run integration tests
         run: |
           export RUSTFLAGS="${{ env.MCDC_RUSTFLAGS }}"
@@ -245,6 +253,12 @@ jobs:
           key: v2-server-${{ hashFiles('Cargo.lock') }}
       - name: Clean stale profraw files
         run: find target -name '*.profraw' -delete 2>/dev/null || true
+      - name: Ensure server binary exists
+        run: |
+          export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
+          eval "$(cargo +${{ env.NIGHTLY }} llvm-cov show-env --sh)"
+          cargo +${{ env.NIGHTLY }} build -p reovim-app --bins
+          ls -la target/debug/reovim
       - name: Run server tests with coverage
         run: |
           export RUSTFLAGS="${{ env.SERVER_RUSTFLAGS }}"
