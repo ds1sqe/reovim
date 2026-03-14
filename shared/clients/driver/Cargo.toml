@@ -12,9 +12,17 @@ categories = ["text-editors"]
 [lints]
 workspace = true
 
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"]
+
 [dependencies]
 libloading = { workspace = true }
 reovim-arch = { workspace = true }
 reovim-depgraph = { workspace = true }
 tracing = { workspace = true }
 unicode-width = { workspace = true }
+
+# Optional: notification parsing helpers
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }

@@ -251,15 +251,17 @@ impl ClientModuleHandle {
             return match code {
                 0 => ProbeResult::Success,
                 1 => ProbeResult::Defer("dynamic module deferred".to_string()),
-                _ => ProbeResult::Failed(ClientModuleError {
-                    message: format!("dynamic init returned code {code}"),
-                }),
+                _ => ProbeResult::Failed(ClientModuleError::init_failed(
+                    format!("dynamic init returned code {code}"),
+                    None,
+                )),
             };
         }
 
-        ProbeResult::Failed(ClientModuleError {
-            message: "handle has neither static nor dynamic module".to_string(),
-        })
+        ProbeResult::Failed(ClientModuleError::init_failed(
+            "handle has neither static nor dynamic module",
+            None,
+        ))
     }
 
     /// Shut down the module.
@@ -278,9 +280,7 @@ impl ClientModuleHandle {
             return if code == 0 {
                 Ok(())
             } else {
-                Err(ClientModuleError {
-                    message: format!("dynamic exit returned code {code}"),
-                })
+                Err(ClientModuleError::exit_failed(format!("dynamic exit returned code {code}")))
             };
         }
 

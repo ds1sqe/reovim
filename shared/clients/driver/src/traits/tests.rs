@@ -125,6 +125,8 @@ fn make_module_context() -> ModuleContext<'static> {
         capabilities: caps,
         server: Arc::new(MockServerHandle),
         theme,
+        services: None,
+        module_registry: None,
     }
 }
 
@@ -269,6 +271,18 @@ fn server_handle_execute_command() {
     let server = MockServerHandle;
     // No-op — just verify no panic.
     server.execute_command("echo hello");
+}
+
+#[test]
+fn server_handle_list_commands_default() {
+    let server = MockServerHandle;
+    assert!(server.list_commands().is_empty());
+}
+
+#[test]
+fn server_handle_get_option_metadata_default() {
+    let server = MockServerHandle;
+    assert!(server.get_option_metadata("number").is_none());
 }
 
 // =============================================================================

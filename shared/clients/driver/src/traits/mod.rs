@@ -219,6 +219,37 @@ pub struct ModuleContext<'a> {
     pub capabilities: &'a dyn PlatformCapabilities,
     pub server: Arc<dyn ServerHandle>,
     pub theme: &'a dyn ThemeProvider,
+    /// Client-side service registry for cross-module communication.
+    ///
+    /// `None` for FFI modules compiled against API version < 0.2.0.
+    pub services: Option<&'a crate::services::ClientServiceRegistry>,
+    /// Module state introspection (query which modules are loaded/running).
+    ///
+    /// `None` for FFI modules compiled against API version < 0.2.0.
+    pub module_registry: Option<&'a dyn ClientModuleRegistry>,
+}
+
+// =============================================================================
+// ClientModuleRegistry
+// =============================================================================
+
+/// Trait for querying client module state (read-only introspection).
+///
+/// Implemented by the loader (or a snapshot wrapper) and exposed via
+/// `ModuleContext.module_registry`. Modules can query whether dependencies
+/// are loaded and running.
+pub trait ClientModuleRegistry: Send + Sync {
+    /// Check if a module with the given kind is currently running.
+    fn is_running(&self, kind: &str) -> bool;
+
+    /// Get the state of a module by kind.
+    fn module_state(&self, kind: &str) -> Option<crate::loader::ClientModuleState>;
+
+    /// List all loaded module kinds.
+    fn loaded_kinds(&self) -> Vec<String>;
+
+    /// Count of currently running modules.
+    fn running_count(&self) -> usize;
 }
 
 // =============================================================================
@@ -307,12 +338,27 @@ pub trait RenderSurface {
 // =============================================================================
 
 /// Handle for communicating with the server from a client module.
+#[allow(unused_variables)]
 pub trait ServerHandle: Send + Sync {
     /// Query option values from the server.
     fn get_options(&self, names: &[&str]) -> Vec<(String, OptionValue)>;
 
     /// Execute a server command.
     fn execute_command(&self, command: &str);
+
+    /// List available command names.
+    ///
+    /// Default: empty list (for backward compatibility with existing impls).
+    fn list_commands(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Get metadata about a named option.
+    ///
+    /// Default: `None` (for backward compatibility with existing impls).
+    fn get_option_metadata(&self, name: &str) -> Option<crate::OptionMetadata> {
+        None
+    }
 }
 
 // =============================================================================

@@ -252,11 +252,11 @@ impl ClientModuleLoader {
                         );
                     }
                     ProbeResult::Failed(err) => {
-                        self.states[i] = ClientModuleState::Failed(err.message.clone());
+                        self.states[i] = ClientModuleState::Failed(err.message().to_owned());
                         *done = true;
                         tracing::warn!(
                             module = self.modules[i].kind(),
-                            error = %err.message,
+                            error = %err.message(),
                             "client module init failed"
                         );
                     }
@@ -323,10 +323,10 @@ impl ClientModuleLoader {
                     tracing::debug!(module = self.modules[idx].kind(), "client module exited");
                 }
                 Err(err) => {
-                    self.states[idx] = ClientModuleState::Failed(err.message.clone());
+                    self.states[idx] = ClientModuleState::Failed(err.message().to_owned());
                     tracing::warn!(
                         module = self.modules[idx].kind(),
-                        error = %err.message,
+                        error = %err.message(),
                         "client module exit failed"
                     );
                 }

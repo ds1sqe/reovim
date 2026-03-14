@@ -260,6 +260,8 @@ impl<O: TuiOutput> TuiApp<O> {
             capabilities: &self.capabilities,
             server: Arc::clone(&self.server_handle),
             theme: &theme_adapter,
+            services: None,
+            module_registry: None,
         };
         let init_count = self.module_loader.init_all(&ctx);
         tracing::info!(init_count, "Client modules initialized");

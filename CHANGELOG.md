@@ -4,6 +4,23 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ## [Unreleased] - v0.12.1-dev
 
+### Added
+
+- **ClientModule SDK refinement (#646, part of #645)**: Enriched the client driver
+  crate for external module development (primary consumer: Tilth game).
+  `ClientModuleError` is now an enum with `InitFailed`, `ExitFailed`,
+  `NotificationParse`, `Other` variants, `Display`/`Error` impls, and `source()`
+  chain. New `ScopedSurface` wrapper provides automatic coordinate offset and
+  clipping for bounded chrome rendering. New `ClientServiceRegistry` (TypeId-based,
+  thread-safe) and `ClientModuleRegistry` trait for cross-module service discovery
+  and module state introspection. `ModuleContext` gains `services` and
+  `module_registry` fields (both `Option` for FFI backward compat). `ServerHandle`
+  expanded with `list_commands()` and `get_option_metadata()` (default impls).
+  New `OptionMetadata` and `OptionKind` types. `Rect::intersect()` and
+  `Rect::contains_point()` helpers. Notification parsing helpers
+  (`parse_notification`, `parse_notification_field`) behind `serde` feature gate.
+  `CLIENT_MODULE_API_VERSION` bumped to 0.2.0. 357 tests, zero clippy warnings.
+
 ### Changed
 
 - Version bump to 0.12.1-dev for Phase 13 (SDK polish, integration, web alignment)

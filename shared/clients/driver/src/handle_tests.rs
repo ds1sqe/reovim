@@ -64,9 +64,7 @@ impl ClientModule for HandleTestModule {
         if self.exit_ok {
             Ok(())
         } else {
-            Err(ClientModuleError {
-                message: "exit failed".to_string(),
-            })
+            Err(ClientModuleError::exit_failed("exit failed"))
         }
     }
     fn on_all_loaded(&mut self, _ctx: &ModuleContext) {
@@ -158,6 +156,8 @@ fn make_ctx() -> ModuleContext<'static> {
         capabilities: caps,
         server: Arc::new(MockServer),
         theme,
+        services: None,
+        module_registry: None,
     }
 }
 
@@ -199,9 +199,7 @@ fn handle_init_static_defer() {
 #[test]
 fn handle_init_static_fail() {
     let module = Box::new(HandleTestModule::new().with_init_result(ProbeResult::Failed(
-        ClientModuleError {
-            message: "init failed".to_string(),
-        },
+        ClientModuleError::init_failed("init failed", None),
     )));
     let mut handle = ClientModuleHandle::from_static(module);
     let ctx = make_ctx();

@@ -19,9 +19,92 @@ pub enum ProbeResult {
 
 /// Error from a client module operation.
 #[derive(Debug)]
-pub struct ClientModuleError {
-    /// Human-readable error message.
-    pub message: String,
+pub enum ClientModuleError {
+    /// Module initialization failed.
+    InitFailed {
+        reason: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+    /// Module exit/cleanup failed.
+    ExitFailed { reason: String },
+    /// Failed to parse a server notification.
+    NotificationParse { kind: String, detail: String },
+    /// Generic error (catch-all for backward compatibility).
+    Other(String),
+}
+
+impl ClientModuleError {
+    /// Create a generic error (replaces old `ClientModuleError { message }` pattern).
+    #[must_use]
+    pub fn other(msg: impl Into<String>) -> Self {
+        Self::Other(msg.into())
+    }
+
+    /// Create an init-failed error with an optional source.
+    #[must_use]
+    pub fn init_failed(
+        reason: impl Into<String>,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    ) -> Self {
+        Self::InitFailed {
+            reason: reason.into(),
+            source,
+        }
+    }
+
+    /// Create an exit-failed error.
+    #[must_use]
+    pub fn exit_failed(reason: impl Into<String>) -> Self {
+        Self::ExitFailed {
+            reason: reason.into(),
+        }
+    }
+
+    /// Create a notification parse error.
+    #[must_use]
+    pub fn notification_parse(kind: impl Into<String>, detail: impl Into<String>) -> Self {
+        Self::NotificationParse {
+            kind: kind.into(),
+            detail: detail.into(),
+        }
+    }
+
+    /// Get the human-readable error message.
+    ///
+    /// Provided for backward compatibility with code that accessed `.message`.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        match self {
+            Self::InitFailed { reason, .. }
+            | Self::ExitFailed { reason }
+            | Self::NotificationParse { detail: reason, .. } => reason,
+            Self::Other(msg) => msg,
+        }
+    }
+}
+
+impl std::fmt::Display for ClientModuleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InitFailed { reason, .. } => write!(f, "init failed: {reason}"),
+            Self::ExitFailed { reason } => write!(f, "exit failed: {reason}"),
+            Self::NotificationParse { kind, detail } => {
+                write!(f, "notification parse error ({kind}): {detail}")
+            }
+            Self::Other(msg) => f.write_str(msg),
+        }
+    }
+}
+
+impl std::error::Error for ClientModuleError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::InitFailed {
+                source: Some(src), ..
+            } => Some(src.as_ref()),
+            _ => None,
+        }
+    }
 }
 
 /// Semantic version for a client module.
@@ -54,7 +137,15 @@ impl std::fmt::Display for Version {
 ///
 /// Loader checks this before calling any FFI symbols. Major version mismatch
 /// = incompatible ABI; minor version mismatch = backward compatible.
-pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 1, 0);
+///
+/// ## Version History
+///
+/// - **0.1.0**: Initial API (lifecycle only: init, exit, `on_all_loaded`)
+/// - **0.2.0**: SDK enrichment — `ClientModuleError` enum, `ScopedSurface`,
+///   `ClientServiceRegistry`, `ClientModuleRegistry`, expanded `ServerHandle`
+///   (`list_commands`, `get_option_metadata`), notification helpers (serde feature),
+///   `ModuleContext` gains `services` and `module_registry` fields (Option).
+pub const CLIENT_MODULE_API_VERSION: Version = Version::new(0, 2, 0);
 
 /// Check if a required API version is compatible with the provided version.
 ///
@@ -298,6 +389,32 @@ impl Rect {
             height,
         }
     }
+
+    /// Compute the intersection of two rectangles.
+    ///
+    /// Returns `None` if they don't overlap.
+    #[must_use]
+    pub fn intersect(&self, other: &Self) -> Option<Self> {
+        let x1 = self.x.max(other.x);
+        let y1 = self.y.max(other.y);
+        let x2 = (self.x.saturating_add(self.width)).min(other.x.saturating_add(other.width));
+        let y2 = (self.y.saturating_add(self.height)).min(other.y.saturating_add(other.height));
+
+        if x1 < x2 && y1 < y2 {
+            Some(Self::new(x1, y1, x2 - x1, y2 - y1))
+        } else {
+            None
+        }
+    }
+
+    /// Check if a point is inside this rectangle.
+    #[must_use]
+    pub const fn contains_point(&self, x: u16, y: u16) -> bool {
+        x >= self.x
+            && y >= self.y
+            && x < self.x.saturating_add(self.width)
+            && y < self.y.saturating_add(self.height)
+    }
 }
 
 /// Edge insets (padding/margin from screen edges).
@@ -339,6 +456,27 @@ pub enum OptionValue {
     Bool(bool),
     Integer(i64),
     String(String),
+}
+
+/// Kind/type of an editor option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OptionKind {
+    Bool,
+    Integer,
+    String,
+}
+
+/// Metadata about an editor option (type, description, default).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OptionMetadata {
+    /// Option name.
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Default value (if known).
+    pub default_value: Option<OptionValue>,
+    /// Value kind/type.
+    pub kind: OptionKind,
 }
 
 /// How a token category should be rendered.

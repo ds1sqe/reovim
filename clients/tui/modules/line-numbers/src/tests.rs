@@ -293,6 +293,8 @@ fn lifecycle() {
         capabilities: caps,
         server: std::sync::Arc::new(MockServer),
         theme,
+        services: None,
+        module_registry: None,
     };
     assert!(matches!(module.init(&ctx), ProbeResult::Success));
     assert!(module.exit().is_ok());

@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use super::*;
 
 // =============================================================================
@@ -18,11 +20,9 @@ fn probe_result_defer() {
 
 #[test]
 fn probe_result_failed() {
-    let err = ClientModuleError {
-        message: "boom".to_string(),
-    };
+    let err = ClientModuleError::other("boom");
     let result = ProbeResult::Failed(err);
-    assert!(matches!(result, ProbeResult::Failed(ref e) if e.message == "boom"));
+    assert!(matches!(result, ProbeResult::Failed(ref e) if e.message() == "boom"));
 }
 
 // =============================================================================
@@ -30,19 +30,56 @@ fn probe_result_failed() {
 // =============================================================================
 
 #[test]
-fn client_module_error_construction() {
-    let err = ClientModuleError {
-        message: "test error".to_string(),
-    };
-    assert_eq!(err.message, "test error");
+fn client_module_error_other() {
+    let err = ClientModuleError::other("test error");
+    assert_eq!(err.message(), "test error");
+    assert_eq!(err.to_string(), "test error");
+}
+
+#[test]
+fn client_module_error_init_failed() {
+    let err = ClientModuleError::init_failed("no server", None);
+    assert_eq!(err.message(), "no server");
+    assert_eq!(err.to_string(), "init failed: no server");
+    assert!(err.source().is_none());
+}
+
+#[test]
+fn client_module_error_init_failed_with_source() {
+    let source = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+    let err = ClientModuleError::init_failed("config load failed", Some(Box::new(source)));
+    assert_eq!(err.message(), "config load failed");
+    assert!(err.source().is_some());
+}
+
+#[test]
+fn client_module_error_exit_failed() {
+    let err = ClientModuleError::exit_failed("cleanup error");
+    assert_eq!(err.message(), "cleanup error");
+    assert_eq!(err.to_string(), "exit failed: cleanup error");
+    assert!(err.source().is_none());
+}
+
+#[test]
+fn client_module_error_notification_parse() {
+    let err = ClientModuleError::notification_parse("whichkey", "invalid JSON");
+    assert_eq!(err.message(), "invalid JSON");
+    assert_eq!(err.to_string(), "notification parse error (whichkey): invalid JSON");
+    assert!(err.source().is_none());
 }
 
 #[test]
 fn client_module_error_empty_message() {
-    let err = ClientModuleError {
-        message: String::new(),
-    };
-    assert!(err.message.is_empty());
+    let err = ClientModuleError::other("");
+    assert!(err.message().is_empty());
+}
+
+#[test]
+fn client_module_error_debug() {
+    let err = ClientModuleError::other("debug test");
+    let debug = format!("{err:?}");
+    assert!(debug.contains("Other"));
+    assert!(debug.contains("debug test"));
 }
 
 // =============================================================================
@@ -246,6 +283,71 @@ fn option_value_string() {
 #[test]
 fn option_value_cross_variant_inequality() {
     assert_ne!(OptionValue::Bool(true), OptionValue::Integer(1));
+}
+
+// =============================================================================
+// OptionKind
+// =============================================================================
+
+#[test]
+fn option_kind_variants() {
+    let kinds = [OptionKind::Bool, OptionKind::Integer, OptionKind::String];
+    for (i, k) in kinds.iter().enumerate() {
+        for (j, other) in kinds.iter().enumerate() {
+            if i == j {
+                assert_eq!(k, other);
+            } else {
+                assert_ne!(k, other);
+            }
+        }
+    }
+}
+
+#[test]
+fn option_kind_copy() {
+    let a = OptionKind::Bool;
+    let b = a;
+    assert_eq!(a, b);
+}
+
+// =============================================================================
+// OptionMetadata
+// =============================================================================
+
+#[test]
+fn option_metadata_construction() {
+    let meta = OptionMetadata {
+        name: "number".to_string(),
+        description: "Show line numbers".to_string(),
+        default_value: Some(OptionValue::Bool(false)),
+        kind: OptionKind::Bool,
+    };
+    assert_eq!(meta.name, "number");
+    assert_eq!(meta.kind, OptionKind::Bool);
+    assert_eq!(meta.default_value, Some(OptionValue::Bool(false)));
+}
+
+#[test]
+fn option_metadata_no_default() {
+    let meta = OptionMetadata {
+        name: "custom".to_string(),
+        description: "A custom option".to_string(),
+        default_value: None,
+        kind: OptionKind::String,
+    };
+    assert!(meta.default_value.is_none());
+}
+
+#[test]
+fn option_metadata_clone_eq() {
+    let a = OptionMetadata {
+        name: "tabstop".to_string(),
+        description: "Tab width".to_string(),
+        default_value: Some(OptionValue::Integer(8)),
+        kind: OptionKind::Integer,
+    };
+    let b = a.clone();
+    assert_eq!(a, b);
 }
 
 // =============================================================================
@@ -1358,7 +1460,7 @@ fn client_module_probe_copy_semantics() {
 fn client_api_version_exists() {
     let v = CLIENT_MODULE_API_VERSION;
     assert_eq!(v.major, 0);
-    assert_eq!(v.minor, 1);
+    assert_eq!(v.minor, 2);
     assert_eq!(v.patch, 0);
 }
 
@@ -1390,4 +1492,16 @@ fn is_client_compatible_different_major() {
 fn is_client_compatible_zero_major() {
     assert!(is_client_compatible(Version::new(0, 1, 0), Version::new(0, 1, 0)));
     assert!(!is_client_compatible(Version::new(0, 1, 0), Version::new(0, 0, 0)));
+}
+
+#[test]
+fn is_client_compatible_v01_module_against_v02_loader() {
+    // 0.1.x module (requires 0.1.0) is compatible with 0.2.0 loader
+    assert!(is_client_compatible(Version::new(0, 1, 0), Version::new(0, 2, 0)));
+}
+
+#[test]
+fn is_client_compatible_v02_module_against_v01_loader() {
+    // 0.2.x module (requires 0.2.0) is NOT compatible with 0.1.0 loader
+    assert!(!is_client_compatible(Version::new(0, 2, 0), Version::new(0, 1, 0)));
 }

@@ -78,9 +78,7 @@ impl ClientModule for MockClientModule {
         if self.exit_ok {
             Ok(())
         } else {
-            Err(ClientModuleError {
-                message: "exit failed".to_string(),
-            })
+            Err(ClientModuleError::exit_failed("exit failed"))
         }
     }
 
@@ -171,9 +169,7 @@ impl ClientModule for FailModule {
         Version::new(1, 0, 0)
     }
     fn init(&mut self, _ctx: &ModuleContext) -> ProbeResult {
-        ProbeResult::Failed(ClientModuleError {
-            message: "always fails".to_string(),
-        })
+        ProbeResult::Failed(ClientModuleError::init_failed("always fails", None))
     }
     fn exit(&mut self) -> Result<(), ClientModuleError> {
         Ok(())
@@ -320,6 +316,8 @@ fn make_ctx() -> ModuleContext<'static> {
         capabilities: caps,
         server: Arc::new(MockServer),
         theme,
+        services: None,
+        module_registry: None,
     }
 }
 
