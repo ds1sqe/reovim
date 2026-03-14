@@ -60,3 +60,7 @@ export {
   adaptExtensions,
 } from "./extension-adapter.js";
 export { ClientModuleLoader } from "./loader.js";
+export { ChromeCompositor } from "./compositor.js";
+export type { ChromeRegion, CompositorLayout } from "./compositor.js";
+export { DomChromeSurface, styleToCss } from "./dom-surface.js";
+export { ChromeDispatcher } from "./chrome-dispatcher.js";

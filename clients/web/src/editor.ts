@@ -39,8 +39,8 @@ import { ClientModuleLoader } from "./core/loader.js";
 import { BrowserPlatformAdapter } from "./core/platform-adapter.js";
 import { GrpcServerHandle } from "./core/server-handle.js";
 import { WebClientServiceRegistry } from "./core/service-registry.js";
-import { WebExtensionAdapter } from "./core/extension-adapter.js";
 import type { ModuleContext } from "./core/contracts.js";
+import { ChromeDispatcher } from "./core/chrome-dispatcher.js";
 
 // Capture handler (Phase 16)
 import { CaptureHandler, type CaptureableState } from "./capture/index.js";
@@ -129,6 +129,9 @@ export class Editor {
   private loader: ClientModuleLoader;
   private moduleContext: ModuleContext;
 
+  // Chrome rendering (#651)
+  private chromeDispatcher: ChromeDispatcher | null = null;
+
   // Remote clients for multi-client awareness (Phase 14, #471)
   private remoteClients: Map<bigint, RemoteClient> = new Map();
 
@@ -215,6 +218,12 @@ export class Editor {
     this.cursorElement = document.getElementById("cursor");
     this.positionElement = document.getElementById("position");
     this.editorElement = document.getElementById("editor");
+
+    // #651: Initialize chrome dispatcher
+    const chromeParent = this.editorElement ?? document.getElementById("app");
+    if (chromeParent) {
+      this.chromeDispatcher = new ChromeDispatcher(chromeParent);
+    }
 
     // #474: Initialize remote clients from JoinResponse peers
     for (const peer of peers) {
@@ -741,6 +750,7 @@ export class Editor {
 
       case "extensionUpdated": {
         // #468/#650: Generic extension dispatch via CLM loader
+        // #651: Notification dispatch decoupled from rendering
         const ext = payload.value;
         const extClientId = ext.clientId ?? 0n;
         const isLocal = extClientId === 0n || extClientId === this.myClientId;
@@ -751,17 +761,16 @@ export class Editor {
               // Dispatch notification through CLM interface
               mod.onNotification?.(ext.data);
 
-              // DOM rendering: access the wrapped WebExtension for DOM ops
-              if (mod instanceof WebExtensionAdapter) {
-                const webExt = mod.wrappedExtension;
-                const container = document.getElementById("app") ?? this.editorElement;
-                if (container) {
-                  if (webExt.isActive()) {
-                    webExt.render(container);
-                  } else {
-                    webExt.hide();
-                  }
-                }
+              // #651: Trigger chrome re-render via dispatcher instead of
+              // directly calling render/hide on the WebExtension.
+              if (this.chromeDispatcher && this.editorElement) {
+                const { clientWidth, clientHeight } = this.editorElement;
+                this.chromeDispatcher.handleModuleUpdate(
+                  mod.id(),
+                  [...this.loader.modules()],
+                  clientWidth,
+                  clientHeight,
+                );
               }
             }
           }
@@ -980,6 +989,9 @@ export class Editor {
     this.renderMode();
     this.renderPosition();
 
+    // #651: Render chrome modules via compositor
+    this.renderChrome();
+
     // Re-render remote cursors after DOM rebuild (#474)
     this.renderRemoteCursors();
   }
@@ -993,8 +1005,24 @@ export class Editor {
     this.renderCursor();
     this.renderPosition();
 
+    // #651: Render chrome modules via compositor
+    this.renderChrome();
+
     // Re-render remote cursors after DOM rebuild (#474)
     this.renderRemoteCursors();
+  }
+
+  /**
+   * Render chrome modules via ChromeDispatcher (#651).
+   */
+  private renderChrome(): void {
+    if (!this.chromeDispatcher || !this.editorElement) return;
+    const { clientWidth, clientHeight } = this.editorElement;
+    this.chromeDispatcher.dispatch(
+      [...this.loader.modules()],
+      clientWidth,
+      clientHeight,
+    );
   }
 
   /**

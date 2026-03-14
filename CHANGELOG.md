@@ -6,6 +6,19 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
 
 ### Added
 
+- **Web CLM rendering infrastructure (#651, part of #645)**: Chrome compositor,
+  DOM render surface, and chrome dispatcher for the web client.
+  `ChromeCompositor` allocates non-overlapping screen regions using TUI-matching
+  edge-inward algorithm with four independent counters and priority sorting.
+  `DomChromeSurface` implements `RenderSurface` for DOM-based character grid
+  rendering with virtual buffer and style-to-CSS conversion. `ChromeDispatcher`
+  orchestrates layout, container lifecycle, and dual rendering paths (DOM for
+  existing `WebExtensionAdapter` modules, cell-grid for future native CLM).
+  `Editor.extensionUpdated` handler decouples notification dispatch from
+  rendering. Z-index strategy: edge chrome by allocation order, overlays at
+  1000+zOrder. Fixed pre-existing `LandingExtension` test count bug in
+  `extensions.test.ts`. 32 new tests across 3 test files.
+
 - **Web CLM contracts and module lifecycle (#650, part of #645)**: TypeScript
   interfaces mirroring all Rust CLM traits (`PlatformCapabilities`,
   `RenderSurface`, `ServerHandle`, `ClmThemeProvider`, `ClientModuleRegistry`,

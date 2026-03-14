@@ -144,9 +144,9 @@ const DEFAULT_DELAY_MS = 500;
 // ============ 8a: Interface Contract ============
 
 describe("factory", () => {
-  it("createExtensions returns 8 extensions with correct kinds", () => {
+  it("createExtensions returns 9 extensions with correct kinds", () => {
     const extensions = createExtensions();
-    expect(extensions).toHaveLength(8);
+    expect(extensions).toHaveLength(9);
 
     const kinds = extensions.map((e) => e.kind());
     expect(kinds).toContain("cmdline");
@@ -157,19 +157,30 @@ describe("factory", () => {
     expect(kinds).toContain("explorer");
     expect(kinds).toContain("range-finder-jump");
     expect(kinds).toContain("range-finder-fold");
+    expect(kinds).toContain("landing");
   });
 
-  it("extensions start inactive", () => {
+  it("extensions start inactive (except landing)", () => {
     const extensions = createExtensions();
     for (const ext of extensions) {
-      expect(ext.isActive()).toBe(false);
+      if (ext.kind() === "landing") {
+        // LandingExtension starts active (displays on startup)
+        expect(ext.isActive()).toBe(true);
+      } else {
+        expect(ext.isActive()).toBe(false);
+      }
     }
   });
 
   it("inactive extensions return null state", () => {
     const extensions = createExtensions();
     for (const ext of extensions) {
-      expect(ext.getState()).toBeNull();
+      if (ext.kind() === "landing") {
+        // LandingExtension starts active, returns non-null state
+        expect(ext.getState()).not.toBeNull();
+      } else {
+        expect(ext.getState()).toBeNull();
+      }
     }
   });
 });
@@ -631,9 +642,13 @@ describe("notification -> render flow", () => {
       }
     }
 
-    // All extensions remain inactive
+    // All extensions remain inactive (except landing, which starts active)
     for (const ext of extensions) {
-      expect(ext.isActive()).toBe(false);
+      if (ext.kind() === "landing") {
+        expect(ext.isActive()).toBe(true);
+      } else {
+        expect(ext.isActive()).toBe(false);
+      }
     }
   });
 });
@@ -1729,10 +1744,10 @@ describe("toposortExtensions", () => {
 describe("createExtensions lifecycle", () => {
   it("returns sorted extensions with init called", () => {
     const exts = createExtensions();
-    expect(exts.length).toBe(8);
+    expect(exts.length).toBe(9);
     // All extensions should have unique kinds
     const kinds = exts.map((e) => e.kind());
-    expect(new Set(kinds).size).toBe(8);
+    expect(new Set(kinds).size).toBe(9);
   });
 
   it("shutdownExtensions calls exit in reverse order", () => {

@@ -12,6 +12,8 @@ export default defineConfig({
       ["tests/render-*.test.ts", "jsdom"],
       ["tests/extensions*.test.ts", "jsdom"],
       ["tests/core-platform-adapter.test.ts", "jsdom"],
+      ["tests/core-dom-surface.test.ts", "jsdom"],
+      ["tests/core-chrome-dispatcher.test.ts", "jsdom"],
       // Integration tests run in Node (need child_process, etc.)
       ["tests/integration/**/*.test.ts", "node"],
     ],
