@@ -1,15 +1,17 @@
-use std::sync::Arc;
-
 use {
     super::*,
     crate::{
         BufferId, ChromePosition, ClientModuleError, ColorDepth, ColumnWidth, Insets, ProbeResult,
         Rect, RenderingModel, Style, Version,
+        testing::{
+            MockPlatformCapabilities, MockServerHandle, MockThemeProvider, RecordingSurface,
+            TestModuleContext,
+        },
     },
 };
 
 // =============================================================================
-// Mock implementations
+// Mock module (test-specific ClientModule impl, kept local)
 // =============================================================================
 
 struct MockModule;
@@ -32,104 +34,6 @@ impl ClientModule for MockModule {
     }
 }
 
-struct MockPlatformCapabilities;
-
-impl PlatformCapabilities for MockPlatformCapabilities {
-    fn rendering_model(&self) -> RenderingModel {
-        RenderingModel::CellGrid
-    }
-    fn grid_size(&self) -> Option<(u16, u16)> {
-        Some((80, 24))
-    }
-    fn color_depth(&self) -> ColorDepth {
-        ColorDepth::TrueColor
-    }
-    fn pixel_size(&self) -> Option<(u32, u32)> {
-        None
-    }
-    fn reliable_unicode_width(&self) -> bool {
-        true
-    }
-    fn dark_mode(&self) -> bool {
-        true
-    }
-    fn smooth_scroll(&self) -> bool {
-        false
-    }
-    fn pointer_events(&self) -> bool {
-        false
-    }
-    fn touch_input(&self) -> bool {
-        false
-    }
-    fn haptic(&self) -> bool {
-        false
-    }
-    fn safe_area(&self) -> Insets {
-        Insets::default()
-    }
-    fn has_focus(&self) -> bool {
-        true
-    }
-    fn clipboard_available(&self) -> bool {
-        true
-    }
-    fn screen_reader_active(&self) -> bool {
-        false
-    }
-}
-
-struct MockServerHandle;
-
-impl ServerHandle for MockServerHandle {
-    fn get_options(&self, _names: &[&str]) -> Vec<(String, crate::OptionValue)> {
-        Vec::new()
-    }
-    fn execute_command(&self, _command: &str) {}
-}
-
-struct MockThemeProvider;
-
-impl ThemeProvider for MockThemeProvider {
-    fn highlight(&self, _group: &str) -> Style {
-        Style::default()
-    }
-    fn highlight_with_fallback(&self, groups: &[&str]) -> Style {
-        if groups.is_empty() {
-            return Style::default();
-        }
-        self.highlight(groups[0])
-    }
-    fn foreground(&self) -> Style {
-        Style {
-            fg: Some(crate::Color::White),
-            ..Style::default()
-        }
-    }
-    fn background(&self) -> Style {
-        Style {
-            bg: Some(crate::Color::Black),
-            ..Style::default()
-        }
-    }
-    fn is_dark(&self) -> bool {
-        true
-    }
-}
-
-fn make_module_context() -> ModuleContext<'static> {
-    // Use leaked references for test simplicity — tests are short-lived.
-    let caps: &'static dyn PlatformCapabilities = Box::leak(Box::new(MockPlatformCapabilities));
-    let theme: &'static dyn ThemeProvider = Box::leak(Box::new(MockThemeProvider));
-    ModuleContext {
-        capabilities: caps,
-        server: Arc::new(MockServerHandle),
-        theme,
-        services: None,
-        module_registry: None,
-    }
-}
-
 // =============================================================================
 // ClientModule default methods
 // =============================================================================
@@ -149,7 +53,10 @@ fn client_module_identity_defaults() {
 #[test]
 fn client_module_lifecycle() {
     let mut module = MockModule;
-    let ctx = make_module_context();
+    let ctx = {
+        let ctx = Box::leak(Box::new(TestModuleContext::builder().build()));
+        ctx.as_context()
+    };
     assert!(matches!(module.init(&ctx), ProbeResult::Success));
     assert!(module.exit().is_ok());
 }
@@ -178,8 +85,8 @@ fn client_module_event_defaults() {
     module.on_cursor_update(BufferId(0), 0, 0);
     module.on_buffer_focus(BufferId(0));
     module.on_mode_change("normal");
-    module.on_capabilities_changed(&MockPlatformCapabilities);
-    module.on_theme_changed(&MockThemeProvider);
+    module.on_capabilities_changed(&MockPlatformCapabilities::new());
+    module.on_theme_changed(&MockThemeProvider::new());
     assert!(!module.tick());
 }
 
@@ -187,7 +94,7 @@ fn client_module_event_defaults() {
 fn client_module_chrome_defaults() {
     let module = MockModule;
     assert_eq!(module.chrome_position(), ChromePosition::Bottom);
-    assert_eq!(module.chrome_requested_size(&MockPlatformCapabilities), 1);
+    assert_eq!(module.chrome_requested_size(&MockPlatformCapabilities::new()), 1);
     assert_eq!(module.chrome_priority(), 0);
     assert_eq!(module.chrome_z_order(), 0);
     // chrome_render default is a no-op — just verify no panic.
@@ -217,7 +124,7 @@ fn client_module_annotation_defaults() {
         gutter_style: Style::default(),
     };
     assert_eq!(
-        module.annotation_column_width(&ctx, &MockPlatformCapabilities),
+        module.annotation_column_width(&ctx, &MockPlatformCapabilities::new()),
         ColumnWidth::Fixed(0)
     );
     assert!(module.annotate(0, &ctx).is_none());
@@ -227,7 +134,10 @@ fn client_module_annotation_defaults() {
 #[test]
 fn client_module_on_all_loaded_default() {
     let mut module = MockModule;
-    let ctx = make_module_context();
+    let ctx = {
+        let ctx = Box::leak(Box::new(TestModuleContext::builder().build()));
+        ctx.as_context()
+    };
     // Default is a no-op — just verify no panic.
     module.on_all_loaded(&ctx);
 }
@@ -238,7 +148,7 @@ fn client_module_on_all_loaded_default() {
 
 #[test]
 fn platform_capabilities_tui_defaults() {
-    let caps = MockPlatformCapabilities;
+    let caps = MockPlatformCapabilities::new();
     assert_eq!(caps.rendering_model(), RenderingModel::CellGrid);
     assert_eq!(caps.grid_size(), Some((80, 24)));
     assert_eq!(caps.color_depth(), ColorDepth::TrueColor);
@@ -261,27 +171,27 @@ fn platform_capabilities_tui_defaults() {
 
 #[test]
 fn server_handle_get_options_empty() {
-    let server = MockServerHandle;
+    let server = MockServerHandle::new();
     let result = server.get_options(&["number", "relativenumber"]);
     assert!(result.is_empty());
 }
 
 #[test]
 fn server_handle_execute_command() {
-    let server = MockServerHandle;
+    let server = MockServerHandle::new();
     // No-op — just verify no panic.
     server.execute_command("echo hello");
 }
 
 #[test]
 fn server_handle_list_commands_default() {
-    let server = MockServerHandle;
+    let server = MockServerHandle::new();
     assert!(server.list_commands().is_empty());
 }
 
 #[test]
 fn server_handle_get_option_metadata_default() {
-    let server = MockServerHandle;
+    let server = MockServerHandle::new();
     assert!(server.get_option_metadata("number").is_none());
 }
 
@@ -291,34 +201,34 @@ fn server_handle_get_option_metadata_default() {
 
 #[test]
 fn theme_provider_highlight() {
-    let theme = MockThemeProvider;
+    let theme = MockThemeProvider::new();
     assert_eq!(theme.highlight("Normal"), Style::default());
 }
 
 #[test]
 fn theme_provider_fallback_empty() {
-    let theme = MockThemeProvider;
+    let theme = MockThemeProvider::new();
     let empty: &[&str] = &[];
     assert_eq!(theme.highlight_with_fallback(empty), Style::default());
 }
 
 #[test]
 fn theme_provider_fallback_nonempty() {
-    let theme = MockThemeProvider;
+    let theme = MockThemeProvider::new();
     let result = theme.highlight_with_fallback(&["CursorLine", "Normal"]);
     assert_eq!(result, Style::default());
 }
 
 #[test]
 fn theme_provider_foreground_background() {
-    let theme = MockThemeProvider;
+    let theme = MockThemeProvider::new();
     assert_eq!(theme.foreground().fg, Some(crate::Color::White));
     assert_eq!(theme.background().bg, Some(crate::Color::Black));
 }
 
 #[test]
 fn theme_provider_is_dark() {
-    let theme = MockThemeProvider;
+    let theme = MockThemeProvider::new();
     assert!(theme.is_dark());
 }
 
@@ -328,7 +238,10 @@ fn theme_provider_is_dark() {
 
 #[test]
 fn module_context_construction() {
-    let ctx = make_module_context();
+    let ctx = {
+        let ctx = Box::leak(Box::new(TestModuleContext::builder().build()));
+        ctx.as_context()
+    };
     assert_eq!(ctx.capabilities.grid_size(), Some((80, 24)));
     assert!(ctx.theme.is_dark());
 }
@@ -337,25 +250,9 @@ fn module_context_construction() {
 // RenderSurface trait (verify trait is object-safe)
 // =============================================================================
 
-struct MockRenderSurface;
-
-impl RenderSurface for MockRenderSurface {
-    #[allow(clippy::cast_possible_truncation)]
-    fn write_styled(&mut self, _x: u16, _y: u16, text: &str, _style: Style) -> u16 {
-        text.len() as u16
-    }
-    fn apply_style(&mut self, _x: u16, _y: u16, _style: Style) {}
-    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: crate::Color) {}
-    fn fill(&mut self, _rect: Rect, _ch: char, _style: Style) {}
-    fn clear(&mut self, _rect: Rect) {}
-    fn size(&self) -> (u16, u16) {
-        (80, 24)
-    }
-}
-
 #[test]
 fn render_surface_object_safety() {
-    let mut surface: Box<dyn RenderSurface> = Box::new(MockRenderSurface);
+    let mut surface: Box<dyn RenderSurface> = Box::new(RecordingSurface::new(80, 24));
     let cols = surface.write_styled(0, 0, "hello", Style::default());
     assert_eq!(cols, 5);
     surface.apply_style(0, 0, Style::default());
@@ -438,7 +335,7 @@ impl ViewportRenderer for MockViewportRenderer {
 fn viewport_renderer_object_safety() {
     let renderer: Box<dyn ViewportRenderer> = Box::new(MockViewportRenderer);
     let modules: Vec<Box<dyn ClientModule>> = vec![Box::new(MockModule)];
-    let caps = MockPlatformCapabilities;
+    let caps = MockPlatformCapabilities::new();
     assert_eq!(renderer.gutter_width(&modules, &caps), 4);
 }
 

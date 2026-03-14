@@ -1,141 +1,21 @@
 use {
     super::*,
-    reovim_client_driver::{Insets, RenderingModel, types::ColorDepth},
+    reovim_client_driver::testing::{MockPlatformCapabilities, RecordingSurface},
 };
-
-// =============================================================================
-// Mock infrastructure
-// =============================================================================
-
-struct MockSurface {
-    cells: Vec<Vec<(char, Style)>>,
-    width: u16,
-    height: u16,
-}
-
-impl MockSurface {
-    fn new(width: u16, height: u16) -> Self {
-        Self {
-            cells: vec![vec![(' ', Style::new()); width as usize]; height as usize],
-            width,
-            height,
-        }
-    }
-
-    fn style_at(&self, x: u16, y: u16) -> &Style {
-        &self.cells[y as usize][x as usize].1
-    }
-
-    fn char_at(&self, x: u16, y: u16) -> char {
-        self.cells[y as usize][x as usize].0
-    }
-
-    fn has_content(&self) -> bool {
-        self.cells
-            .iter()
-            .any(|row| row.iter().any(|(ch, _)| *ch != ' '))
-    }
-}
-
-impl RenderSurface for MockSurface {
-    #[allow(clippy::cast_possible_truncation)]
-    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
-        for (i, ch) in text.chars().enumerate() {
-            let cx = x as usize + i;
-            if cx < self.width as usize && (y as usize) < self.height as usize {
-                self.cells[y as usize][cx] = (ch, style.clone());
-            }
-        }
-        text.len() as u16
-    }
-
-    fn apply_style(&mut self, x: u16, y: u16, style: Style) {
-        if (x as usize) < self.width as usize && (y as usize) < self.height as usize {
-            self.cells[y as usize][x as usize].1 = style;
-        }
-    }
-
-    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
-
-    fn fill(&mut self, rect: Rect, ch: char, style: Style) {
-        for row in rect.y..rect.y + rect.height {
-            for col in rect.x..rect.x + rect.width {
-                if (col as usize) < self.width as usize && (row as usize) < self.height as usize {
-                    self.cells[row as usize][col as usize] = (ch, style.clone());
-                }
-            }
-        }
-    }
-
-    fn clear(&mut self, rect: Rect) {
-        self.fill(rect, ' ', Style::new());
-    }
-
-    fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-}
-
-struct TestPlatformCaps;
-
-impl PlatformCapabilities for TestPlatformCaps {
-    fn rendering_model(&self) -> RenderingModel {
-        RenderingModel::CellGrid
-    }
-    fn grid_size(&self) -> Option<(u16, u16)> {
-        Some((80, 24))
-    }
-    fn color_depth(&self) -> ColorDepth {
-        ColorDepth::TrueColor
-    }
-    fn pixel_size(&self) -> Option<(u32, u32)> {
-        None
-    }
-    fn reliable_unicode_width(&self) -> bool {
-        true
-    }
-    fn dark_mode(&self) -> bool {
-        true
-    }
-    fn smooth_scroll(&self) -> bool {
-        false
-    }
-    fn pointer_events(&self) -> bool {
-        true
-    }
-    fn touch_input(&self) -> bool {
-        false
-    }
-    fn haptic(&self) -> bool {
-        false
-    }
-    fn safe_area(&self) -> Insets {
-        Insets::ZERO
-    }
-    fn has_focus(&self) -> bool {
-        true
-    }
-    fn clipboard_available(&self) -> bool {
-        true
-    }
-    fn screen_reader_active(&self) -> bool {
-        false
-    }
-}
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-fn render(module: &CmdlineModule, w: u16, h: u16) -> MockSurface {
-    let mut surface = MockSurface::new(w, h);
+fn render(module: &CmdlineModule, w: u16, h: u16) -> RecordingSurface {
+    let mut surface = RecordingSurface::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
         width: w,
         height: h,
     };
-    module.chrome_render(&mut surface, bounds, &TestPlatformCaps);
+    module.chrome_render(&mut surface, bounds, &MockPlatformCapabilities::new());
     surface
 }
 

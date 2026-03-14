@@ -4,68 +4,8 @@ use {
         BOARD_HEIGHT, BOARD_WIDTH, HeldPieceData, OpponentData, PieceData, ResultPlayerData,
         TetrominoData,
     },
-    reovim_client_driver::{Rect, Style},
+    reovim_client_driver::{Rect, testing::RecordingSurface},
 };
-
-// =============================================================================
-// Mock surface
-// =============================================================================
-
-struct MockSurface {
-    cells: Vec<Vec<(char, Style)>>,
-    width: u16,
-    height: u16,
-}
-
-impl MockSurface {
-    fn new(width: u16, height: u16) -> Self {
-        Self {
-            cells: vec![vec![(' ', Style::new()); width as usize]; height as usize],
-            width,
-            height,
-        }
-    }
-
-    fn has_content(&self) -> bool {
-        self.cells
-            .iter()
-            .any(|row| row.iter().any(|(ch, _)| *ch != ' '))
-    }
-}
-
-impl RenderSurface for MockSurface {
-    #[allow(clippy::cast_possible_truncation)]
-    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
-        for (i, ch) in text.chars().enumerate() {
-            let cx = x as usize + i;
-            if cx < self.width as usize && (y as usize) < self.height as usize {
-                self.cells[y as usize][cx] = (ch, style.clone());
-            }
-        }
-        text.len() as u16
-    }
-
-    fn apply_style(&mut self, _x: u16, _y: u16, _style: Style) {}
-    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
-
-    fn fill(&mut self, rect: Rect, ch: char, style: Style) {
-        for row in rect.y..rect.y + rect.height {
-            for col in rect.x..rect.x + rect.width {
-                if (col as usize) < self.width as usize && (row as usize) < self.height as usize {
-                    self.cells[row as usize][col as usize] = (ch, style.clone());
-                }
-            }
-        }
-    }
-
-    fn clear(&mut self, rect: Rect) {
-        self.fill(rect, ' ', Style::new());
-    }
-
-    fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-}
 
 // =============================================================================
 // Helpers
@@ -112,8 +52,8 @@ fn make_active_data() -> TetrominoData {
     }
 }
 
-fn render(data: &TetrominoData, w: u16, h: u16) -> MockSurface {
-    let mut surface = MockSurface::new(w, h);
+fn render(data: &TetrominoData, w: u16, h: u16) -> RecordingSurface {
+    let mut surface = RecordingSurface::new(w, h);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -628,7 +568,7 @@ fn render_result_empty_players() {
 
 #[test]
 fn render_overlay_centered() {
-    let mut surface = MockSurface::new(80, 30);
+    let mut surface = RecordingSurface::new(80, 30);
     render_overlay(&mut surface, "TEST", 10, 5);
     assert!(surface.has_content());
 }
@@ -639,7 +579,7 @@ fn render_overlay_centered() {
 
 #[test]
 fn render_side_panel_display() {
-    let mut surface = MockSurface::new(80, 30);
+    let mut surface = RecordingSurface::new(80, 30);
     let data = make_active_data();
     render_side_panel(&mut surface, &data, 40, 5);
     assert!(surface.has_content());

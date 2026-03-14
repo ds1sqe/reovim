@@ -21,6 +21,15 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   (`parse_notification`, `parse_notification_field`) behind `serde` feature gate.
   `CLIENT_MODULE_API_VERSION` bumped to 0.2.0. 357 tests, zero clippy warnings.
 
+- **ClientModule testing utilities (#647, part of #645)**: New `testing` module in
+  `reovim-client-driver` (behind `testing` feature gate) with `RecordingSurface`
+  (cell-grid with assertion methods), `WriteSurface` (write-log pattern),
+  `MockPlatformCapabilities` (builder), `MockServerHandle` (option seeding,
+  command recording), `MockThemeProvider` (highlight seeding),
+  `MockModuleRegistry`, and `TestModuleContext` builder. Migrated 15 TUI module
+  test files to shared mocks, eliminating duplicated boilerplate. Driver crate
+  dogfoods its own testing API. 378 driver tests, 481 TUI tests, zero warnings.
+
 ### Changed
 
 - Version bump to 0.12.1-dev for Phase 13 (SDK polish, integration, web alignment)

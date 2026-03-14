@@ -16,3 +16,6 @@ workspace = true
 reovim-client-driver = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+reovim-client-driver = { workspace = true, features = ["testing"] }

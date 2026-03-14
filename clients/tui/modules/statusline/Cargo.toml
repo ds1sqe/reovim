@@ -12,3 +12,6 @@ workspace = true
 
 [dependencies]
 reovim-client-driver = { workspace = true }
+
+[dev-dependencies]
+reovim-client-driver = { workspace = true, features = ["testing"] }

@@ -1,107 +1,13 @@
-use {super::*, reovim_client_driver::types::Color};
+use {
+    super::*,
+    reovim_client_driver::{
+        testing::{MockPlatformCapabilities, WriteSurface},
+        types::Color,
+    },
+};
 
-// =============================================================================
-// MockSurface
-// =============================================================================
-
-struct MockSurface {
-    writes: Vec<(u16, u16, String, Style)>,
-    width: u16,
-    height: u16,
-}
-
-impl MockSurface {
-    fn new(width: u16, height: u16) -> Self {
-        Self {
-            writes: Vec::new(),
-            width,
-            height,
-        }
-    }
-
-    fn text_at(&self, x: u16, y: u16) -> Option<&str> {
-        self.writes
-            .iter()
-            .rev()
-            .find(|(wx, wy, _, _)| *wx == x && *wy == y)
-            .map(|(_, _, s, _)| s.as_str())
-    }
-
-    fn style_at(&self, x: u16, y: u16) -> Option<&Style> {
-        self.writes
-            .iter()
-            .rev()
-            .find(|(wx, wy, _, _)| *wx == x && *wy == y)
-            .map(|(_, _, _, s)| s)
-    }
-}
-
-impl RenderSurface for MockSurface {
-    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
-        #[allow(clippy::cast_possible_truncation)]
-        let len = text.len() as u16;
-        self.writes.push((x, y, text.to_string(), style));
-        len
-    }
-
-    fn apply_style(&mut self, _x: u16, _y: u16, _style: Style) {}
-    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
-    fn fill(&mut self, _rect: Rect, _ch: char, _style: Style) {}
-    fn clear(&mut self, _rect: Rect) {}
-    fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-}
-
-fn test_caps() -> TestCaps {
-    TestCaps
-}
-
-struct TestCaps;
-
-impl PlatformCapabilities for TestCaps {
-    fn rendering_model(&self) -> reovim_client_driver::RenderingModel {
-        reovim_client_driver::RenderingModel::CellGrid
-    }
-    fn grid_size(&self) -> Option<(u16, u16)> {
-        Some((80, 24))
-    }
-    fn color_depth(&self) -> reovim_client_driver::types::ColorDepth {
-        reovim_client_driver::types::ColorDepth::TrueColor
-    }
-    fn pixel_size(&self) -> Option<(u32, u32)> {
-        None
-    }
-    fn reliable_unicode_width(&self) -> bool {
-        true
-    }
-    fn dark_mode(&self) -> bool {
-        true
-    }
-    fn smooth_scroll(&self) -> bool {
-        false
-    }
-    fn pointer_events(&self) -> bool {
-        true
-    }
-    fn touch_input(&self) -> bool {
-        false
-    }
-    fn haptic(&self) -> bool {
-        false
-    }
-    fn safe_area(&self) -> reovim_client_driver::Insets {
-        reovim_client_driver::Insets::ZERO
-    }
-    fn has_focus(&self) -> bool {
-        true
-    }
-    fn clipboard_available(&self) -> bool {
-        true
-    }
-    fn screen_reader_active(&self) -> bool {
-        false
-    }
+fn test_caps() -> MockPlatformCapabilities {
+    MockPlatformCapabilities::new()
 }
 
 // =============================================================================
@@ -166,7 +72,7 @@ fn statusline_chrome_priority_highest() {
 fn statusline_mode_change() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("insert");
-    let mut surface = MockSurface::new(80, 1);
+    let mut surface = WriteSurface::new(80, 1);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -181,7 +87,7 @@ fn statusline_mode_change() {
 fn statusline_cursor_update() {
     let mut m = StatuslineModule::new();
     m.on_cursor_update(BufferId(0), 10, 5);
-    let mut surface = MockSurface::new(80, 1);
+    let mut surface = WriteSurface::new(80, 1);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -190,14 +96,14 @@ fn statusline_cursor_update() {
     };
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Cursor position should show "11:6" (1-indexed)
-    let has_cursor_pos = surface.writes.iter().any(|(_, _, text, _)| text == "11:6");
+    let has_cursor_pos = surface.writes().iter().any(|w| w.text == "11:6");
     assert!(has_cursor_pos, "Expected cursor position 11:6 in writes");
 }
 
 #[test]
 fn statusline_no_cursor_shows_question_marks() {
     let m = StatuslineModule::new();
-    let mut surface = MockSurface::new(80, 1);
+    let mut surface = WriteSurface::new(80, 1);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -205,7 +111,7 @@ fn statusline_no_cursor_shows_question_marks() {
         height: 1,
     };
     m.chrome_render(&mut surface, bounds, &test_caps());
-    let has_question = surface.writes.iter().any(|(_, _, text, _)| text == "?:?");
+    let has_question = surface.writes().iter().any(|w| w.text == "?:?");
     assert!(has_question, "Expected ?:? when no cursor data");
 }
 
@@ -263,7 +169,7 @@ fn mode_style_replace() {
 fn statusline_renders_mode_with_correct_style() {
     let mut m = StatuslineModule::new();
     m.on_mode_change("visual");
-    let mut surface = MockSurface::new(80, 1);
+    let mut surface = WriteSurface::new(80, 1);
     let bounds = Rect {
         x: 0,
         y: 0,
@@ -279,7 +185,7 @@ fn statusline_renders_mode_with_correct_style() {
 #[test]
 fn statusline_renders_at_bounds_offset() {
     let m = StatuslineModule::new();
-    let mut surface = MockSurface::new(80, 24);
+    let mut surface = WriteSurface::new(80, 24);
     let bounds = Rect {
         x: 0,
         y: 23,

@@ -1,98 +1,10 @@
 use {
     super::*,
-    reovim_client_driver::{Style, types::Color},
+    reovim_client_driver::testing::{MockPlatformCapabilities, WriteSurface},
 };
 
-// =============================================================================
-// MockSurface
-// =============================================================================
-
-struct MockSurface {
-    writes: Vec<(u16, u16, String, Style)>,
-    width: u16,
-    height: u16,
-}
-
-impl MockSurface {
-    fn new(width: u16, height: u16) -> Self {
-        Self {
-            writes: Vec::new(),
-            width,
-            height,
-        }
-    }
-}
-
-impl RenderSurface for MockSurface {
-    fn write_styled(&mut self, x: u16, y: u16, text: &str, style: Style) -> u16 {
-        #[allow(clippy::cast_possible_truncation)]
-        let len = text.len() as u16;
-        self.writes.push((x, y, text.to_string(), style));
-        len
-    }
-
-    fn apply_style(&mut self, _x: u16, _y: u16, _style: Style) {}
-    fn overlay_bg(&mut self, _x: u16, _y: u16, _bg: Color) {}
-    fn fill(&mut self, _rect: Rect, _ch: char, _style: Style) {}
-    fn clear(&mut self, _rect: Rect) {}
-    fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-}
-
-// =============================================================================
-// TestPlatformCaps
-// =============================================================================
-
-struct TestPlatformCaps;
-
-impl PlatformCapabilities for TestPlatformCaps {
-    fn rendering_model(&self) -> reovim_client_driver::RenderingModel {
-        reovim_client_driver::RenderingModel::CellGrid
-    }
-    fn grid_size(&self) -> Option<(u16, u16)> {
-        Some((80, 24))
-    }
-    fn color_depth(&self) -> reovim_client_driver::types::ColorDepth {
-        reovim_client_driver::types::ColorDepth::TrueColor
-    }
-    fn pixel_size(&self) -> Option<(u32, u32)> {
-        None
-    }
-    fn reliable_unicode_width(&self) -> bool {
-        true
-    }
-    fn dark_mode(&self) -> bool {
-        true
-    }
-    fn smooth_scroll(&self) -> bool {
-        false
-    }
-    fn pointer_events(&self) -> bool {
-        true
-    }
-    fn touch_input(&self) -> bool {
-        false
-    }
-    fn haptic(&self) -> bool {
-        false
-    }
-    fn safe_area(&self) -> reovim_client_driver::Insets {
-        reovim_client_driver::Insets::ZERO
-    }
-    fn has_focus(&self) -> bool {
-        true
-    }
-    fn clipboard_available(&self) -> bool {
-        true
-    }
-    fn screen_reader_active(&self) -> bool {
-        false
-    }
-}
-
-fn test_caps() -> TestPlatformCaps {
-    TestPlatformCaps
+fn test_caps() -> MockPlatformCapabilities {
+    MockPlatformCapabilities::new()
 }
 
 // =============================================================================
@@ -359,26 +271,23 @@ fn cursor_position_active_with_input() {
 #[test]
 fn render_inactive_no_op() {
     let m = ExplorerModule::new();
-    let mut surface = MockSurface::new(80, 24);
+    let mut surface = WriteSurface::new(80, 24);
     let bounds = Rect::new(0, 0, 30, 24);
     m.chrome_render(&mut surface, bounds, &test_caps());
-    assert!(surface.writes.is_empty());
+    assert!(surface.writes().is_empty());
 }
 
 #[test]
 fn render_shows_content_with_nodes() {
     let mut m = ExplorerModule::new();
     m.on_notification(&active_payload("project", &[("src", 0, true)]));
-    let mut surface = MockSurface::new(80, 24);
+    let mut surface = WriteSurface::new(80, 24);
     let bounds = Rect::new(0, 0, 30, 24);
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Should have writes (background, header, nodes, separator)
-    assert!(!surface.writes.is_empty());
+    assert!(!surface.writes().is_empty());
     // Header should contain "project"
-    let has_header = surface
-        .writes
-        .iter()
-        .any(|(_, _, text, _)| text == "project");
+    let has_header = surface.writes().iter().any(|w| w.text == "project");
     assert!(has_header, "Expected header 'project' in writes");
 }
 
@@ -386,15 +295,15 @@ fn render_shows_content_with_nodes() {
 fn render_at_offset_bounds() {
     let mut m = ExplorerModule::new();
     m.on_notification(&active_payload("proj", &[("file.rs", 0, false)]));
-    let mut surface = MockSurface::new(80, 24);
+    let mut surface = WriteSurface::new(80, 24);
     // Simulate chrome allocating at x=5, y=2
     let bounds = Rect::new(5, 2, 30, 20);
     m.chrome_render(&mut surface, bounds, &test_caps());
     // Header write should be at x=6 (bounds.x + 1), y=2 (bounds.y)
     let has_header_at_offset = surface
-        .writes
+        .writes()
         .iter()
-        .any(|(x, y, text, _)| *x == 6 && *y == 2 && text == "proj");
+        .any(|w| w.x == 6 && w.y == 2 && w.text == "proj");
     assert!(has_header_at_offset, "Expected header at offset (6, 2) in writes");
 }
 
