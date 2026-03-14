@@ -62,6 +62,18 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   relative, hybrid modes via `on_option_changed("number"/"relativenumber")`. Dynamic
   column width based on total line count. 24 module tests, 12 native modules total.
 
+- **Buffer contribution migration** (#637): Migrate all 5 buffer-contrib TuiExtension
+  implementations to native ClientModule. FoldModule (fold_ranges + transform_line for
+  fold markers, 33 tests). JumpModule (transform_line for jump label overlays with
+  bright/dim two-char styling, 29 tests). PairModule (inline_decorations via HashMap
+  for rainbow brackets + matchpair highlighting, 23 tests). DiagnosticsModule
+  (inline_decorations for underlines + virtual_lines for diagnostic messages, 28 tests).
+  MarkdownModule (classify_token for heading/bullet/code conceals, transform_line for
+  table rows with segment-based TransformedLine, virtual_lines for table borders,
+  map_cursor_column for cursor in expanded rows, 4 sub-modules: behaviors/detect/layout/mapping,
+  70 tests). Legacy extension list now empty (0 TuiExtensions). Bridge classify_extension()
+  simplified to const fn. 17 native ClientModule instances registered.
+
 ### Changed
 
 - **Version bump**: Start CLM (Client Layer Model) epic (#628)
