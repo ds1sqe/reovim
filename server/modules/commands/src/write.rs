@@ -101,10 +101,10 @@ fn encode_and_write(
     content: &str,
     vfs: &dyn reovim_driver_vfs::VfsDriver,
 ) -> Result<(), String> {
-    // Check if we have codec metadata for this buffer
+    // Check if we have codec metadata for this buffer (shared extensions = per-buffer)
     if let Some(buffer_id) = runtime.active_buffer() {
-        let codec_state = runtime.ext_mut::<CodecSessionState>();
-        if let Some(metadata) = codec_state.get(buffer_id) {
+        let codec_state = runtime.shared_ext_mut::<CodecSessionState>();
+        if let Some(metadata) = codec_state.and_then(|cs| cs.get(buffer_id)) {
             // Check readonly (lossy decode means writing back would corrupt data)
             if metadata.get("readonly") == Some("true") {
                 return Err("buffer is read-only (lossy codec decode)".to_string());

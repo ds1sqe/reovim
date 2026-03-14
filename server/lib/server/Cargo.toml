@@ -30,6 +30,7 @@ reovim-driver-syntax = { workspace = true }
 reovim-driver-vfs = { workspace = true }
 reovim-driver-undo = { workspace = true }
 reovim-driver-search = { workspace = true }
+reovim-driver-codec = { workspace = true }
 
 # Async
 tokio = { workspace = true, features = ["full", "sync", "rt-multi-thread"] }

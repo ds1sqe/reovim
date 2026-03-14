@@ -133,23 +133,45 @@ pub async fn buffers(
             let mut output = String::new();
             for buf in &response.buffers {
                 let modified = if buf.modified { " [+]" } else { "" };
+                let codec_info = buf.codec_metadata.as_ref().map_or_else(String::new, |m| {
+                    let mut parts = vec![m.codec_name.clone()];
+                    if let Some(le) = &m.line_ending {
+                        parts.push(le.clone());
+                    }
+                    if m.has_bom {
+                        parts.push("BOM".to_string());
+                    }
+                    format!(" [{}]", parts.join(", "))
+                });
                 let _ = writeln!(
                     output,
-                    "{}: {} ({} lines){}",
-                    buf.id, buf.name, buf.line_count, modified
+                    "{}: {} ({} lines){}{}",
+                    buf.id, buf.name, buf.line_count, codec_info, modified
                 );
             }
             Ok(output.trim_end().to_string())
         }
         OutputFormat::Json => {
             let json = serde_json::json!({
-                "buffers": response.buffers.iter().map(|b| serde_json::json!({
-                    "id": b.id,
-                    "name": b.name,
-                    "path": b.path,
-                    "line_count": b.line_count,
-                    "modified": b.modified,
-                })).collect::<Vec<_>>(),
+                "buffers": response.buffers.iter().map(|b| {
+                    let mut entry = serde_json::json!({
+                        "id": b.id,
+                        "name": b.name,
+                        "path": b.path,
+                        "line_count": b.line_count,
+                        "modified": b.modified,
+                    });
+                    if let Some(m) = &b.codec_metadata {
+                        entry["codec"] = serde_json::json!(m.codec_name);
+                        if let Some(le) = &m.line_ending {
+                            entry["line_ending"] = serde_json::json!(le);
+                        }
+                        if m.has_bom {
+                            entry["has_bom"] = serde_json::json!(true);
+                        }
+                    }
+                    entry
+                }).collect::<Vec<_>>(),
             });
             Ok(serde_json::to_string_pretty(&json).unwrap_or_default())
         }

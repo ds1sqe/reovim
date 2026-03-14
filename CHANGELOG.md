@@ -30,6 +30,12 @@ For old changelog, see `changelog/CHANGELOG-{version}.md`
   test files to shared mocks, eliminating duplicated boilerplate. Driver crate
   dogfoods its own testing API. 378 driver tests, 481 TUI tests, zero warnings.
 
+- **Codec metadata end-to-end pipeline (#649, part of #645)**: Fixed latent bug where
+  `CodecSessionState` was stored in per-client extensions instead of shared (per-buffer)
+  extensions. gRPC `ListBuffers` response now populates `codec_metadata` (codec name,
+  line ending, BOM flag) from `CodecSessionState`. CLI `buffers` command displays
+  codec info in both plain (`[utf-8, lf]`) and JSON formats.
+
 ### Changed
 
 - Version bump to 0.12.1-dev for Phase 13 (SDK polish, integration, web alignment)

@@ -8,13 +8,14 @@
 use std::sync::Arc;
 
 use {
+    reovim_driver_codec::CodecSessionState,
     reovim_kernel::api::v1::BufferId,
     reovim_protocol::v2::{
-        BufferInfo, GetAnnotationsRequest, GetAnnotationsResponse, GetLineCountRequest,
-        GetLineCountResponse, GetRawContentRequest, GetRawContentResponse, LineAnnotation,
-        ListBuffersRequest, ListBuffersResponse, OpenFileRequest, OpenFileResponse,
-        SetContentRequest, SetContentResponse, WriteFileRequest, WriteFileResponse,
-        buffer_service_server::BufferService,
+        BufferInfo, CodecMetadata, GetAnnotationsRequest, GetAnnotationsResponse,
+        GetLineCountRequest, GetLineCountResponse, GetRawContentRequest, GetRawContentResponse,
+        LineAnnotation, ListBuffersRequest, ListBuffersResponse, OpenFileRequest,
+        OpenFileResponse, SetContentRequest, SetContentResponse, WriteFileRequest,
+        WriteFileResponse, buffer_service_server::BufferService,
     },
     tonic::{Request, Response, Status},
 };
@@ -197,6 +198,21 @@ impl BufferService for BufferServiceImpl {
                                     || format!("[Buffer {}]", id.as_usize()),
                                     |n| n.to_string_lossy().into_owned(),
                                 );
+                            let codec_meta = state
+                                .app
+                                .extensions
+                                .get::<CodecSessionState>()
+                                .and_then(|css| css.get(id))
+                                .map(|m| CodecMetadata {
+                                    codec_name: m
+                                        .content_type()
+                                        .as_str()
+                                        .strip_prefix("text/")
+                                        .unwrap_or_else(|| m.content_type().as_str())
+                                        .to_string(),
+                                    line_ending: m.get("line_ending").map(String::from),
+                                    has_bom: m.get("bom") == Some("true"),
+                                });
                             BufferInfo {
                                 id: id.as_usize() as u64,
                                 name,
@@ -205,7 +221,7 @@ impl BufferService for BufferServiceImpl {
                                 modified: buf.is_modified(),
                                 content_type: None,
                                 readonly: None,
-                                codec_metadata: None,
+                                codec_metadata: codec_meta,
                             }
                         })
                     })

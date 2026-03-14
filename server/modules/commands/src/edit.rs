@@ -154,9 +154,12 @@ fn decode_file_content(
                 Ok(result) => {
                     let content = result.content;
 
-                    // Store metadata for round-trip save (includes readonly flag)
-                    if let Some(buffer_id) = runtime.active_buffer() {
-                        let codec_state = runtime.ext_mut::<CodecSessionState>();
+                    // Store metadata in shared extensions (per-buffer, not per-client)
+                    // so gRPC handler and other clients can access it.
+                    if let Some(buffer_id) = runtime.active_buffer()
+                        && let Some(codec_state) =
+                            runtime.shared_ext_mut::<CodecSessionState>()
+                    {
                         codec_state.insert(buffer_id, result.metadata);
                     }
 

@@ -3551,6 +3551,7 @@ dependencies = [
  "reovim-arch",
  "reovim-client-cli",
  "reovim-driver-buffer",
+ "reovim-driver-codec",
  "reovim-driver-command",
  "reovim-driver-command-types",
  "reovim-driver-input",
