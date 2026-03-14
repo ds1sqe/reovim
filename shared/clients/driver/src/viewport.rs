@@ -5,8 +5,8 @@
 
 use crate::{
     BufferId, ClientModule, ConcealDecoration, CursorInfo, PlatformCapabilities, Rect,
-    RenderBehavior, RenderSurface, SelectionInfo, SelectionMode, Style,
-    ThemeProvider, TokenProvider, TransformedLine, ViewportContext, VirtualLinePosition,
+    RenderBehavior, RenderSurface, SelectionInfo, SelectionMode, Style, ThemeProvider,
+    TokenProvider, TransformedLine, ViewportContext, VirtualLinePosition,
     conceal::{apply_conceals, dim_style, source_to_display_col},
 };
 
@@ -69,15 +69,7 @@ impl crate::ViewportRenderer for DefaultViewportRenderer {
         render_remote_cursors(surface, ctx, content_x, content_height);
 
         if ctx.render_self_cursor {
-            render_self_cursor(
-                surface,
-                ctx,
-                content_x,
-                content_height,
-                tokens,
-                theme,
-                modules,
-            );
+            render_self_cursor(surface, ctx, content_x, content_height, tokens, theme, modules);
         }
     }
 }
@@ -113,22 +105,17 @@ fn render_buffer_content(
         }
 
         // Virtual lines before this line
-        for vl in ctx.virtual_lines.iter().filter(|vl| {
-            vl.buffer_line == line_idx && vl.position == VirtualLinePosition::Before
-        }) {
-            render_virtual_line(
-                surface,
-                content_x,
-                viewport.y + screen_row,
-                content_width,
-                &vl.content,
-                &vl.style,
-            );
-            screen_row += 1;
-            if screen_row >= content_height {
-                break;
-            }
-        }
+        screen_row += render_positioned_virtual_lines(
+            surface,
+            ctx,
+            content_x,
+            viewport.y,
+            screen_row,
+            content_width,
+            content_height,
+            line_idx,
+            VirtualLinePosition::Before,
+        );
         if screen_row >= content_height {
             break;
         }
@@ -178,10 +165,8 @@ fn render_buffer_content(
                 }
             } else {
                 // Empty line indicator (tilde)
-                let tilde_style = apply_opacity(
-                    &Style::new().fg(reovim_arch::Color::DarkGrey),
-                    ctx.opacity,
-                );
+                let tilde_style =
+                    apply_opacity(&Style::new().fg(reovim_arch::Color::DarkGrey), ctx.opacity);
                 let mut buf = [0u8; 4];
                 let s = '~'.encode_utf8(&mut buf);
                 surface.write_styled(content_x, viewport.y + screen_row, s, tilde_style);
@@ -191,25 +176,57 @@ fn render_buffer_content(
         screen_row += 1;
 
         // Virtual lines after this line
-        for vl in ctx.virtual_lines.iter().filter(|vl| {
-            vl.buffer_line == line_idx && vl.position == VirtualLinePosition::After
-        }) {
-            if screen_row >= content_height {
-                break;
-            }
-            render_virtual_line(
-                surface,
-                content_x,
-                viewport.y + screen_row,
-                content_width,
-                &vl.content,
-                &vl.style,
-            );
-            screen_row += 1;
-        }
+        screen_row += render_positioned_virtual_lines(
+            surface,
+            ctx,
+            content_x,
+            viewport.y,
+            screen_row,
+            content_width,
+            content_height,
+            line_idx,
+            VirtualLinePosition::After,
+        );
 
         line_idx += 1;
     }
+}
+
+/// Render virtual lines for a given buffer line in the specified position.
+///
+/// Returns the number of screen rows consumed.
+#[allow(clippy::too_many_arguments, clippy::cast_possible_truncation)]
+fn render_positioned_virtual_lines(
+    surface: &mut dyn RenderSurface,
+    ctx: &ViewportContext<'_>,
+    content_x: u16,
+    viewport_y: u16,
+    screen_row: u16,
+    content_width: u16,
+    content_height: u16,
+    line_idx: usize,
+    position: VirtualLinePosition,
+) -> u16 {
+    let mut rows_used: u16 = 0;
+    for vl in ctx
+        .virtual_lines
+        .iter()
+        .filter(|vl| vl.buffer_line == line_idx && vl.position == position)
+    {
+        if screen_row + rows_used >= content_height {
+            break;
+        }
+        render_virtual_line(
+            surface,
+            content_x,
+            viewport_y + screen_row + rows_used,
+            content_width,
+            &vl.content,
+            &vl.style,
+        );
+        rows_used += 1;
+    }
+    rows_used
 }
 
 // =============================================================================
@@ -280,9 +297,7 @@ fn render_line_content(
     let concealed = apply_conceals(line, &conceals);
 
     // Render display text with syntax highlighting
-    for (col_offset, (display_col, ch)) in
-        (0_u16..).zip(concealed.text.chars().enumerate())
-    {
+    for (col_offset, (display_col, ch)) in (0_u16..).zip(concealed.text.chars().enumerate()) {
         if col_offset >= width {
             break;
         }
@@ -291,20 +306,14 @@ fn render_line_content(
             apply_opacity(conceal_style, opacity)
         } else {
             // Map display column back to source column for highlight lookup
-            let source_col = concealed
-                .col_mapping
-                .get(display_col)
-                .copied()
-                .unwrap_or(0);
+            let source_col = concealed.col_mapping.get(display_col).copied().unwrap_or(0);
             let source_col = u32::from(source_col);
 
             tokens
                 .iter()
                 .find(|t| {
-                    matches!(
-                        classify_with_modules(modules, &t.category),
-                        RenderBehavior::Highlight
-                    ) && source_col >= t.start_col
+                    matches!(classify_with_modules(modules, &t.category), RenderBehavior::Highlight)
+                        && source_col >= t.start_col
                         && source_col < t.end_col
                 })
                 .map_or_else(
@@ -414,10 +423,8 @@ fn render_gutter_annotations(
     };
 
     // Collect annotation modules sorted by priority (highest first = leftmost)
-    let mut ann_modules: Vec<&Box<dyn ClientModule>> = modules
-        .iter()
-        .filter(|m| m.has_annotations())
-        .collect();
+    let mut ann_modules: Vec<&Box<dyn ClientModule>> =
+        modules.iter().filter(|m| m.has_annotations()).collect();
     ann_modules.sort_by_key(|m| std::cmp::Reverse(m.annotation_priority()));
 
     let caps = DummyCaps;
@@ -437,11 +444,7 @@ fn render_gutter_annotations(
             let style = apply_opacity(&cell.style, ctx.opacity);
             // Right-align the text within the column
             let padding = (col_width as usize).saturating_sub(cell.text.len() + 1);
-            let display = format!(
-                "{:>width$} ",
-                cell.text,
-                width = padding + cell.text.len()
-            );
+            let display = format!("{:>width$} ", cell.text, width = padding + cell.text.len());
             surface.write_styled(col_x, y, &display, style);
         }
 
@@ -541,10 +544,7 @@ fn apply_opacity(style: &Style, opacity: f32) -> Style {
 ///
 /// Queries all buffer-contrib modules; first `Some` wins.
 /// Falls back to `Highlight` if no module claims the category.
-fn classify_with_modules(
-    modules: &[Box<dyn ClientModule>],
-    category: &str,
-) -> RenderBehavior {
+fn classify_with_modules(modules: &[Box<dyn ClientModule>], category: &str) -> RenderBehavior {
     modules
         .iter()
         .filter(|m| m.has_buffer_contrib())
@@ -575,14 +575,42 @@ fn transform_line(
 /// These 8 colors are distinguishable by people with common color vision
 /// deficiencies (protanopia, deuteranopia, tritanopia).
 pub const CBF8_PALETTE: [reovim_arch::Color; 8] = [
-    reovim_arch::Color::Rgb { r: 0, g: 114, b: 178 },   // Blue
-    reovim_arch::Color::Rgb { r: 230, g: 159, b: 0 },    // Orange
-    reovim_arch::Color::Rgb { r: 86, g: 180, b: 233 },   // Sky blue
-    reovim_arch::Color::Rgb { r: 0, g: 158, b: 115 },    // Green
-    reovim_arch::Color::Rgb { r: 240, g: 228, b: 66 },   // Yellow
-    reovim_arch::Color::Rgb { r: 213, g: 94, b: 0 },     // Vermilion
-    reovim_arch::Color::Rgb { r: 204, g: 121, b: 167 },  // Pink
-    reovim_arch::Color::Rgb { r: 0, g: 0, b: 0 },        // Black (fallback)
+    reovim_arch::Color::Rgb {
+        r: 0,
+        g: 114,
+        b: 178,
+    }, // Blue
+    reovim_arch::Color::Rgb {
+        r: 230,
+        g: 159,
+        b: 0,
+    }, // Orange
+    reovim_arch::Color::Rgb {
+        r: 86,
+        g: 180,
+        b: 233,
+    }, // Sky blue
+    reovim_arch::Color::Rgb {
+        r: 0,
+        g: 158,
+        b: 115,
+    }, // Green
+    reovim_arch::Color::Rgb {
+        r: 240,
+        g: 228,
+        b: 66,
+    }, // Yellow
+    reovim_arch::Color::Rgb {
+        r: 213,
+        g: 94,
+        b: 0,
+    }, // Vermilion
+    reovim_arch::Color::Rgb {
+        r: 204,
+        g: 121,
+        b: 167,
+    }, // Pink
+    reovim_arch::Color::Rgb { r: 0, g: 0, b: 0 }, // Black (fallback)
 ];
 
 /// Get a color from the CBF-8 palette for a client ID.
@@ -597,14 +625,30 @@ pub const fn client_color(client_id: u64) -> reovim_arch::Color {
 /// Lower-intensity versions of the cursor palette, suitable for
 /// background overlays that don't obscure text.
 pub const CBF8_DIMMED: [reovim_arch::Color; 8] = [
-    reovim_arch::Color::Rgb { r: 0, g: 45, b: 70 },     // Blue
-    reovim_arch::Color::Rgb { r: 75, g: 50, b: 0 },      // Orange
-    reovim_arch::Color::Rgb { r: 25, g: 60, b: 75 },     // Sky blue
-    reovim_arch::Color::Rgb { r: 0, g: 55, b: 35 },      // Green
-    reovim_arch::Color::Rgb { r: 70, g: 65, b: 20 },     // Yellow
-    reovim_arch::Color::Rgb { r: 70, g: 30, b: 0 },      // Vermilion
-    reovim_arch::Color::Rgb { r: 65, g: 38, b: 55 },     // Pink
-    reovim_arch::Color::Rgb { r: 30, g: 30, b: 30 },     // Dark grey (fallback)
+    reovim_arch::Color::Rgb { r: 0, g: 45, b: 70 }, // Blue
+    reovim_arch::Color::Rgb { r: 75, g: 50, b: 0 }, // Orange
+    reovim_arch::Color::Rgb {
+        r: 25,
+        g: 60,
+        b: 75,
+    }, // Sky blue
+    reovim_arch::Color::Rgb { r: 0, g: 55, b: 35 }, // Green
+    reovim_arch::Color::Rgb {
+        r: 70,
+        g: 65,
+        b: 20,
+    }, // Yellow
+    reovim_arch::Color::Rgb { r: 70, g: 30, b: 0 }, // Vermilion
+    reovim_arch::Color::Rgb {
+        r: 65,
+        g: 38,
+        b: 55,
+    }, // Pink
+    reovim_arch::Color::Rgb {
+        r: 30,
+        g: 30,
+        b: 30,
+    }, // Dark grey (fallback)
 ];
 
 /// Get a dimmed color for selection backgrounds.
@@ -722,7 +766,9 @@ fn render_selection_range(
                     .iter()
                     .filter(|m| m.has_buffer_contrib())
                     .find_map(|m| {
-                        let text = lines.and_then(|l| l.get(line_idx)).map_or("", String::as_str);
+                        let text = lines
+                            .and_then(|l| l.get(line_idx))
+                            .map_or("", String::as_str);
                         m.transform_line(bid, line_idx, text)
                     })
             })
@@ -847,9 +893,7 @@ fn render_remote_cursor_labels(
             continue;
         }
 
-        let label_style = Style::new()
-            .fg(remote.cursor_color)
-            .underline();
+        let label_style = Style::new().fg(remote.cursor_color).underline();
 
         surface.write_styled(label_x, screen_y, &label, label_style);
     }
@@ -885,7 +929,9 @@ fn render_self_cursor(
             modules
                 .iter()
                 .filter(|m| m.has_buffer_contrib())
-                .find_map(|m| m.map_cursor_column(bid, cursor.line as usize, cursor.column as usize))
+                .find_map(|m| {
+                    m.map_cursor_column(bid, cursor.line as usize, cursor.column as usize)
+                })
         })
         .unwrap_or_else(|| {
             if ctx.is_insert_mode {

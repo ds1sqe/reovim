@@ -4,8 +4,8 @@
 //! types, plus adapter structs for the render engine to call `ClientModule`
 //! methods through the existing `RenderBackend` infrastructure.
 //!
-//! Temporary -- deleted in Phase 12.4 when the render engine is rewritten
-//! to use client-driver types natively.
+//! These adapters remain until the render engine uses client-driver types
+//! natively, at which point the bridge layer can be removed.
 
 use {
     reovim_client_driver::{
