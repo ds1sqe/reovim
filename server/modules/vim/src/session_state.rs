@@ -422,6 +422,12 @@ pub enum PendingCharOp {
     TillBackward,
     /// Replace character (r).
     Replace,
+    /// Set mark (m).
+    SetMark,
+    /// Go to mark line (').
+    GotoMarkLine,
+    /// Go to mark exact position (`).
+    GotoMarkExact,
 }
 
 impl PendingCharOp {
@@ -440,7 +446,10 @@ impl PendingCharOp {
     /// Check if this is a motion (f, F, t, T) vs replace (r).
     #[must_use]
     pub const fn is_motion(&self) -> bool {
-        !matches!(self, Self::Replace)
+        !matches!(
+            self,
+            Self::Replace | Self::SetMark | Self::GotoMarkLine | Self::GotoMarkExact
+        )
     }
 
     /// Check if searching forward.

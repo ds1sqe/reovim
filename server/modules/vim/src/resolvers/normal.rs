@@ -544,6 +544,24 @@ impl VimNormalResolver {
         }
     }
 
+    /// Classify a command as a mark operation, if applicable (#654).
+    ///
+    /// Returns the corresponding `PendingCharOp` if the command is one of the
+    /// mark commands (m, ', `), otherwise returns `None`.
+    pub fn classify_mark_command(
+        cmd: &reovim_kernel::api::v1::CommandId,
+    ) -> Option<PendingCharOp> {
+        if *cmd == editor::ids::SET_MARK {
+            Some(PendingCharOp::SetMark)
+        } else if *cmd == editor::ids::GOTO_MARK_LINE {
+            Some(PendingCharOp::GotoMarkLine)
+        } else if *cmd == editor::ids::GOTO_MARK_EXACT {
+            Some(PendingCharOp::GotoMarkExact)
+        } else {
+            None
+        }
+    }
+
     /// Check if a command is an insert entry command (#577).
     ///
     /// These commands start a change that should be recorded for dot repeat.
@@ -751,9 +769,22 @@ impl ModeKeyResolver for VimNormalResolver {
             }
 
             // Replace operation (r) — dispatch to editor::REPLACE_CHAR
+            if matches!(pending_op, PendingCharOp::Replace) {
+                ctx.metadata
+                    .insert("replace_char".to_string(), ArgValue::Char(c));
+                return ResolveResult::Execute(editor::ids::REPLACE_CHAR, ctx);
+            }
+
+            // #654 - Mark operations (m, ', `)
+            let cmd_id = match pending_op {
+                PendingCharOp::SetMark => editor::ids::SET_MARK,
+                PendingCharOp::GotoMarkLine => editor::ids::GOTO_MARK_LINE,
+                PendingCharOp::GotoMarkExact => editor::ids::GOTO_MARK_EXACT,
+                _ => unreachable!("All pending ops handled above"),
+            };
             ctx.metadata
-                .insert("replace_char".to_string(), ArgValue::Char(c));
-            return ResolveResult::Execute(editor::ids::REPLACE_CHAR, ctx);
+                .insert("mark_char".to_string(), ArgValue::Char(c));
+            return ResolveResult::Execute(cmd_id, ctx);
         }
 
         // =====================================================================
@@ -865,6 +896,13 @@ impl ModeKeyResolver for VimNormalResolver {
                 // Like find-char, this sets pending_char and waits for the next char.
                 if cmd == editor::ids::REPLACE_CHAR_START {
                     vim.pending_char = Some(PendingCharOp::Replace);
+                    self.clear_pending_keys();
+                    return ResolveResult::Pending;
+                }
+
+                // #654 - Intercept mark commands (m, ', `)
+                if let Some(mark_op) = Self::classify_mark_command(&cmd) {
+                    vim.pending_char = Some(mark_op);
                     self.clear_pending_keys();
                     return ResolveResult::Pending;
                 }
